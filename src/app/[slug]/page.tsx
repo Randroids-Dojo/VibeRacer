@@ -8,6 +8,12 @@ import {
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
 import { Game, type OverallRecord } from '@/components/Game'
+import { SlugLanding } from '@/components/SlugLanding'
+import {
+  readRecentTracks,
+  RECENT_TRACKS_DEFAULT_LIMIT,
+  type RecentTrack,
+} from '@/lib/recentTracks'
 
 const DEFAULT_TRACK = {
   pieces: DEFAULT_TRACK_PIECES,
@@ -16,13 +22,18 @@ const DEFAULT_TRACK = {
 
 type LoadResult =
   | { kind: 'ok'; pieces: Piece[]; versionHash: string }
+  | { kind: 'fresh' }
   | { kind: 'notFound' }
+
+function hasKvConfigured(): boolean {
+  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+}
 
 async function loadTrack(
   slug: string,
   requestedHash: string | null,
 ): Promise<LoadResult> {
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+  if (!hasKvConfigured()) {
     if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
       return { kind: 'notFound' }
     }
@@ -31,8 +42,10 @@ async function loadTrack(
   try {
     const { getKv, kvKeys } = await import('@/lib/kv')
     const kv = getKv()
-    const targetHash =
-      requestedHash ?? (await kv.get<string>(kvKeys.trackLatest(slug)))
+    const latestHash = requestedHash
+      ? null
+      : await kv.get<string>(kvKeys.trackLatest(slug))
+    const targetHash = requestedHash ?? latestHash
     if (targetHash) {
       const version = await kv.get(kvKeys.trackVersion(slug, targetHash))
       const parsed = TrackVersionSchema.safeParse(version)
@@ -46,13 +59,35 @@ async function loadTrack(
       // A specific version was requested but not found: do not silently serve latest.
       if (requestedHash) return { kind: 'notFound' }
     }
+    if (!requestedHash && !latestHash) {
+      return { kind: 'fresh' }
+    }
   } catch {
-    // Fall through to default when KV is unavailable.
+    // KV threw mid-request. Fall back to the default track so visitors still
+    // get a playable experience.
+    if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
+      return { kind: 'notFound' }
+    }
+    return { kind: 'ok', ...DEFAULT_TRACK }
   }
   if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
     return { kind: 'notFound' }
   }
   return { kind: 'ok', ...DEFAULT_TRACK }
+}
+
+async function loadRecentTracks(excludeSlug: string): Promise<RecentTrack[]> {
+  if (!hasKvConfigured()) return []
+  try {
+    const { getKv } = await import('@/lib/kv')
+    return await readRecentTracks(
+      getKv(),
+      RECENT_TRACKS_DEFAULT_LIMIT,
+      excludeSlug,
+    )
+  } catch {
+    return []
+  }
 }
 
 async function loadOverallRecord(
@@ -94,6 +129,10 @@ export default async function SlugPage(ctx: {
 
   const loaded = await loadTrack(slug, requestedHash)
   if (loaded.kind === 'notFound') notFound()
+  if (loaded.kind === 'fresh') {
+    const recent = await loadRecentTracks(slug)
+    return <SlugLanding slug={slug} recent={recent} />
+  }
   const { pieces, versionHash } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
 

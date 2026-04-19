@@ -10,12 +10,12 @@
 
 | § | Section | Status |
 | - | - | - |
-| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart all work; edit pending) |
+| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt all work; edit pending) |
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause; touch joystick pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI still pending) |
-| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt; home UI and settings pending) |
+| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
 | 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
 | 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Leaderboards/Exit ships; title screen pending) |
 | 10 | Physics tuning (dev panel) | not started |
@@ -28,7 +28,7 @@
 | 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 93 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 98 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -64,7 +64,8 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 - Tests: `tests/unit/tick.test.ts` covers init state, frozen physics before start, teleporting through all checkpoints to complete a lap, ignoring unexpected cells, and invalid-lap reset when the car re-enters the start piece mid-lap.
 - Pause: `GameSession` owns `paused` state plus `pausedRef`, `pauseStartTsRef`, and `resumeShiftRef`. When paused, the RAF loop short-circuits before `tick()` runs. On resume, the accumulated pause duration is added to `state.raceStartMs` so the current lap timer resumes cleanly without a one-frame jump. Pause is only available during the `racing` phase (Esc is ignored during countdown).
 - Restart: `restart()` sets `pendingResetRef.current = true`; the loop re-inits game state, camera rig, and renders one frame. Phase flips back to `countdown` so the 3-2-1-GO sequence plays again. Tokens and session PB are cleared; all-time PB (persisted in `localStorage`) is preserved.
-- **Not yet landed.** Load-existing prompt on a fresh slug, PB fanfare, "Edit Track" entry point from the pause menu.
+- Fresh-slug prompt: `src/app/[slug]/page.tsx` now differentiates "KV configured but no saved track for this slug" from "KV unreachable". In the former case it renders `src/components/SlugLanding.tsx` instead of silently serving the default oval. The landing shows the slug as an eyebrow, a `Create new track` CTA linking to `/<slug>/edit`, and a `Load existing` list of recently-updated slugs read from `track:index` via `src/lib/recentTracks.ts` (`zrange` with `{ rev: true, withScores: true }`, top 10). When KV is empty the list shows a friendly "nothing built yet" message. When KV env vars are missing (local dev without KV), the page keeps falling back to the default track so `npm run dev` remains playable with no setup.
+- **Not yet landed.** PB fanfare, "Edit Track" entry point from the pause menu.
 
 ---
 
@@ -254,7 +255,9 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Initials prompt: `src/components/InitialsPrompt.tsx` reads/writes `viberacer.initials` via `readStoredInitials` / `writeStoredInitials`. Validated through `InitialsSchema`. `Game.tsx` blocks the canvas render until initials exist: on mount it reads `localStorage`; if missing, it shows `InitialsPrompt`; once set, it renders `GameSession` which runs the countdown and race.
 - `/` page: `src/app/page.tsx` shows "Play default track" plus two sample slug links. The planned Create / Load existing / Settings home UI is still pending.
 - `?v=<hash>` deep-link handling: live. `src/app/[slug]/page.tsx` reads `searchParams.v`, validates through `VersionHashSchema`, and loads that specific version from KV (`track:<slug>:version:<hash>`). Missing or invalid hashes call `notFound()`. The overall-record seeded into the HUD is also scoped to the requested version so history browsing shows correct top times.
-- **Not yet landed.** Per-slug create-or-load prompt (for an empty slug), Settings screen to edit initials, "latest updated slugs" list on `/`.
+- Per-slug create-or-load prompt: live via `SlugLanding`. `src/lib/recentTracks.ts::readRecentTracks(kv, limit, excludeSlug?)` reads `track:index` newest-first (`zrange` with `rev: true, withScores: true`), rejects members that fail `SlugSchema`, and returns typed `{slug, updatedAt}` entries. Unit coverage in `tests/unit/recentTracks.test.ts`.
+- Home page: `src/app/page.tsx` is now an async RSC. Primary CTA renamed from `Play default track` to `Play at /start` so it stays truthful when `/start` has no saved track (it lands on `SlugLanding` in that case, same as any other fresh slug). Below the CTA a `RECENT` section reuses `readRecentTracks` to show up to ten recently-updated slugs with their date; when the KV index is empty (or KV env vars are missing in local dev), the section falls back to the `/oval` and `/sandbox` sample slugs so the page still has somewhere to click.
+- **Not yet landed.** Settings screen to edit initials.
 
 ---
 
@@ -643,10 +646,10 @@ src/
 
 - Files currently under `src/`:
   - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/Leaderboard.tsx`.
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`.
   - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig).
   - `hooks/useKeyboard.ts`.
-  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `middleware.ts`.
+  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
