@@ -4,6 +4,34 @@
 
 ---
 
+## Status (last updated 2026-04-19)
+
+**Status key.** Each section below carries a `**Status.**` line. Sections that have shipped also include a `### Build log` subsection recording what landed, the key files, and any non-obvious decisions. This GDD is intended as a record of truth: when code lands, the relevant section is updated.
+
+| § | Section | Status |
+| - | - | - |
+| 2 | Core game loop | not started |
+| 3 | Camera and perspective | not started |
+| 4 | Controls | not started |
+| 5 | Vehicle | not started |
+| 6 | Track system | partial (validation + hashing done; editor UI and 3D geometry pending) |
+| 7 | Routing and user-owned paths | partial (middleware + racerId cookie done; pages and initials UI pending) |
+| 8 | Race flow | not started |
+| 9 | Title, menu, pause | not started |
+| 10 | Physics tuning (dev panel) | not started |
+| 11 | Leaderboards | partial (storage + submit + anti-cheat done; leaderboard UI pending) |
+| 12 | Feedback FAB | partial (API route ported; React component pending) |
+| 13 | Audio | not started |
+| 14 | Data model | done |
+| 15 | Tech stack | done (scaffold present) |
+| 16 | Architecture | partial (directory layout + infrastructure files exist) |
+| 17 | Deployment (manual setup) | pending user action |
+| 18 | Stretch and future | out of scope |
+
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Test harness: 65 Vitest unit tests and 6 Playwright smoke tests, all passing.
+
+---
+
 ## 1. Vision & Pillars
 
 **Pitch.** A cartoony 3D arcade racer where every URL is a playground. Visit a slug, race the track that lives there, submit a lap time, or fork it into a new version. Tracks are built from toy-like snap pieces. A streaming synth soundtrack plays throughout.
@@ -18,6 +46,8 @@
 
 ## 2. Core Game Loop
 
+**Status.** Not started.
+
 1. Player lands on `/<slug>`.
 2. If a track exists at that slug, the latest version loads. If not, a prompt offers "create new track" or "load existing".
 3. Countdown: 3, 2, 1, GO.
@@ -30,6 +60,8 @@
 
 ## 3. Camera & Perspective
 
+**Status.** Not started.
+
 Trailing third-person camera, Forza Horizon style.
 
 - Position: behind the car, slightly above, car fully in frame.
@@ -40,6 +72,8 @@ Trailing third-person camera, Forza Horizon style.
 ---
 
 ## 4. Controls
+
+**Status.** Not started.
 
 ### Keyboard (default, remappable in Settings later)
 
@@ -68,6 +102,8 @@ Two virtual joysticks, no fixed positions. Port the custom joystick from `Fracki
 ---
 
 ## 5. Vehicle
+
+**Status.** Not started.
 
 ### Visual style
 
@@ -98,6 +134,8 @@ Custom tick-based integrator. No Rapier or Cannon. Matches FrackingAsteroids' "c
 
 ## 6. Track System
 
+**Status.** Partial. Validation graph, connector math, piece schema, and canonical hashing are in. Editor UI, 3D piece geometry, and per-track checkpoint generation are not yet started.
+
 ### Pieces (starting set)
 
 - Straight
@@ -125,9 +163,20 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 
 "Edit track" appears in the pause menu and on the title screen.
 
+### Build log
+
+- Piece schema (`type`, `row`, `col`, `rotation`) and 64-piece cap: `src/lib/schemas.ts`. Rotations restricted to the set `{0, 90, 180, 270}`.
+- Connector math and BFS closed-loop validation: `src/game/track.ts`. Direction encoding is `N=0, E=1, S=2, W=3`. A piece has two open edges; each open edge must face a matching open edge on the neighboring cell. The graph must be a single connected component covering every piece.
+- Validation rejects: empty track, duplicate cell, dangling connector, connector mismatch, disjoint loops, piece count over 64.
+- Canonical versioning: `src/lib/hashTrack.ts` sorts pieces by `row, col, type, rotation` before serializing and SHA-256. Hash is stable regardless of input order. Output is a 64-char lowercase hex string that matches the `VersionHashSchema` regex.
+- Tests: `tests/unit/track.test.ts` (piece connectors, 2x2 square loop, 3x2 stadium loop with straights, disjoint-loops rejection, piece-limit rejection) and `tests/unit/hashTrack.test.ts`.
+- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), 3D piece geometry, connector rendering, per-track checkpoint generation, save flow wired to `PUT /api/track/[slug]`.
+
 ---
 
 ## 7. Routing & User-Owned Paths
+
+**Status.** Partial. Middleware, `racerId` cookie, and the `/` placeholder are live. `/[slug]`, the create-or-load prompt, the initials lifecycle, and the Settings screen are not yet started.
 
 Next.js App Router dynamic routes.
 
@@ -154,9 +203,21 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Settings screen exposes initials for editing at any time. Changing them does not rewrite historical submissions.
 - Once initials are set, every completed lap auto-submits silently. No additional prompts.
 
+### Build log
+
+- `racerId` cookie set by `src/middleware.ts`. Cookie name is `viberacer.racerId`, value is a UUID v4, flags are `HttpOnly`, `Secure`, `SameSite=Lax`, `Path=/`, `Max-Age = 1 year`.
+- `src/lib/racerId.ts` exposes `newRacerId()`, `isValidRacerId()` (strict UUID v4 regex, not just "any UUID"), and `readRacerId()` for RSC use.
+- Middleware matcher excludes `_next/static`, `_next/image`, `favicon.ico`, and any path with a file extension. All other routes (pages and APIs) run middleware.
+- Middleware best-effort writes `racer:<racerId>:firstSeen` to KV via dynamic import wrapped in try/catch so a KV outage never blocks page responses.
+- Playwright smoke in `tests/e2e/smoke.spec.ts` verifies the cookie lands on first visit and matches the UUID v4 regex.
+- `/` page currently renders a placeholder ("VibeRacer / Coming soon"). Planned home UI (Create, Load existing, Settings) not yet started.
+- **Not yet landed.** `/[slug]/page.tsx`, the create-or-load prompt, the initials prompt UX, `localStorage` key `viberacer.initials`, the settings screen, and the ?v=<hash> deep-link.
+
 ---
 
 ## 8. Race Flow
+
+**Status.** Not started.
 
 ### Start signal
 
@@ -187,6 +248,8 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 
 ## 9. Title Screen, Menu, and Pause
 
+**Status.** Not started.
+
 ### Title screen (route `/`)
 
 - Logo ("VibeRacer") with the game's cartoony font and color palette.
@@ -216,6 +279,8 @@ The feedback FAB appears only while paused. See Section 12.
 
 ## 10. Physics and Controls Tuning (dev-time)
 
+**Status.** Not started.
+
 A collapsible dev panel exposes live sliders for all car and camera parameters. This is for the developer, not shipped as a user-facing feature in v1.
 
 - Gated behind the `~` key or `?dev=1` query param.
@@ -228,6 +293,8 @@ A player-facing tuning UI is a stretch feature (Section 18).
 ---
 
 ## 11. Leaderboards
+
+**Status.** Partial. Storage model, `/api/race/start`, `/api/race/submit`, the full anti-cheat validation chain, rate limits, and nonce rotation are in. The leaderboard UI (top 25 view, version dropdown, PB highlight, PB celebration) is not yet started.
 
 ### Storage
 
@@ -298,9 +365,23 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 - Personal best is highlighted if the current `racerId` has a score on this board.
 - PB celebration (larger flash plus a small synth fanfare) fires only on a new personal best against this track version.
 
+### Build log
+
+- `POST /api/race/start` (`src/app/api/race/start/route.ts`) validates `slug` and `v`, reads `racerId` from cookie, generates a 16-byte random nonce via `crypto.randomBytes`, signs `{slug, versionHash, nonce, issuedAt, racerId}` with HMAC-SHA256, and writes `race:token:<nonce>` to KV with 15-minute TTL.
+- Token format: `base64url(JSON).base64url(hmac)`. Signing key is `RACE_SIGNING_SECRET`. Verification uses `timingSafeEqual`. Helper: `src/lib/signToken.ts`.
+- `POST /api/race/submit` (`src/app/api/race/submit/route.ts`) runs the full validation chain, then calls `kv.del(race:token:<nonce>)` to enforce one-shot nonces (replay drops silently), `kv.zadd` to the leaderboard with composite member `initials:racerId:ts:nonce`, updates `racer:<racerId>:lastSubmit`, and returns a fresh nonce plus re-signed token.
+- Pure validation logic: `src/lib/anticheat.ts` (`validateLap`). Covers bad signature, token expired, racer mismatch, target mismatch, checkpoint order, segment floor, lap-time tolerance, bad initials, profane initials. Defaults: `tokenMaxAgeMs = 15 * 60 * 1000`, `minSegmentMs = 200`, `lapTimeToleranceMs = 50`. Small starter profanity blocklist. All settable via the `opts` arg for testing and tuning.
+- Rate limits: `src/lib/rateLimit.ts` using `kv.incr` + `kv.expire`. Defaults: 5 per IP per 60s, 5 per racer per 60s, 500 per IP per 24h. Any trip drops silently.
+- **Silent-drop convention.** On any validation or rate-limit failure, submit returns HTTP 202 with `{ok: false}`. Rationale: 202 is semantically "accepted and being processed" which cleanly masks why a submission was rejected without teaching cheaters what to fix. The HUD still shows the local time.
+- Typed KV key helpers and TTL constants: `src/lib/kv.ts`. Mirrors the exact key names in Section 14.
+- Tests: `tests/unit/signToken.test.ts`, `tests/unit/anticheat.test.ts`, `tests/unit/api.raceStart.test.ts`, `tests/unit/api.raceSubmit.test.ts`. In-memory `FakeKv` for route tests: `tests/unit/_fakeKv.ts`.
+- **Not yet landed.** Leaderboard UI component, older-version dropdown, PB detection and celebration, PB highlight in the board, admin tooling to revoke racers by composite member.
+
 ---
 
 ## 12. Feedback FAB (port from Epoch, with two modifications)
+
+**Status.** Partial. The API route is ported, targeted at `Randroids-Dojo/VibeRacer`, with em-dashes stripped. The `FeedbackFab.tsx` React component, the single-click-to-input modification, and the pause-only visibility wiring are not yet started.
 
 ### Source files to port
 
@@ -331,9 +412,19 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 - Keep the `GITHUB_PAT` environment variable name (matches Epoch for consistency across projects).
 - Screenshot upload path stays at `.github/feedback-screenshots/`.
 
+### Build log
+
+- `src/app/api/feedback/route.ts` ported from Epoch. `REPO` changed to `Randroids-Dojo/VibeRacer`. Em-dashes stripped from formatting strings (the `formatConsoleLogs` separator and the body-limit omission message both use colons now).
+- `src/lib/consoleCapture.ts` ported verbatim from Epoch (no em-dashes in the source, ellipsis U+2026 on truncation is fine).
+- Route is on the Node.js runtime. Requires `GITHUB_PAT` to post issues; returns 500 if the env var is missing.
+- Tests: `tests/unit/api.feedback.test.ts` covers the missing-PAT path, the missing-title path, and a mocked happy path that asserts the GitHub issues URL contains `Randroids-Dojo/VibeRacer`.
+- **Not yet landed.** `components/FeedbackFab.tsx` port, the two modifications (single click to input panel, pause-only visibility), game-state context for `{ isPaused: boolean }`.
+
 ---
 
 ## 13. Audio
+
+**Status.** Not started.
 
 Pure Web Audio API. No Tone.js. One `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead. Pattern mirrors FrackingAsteroids' `src/game/music.ts` and Determined's `src/music.js`.
 
@@ -368,6 +459,8 @@ Pure Web Audio API. No Tone.js. One `AudioContext`, procedural synth voices, sch
 
 ## 14. Data Model (Vercel KV via `@upstash/redis`)
 
+**Status.** Done.
+
 Match FrackingAsteroids' client pattern in `src/lib/kv.ts`.
 
 ```
@@ -386,9 +479,17 @@ ratelimit:submit:daily:<ip>     : incr, TTL 24h
 
 Anti-cheat tunables (`MIN_SEGMENT_MS`, `MAX_DAILY_SUBMITS`, etc.) mirror Determined's `api/leaderboard.js` values. Start conservative, relax if legitimate players hit limits.
 
+### Build log
+
+- Typed key helpers for every key family plus TTL constants: `src/lib/kv.ts`. Every function takes typed `Slug`, `VersionHash`, `RacerId` (zod-validated at the route boundary) and returns the exact key string documented above.
+- Anti-cheat tunables live in `src/lib/anticheat.ts` as `ANTICHEAT_DEFAULTS` (overridable per-call via an `opts` arg). Rate-limit tunables live in `src/lib/rateLimit.ts` as `RATE_LIMITS`. Both are starting conservative.
+- Tests: `tests/unit/kv.test.ts` pins the exact key shapes and TTL values so future refactors cannot silently change them.
+
 ---
 
 ## 15. Tech Stack (concrete)
+
+**Status.** Done for the scaffold. Every dependency below is installed and wired into scripts or the test harness.
 
 | Area            | Choice                                             |
 | --------------- | -------------------------------------------------- |
@@ -408,9 +509,18 @@ Anti-cheat tunables (`MIN_SEGMENT_MS`, `MAX_DAILY_SUBMITS`, etc.) mirror Determi
 
 Do not add new dependencies in these categories without user approval. See `AGENTS.md`.
 
+### Build log
+
+- `package.json` pins the listed libraries at the versions above. Scripts: `dev`, `build`, `start`, `lint`, `type-check`, `test`, `test:watch`, `test:e2e`.
+- Vitest config at `vitest.config.ts` scopes to `tests/unit/**`. `passWithNoTests: true` keeps the command green between commits that temporarily remove tests.
+- Playwright config at `playwright.config.ts` uses `next build && next start` as the webServer command (faster and more realistic than `next dev` on first request). Injects dummy KV env vars for smoke runs so the app does not crash on import.
+- Three.js and the Kenney Car Kit are not yet pulled in. Will land with Section 5 (Vehicle).
+
 ---
 
 ## 16. Architecture
+
+**Status.** Partial. Directory layout matches the target. Infrastructure files (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes) exist. Gameplay files (`game/tick.ts`, `game/physics.ts`, `game/collision.ts`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`) and most React components are not yet created.
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -456,9 +566,18 @@ src/
 
 **Game loop pattern (from FrackingAsteroids).** `tick(state, input, frameDeltaMs)` is a pure function that returns the next state. It is unit-tested in isolation. `GameCanvas` runs it each `requestAnimationFrame`. The React HUD reflects state via props and hooks.
 
+### Build log
+
+- Files that currently exist under `src/`: `app/layout.tsx`, `app/page.tsx` (placeholder), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `game/track.ts`, `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `middleware.ts`.
+- Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
+- Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
+- **Not yet landed.** Every `components/*` file, every `hooks/*` file, and the remaining `game/*` files (tick, physics, collision, virtual-joystick, music, audio).
+
 ---
 
 ## 17. Deployment and Manual Setup
+
+**Status.** Pending user action. All code needed to accept these env vars is in place (`KV_REST_API_URL`, `KV_REST_API_TOKEN`, `RACE_SIGNING_SECRET`, `GITHUB_PAT`). No deploy has happened yet.
 
 These are steps the user performs in external dashboards. Every step is mandatory for a production deploy except where marked optional.
 
@@ -515,6 +634,8 @@ These are steps the user performs in external dashboards. Every step is mandator
 ---
 
 ## 18. Stretch and Future
+
+**Status.** Out of scope for v1. Listed for awareness.
 
 Not v1. Listed so agents know not to scope-creep into them without approval.
 
