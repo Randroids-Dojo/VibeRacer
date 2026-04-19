@@ -1,18 +1,11 @@
 import Link from 'next/link'
 import type { RecentTrack } from '@/lib/recentTracks'
+import { formatDate } from '@/lib/formatDate'
+import { RecentTrackList } from './RecentTrackList'
 
 interface Props {
   slug: string
   recent: RecentTrack[]
-}
-
-function formatDate(ms: number): string {
-  const d = new Date(ms)
-  if (Number.isNaN(d.getTime())) return ''
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
 }
 
 export function SlugLanding({ slug, recent }: Props) {
@@ -37,16 +30,12 @@ export function SlugLanding({ slug, recent }: Props) {
               Nothing built yet. You can be the first.
             </p>
           ) : (
-            <ul style={listStyle}>
-              {recent.map((r) => (
-                <li key={r.slug}>
-                  <Link href={`/${r.slug}`} style={recentItemStyle}>
-                    <span style={recentSlugStyle}>/{r.slug}</span>
-                    <span style={recentDateStyle}>{formatDate(r.updatedAt)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
+            <RecentTrackList
+              items={recent.map((r) => ({
+                slug: r.slug,
+                label: formatDate(r.updatedAt),
+              }))}
+            />
           )}
         </div>
 
@@ -119,34 +108,6 @@ const emptyStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 13,
   opacity: 0.7,
-}
-const listStyle: React.CSSProperties = {
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
-  display: 'grid',
-  gap: 6,
-  maxHeight: 260,
-  overflowY: 'auto',
-}
-const recentItemStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '8px 12px',
-  background: 'rgba(255,255,255,0.12)',
-  borderRadius: 8,
-  textDecoration: 'none',
-  color: 'white',
-  fontSize: 14,
-}
-const recentSlugStyle: React.CSSProperties = {
-  fontFamily: 'monospace',
-}
-const recentDateStyle: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.7,
-  fontFamily: 'monospace',
 }
 const backLinkStyle: React.CSSProperties = {
   display: 'block',

@@ -1,35 +1,20 @@
 import Link from 'next/link'
+import { loadRecentTracksSafe } from '@/lib/recentTracks'
+import { formatDate } from '@/lib/formatDate'
 import {
-  readRecentTracks,
-  RECENT_TRACKS_DEFAULT_LIMIT,
-  type RecentTrack,
-} from '@/lib/recentTracks'
+  RecentTrackList,
+  type RecentTrackListItem,
+} from '@/components/RecentTrackList'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 
-async function loadRecent(): Promise<RecentTrack[]> {
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    return []
-  }
-  try {
-    const { getKv } = await import('@/lib/kv')
-    return await readRecentTracks(getKv(), RECENT_TRACKS_DEFAULT_LIMIT)
-  } catch {
-    return []
-  }
-}
-
-function formatDate(ms: number): string {
-  const d = new Date(ms)
-  if (Number.isNaN(d.getTime())) return ''
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-
 export default async function HomePage() {
-  const recent = await loadRecent()
+  const recent = await loadRecentTracksSafe()
+  const hasRecent = recent.length > 0
+  const items: RecentTrackListItem[] = hasRecent
+    ? recent.map((r) => ({ slug: r.slug, label: formatDate(r.updatedAt) }))
+    : SAMPLE_SLUGS.map((slug) => ({ slug, label: 'sample' }))
+
   return (
     <main style={mainStyle}>
       <div style={cardStyle}>
@@ -41,32 +26,8 @@ export default async function HomePage() {
         </Link>
 
         <div style={sectionStyle}>
-          <div style={sectionHeaderStyle}>
-            {recent.length > 0 ? 'RECENT' : 'TRY'}
-          </div>
-          {recent.length > 0 ? (
-            <ul style={listStyle}>
-              {recent.map((r) => (
-                <li key={r.slug}>
-                  <Link href={`/${r.slug}`} style={rowStyle}>
-                    <span style={slugStyle}>/{r.slug}</span>
-                    <span style={dateStyle}>{formatDate(r.updatedAt)}</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          ) : (
-            <ul style={listStyle}>
-              {SAMPLE_SLUGS.map((s) => (
-                <li key={s}>
-                  <Link href={`/${s}`} style={rowStyle}>
-                    <span style={slugStyle}>/{s}</span>
-                    <span style={dateStyle}>sample</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          )}
+          <div style={sectionHeaderStyle}>{hasRecent ? 'RECENT' : 'TRY'}</div>
+          <RecentTrackList items={items} />
         </div>
 
         <p style={hintStyle}>
@@ -126,34 +87,6 @@ const sectionHeaderStyle: React.CSSProperties = {
   letterSpacing: 1.5,
   opacity: 0.7,
   marginBottom: 10,
-}
-const listStyle: React.CSSProperties = {
-  listStyle: 'none',
-  margin: 0,
-  padding: 0,
-  display: 'grid',
-  gap: 6,
-  maxHeight: 240,
-  overflowY: 'auto',
-}
-const rowStyle: React.CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  padding: '8px 12px',
-  background: 'rgba(255,255,255,0.12)',
-  borderRadius: 8,
-  textDecoration: 'none',
-  color: 'white',
-  fontSize: 14,
-}
-const slugStyle: React.CSSProperties = {
-  fontFamily: 'monospace',
-}
-const dateStyle: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.7,
-  fontFamily: 'monospace',
 }
 const hintStyle: React.CSSProperties = {
   marginTop: 20,

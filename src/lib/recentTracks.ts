@@ -1,5 +1,5 @@
 import { SlugSchema } from './schemas'
-import { kvKeys } from './kv'
+import { kvKeys, hasKvConfigured } from './kv'
 
 export const RECENT_TRACKS_DEFAULT_LIMIT = 10
 export const RECENT_TRACKS_MAX_LIMIT = 50
@@ -27,8 +27,7 @@ export async function readRecentTracks(
     RECENT_TRACKS_MAX_LIMIT,
     Math.max(1, Math.trunc(limit)),
   )
-  // Pull a few extras so excludeSlug + invalid-member filtering still leaves a full list.
-  const fetchN = clamped + (excludeSlug ? 1 : 0) + 2
+  const fetchN = clamped + (excludeSlug ? 1 : 0)
   const raw = (await kv.zrange(kvKeys.trackIndex(), 0, fetchN - 1, {
     rev: true,
     withScores: true,
@@ -46,4 +45,17 @@ export async function readRecentTracks(
     out.push({ slug: parsed.data, updatedAt: score })
   }
   return out
+}
+
+export async function loadRecentTracksSafe(
+  excludeSlug: string | null = null,
+  limit: number = RECENT_TRACKS_DEFAULT_LIMIT,
+): Promise<RecentTrack[]> {
+  if (!hasKvConfigured()) return []
+  try {
+    const { getKv } = await import('./kv')
+    return await readRecentTracks(getKv(), limit, excludeSlug)
+  } catch {
+    return []
+  }
 }
