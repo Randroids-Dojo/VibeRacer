@@ -153,7 +153,6 @@ export function buildScene(path: TrackPath): SceneBundle {
   )
   scene.add(ground)
 
-  // Finish line stripe on the start piece's entry edge.
   const start = path.order[0]
   const entryIsVertical = start.entryDir === 0 || start.entryDir === 2
   const stripeGeom = new PlaneGeometry(
@@ -163,7 +162,7 @@ export function buildScene(path: TrackPath): SceneBundle {
   const stripeMat = new MeshStandardMaterial({ color: 0xffffff })
   const stripe = new Mesh(stripeGeom, stripeMat)
   stripe.rotation.x = -Math.PI / 2
-  stripe.position.set(start.entry.x, 0.02, start.entry.z)
+  stripe.position.set(path.finishLine.x, 0.02, path.finishLine.z)
   scene.add(stripe)
 
   const car = buildCar()

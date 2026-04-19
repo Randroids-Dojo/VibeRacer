@@ -26,6 +26,7 @@ export interface TrackPath {
   order: OrderedPiece[]
   cellToOrderIdx: Map<string, number>
   spawn: { position: Vec3; heading: number }
+  finishLine: Vec3
 }
 
 export function cellCenter(row: number, col: number): Vec3 {
@@ -126,10 +127,13 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
 
   // Cell center sits off the arc for corners; entry midpoint lies on the arc.
   // Spawn there, stepped inward so worldToCell does not round into the neighbor.
+  // Place the finish line further inward so the car sits behind it at GO and
+  // crosses it moving forward (matches racing convention).
   const firstOrdered = order[0]
   const travelDir = opposite(firstOrdered.entryDir)
   const inward = DIR_OFFSETS[travelDir]
   const SPAWN_INSET = 2
+  const FINISH_LINE_INSET = 5
   const spawn = {
     position: {
       x: firstOrdered.entry.x + SPAWN_INSET * inward.dc,
@@ -138,8 +142,13 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
     },
     heading: dirToHeading(travelDir),
   }
+  const finishLine: Vec3 = {
+    x: firstOrdered.entry.x + FINISH_LINE_INSET * inward.dc,
+    y: 0,
+    z: firstOrdered.entry.z + FINISH_LINE_INSET * inward.dr,
+  }
 
-  return { order, cellToOrderIdx, spawn }
+  return { order, cellToOrderIdx, spawn, finishLine }
 }
 
 export function worldToCell(x: number, z: number): { row: number; col: number } {
