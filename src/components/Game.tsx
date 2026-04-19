@@ -124,8 +124,19 @@ function GameSession({
       pauseStartTsRef.current = null
     }
     pausedRef.current = false
+    // Drop keyboard focus so driving keys land on document.body, not a lingering
+    // input/button from the pause UI. Also clear any held-key state that may
+    // have been mid-press when focus shifted into an input while paused.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+    keys.current.forward = false
+    keys.current.backward = false
+    keys.current.left = false
+    keys.current.right = false
+    keys.current.handbrake = false
     setPaused(false)
-  }, [])
+  }, [keys])
 
   const restart = useCallback(() => {
     pausedRef.current = false
