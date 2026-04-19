@@ -17,6 +17,7 @@ interface HudProps {
   lastLapMs: number | null
   bestSessionMs: number | null
   bestAllTimeMs: number | null
+  overallRecord: { initials: string; lapTimeMs: number } | null
   lapCount: number
   onTrack: boolean
   toast: string | null
@@ -47,6 +48,9 @@ function timeOrDash(ms: number | null): string {
 }
 
 export function HUD(props: HudProps) {
+  const recordValue = props.overallRecord
+    ? `${props.overallRecord.initials} ${formatLapTime(props.overallRecord.lapTimeMs)}`
+    : '--'
   return (
     <div style={wrap}>
       <div style={topRow}>
@@ -54,6 +58,7 @@ export function HUD(props: HudProps) {
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
         <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
         <StatBlock label="BEST (ALL TIME)" value={timeOrDash(props.bestAllTimeMs)} />
+        <StatBlock label="RECORD" value={recordValue} />
         <StatBlock label="LAP" value={props.lapCount} />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>

@@ -49,3 +49,24 @@ test('POST /api/feedback returns 500 when GITHUB_PAT missing, 400 when body empt
   const res = await request.post('/api/feedback', { data: {} })
   expect([400, 500]).toContain(res.status())
 })
+
+test('GET /api/leaderboard rejects bad params with 400', async ({ request }) => {
+  const res = await request.get('/api/leaderboard?slug=BAD&v=abc')
+  expect(res.status()).toBe(400)
+})
+
+test('GET /api/leaderboard returns a shaped response for valid params', async ({
+  request,
+}) => {
+  const res = await request.get(
+    `/api/leaderboard?slug=sandbox&v=${'a'.repeat(64)}`,
+  )
+  // 200 with empty entries when KV env vars exist; 200 with empty when the
+  // read fails silently (either is a useful smoke that the route is wired).
+  expect(res.status()).toBe(200)
+  const body = (await res.json()) as { entries: unknown[]; meBestRank: unknown }
+  expect(Array.isArray(body.entries)).toBe(true)
+  expect(body.meBestRank === null || typeof body.meBestRank === 'number').toBe(
+    true,
+  )
+})
