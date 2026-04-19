@@ -129,7 +129,7 @@ Two virtual joysticks, no fixed positions. Port the custom joystick from `Fracki
 
 ## 5. Vehicle
 
-**Status.** Partial. Arcade integrator with off-track drag ships in `src/game/physics.ts`. Car renders as a simple box placeholder (body + cabin + nose marker). Kenney glTF model, per-wheel raycast, and angular velocity are not yet landed.
+**Status.** Partial. Arcade integrator with off-track drag ships in `src/game/physics.ts`. Car renders using the Kenney Car Kit `race.glb` loaded via `GLTFLoader`. Per-wheel raycast and angular velocity are not yet landed.
 
 ### Build log
 
@@ -137,9 +137,9 @@ Two virtual joysticks, no fixed positions. Port the custom joystick from `Fracki
 - Simplified arcade model: scalar speed + heading, no lateral velocity. Throttle adds `accel * dt`; reverse throttle brakes forward motion first, then accelerates backward at `reverseAccel`. Coasting decays at `rollingFriction`. Handbrake adds a drag proportional to `brake * 1.5`. Off-track applies `offTrackDrag` and caps at `offTrackMaxSpeed`. Steering multiplies by `sign(speed)` so reverse steers naturally.
 - Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRate=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`.
 - On-track detection: `distanceToCenterline(op, x, z) <= TRACK_WIDTH/2` in `tick.ts`. Centerlines: straights use segment distance; corners use `|hypot(x - cx, z - cz) - CELL_SIZE/2|` with `arcCenter` cached on each `OrderedPiece` at build time.
-- Car visual: `src/game/sceneBuilder.ts::buildCar` returns a Group of three boxes (body 2.2x1.0x4.2 red, cabin 1.8x0.8x2.2 dark, nose 0.8x0.2x0.6 white). Orientation via `car.rotation.y = state.heading`.
+- Car visual: `src/game/sceneBuilder.ts::buildCar` returns an outer Group with an inner Group containing the Kenney `race.glb` scene. The inner Group applies `rotation.y = PI/2` (model's local +Z forward remapped to world +X, matching physics heading 0) and a uniform `scale = 1.65` so the ~2.56-unit model matches the prior 4.2-length footprint. Asset served from `public/models/car.glb` (CC0, Kenney Car Kit v3.1). License note in `public/models/KENNEY-LICENSE.txt`. Orientation via `car.rotation.y = state.heading` on the outer Group.
 - Tests: `tests/unit/physics.test.ts` covers throttle, max-speed cap, off-track cap, brake-while-moving, coast-to-zero, low-speed steering lockout, and steering while moving.
-- **Not yet landed.** Kenney glTF model, angular velocity + quaternion heading, per-wheel raycast, dev-panel tuning (Section 10), `mass`/`downforce`/`forwardGrip`/`lateralGrip` fields from the GDD spec.
+- **Not yet landed.** Angular velocity + quaternion heading, per-wheel raycast, dev-panel tuning (Section 10), `mass`/`downforce`/`forwardGrip`/`lateralGrip` fields from the GDD spec.
 
 ### Visual style
 
@@ -608,7 +608,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 - `package.json` pins the listed libraries at the versions above. Scripts: `dev`, `build`, `start`, `lint`, `type-check`, `test`, `test:watch`, `test:e2e`.
 - Vitest config at `vitest.config.ts` scopes to `tests/unit/**`. `passWithNoTests: true` keeps the command green between commits that temporarily remove tests.
 - Playwright config at `playwright.config.ts` uses `next build && next start` as the webServer command (faster and more realistic than `next dev` on first request). Injects dummy KV env vars for smoke runs so the app does not crash on import.
-- Three.js and the Kenney Car Kit are not yet pulled in. Will land with Section 5 (Vehicle).
+- Three.js is pinned in `package.json`. The Kenney Car Kit race model ships at `public/models/car.glb` (CC0, Kenney Car Kit v3.1); the shared `Textures/colormap.png` it references sits at `public/models/Textures/colormap.png` so the glb's relative URI resolves. License note at `public/models/KENNEY-LICENSE.txt`. Loaded via `GLTFLoader` from `three/examples/jsm/loaders/GLTFLoader.js`.
 
 ---
 

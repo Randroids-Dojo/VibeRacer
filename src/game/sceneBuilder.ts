@@ -1,6 +1,5 @@
 import {
   AmbientLight,
-  BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
@@ -13,12 +12,27 @@ import {
   PlaneGeometry,
   Scene,
 } from 'three'
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   CELL_SIZE,
   TRACK_WIDTH,
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+
+const CAR_MODEL_URL = '/models/car.glb'
+// Remap model's local +Z forward to world +X (physics heading 0).
+const CAR_MODEL_YAW_OFFSET = Math.PI / 2
+const CAR_MODEL_SCALE = 1.65
+
+let carGltfPromise: Promise<GLTF> | null = null
+function loadCarGltf(): Promise<GLTF> {
+  carGltfPromise ??= new GLTFLoader().loadAsync(CAR_MODEL_URL).catch((err) => {
+    carGltfPromise = null
+    throw err
+  })
+  return carGltfPromise
+}
 
 export interface SceneBundle {
   scene: Scene
@@ -96,28 +110,25 @@ function pieceGeometry(op: OrderedPiece): BufferGeometry {
   return op.piece.type === 'straight' ? straightGeometry(op) : cornerGeometry(op)
 }
 
-function buildCar(): Group {
-  const group = new Group()
-  const body = new Mesh(
-    new BoxGeometry(2.2, 1.0, 4.2),
-    new MeshStandardMaterial({ color: 0xe84a5f, roughness: 0.6 }),
+function buildCar(): { car: Group; cancel: () => void } {
+  const outer = new Group()
+  const inner = new Group()
+  inner.rotation.y = CAR_MODEL_YAW_OFFSET
+  inner.scale.setScalar(CAR_MODEL_SCALE)
+  outer.add(inner)
+
+  let cancelled = false
+  loadCarGltf().then(
+    (gltf) => {
+      if (cancelled) return
+      inner.add(gltf.scene.clone())
+    },
+    (err) => {
+      console.error('Failed to load car model', err)
+    },
   )
-  body.position.y = 0.9
-  const cabin = new Mesh(
-    new BoxGeometry(1.8, 0.8, 2.2),
-    new MeshStandardMaterial({ color: 0x1b1b1b, roughness: 0.4 }),
-  )
-  cabin.position.y = 1.8
-  cabin.position.z = 0.3
-  group.add(body)
-  group.add(cabin)
-  const nose = new Mesh(
-    new BoxGeometry(0.8, 0.2, 0.6),
-    new MeshStandardMaterial({ color: 0xffffff }),
-  )
-  nose.position.set(0, 1.1, -2.1)
-  group.add(nose)
-  return group
+
+  return { car: outer, cancel: () => { cancelled = true } }
 }
 
 export function buildScene(path: TrackPath): SceneBundle {
@@ -161,13 +172,14 @@ export function buildScene(path: TrackPath): SceneBundle {
   stripe.position.set(path.finishLine.position.x, 0.02, path.finishLine.position.z)
   scene.add(stripe)
 
-  const car = buildCar()
+  const { car, cancel: cancelCar } = buildCar()
   scene.add(car)
 
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
   const dispose = () => {
+    cancelCar()
     const mats = new Set<Material>()
     scene.traverse((obj) => {
       const mesh = obj as Mesh
