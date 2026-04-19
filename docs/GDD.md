@@ -17,9 +17,9 @@
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt; home UI and settings pending) |
 | 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
-| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Edit Track/Leaderboards/Exit ships; title screen and Leaderboards wiring pending) |
+| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Edit Track/Leaderboards/Exit ships; title screen pending) |
 | 10 | Physics tuning (dev panel) | not started |
-| 11 | Leaderboards | partial (autosubmit from client + anti-cheat live; leaderboard UI button present but no-op) |
+| 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI, overall record in HUD all live; PB fanfare and version dropdown pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
 | 13 | Audio | not started |
 | 14 | Data model | done |
@@ -28,7 +28,7 @@
 | 17 | Deployment (manual setup) | pending user action |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 86 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 91 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -269,7 +269,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 - Countdown: `src/components/Countdown.tsx` cycles `3 -> 2 -> 1 -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Currently renders as large text, not the traffic-light graphic. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
 - Lap detection: cell-based. `tick.ts` compares `state.lastCellKey` against the current cell each frame. When the car enters the expected next piece's cell, it records `{cpId, tMs}` where `tMs = nowMs - raceStartMs`. Hitting piece 0 after N-1 CPs fires `LapCompleteEvent` with `{hits, lapTimeMs, lapNumber}` and resets `nextCpId=0`, `hits=[]`, `raceStartMs=nowMs` for the next lap. Lap count increments.
-- HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
+- HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), RECORD (track-wide top time, loaded from KV in the RSC page and passed through), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
 - Endless loop: no lap cap. Every completed lap triggers `handleLapComplete` which updates local PBs and fires `submitLap` (fire-and-forget).
 - Invalid-lap reset: in `tick.ts`, if the car transitions into the start-piece cell while `nextCpId > 0` (i.e., the player has partial checkpoint progress but is re-entering the start without a valid lap completion), `hits` is cleared, `nextCpId` is reset to 0, and `raceStartMs` is set to `nowMs`. The lap counter is not incremented and no `LapCompleteEvent` fires. Covers driving backward through the start line or taking a shortcut that re-enters piece 0 early. Test coverage in `tests/unit/tick.test.ts`.
 - Pause button: always-visible circular button at `bottom: 20, left: 16` (rendered only during the `racing` phase and hidden once the pause menu opens). Clicking calls `pause()` which freezes the tick and shows the pause menu.
@@ -313,7 +313,7 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 - Pause freezes simulation without drift: on pause, `pauseStartTsRef.current = performance.now()`; on resume, `resumeShiftRef.current += performance.now() - pauseStartTsRef.current`. The loop drains the shift by adding it to `state.raceStartMs` so the lap timer resumes where it left off.
 - Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the 3-2-1-GO sequence plays again. All-time PB in `localStorage` is preserved.
 - Exit to title uses Next.js's `useRouter().push('/')`.
-- Leaderboards button: present in the menu but currently a no-op. Will be wired to the UI from Section 11 when that lands.
+- Leaderboards button: toggles a sub-view inside the paused overlay. `pauseView: 'menu' | 'leaderboard'` in `Game.tsx` drives which component renders. Leaderboard has a Back button that returns to the menu. Reopening pause always starts on `'menu'`.
 - Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
 - **Not yet landed.** Title screen at `/`, Settings entry, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
@@ -443,8 +443,13 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 - Typed KV key helpers and TTL constants: `src/lib/kv.ts`. Mirrors the exact key names in Section 14.
 - Tests: `tests/unit/signToken.test.ts`, `tests/unit/anticheat.test.ts`, `tests/unit/api.raceStart.test.ts`, `tests/unit/api.raceSubmit.test.ts`. In-memory `FakeKv` for route tests: `tests/unit/_fakeKv.ts`.
 - Client auto-submit: `src/components/Game.tsx::startRaceServerSide` fires `POST /api/race/start` when the countdown ends and stores the returned token in `tokenRef`. `submitLap` fires `POST /api/race/submit` on every completed lap, rotating the token on success. If KV or `RACE_SIGNING_SECRET` is not configured the server returns 500 and the client swallows the error; gameplay is unaffected.
-- Local PB tracking: `src/lib/localBest.ts` stores `viberacer.best.<slug>.<versionHash>` in `localStorage`. `GameSession` seeds `bestAllTimeMs` from that key on mount and updates it on every new all-time PB. Session PB is held in React state only. `handleLapComplete` runs PB detection independent of the server round-trip; toast reads "NEW PB!" or "lap N saved".
-- **Not yet landed.** Leaderboard UI component, older-version dropdown, PB fanfare + visual celebration, PB highlight row on the leaderboard, admin tooling to revoke racers by composite member.
+- Local PB tracking: `src/lib/localBest.ts` stores `viberacer.best.<slug>.<versionHash>` in `localStorage`. `GameSession` seeds `bestAllTimeMs` from that key on mount and updates it on every new all-time PB. Session PB is held in React state only. `handleLapComplete` runs PB detection independent of the server round-trip; toast reads "NEW RECORD!", "NEW PB!", or "lap N saved" in that priority order.
+- Overall track record: `src/lib/leaderboard.ts` exports `readLeaderboard(kv, slug, hash, limit, myRacerId)` which walks `zrange` output (with scores) and parses composite members (`initials:racerId:ts:nonce`) into typed `LeaderboardEntry[]` plus a `meBestRank`. The `[slug]/page.tsx` RSC calls it with `limit=1` on the server so the top entry is available on first paint and passed as `initialRecord` through `<Game>` into the HUD's RECORD block.
+- `GET /api/leaderboard?slug=X&v=HASH&limit=25`: `src/app/api/leaderboard/route.ts` runs on the Node.js runtime. Validates `slug` and `v` through the same zod schemas as the other routes (returns 400 on invalid). Reads the cookie's `racerId` so `isMe` is server-marked. Returns `{slug, versionHash, entries, meBestRank}`. Clamps `limit` to `[1, LEADERBOARD_MAX_LIMIT]` (default 25, max 100). On KV error returns 200 with an empty `entries` list so the client degrades gracefully.
+- Leaderboard UI: `src/components/Leaderboard.tsx` is a paused-only overlay. Fetches `/api/leaderboard` with `cache: 'no-store'`. Renders rank / racer (with a "you" badge for `isMe`), time, date. The user's rows are highlighted with the accent color. If the user has any entry, a footer reads "Your best on this track: #N".
+- Client optimistic record update: `handleLapComplete` compares the new lap to the current `overallRecord.lapTimeMs`. A faster lap becomes the new record immediately in the HUD even before the server acknowledges the submit. If the server rejects the submit silently, the HUD will still show the optimistic record until the next page load refreshes it from KV. Acceptable trade-off vs round-tripping before updating.
+- Tests: `tests/unit/api.leaderboard.test.ts` covers 400 on bad params, sorted order with ranks, `isMe` + `meBestRank` via cookie, limit clamping, and the empty-board case. Smoke: `tests/e2e/smoke.spec.ts` hits the route for both rejection and shape.
+- **Not yet landed.** Older-version dropdown (`?v=<hash>`), PB fanfare + visual celebration, admin tooling to revoke racers by composite member, pagination beyond top 100.
 
 ---
 
@@ -591,7 +596,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`) are all in. Still pending: `TrackEditor`, `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`) are all in. Still pending: `TrackEditor`, `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -640,11 +645,11 @@ src/
 ### Build log
 
 - Files currently under `src/`:
-  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`.
+  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`.
   - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds).
   - `hooks/useKeyboard.ts`.
-  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `middleware.ts`.
+  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.

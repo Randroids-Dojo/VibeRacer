@@ -19,7 +19,16 @@ export function useKeyboard(): { current: KeyInput } {
   })
 
   useEffect(() => {
+    function isEditableTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof HTMLElement)) return false
+      if (target.isContentEditable) return true
+      const tag = target.tagName
+      return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+    }
     function apply(e: KeyboardEvent, pressed: boolean) {
+      // Let editable targets (feedback textarea, initials input) handle typing.
+      // Always process keyup so a held key clears if focus shifts mid-press.
+      if (pressed && isEditableTarget(e.target)) return
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':

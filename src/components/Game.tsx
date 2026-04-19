@@ -23,11 +23,18 @@ import { HUD } from './HUD'
 import { PauseMenu } from './PauseMenu'
 import { FeedbackFab } from './FeedbackFab'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
+import { Leaderboard } from './Leaderboard'
+
+export interface OverallRecord {
+  initials: string
+  lapTimeMs: number
+}
 
 interface GameProps {
   slug: string
   versionHash: string
   pieces: Piece[]
+  initialRecord: OverallRecord | null
 }
 
 export function Game(props: GameProps) {
@@ -59,14 +66,23 @@ interface HudState {
   lastLapMs: number | null
   bestSessionMs: number | null
   bestAllTimeMs: number | null
+  overallRecord: OverallRecord | null
   lapCount: number
   onTrack: boolean
   toast: string | null
 }
 
+type PauseView = 'menu' | 'leaderboard'
+
 const HUD_UPDATE_MS = 50 // Throttle HUD re-renders to ~20Hz; game loop still runs at 60Hz.
 
-function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
+function GameSession({
+  slug,
+  versionHash,
+  pieces,
+  initials,
+  initialRecord,
+}: SessionProps) {
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const keys = useKeyboard()
@@ -81,11 +97,13 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
+  const [pauseView, setPauseView] = useState<PauseView>('menu')
   const [hud, setHud] = useState<HudState>(() => ({
     currentMs: 0,
     lastLapMs: null,
     bestSessionMs: null,
     bestAllTimeMs: readLocalBest(slug, versionHash),
+    overallRecord: initialRecord,
     lapCount: 0,
     onTrack: true,
     toast: null,
@@ -95,6 +113,7 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
     if (pausedRef.current) return
     pausedRef.current = true
     pauseStartTsRef.current = performance.now()
+    setPauseView('menu')
     setPaused(true)
   }, [])
 
@@ -105,8 +124,19 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
       pauseStartTsRef.current = null
     }
     pausedRef.current = false
+    // Drop keyboard focus so driving keys land on document.body, not a lingering
+    // input/button from the pause UI. Also clear any held-key state that may
+    // have been mid-press when focus shifted into an input while paused.
+    if (document.activeElement instanceof HTMLElement) {
+      document.activeElement.blur()
+    }
+    keys.current.forward = false
+    keys.current.backward = false
+    keys.current.left = false
+    keys.current.right = false
+    keys.current.handbrake = false
     setPaused(false)
-  }, [])
+  }, [keys])
 
   const restart = useCallback(() => {
     pausedRef.current = false
@@ -294,12 +324,22 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
     setHud((prev) => {
       const isSessionPb = prev.bestSessionMs === null || lapMs < prev.bestSessionMs
       const isAllTimePb = prev.bestAllTimeMs === null || lapMs < prev.bestAllTimeMs
+      const isNewRecord =
+        prev.overallRecord === null || lapMs < prev.overallRecord.lapTimeMs
       if (isAllTimePb) writeLocalBest(slug, versionHash, lapMs)
+      const toast = isNewRecord
+        ? 'NEW RECORD!'
+        : isAllTimePb
+          ? 'NEW PB!'
+          : `lap ${event.lapNumber} saved`
       return {
         ...prev,
         bestSessionMs: isSessionPb ? lapMs : prev.bestSessionMs,
         bestAllTimeMs: isAllTimePb ? lapMs : prev.bestAllTimeMs,
-        toast: isAllTimePb ? 'NEW PB!' : `lap ${event.lapNumber} saved`,
+        overallRecord: isNewRecord
+          ? { initials, lapTimeMs: lapMs }
+          : prev.overallRecord,
+        toast,
       }
     })
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
@@ -370,6 +410,7 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
         lastLapMs={hud.lastLapMs}
         bestSessionMs={hud.bestSessionMs}
         bestAllTimeMs={hud.bestAllTimeMs}
+        overallRecord={hud.overallRecord}
         lapCount={hud.lapCount}
         onTrack={hud.onTrack}
         toast={hud.toast}
@@ -390,13 +431,21 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
       ) : null}
       {paused ? (
         <>
-          <PauseMenu
-            onResume={resume}
-            onRestart={restart}
-            onEditTrack={editTrack}
-            onLeaderboards={noop}
-            onExit={exitToTitle}
-          />
+          {pauseView === 'menu' ? (
+            <PauseMenu
+              onResume={resume}
+              onRestart={restart}
+              onEditTrack={editTrack}
+              onLeaderboards={() => setPauseView('leaderboard')}
+              onExit={exitToTitle}
+            />
+          ) : (
+            <Leaderboard
+              slug={slug}
+              versionHash={versionHash}
+              onBack={() => setPauseView('menu')}
+            />
+          )}
           <FeedbackFab />
         </>
       ) : null}
@@ -423,8 +472,6 @@ const loading: React.CSSProperties = {
   color: 'white',
   fontFamily: 'system-ui, sans-serif',
 }
-function noop() {}
-
 const pauseButton: React.CSSProperties = {
   position: 'fixed',
   left: 16,
