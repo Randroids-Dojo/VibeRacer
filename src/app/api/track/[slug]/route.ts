@@ -107,17 +107,27 @@ export async function PUT(
     createdAt,
   }
 
-  const kv = getKv()
-  await kv.set(kvKeys.trackVersion(slug, hash), JSON.stringify(version))
-  await kv.set(kvKeys.trackLatest(slug), hash)
-  await kv.lpush(
-    kvKeys.trackVersions(slug),
-    JSON.stringify({ hash, createdAt }),
-  )
-  await kv.zadd(kvKeys.trackIndex(), {
-    score: Date.now(),
-    member: slug,
-  })
+  try {
+    const kv = getKv()
+    await Promise.all([
+      kv.set(kvKeys.trackVersion(slug, hash), JSON.stringify(version)),
+      kv.set(kvKeys.trackLatest(slug), hash),
+      kv.lpush(
+        kvKeys.trackVersions(slug),
+        JSON.stringify({ hash, createdAt }),
+      ),
+      kv.zadd(kvKeys.trackIndex(), {
+        score: Date.now(),
+        member: slug,
+      }),
+    ])
+  } catch (e) {
+    console.error('Failed to persist track version', e)
+    return NextResponse.json(
+      { error: 'storage unavailable', reason: 'temporary storage failure' },
+      { status: 503 },
+    )
+  }
 
   return NextResponse.json({ slug, versionHash: hash, createdAt })
 }

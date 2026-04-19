@@ -4,8 +4,10 @@ import {
   CELL_SIZE,
   TRACK_WIDTH,
   buildTrackPath,
+  distanceToCenterline,
 } from '@/game/trackPath'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
+import type { Piece } from '@/lib/schemas'
 
 describe('DEFAULT_TRACK_PIECES', () => {
   it('forms a valid closed loop', () => {
@@ -30,10 +32,43 @@ describe('buildTrackPath', () => {
     }
   })
 
-  it('spawn is at piece-0 center with exit-direction heading', () => {
+  it('spawn stays inside piece 0 and on the centerline for a straight start', () => {
     const path = buildTrackPath(DEFAULT_TRACK_PIECES)
-    expect(path.spawn.position).toEqual(path.order[0].center)
-    expect(typeof path.spawn.heading).toBe('number')
+    const first = path.order[0]
+    expect(first.piece.type).toBe('straight')
+    expect(distanceToCenterline(first, path.spawn.position.x, path.spawn.position.z))
+      .toBeLessThan(0.01)
+    const cellX = first.piece.col * CELL_SIZE
+    const cellZ = first.piece.row * CELL_SIZE
+    expect(Math.abs(path.spawn.position.x - cellX)).toBeLessThanOrEqual(CELL_SIZE / 2)
+    expect(Math.abs(path.spawn.position.z - cellZ)).toBeLessThanOrEqual(CELL_SIZE / 2)
+  })
+
+  it('spawn and finish line both sit on the arc when piece 0 is a corner', () => {
+    // A minimal closed loop whose first piece is a right90: square of four right90s.
+    const squarePieces: Piece[] = [
+      { type: 'right90', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 1, col: 1, rotation: 180 },
+      { type: 'right90', row: 1, col: 0, rotation: 270 },
+    ]
+    expect(validateClosedLoop(squarePieces).ok).toBe(true)
+    const path = buildTrackPath(squarePieces)
+    const first = path.order[0]
+    expect(first.piece.type).toBe('right90')
+    expect(
+      distanceToCenterline(first, path.spawn.position.x, path.spawn.position.z),
+    ).toBeLessThan(0.01)
+    expect(
+      distanceToCenterline(
+        first,
+        path.finishLine.position.x,
+        path.finishLine.position.z,
+      ),
+    ).toBeLessThan(0.01)
+    // Finish line heading differs from spawn heading because the arc tangent
+    // has rotated between inset 2 and inset 5.
+    expect(path.finishLine.heading).not.toBeCloseTo(path.spawn.heading, 2)
   })
 
   it('cellToOrderIdx covers every piece', () => {

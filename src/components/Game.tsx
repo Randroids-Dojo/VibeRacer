@@ -165,6 +165,10 @@ function GameSession({
     router.push('/')
   }, [router])
 
+  const editTrack = useCallback(() => {
+    router.push(`/${slug}/edit`)
+  }, [router, slug])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
@@ -431,6 +435,7 @@ function GameSession({
             <PauseMenu
               onResume={resume}
               onRestart={restart}
+              onEditTrack={editTrack}
               onLeaderboards={() => setPauseView('leaderboard')}
               onExit={exitToTitle}
             />

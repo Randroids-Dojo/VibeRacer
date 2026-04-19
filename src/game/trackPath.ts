@@ -1,6 +1,26 @@
 import type { Piece } from '@/lib/schemas'
 import { DIR_OFFSETS, cellKey, connectorsOf, opposite, type Dir } from './track'
 
+// Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
+// whichever connector points at pieces[1] is the exit. Falls back to connB
+// when pieces[1] is absent or non-adjacent.
+export function getStartExitDir(pieces: Piece[]): Dir | null {
+  if (pieces.length === 0) return null
+  const first = pieces[0]
+  const [connA, connB] = connectorsOf(first)
+  if (pieces.length >= 2) {
+    const second = pieces[1]
+    const aOff = DIR_OFFSETS[connA]
+    if (
+      first.row + aOff.dr === second.row &&
+      first.col + aOff.dc === second.col
+    ) {
+      return connA
+    }
+  }
+  return connB
+}
+
 export const CELL_SIZE = 20
 export const TRACK_WIDTH = 8
 
@@ -26,6 +46,7 @@ export interface TrackPath {
   order: OrderedPiece[]
   cellToOrderIdx: Map<string, number>
   spawn: { position: Vec3; heading: number }
+  finishLine: { position: Vec3; heading: number }
 }
 
 export function cellCenter(row: number, col: number): Vec3 {
@@ -84,8 +105,8 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
 
   const first = pieces[0]
   const [connA, connB] = connectorsOf(first)
-  let entryDir: Dir = connA
-  let exitDir: Dir = connB
+  let exitDir: Dir = getStartExitDir(pieces)!
+  let entryDir: Dir = exitDir === connA ? connB : connA
   let current = first
 
   const order: OrderedPiece[] = []
@@ -124,12 +145,49 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
     cellToOrderIdx.set(cellKey(p.row, p.col), i)
   }
 
-  const spawn = {
-    position: order[0].center,
-    heading: dirToHeading(order[0].exitDir),
-  }
+  // Walk inward along the centerline (arc for corners, straight for straights)
+  // so spawn and stripe both land on-track even when the start piece is a turn.
+  const SPAWN_INSET = 2
+  const FINISH_LINE_INSET = 5
+  const spawn = pointAlongStartPiece(order[0], SPAWN_INSET)
+  const finishLine = pointAlongStartPiece(order[0], FINISH_LINE_INSET)
 
-  return { order, cellToOrderIdx, spawn }
+  return { order, cellToOrderIdx, spawn, finishLine }
+}
+
+function pointAlongStartPiece(
+  first: OrderedPiece,
+  arcLength: number,
+): { position: Vec3; heading: number } {
+  if (first.arcCenter === null) {
+    const travelDir = opposite(first.entryDir)
+    const d = DIR_OFFSETS[travelDir]
+    return {
+      position: {
+        x: first.entry.x + arcLength * d.dc,
+        y: 0,
+        z: first.entry.z + arcLength * d.dr,
+      },
+      heading: dirToHeading(travelDir),
+    }
+  }
+  const { cx, cz } = first.arcCenter
+  const a1 = Math.atan2(first.entry.z - cz, first.entry.x - cx)
+  const a2 = Math.atan2(first.exit.z - cz, first.exit.x - cx)
+  let delta = a2 - a1
+  while (delta > Math.PI) delta -= 2 * Math.PI
+  while (delta < -Math.PI) delta += 2 * Math.PI
+  const sign = delta >= 0 ? 1 : -1
+  const a = a1 + (sign * arcLength) / HALF
+  const position: Vec3 = {
+    x: cx + HALF * Math.cos(a),
+    y: 0,
+    z: cz + HALF * Math.sin(a),
+  }
+  // Tangent along direction of travel: radius rotated 90 degrees toward the exit.
+  const tx = sign * -Math.sin(a)
+  const tz = sign * Math.cos(a)
+  return { position, heading: Math.atan2(-tz, tx) }
 }
 
 export function worldToCell(x: number, z: number): { row: number; col: number } {

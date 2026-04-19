@@ -3,6 +3,7 @@
 interface PauseMenuProps {
   onResume: () => void
   onRestart: () => void
+  onEditTrack: () => void
   onLeaderboards: () => void
   onExit: () => void
 }
@@ -10,6 +11,7 @@ interface PauseMenuProps {
 export function PauseMenu({
   onResume,
   onRestart,
+  onEditTrack,
   onLeaderboards,
   onExit,
 }: PauseMenuProps) {
@@ -19,6 +21,7 @@ export function PauseMenu({
         <div style={title}>PAUSED</div>
         <MenuButton label="Resume" onClick={onResume} primary />
         <MenuButton label="Restart" onClick={onRestart} />
+        <MenuButton label="Edit Track" onClick={onEditTrack} />
         <MenuButton label="Leaderboards" onClick={onLeaderboards} />
         <MenuButton label="Exit to title" onClick={onExit} />
         <div style={hint}>Esc to resume</div>

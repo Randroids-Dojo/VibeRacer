@@ -14,10 +14,10 @@
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause; touch joystick pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
-| 6 | Track system | partial (default track renders in 3D; editor UI still pending) |
+| 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
 | 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
-| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Leaderboards/Exit ships; title screen pending) |
+| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Edit Track/Leaderboards/Exit ships; title screen pending) |
 | 10 | Physics tuning (dev panel) | not started |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
@@ -210,8 +210,14 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 - 3D geometry: `src/game/sceneBuilder.ts` builds flat ribbon meshes at `y = 0.01`. Straights are rectangles (TRACK_WIDTH x CELL_SIZE). Corners are quarter-annulus tessellations with 20 segments, inner radius 6, outer radius 14. All track pieces share one `MeshStandardMaterial`; `dispose()` dedupes materials via a Set to avoid double-disposal.
 - Per-track checkpoints: one checkpoint per piece, expected in loop order. `tick.ts` records `{cpId, tMs}` when the car's cell becomes the next expected piece's cell and fires `LapCompleteEvent` when the car re-enters piece 0 after N-1 intermediate CPs.
 - Tests: `tests/unit/track.test.ts`, `tests/unit/hashTrack.test.ts`, `tests/unit/trackPath.test.ts` (default-track validity, piece ordering, spawn, cell map, one-cell-apart centers, corner `arcCenter` placement, null `arcCenter` on straights).
-- Historical version deep-link: `/[slug]?v=<hash>` now routes through `src/app/[slug]/page.tsx`. The page reads `searchParams.v`, validates via `VersionHashSchema`, and loads that exact version from KV. Unknown or malformed hashes trigger `notFound()` rather than silently falling back to latest. The leaderboard UI can hand users between versions (see §11).
-- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), save flow wired to `PUT /api/track/[slug]`, S-curve and other new piece types, configurable checkpoint count per track.
+- Editor UI: `src/components/TrackEditor.tsx` renders a top-down SVG grid around the current bounds (plus two cells of padding). Clicking a cell calls `withCellCycled`, which advances that cell through empty, `straight`/0/90/180/270, `left90`/0/90/180/270, `right90`/0/90/180/270, back to empty. Each piece is drawn as a dark road band plus dashed centerline, with a small dot at the south edge so the rotation reads at a glance without implying travel direction. Piece 0 gets a green border and START label since the car spawns on its entry edge. The footer shows piece count versus the 64-piece cap, a live validation line sourced from `validateClosedLoop`, and Cancel, Clear, and Save buttons. Save is disabled until the loop is valid and the editor is not already saving.
+- Editor route: `src/app/[slug]/edit/page.tsx` is a server component. It validates the slug, loads the latest saved pieces through the shared `loadTrack(slug)` helper in `src/lib/loadTrack.ts` (falls back to `DEFAULT_TRACK_PIECES` when KV is unset or the slug has no saved track), and hands them to `<TrackEditor />`.
+- Save flow: `TrackEditor` posts `{ pieces }` to `PUT /api/track/[slug]`. The four KV writes (`trackVersion`, `trackLatest`, `trackVersions`, `trackIndex`) run in parallel via `Promise.all`. On 200, the editor navigates to `/[slug]?v=<newHash>` so the driver lands on the freshly hashed version. On 4xx, the server's error message is shown in-line. On KV failure the route returns `503 { error: 'storage unavailable' }` instead of a raw 500. The route rejects without a `viberacer.racerId` cookie (middleware guarantees one is set on any page visit).
+- Spawn math: `buildTrackPath` spawns the car at piece 0's entry edge stepped `SPAWN_INSET` (2) units inward along the travel direction. This lands on the centerline for straights and on the arc for corners, and avoids `worldToCell` rounding into the neighbor cell.
+- Historical version deep-link: `/[slug]?v=<hash>` routes through `src/app/[slug]/page.tsx`. The page reads `searchParams.v`, validates via `VersionHashSchema`, and calls `loadTrack(slug, hash)`. Unknown or malformed hashes trigger `notFound()` rather than silently falling back to latest. The leaderboard UI can hand users between versions (see §11).
+- Pause menu: `PauseMenu` gains an Edit Track entry between Restart and Leaderboards. `Game.tsx` wires `onEditTrack` to `router.push('/<slug>/edit')`.
+- Helper + tests: `src/game/editor.ts` exports `cycleCell`, `withCellCycled`, and `getBounds`. `tests/unit/editor.test.ts` covers the full cycle order, rotation and type advancement, piece removal on final-state cycle, and bounds across negative and positive coordinates. `tests/unit/trackPath.test.ts` covers corner-start spawn staying on the arc.
+- **Not yet landed.** Per-slug create-or-load prompt when visiting an empty slug (editor is reachable from the pause menu today but not from a fresh URL), pan/zoom on very large tracks, S-curve and other new piece types, configurable checkpoint count per track, historical version deep-link wired into the editor (the race page already resolves it on the server when supplied).
 
 ---
 
@@ -314,7 +320,8 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 - Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the 3-2-1-GO sequence plays again. All-time PB in `localStorage` is preserved.
 - Exit to title uses Next.js's `useRouter().push('/')`.
 - Leaderboards button: toggles a sub-view inside the paused overlay. `pauseView: 'menu' | 'leaderboard'` in `Game.tsx` drives which component renders. Leaderboard has a Back button that returns to the menu. Reopening pause always starts on `'menu'`.
-- **Not yet landed.** Title screen at `/`, Edit Track entry, Settings entry, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
+- Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
+- **Not yet landed.** Title screen at `/`, Settings entry, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
 ### Title screen (route `/`)
 
@@ -645,15 +652,15 @@ src/
 ### Build log
 
 - Files currently under `src/`:
-  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`.
-  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig).
+  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`.
+  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds).
   - `hooks/useKeyboard.ts`.
   - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TrackEditor.tsx`, `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
+- **Not yet landed.** `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
 
 ---
 
