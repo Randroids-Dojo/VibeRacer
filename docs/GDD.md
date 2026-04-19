@@ -19,16 +19,16 @@
 | 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
 | 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Leaderboards/Exit ships; title screen pending) |
 | 10 | Physics tuning (dev panel) | not started |
-| 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI, overall record in HUD all live; PB fanfare and version dropdown pending) |
+| 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
 | 13 | Audio | not started |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
 | 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab landed; editor, audio, touch pending) |
-| 17 | Deployment (manual setup) | pending user action |
+| 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 91 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 93 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -209,7 +209,8 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 - 3D geometry: `src/game/sceneBuilder.ts` builds flat ribbon meshes at `y = 0.01`. Straights are rectangles (TRACK_WIDTH x CELL_SIZE). Corners are quarter-annulus tessellations with 20 segments, inner radius 6, outer radius 14. All track pieces share one `MeshStandardMaterial`; `dispose()` dedupes materials via a Set to avoid double-disposal.
 - Per-track checkpoints: one checkpoint per piece, expected in loop order. `tick.ts` records `{cpId, tMs}` when the car's cell becomes the next expected piece's cell and fires `LapCompleteEvent` when the car re-enters piece 0 after N-1 intermediate CPs.
 - Tests: `tests/unit/track.test.ts`, `tests/unit/hashTrack.test.ts`, `tests/unit/trackPath.test.ts` (default-track validity, piece ordering, spawn, cell map, one-cell-apart centers, corner `arcCenter` placement, null `arcCenter` on straights).
-- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), save flow wired to `PUT /api/track/[slug]`, S-curve and other new piece types, configurable checkpoint count per track, historical version deep-link via `?v=<hash>`.
+- Historical version deep-link: `/[slug]?v=<hash>` now routes through `src/app/[slug]/page.tsx`. The page reads `searchParams.v`, validates via `VersionHashSchema`, and loads that exact version from KV. Unknown or malformed hashes trigger `notFound()` rather than silently falling back to latest. The leaderboard UI can hand users between versions (see §11).
+- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), save flow wired to `PUT /api/track/[slug]`, S-curve and other new piece types, configurable checkpoint count per track.
 
 ---
 
@@ -252,7 +253,8 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - `/[slug]` page: `src/app/[slug]/page.tsx` is a server component. Validates slug via `SlugSchema`, loads the track from KV (or falls back to `DEFAULT_TRACK` when KV env vars are missing or the slug has no saved track), then renders `<Game slug versionHash pieces />`.
 - Initials prompt: `src/components/InitialsPrompt.tsx` reads/writes `viberacer.initials` via `readStoredInitials` / `writeStoredInitials`. Validated through `InitialsSchema`. `Game.tsx` blocks the canvas render until initials exist: on mount it reads `localStorage`; if missing, it shows `InitialsPrompt`; once set, it renders `GameSession` which runs the countdown and race.
 - `/` page: `src/app/page.tsx` shows "Play default track" plus two sample slug links. The planned Create / Load existing / Settings home UI is still pending.
-- **Not yet landed.** Per-slug create-or-load prompt (for an empty slug), Settings screen to edit initials, `?v=<hash>` deep-link handling in `[slug]/page.tsx` (the KV code path already accepts it; the UI does not yet route through it), "latest updated slugs" list on `/`.
+- `?v=<hash>` deep-link handling: live. `src/app/[slug]/page.tsx` reads `searchParams.v`, validates through `VersionHashSchema`, and loads that specific version from KV (`track:<slug>:version:<hash>`). Missing or invalid hashes call `notFound()`. The overall-record seeded into the HUD is also scoped to the requested version so history browsing shows correct top times.
+- **Not yet landed.** Per-slug create-or-load prompt (for an empty slug), Settings screen to edit initials, "latest updated slugs" list on `/`.
 
 ---
 
@@ -443,7 +445,8 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 - Leaderboard UI: `src/components/Leaderboard.tsx` is a paused-only overlay. Fetches `/api/leaderboard` with `cache: 'no-store'`. Renders rank / racer (with a "you" badge for `isMe`), time, date. The user's rows are highlighted with the accent color. If the user has any entry, a footer reads "Your best on this track: #N".
 - Client optimistic record update: `handleLapComplete` compares the new lap to the current `overallRecord.lapTimeMs`. A faster lap becomes the new record immediately in the HUD even before the server acknowledges the submit. If the server rejects the submit silently, the HUD will still show the optimistic record until the next page load refreshes it from KV. Acceptable trade-off vs round-tripping before updating.
 - Tests: `tests/unit/api.leaderboard.test.ts` covers 400 on bad params, sorted order with ranks, `isMe` + `meBestRank` via cookie, limit clamping, and the empty-board case. Smoke: `tests/e2e/smoke.spec.ts` hits the route for both rejection and shape.
-- **Not yet landed.** Older-version dropdown (`?v=<hash>`), PB fanfare + visual celebration, admin tooling to revoke racers by composite member, pagination beyond top 100.
+- Version dropdown: `src/components/Leaderboard.tsx` now fetches `/api/track/<slug>` on mount and renders a dropdown listing the stored versions (newest first, tagged `latest` / `racing`). Selecting a different version re-fetches `/api/leaderboard?slug=X&v=HASH` and re-renders the table. If the user selects a version other than the one currently being raced, a `Race this version` button appears and navigates to `/<slug>?v=<hash>` (or `/<slug>` when the selection is the latest). If KV is empty or unreachable the dropdown gracefully degrades to showing just the current version.
+- **Not yet landed.** PB fanfare + visual celebration, admin tooling to revoke racers by composite member, pagination beyond top 100.
 
 ---
 
@@ -653,7 +656,7 @@ src/
 
 ## 17. Deployment and Manual Setup
 
-**Status.** Pending user action. All code needed to accept these env vars is in place (`KV_REST_API_URL`, `KV_REST_API_TOKEN`, `RACE_SIGNING_SECRET`, `GITHUB_PAT`). No deploy has happened yet.
+**Status.** Done. Vercel project is live, KV is linked across all environments, and `GITHUB_PAT` and `RACE_SIGNING_SECRET` are set. The steps below are kept as a record of what was configured.
 
 These are steps the user performs in external dashboards. Every step is mandatory for a production deploy except where marked optional.
 

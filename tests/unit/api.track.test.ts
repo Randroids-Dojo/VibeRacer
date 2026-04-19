@@ -3,6 +3,7 @@ import { NextRequest } from 'next/server'
 import { FakeKv } from './_fakeKv'
 import type { Piece } from '@/lib/schemas'
 import { hashTrack } from '@/lib/hashTrack'
+import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 
 const fake = new FakeKv()
 const racerId = '00000000-0000-4000-8000-000000000000'
@@ -103,5 +104,59 @@ describe('GET /api/track/[slug]', () => {
     }
     expect(body.versionHash).toBe(hashTrack(squarePieces))
     expect(body.track.pieces.length).toBe(4)
+  })
+
+  it('returns a specific historical version when ?v=<hash> is supplied', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'versioned-slug'
+    const putFirst = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: squarePieces }),
+    })
+    await PUT(putFirst, { params: Promise.resolve({ slug }) })
+    const putSecond = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: DEFAULT_TRACK_PIECES }),
+    })
+    await PUT(putSecond, { params: Promise.resolve({ slug }) })
+
+    const firstHash = hashTrack(squarePieces)
+    const latestHash = hashTrack(DEFAULT_TRACK_PIECES)
+
+    const specificReq = new NextRequest(
+      `http://test/api/track/${slug}?v=${firstHash}`,
+    )
+    const specificRes = await GET(specificReq, {
+      params: Promise.resolve({ slug }),
+    })
+    const specific = (await specificRes.json()) as {
+      versionHash: string
+      track: { pieces: Piece[] }
+      versions: Array<{ hash: string; createdAt: string }>
+    }
+    expect(specific.versionHash).toBe(firstHash)
+    expect(specific.track.pieces.length).toBe(4)
+    expect(specific.versions.map((v) => v.hash)).toEqual([
+      latestHash,
+      firstHash,
+    ])
+
+    const latestReq = new NextRequest(`http://test/api/track/${slug}`)
+    const latestRes = await GET(latestReq, {
+      params: Promise.resolve({ slug }),
+    })
+    const latest = (await latestRes.json()) as { versionHash: string }
+    expect(latest.versionHash).toBe(latestHash)
+  })
+
+  it('rejects a malformed ?v= param', async () => {
+    const { GET } = await import('@/app/api/track/[slug]/route')
+    const req = new NextRequest('http://test/api/track/any-slug?v=not-a-hash')
+    const res = await GET(req, {
+      params: Promise.resolve({ slug: 'any-slug' }),
+    })
+    expect(res.status).toBe(400)
   })
 })
