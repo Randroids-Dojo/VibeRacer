@@ -44,7 +44,7 @@ describe('buildTrackPath', () => {
     expect(Math.abs(path.spawn.position.z - cellZ)).toBeLessThanOrEqual(CELL_SIZE / 2)
   })
 
-  it('spawn stays on the arc when piece 0 is a corner', () => {
+  it('spawn and finish line both sit on the arc when piece 0 is a corner', () => {
     // A minimal closed loop whose first piece is a right90: square of four right90s.
     const squarePieces: Piece[] = [
       { type: 'right90', row: 0, col: 0, rotation: 0 },
@@ -56,8 +56,19 @@ describe('buildTrackPath', () => {
     const path = buildTrackPath(squarePieces)
     const first = path.order[0]
     expect(first.piece.type).toBe('right90')
-    const d = distanceToCenterline(first, path.spawn.position.x, path.spawn.position.z)
-    expect(d).toBeLessThanOrEqual(TRACK_WIDTH / 2)
+    expect(
+      distanceToCenterline(first, path.spawn.position.x, path.spawn.position.z),
+    ).toBeLessThan(0.01)
+    expect(
+      distanceToCenterline(
+        first,
+        path.finishLine.position.x,
+        path.finishLine.position.z,
+      ),
+    ).toBeLessThan(0.01)
+    // Finish line heading differs from spawn heading because the arc tangent
+    // has rotated between inset 2 and inset 5.
+    expect(path.finishLine.heading).not.toBeCloseTo(path.spawn.heading, 2)
   })
 
   it('cellToOrderIdx covers every piece', () => {

@@ -26,7 +26,7 @@ export interface TrackPath {
   order: OrderedPiece[]
   cellToOrderIdx: Map<string, number>
   spawn: { position: Vec3; heading: number }
-  finishLine: Vec3
+  finishLine: { position: Vec3; heading: number }
 }
 
 export function cellCenter(row: number, col: number): Vec3 {
@@ -125,30 +125,49 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
     cellToOrderIdx.set(cellKey(p.row, p.col), i)
   }
 
-  // Cell center sits off the arc for corners; entry midpoint lies on the arc.
-  // Spawn there, stepped inward so worldToCell does not round into the neighbor.
-  // Place the finish line further inward so the car sits behind it at GO and
-  // crosses it moving forward (matches racing convention).
-  const firstOrdered = order[0]
-  const travelDir = opposite(firstOrdered.entryDir)
-  const inward = DIR_OFFSETS[travelDir]
+  // Walk inward along the centerline (arc for corners, straight for straights)
+  // so spawn and stripe both land on-track even when the start piece is a turn.
   const SPAWN_INSET = 2
   const FINISH_LINE_INSET = 5
-  const spawn = {
-    position: {
-      x: firstOrdered.entry.x + SPAWN_INSET * inward.dc,
-      y: 0,
-      z: firstOrdered.entry.z + SPAWN_INSET * inward.dr,
-    },
-    heading: dirToHeading(travelDir),
-  }
-  const finishLine: Vec3 = {
-    x: firstOrdered.entry.x + FINISH_LINE_INSET * inward.dc,
-    y: 0,
-    z: firstOrdered.entry.z + FINISH_LINE_INSET * inward.dr,
-  }
+  const spawn = pointAlongStartPiece(order[0], SPAWN_INSET)
+  const finishLine = pointAlongStartPiece(order[0], FINISH_LINE_INSET)
 
   return { order, cellToOrderIdx, spawn, finishLine }
+}
+
+function pointAlongStartPiece(
+  first: OrderedPiece,
+  arcLength: number,
+): { position: Vec3; heading: number } {
+  if (first.arcCenter === null) {
+    const travelDir = opposite(first.entryDir)
+    const d = DIR_OFFSETS[travelDir]
+    return {
+      position: {
+        x: first.entry.x + arcLength * d.dc,
+        y: 0,
+        z: first.entry.z + arcLength * d.dr,
+      },
+      heading: dirToHeading(travelDir),
+    }
+  }
+  const { cx, cz } = first.arcCenter
+  const a1 = Math.atan2(first.entry.z - cz, first.entry.x - cx)
+  const a2 = Math.atan2(first.exit.z - cz, first.exit.x - cx)
+  let delta = a2 - a1
+  while (delta > Math.PI) delta -= 2 * Math.PI
+  while (delta < -Math.PI) delta += 2 * Math.PI
+  const sign = delta >= 0 ? 1 : -1
+  const a = a1 + (sign * arcLength) / HALF
+  const position: Vec3 = {
+    x: cx + HALF * Math.cos(a),
+    y: 0,
+    z: cz + HALF * Math.sin(a),
+  }
+  // Tangent along direction of travel: radius rotated 90 degrees toward the exit.
+  const tx = sign * -Math.sin(a)
+  const tz = sign * Math.cos(a)
+  return { position, heading: Math.atan2(-tz, tx) }
 }
 
 export function worldToCell(x: number, z: number): { row: number; col: number } {
