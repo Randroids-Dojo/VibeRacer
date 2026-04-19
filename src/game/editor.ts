@@ -51,6 +51,10 @@ export function moveStartTo(
   if (pieces[0].row === row && pieces[0].col === col) return pieces
   try {
     const path = buildTrackPath(pieces)
+    // buildTrackPath returns a partial walk when the track is not a valid
+    // closed loop. Rotating a partial walk would drop the unwalked pieces,
+    // so bail out and leave the array alone.
+    if (path.order.length !== pieces.length) return pieces
     const idx = path.order.findIndex(
       (o) => o.piece.row === row && o.piece.col === col,
     )

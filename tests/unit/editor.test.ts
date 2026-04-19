@@ -106,6 +106,18 @@ describe('moveStartTo', () => {
     const result = moveStartTo(DEFAULT_TRACK_PIECES, 99, 99)
     expect(result).toBe(DEFAULT_TRACK_PIECES)
   })
+
+  it('does not drop pieces when the track is not a closed loop', () => {
+    // A dangling straight at (0, 0) and an orphan piece at (5, 5). The walker
+    // from pieces[0] can't reach the orphan, and the loop isn't closed.
+    const dangling: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 5, col: 5, rotation: 0 },
+    ]
+    const result = moveStartTo(dangling, 5, 5)
+    expect(result).toBe(dangling)
+    expect(result.length).toBe(dangling.length)
+  })
 })
 
 describe('reverseStartDirection', () => {
