@@ -135,6 +135,10 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
     router.push('/')
   }, [router])
 
+  const editTrack = useCallback(() => {
+    router.push(`/${slug}/edit`)
+  }, [router, slug])
+
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       if (e.key !== 'Escape') return
@@ -389,6 +393,7 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
           <PauseMenu
             onResume={resume}
             onRestart={restart}
+            onEditTrack={editTrack}
             onLeaderboards={noop}
             onExit={exitToTitle}
           />
