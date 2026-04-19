@@ -21,14 +21,14 @@
 | 10 | Physics tuning (dev panel) | not started |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
-| 13 | Audio | not started |
+| 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; SFX pending) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab landed; editor, audio, touch pending) |
+| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler landed; SFX and touch pending) |
 | 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 98 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 128 Vitest unit tests and 8 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -507,24 +507,33 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 
 ## 13. Audio
 
-**Status.** Not started.
+**Status.** Partial. Music ships; SFX pending.
 
-Pure Web Audio API. No Tone.js. One `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead. Pattern mirrors FrackingAsteroids' `src/game/music.ts` and Determined's `src/music.js`.
+Pure Web Audio API. No Tone.js. One shared `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead.
 
-### Title music
+### Music (shipped)
 
-- Cartoony synth loop.
-- Streamed (scheduled) from title screen open.
-- Starts on first user gesture (click) to satisfy browser autoplay policies.
-- Loops seamlessly.
+Three named tracks live in one engine (`src/game/music.ts`) and share the scheduler. Each track owns a step counter, pattern, and per-track `GainNode` so tracks can overlap during a crossfade.
 
-### In-game music
+- **Title:** cartoony pentatonic loop in C major at 128 BPM. Mounts via `<TitleMusic />` on the home page and slug-landing page. Starts on the first pointerdown/keydown to satisfy browser autoplay policies; a one-shot document-level listener inside `music.ts` handles the retry.
+- **Game:** driving minor-key loop in G minor at a configured 140 BPM. Crossfades in from title at race start over 3 seconds. Tempo ramps with car speed (70% to 100% of configured BPM, so 98 to 140 BPM). Voice volumes, drums, and a counter-melody fade in above intensity thresholds so low-speed driving sounds sparse and floored-it sounds full.
+- **Pause:** slow, very quiet sine pad in C major at 68 BPM. Crossfades in when the player pauses, crossfades back to game on resume, and crossfades to title on restart. All pause/resume transitions are 0.8 seconds.
 
-- Separate loop, driving and upbeat variant.
-- Tempo can ramp with speed (intensity pattern from FrackingAsteroids).
-- Crossfade with title music on race start.
+### Scheduler notes
 
-### SFX
+- `crossfadeTo(target, fadeSec)` fades all non-target tracks to 0 and fades the target up to its configured gain. Creates the target track on demand.
+- `setGameIntensity(0..1)` is called every rAF frame in `Game.tsx` with `|speed| / maxSpeed`. Short-circuits within `INTENSITY_EPSILON` so 60 Hz calls are effectively free. Only affects the game track; title and pause ignore intensity.
+- `fadeTrackTo(track, 0, fadeSec)` schedules a per-track prune timer that disconnects the gain node and removes the track from the map once the fade completes. This replaced an earlier central `stopMusic` timer and eliminates silent-work scheduling for faded-out tracks.
+- First-gesture unlock is encapsulated in `music.ts`; callers never install their own listeners.
+
+### Build log
+
+- `src/game/music.ts` owns the engine, scheduler, voice helpers (`schedNote`, `schedKick`, `schedNoise` shared by snare and hat with a cached noise buffer per kind), the three pattern functions, and `TRACK_CONFIG` (the single source of truth for per-track BPM, root MIDI, scale, step renderer, and target gain). Pure helpers `midiFreq`, `scaleDeg`, and `SCALES` are exported for testing.
+- `src/components/TitleMusic.tsx` is a null-rendering client component that calls `startTitleMusic` on mount and `stopMusic` on unmount. Mounted in `src/app/page.tsx`, `src/components/SlugLanding.tsx`, and inside `Game.tsx` (so the countdown still has title music before the race-start crossfade).
+- `src/components/Game.tsx` drives the transitions: `crossfadeTo('pause')` on pause, `crossfadeTo('game')` on resume, `crossfadeTo('title')` on restart, and `crossfadeTo('game', RACE_START_CROSSFADE_SEC)` when countdown ends. The rAF loop calls `setGameIntensity(|speed| / DEFAULT_CAR_PARAMS.maxSpeed)` each frame.
+- Tests: `tests/unit/music.test.ts` pins `midiFreq`, `scaleDeg` (wrap, octave shift, negative degrees), and the four canonical scale constants.
+
+### SFX (pending)
 
 - Countdown beeps.
 - Engine drone, pitch-shifted by speed.
@@ -532,6 +541,8 @@ Pure Web Audio API. No Tone.js. One `AudioContext`, procedural synth voices, sch
 - Finish-line fanfare on lap completion.
 - PB celebration jingle on new personal best.
 - UI click beeps.
+
+All SFX will reuse the same `AudioContext` and `schedNote`/`schedNoise` helpers.
 
 ### Stretch: personalization (later)
 
@@ -603,7 +614,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`) are all in. Still pending: `TrackEditor`, `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`) are all in. Still pending: `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `audio.ts` for SFX).
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -653,14 +664,14 @@ src/
 
 - Files currently under `src/`:
   - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`.
-  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds).
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`, `components/TitleMusic.tsx`.
+  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds), `game/music.ts` (Web Audio scheduler + title/game/pause tracks).
   - `hooks/useKeyboard.ts`.
   - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
+- **Not yet landed.** `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/audio.ts` (SFX), additional `hooks/*` (useGameState, useTouchControls).
 
 ---
 
