@@ -5,6 +5,7 @@ import {
   RecentTrackList,
   type RecentTrackListItem,
 } from '@/components/RecentTrackList'
+import { TitleMusic } from '@/components/TitleMusic'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 
@@ -17,6 +18,7 @@ export default async function HomePage() {
 
   return (
     <main style={mainStyle}>
+      <TitleMusic />
       <div style={cardStyle}>
         <h1 style={titleStyle}>VibeRacer</h1>
         <p style={subStyle}>Every URL is a track. Pick one and drive.</p>

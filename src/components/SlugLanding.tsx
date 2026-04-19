@@ -2,6 +2,7 @@ import Link from 'next/link'
 import type { RecentTrack } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
 import { RecentTrackList } from './RecentTrackList'
+import { TitleMusic } from './TitleMusic'
 
 interface Props {
   slug: string
@@ -11,6 +12,7 @@ interface Props {
 export function SlugLanding({ slug, recent }: Props) {
   return (
     <main style={rootStyle}>
+      <TitleMusic />
       <div style={cardStyle}>
         <div style={eyebrowStyle}>/{slug}</div>
         <h1 style={titleStyle}>No track here yet.</h1>

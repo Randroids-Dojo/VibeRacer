@@ -24,6 +24,14 @@ import { PauseMenu } from './PauseMenu'
 import { FeedbackFab } from './FeedbackFab'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
+import {
+  PAUSE_CROSSFADE_SEC,
+  RACE_START_CROSSFADE_SEC,
+  crossfadeTo,
+  setGameIntensity,
+} from '@/game/music'
+import { TitleMusic } from './TitleMusic'
+import { DEFAULT_CAR_PARAMS } from '@/game/physics'
 
 export interface OverallRecord {
   initials: string
@@ -113,6 +121,7 @@ function GameSession({
     if (pausedRef.current) return
     pausedRef.current = true
     pauseStartTsRef.current = performance.now()
+    crossfadeTo('pause', PAUSE_CROSSFADE_SEC)
     setPauseView('menu')
     setPaused(true)
   }, [])
@@ -124,6 +133,7 @@ function GameSession({
       pauseStartTsRef.current = null
     }
     pausedRef.current = false
+    crossfadeTo('game', PAUSE_CROSSFADE_SEC)
     // Drop keyboard focus so driving keys land on document.body, not a lingering
     // input/button from the pause UI. Also clear any held-key state that may
     // have been mid-press when focus shifted into an input while paused.
@@ -148,6 +158,7 @@ function GameSession({
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
     }
+    crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     setPaused(false)
     setHud((prev) => ({
       ...prev,
@@ -282,6 +293,8 @@ function GameSession({
       bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
       renderer.render(bundle.scene, bundle.camera)
 
+      setGameIntensity(Math.abs(state.speed) / DEFAULT_CAR_PARAMS.maxSpeed)
+
       if (result.lapComplete) handleLapComplete(result.lapComplete)
 
       if (ts - lastHudTs >= HUD_UPDATE_MS) {
@@ -399,11 +412,13 @@ function GameSession({
   function beginRace() {
     void startRaceServerSide()
     pendingRaceStartRef.current = performance.now()
+    crossfadeTo('game', RACE_START_CROSSFADE_SEC)
     setPhase('racing')
   }
 
   return (
     <div style={root}>
+      <TitleMusic />
       <canvas ref={canvasRef} style={canvasStyle} />
       <HUD
         currentMs={hud.currentMs}
