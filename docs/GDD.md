@@ -28,7 +28,7 @@
 | 17 | Deployment (manual setup) | pending user action |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice (this change): `/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit. 84 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 85 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -46,7 +46,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 
 ## 2. Core Game Loop
 
-**Status.** Not started.
+**Status.** Partial. Countdown, race, HUD, and per-lap auto-submit are live at `/[slug]`. Pause menu, track editing access, load-existing prompt, and PB celebration are not yet wired.
 
 1. Player lands on `/<slug>`.
 2. If a track exists at that slug, the latest version loads. If not, a prompt offers "create new track" or "load existing".
@@ -56,11 +56,19 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 6. Loop continues forever. Best lap stays on the HUD. Any new personal best triggers a small celebration.
 7. Player can pause to view leaderboards, edit the track, change settings, or exit.
 
+### Build log
+
+- Orchestrator: `src/components/Game.tsx`. `Game` handles initials lifecycle; `GameSession` owns the Three.js canvas, tick loop, phase state (`countdown` | `racing`), and HUD state.
+- Tick: `src/game/tick.ts` is a pure `(state, input, dtMs, nowMs, path, params?) => { state, lapComplete | null }`. Physics is frozen until `startRace()` sets `raceStartMs`. Lap complete event fires when all checkpoints are hit in order and the car re-enters piece 0.
+- Render loop: `requestAnimationFrame` drives tick + Three.js render every frame. HUD `setState` is throttled to ~20 Hz with a reference-equality bail-out so the HUD tree doesn't re-render when nothing visible changed.
+- Tests: `tests/unit/tick.test.ts` covers init state, frozen physics before start, teleporting through all checkpoints to complete a lap, and ignoring unexpected cells.
+- **Not yet landed.** Pause (Section 9), load-existing prompt on a fresh slug, PB fanfare, "Edit Track" entry point from the pause menu.
+
 ---
 
 ## 3. Camera & Perspective
 
-**Status.** Not started.
+**Status.** Partial. Trailing third-person rig with linear position + target lerp is live. Quaternion slerp on orientation and the dev panel sliders (Section 10) are not yet landed.
 
 Trailing third-person camera, Forza Horizon style.
 
@@ -69,11 +77,25 @@ Trailing third-person camera, Forza Horizon style.
 - Tunable parameters: offset height, trailing distance, lerp speed, look-ahead bias.
 - Implementation: raw Three.js. Camera position and quaternion updated each tick.
 
+### Build log
+
+- `src/game/sceneBuilder.ts` exports `initCameraRig(carX, carZ, heading)`, `updateCameraRig(rig, carX, carZ, heading, params?)` (mutates `rig` in place to avoid per-frame allocations), and `DEFAULT_CAMERA_RIG`.
+- Defaults: `height=6`, `distance=14`, `lookAhead=6`, `positionLerp=0.12`, `targetLerp=0.2`.
+- The look-at target is projected `lookAhead` units ahead of the car along its heading so the camera anticipates turns rather than trailing dead behind.
+- **Not yet landed.** Quaternion slerp for orientation smoothing (the target-lerp approximates this well enough for the vertical slice), tunable dev-panel sliders.
+
 ---
 
 ## 4. Controls
 
-**Status.** Not started.
+**Status.** Partial. Keyboard (WASD + arrows + Space) is live via the `useKeyboard` hook. Touch joysticks, Esc-to-pause, and the reserved Q/E shift keys are not yet landed.
+
+### Build log
+
+- `src/hooks/useKeyboard.ts` returns `{ current: KeyInput }` (ref-like) where `KeyInput = { forward, backward, left, right, handbrake }`. `keydown`/`keyup` listeners mutate the ref and `preventDefault` for recognized keys.
+- Mapping: `W`/`ArrowUp` = forward, `S`/`ArrowDown` = backward (brake/reverse), `A`/`ArrowLeft` = steer left, `D`/`ArrowRight` = steer right, `Space` = handbrake.
+- The tick loop reads `keys.current` each frame and synthesizes `{ throttle, steer, handbrake }` for `stepPhysics`.
+- **Not yet landed.** Esc pause (Section 9), touch joysticks (mobile spec below), remappable bindings, Q/E shifter keys, gamepad.
 
 ### Keyboard (default, remappable in Settings later)
 
@@ -103,7 +125,17 @@ Two virtual joysticks, no fixed positions. Port the custom joystick from `Fracki
 
 ## 5. Vehicle
 
-**Status.** Not started.
+**Status.** Partial. Arcade integrator with off-track drag ships in `src/game/physics.ts`. Car renders as a simple box placeholder (body + cabin + nose marker). Kenney glTF model, per-wheel raycast, and angular velocity are not yet landed.
+
+### Build log
+
+- `src/game/physics.ts` exports `stepPhysics(state, input, dtSec, onTrack, params?)`, `DEFAULT_CAR_PARAMS`, and `PhysicsState` / `PhysicsInput` / `CarParams` types.
+- Simplified arcade model: scalar speed + heading, no lateral velocity. Throttle adds `accel * dt`; reverse throttle brakes forward motion first, then accelerates backward at `reverseAccel`. Coasting decays at `rollingFriction`. Handbrake adds a drag proportional to `brake * 1.5`. Off-track applies `offTrackDrag` and caps at `offTrackMaxSpeed`. Steering multiplies by `sign(speed)` so reverse steers naturally.
+- Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRate=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`.
+- On-track detection: `distanceToCenterline(op, x, z) <= TRACK_WIDTH/2` in `tick.ts`. Centerlines: straights use segment distance; corners use `|hypot(x - cx, z - cz) - CELL_SIZE/2|` with `arcCenter` cached on each `OrderedPiece` at build time.
+- Car visual: `src/game/sceneBuilder.ts::buildCar` returns a Group of three boxes (body 2.2x1.0x4.2 red, cabin 1.8x0.8x2.2 dark, nose 0.8x0.2x0.6 white). Orientation via `car.rotation.y = state.heading`.
+- Tests: `tests/unit/physics.test.ts` covers throttle, max-speed cap, off-track cap, brake-while-moving, coast-to-zero, low-speed steering lockout, and steering while moving.
+- **Not yet landed.** Kenney glTF model, angular velocity + quaternion heading, per-wheel raycast, dev-panel tuning (Section 10), `mass`/`downforce`/`forwardGrip`/`lateralGrip` fields from the GDD spec.
 
 ### Visual style
 
@@ -134,7 +166,7 @@ Custom tick-based integrator. No Rapier or Cannon. Matches FrackingAsteroids' "c
 
 ## 6. Track System
 
-**Status.** Partial. Validation graph, connector math, piece schema, and canonical hashing are in. Editor UI, 3D piece geometry, and per-track checkpoint generation are not yet started.
+**Status.** Partial. Validation, canonical hashing, default 3D track geometry, path ordering, and cell-based checkpoint generation now ship. Editor UI, save flow wired to `PUT /api/track/[slug]`, and additional piece types are still pending.
 
 ### Pieces (starting set)
 
@@ -166,17 +198,21 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 ### Build log
 
 - Piece schema (`type`, `row`, `col`, `rotation`) and 64-piece cap: `src/lib/schemas.ts`. Rotations restricted to the set `{0, 90, 180, 270}`.
-- Connector math and BFS closed-loop validation: `src/game/track.ts`. Direction encoding is `N=0, E=1, S=2, W=3`. A piece has two open edges; each open edge must face a matching open edge on the neighboring cell. The graph must be a single connected component covering every piece.
+- Connector math and BFS closed-loop validation: `src/game/track.ts`. Direction encoding is `N=0, E=1, S=2, W=3`. A piece has two open edges; each open edge must face a matching open edge on the neighboring cell. The graph must be a single connected component covering every piece. `DIR_OFFSETS`, `opposite`, and `cellKey` helpers are exported here and reused by `trackPath.ts` and `tick.ts`.
 - Validation rejects: empty track, duplicate cell, dangling connector, connector mismatch, disjoint loops, piece count over 64.
 - Canonical versioning: `src/lib/hashTrack.ts` sorts pieces by `row, col, type, rotation` before serializing and SHA-256. Hash is stable regardless of input order. Output is a 64-char lowercase hex string that matches the `VersionHashSchema` regex.
-- Tests: `tests/unit/track.test.ts` (piece connectors, 2x2 square loop, 3x2 stadium loop with straights, disjoint-loops rejection, piece-limit rejection) and `tests/unit/hashTrack.test.ts`.
-- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), 3D piece geometry, connector rendering, per-track checkpoint generation, save flow wired to `PUT /api/track/[slug]`.
+- Default track: `src/lib/defaultTrack.ts` exports `DEFAULT_TRACK_PIECES`, an 8-piece rectangular loop on a 3x3 grid (piece 0 is a straight so the car spawns cleanly on the centerline heading north). Served by `/[slug]/page.tsx` when the slug has no saved track. Its hash is hoisted to a module-level `DEFAULT_TRACK` constant to avoid recomputing per request.
+- Path ordering: `src/game/trackPath.ts` exports `buildTrackPath(pieces): TrackPath`. Walks connectors from piece 0, producing `OrderedPiece[]` each with precomputed `center`, `entry`, `exit`, and (for corners) `arcCenter`. Also builds `cellToOrderIdx` (cellKey -> index) for O(1) lookups during lap detection. `CELL_SIZE = 20`, `TRACK_WIDTH = 8`.
+- 3D geometry: `src/game/sceneBuilder.ts` builds flat ribbon meshes at `y = 0.01`. Straights are rectangles (TRACK_WIDTH x CELL_SIZE). Corners are quarter-annulus tessellations with 20 segments, inner radius 6, outer radius 14. All track pieces share one `MeshStandardMaterial`; `dispose()` dedupes materials via a Set to avoid double-disposal.
+- Per-track checkpoints: one checkpoint per piece, expected in loop order. `tick.ts` records `{cpId, tMs}` when the car's cell becomes the next expected piece's cell and fires `LapCompleteEvent` when the car re-enters piece 0 after N-1 intermediate CPs.
+- Tests: `tests/unit/track.test.ts`, `tests/unit/hashTrack.test.ts`, `tests/unit/trackPath.test.ts` (default-track validity, piece ordering, spawn, cell map, one-cell-apart centers, corner `arcCenter` placement, null `arcCenter` on straights).
+- **Not yet landed.** Editor UI (`components/TrackEditor.tsx`), save flow wired to `PUT /api/track/[slug]`, S-curve and other new piece types, configurable checkpoint count per track, historical version deep-link via `?v=<hash>`.
 
 ---
 
 ## 7. Routing & User-Owned Paths
 
-**Status.** Partial. Middleware, `racerId` cookie, and the `/` placeholder are live. `/[slug]`, the create-or-load prompt, the initials lifecycle, and the Settings screen are not yet started.
+**Status.** Partial. Middleware, `racerId` cookie, `/` home, `/[slug]` race page, and the initials lifecycle all ship. The create-or-load prompt on a fresh slug, the Settings screen, and `?v=<hash>` deep-linking are not yet landed.
 
 Next.js App Router dynamic routes.
 
@@ -210,14 +246,24 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Middleware matcher excludes `_next/static`, `_next/image`, `favicon.ico`, and any path with a file extension. All other routes (pages and APIs) run middleware.
 - Middleware best-effort writes `racer:<racerId>:firstSeen` to KV via dynamic import wrapped in try/catch so a KV outage never blocks page responses.
 - Playwright smoke in `tests/e2e/smoke.spec.ts` verifies the cookie lands on first visit and matches the UUID v4 regex.
-- `/` page currently renders a placeholder ("VibeRacer / Coming soon"). Planned home UI (Create, Load existing, Settings) not yet started.
-- **Not yet landed.** `/[slug]/page.tsx`, the create-or-load prompt, the initials prompt UX, `localStorage` key `viberacer.initials`, the settings screen, and the ?v=<hash> deep-link.
+- `/[slug]` page: `src/app/[slug]/page.tsx` is a server component. Validates slug via `SlugSchema`, loads the track from KV (or falls back to `DEFAULT_TRACK` when KV env vars are missing or the slug has no saved track), then renders `<Game slug versionHash pieces />`.
+- Initials prompt: `src/components/InitialsPrompt.tsx` reads/writes `viberacer.initials` via `readStoredInitials` / `writeStoredInitials`. Validated through `InitialsSchema`. `Game.tsx` blocks the canvas render until initials exist: on mount it reads `localStorage`; if missing, it shows `InitialsPrompt`; once set, it renders `GameSession` which runs the countdown and race.
+- `/` page: `src/app/page.tsx` shows "Play default track" plus two sample slug links. The planned Create / Load existing / Settings home UI is still pending.
+- **Not yet landed.** Per-slug create-or-load prompt (for an empty slug), Settings screen to edit initials, `?v=<hash>` deep-link handling in `[slug]/page.tsx` (the KV code path already accepts it; the UI does not yet route through it), "latest updated slugs" list on `/`.
 
 ---
 
 ## 8. Race Flow
 
-**Status.** Not started.
+**Status.** Partial. Countdown, per-piece checkpoints, lap detection, and the full HUD are live. Animated traffic-light visuals, synth beeps (Section 13), a pause button, and invalid-lap handling are not yet landed.
+
+### Build log
+
+- Countdown: `src/components/Countdown.tsx` cycles `3 -> 2 -> 1 -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Currently renders as large text, not the traffic-light graphic. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
+- Lap detection: cell-based. `tick.ts` compares `state.lastCellKey` against the current cell each frame. When the car enters the expected next piece's cell, it records `{cpId, tMs}` where `tMs = nowMs - raceStartMs`. Hitting piece 0 after N-1 CPs fires `LapCompleteEvent` with `{hits, lapTimeMs, lapNumber}` and resets `nextCpId=0`, `hits=[]`, `raceStartMs=nowMs` for the next lap. Lap count increments.
+- HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
+- Endless loop: no lap cap. Every completed lap triggers `handleLapComplete` which updates local PBs and fires `submitLap` (fire-and-forget).
+- **Not yet landed.** Animated 3-light traffic signal, countdown synth beeps (Section 13), always-visible pause button for touch, invalid-lap handling (wrong-order checkpoints currently do not reset the timer), per-track configurable checkpoint count.
 
 ### Start signal
 
@@ -294,7 +340,7 @@ A player-facing tuning UI is a stretch feature (Section 18).
 
 ## 11. Leaderboards
 
-**Status.** Partial. Storage model, `/api/race/start`, `/api/race/submit`, the full anti-cheat validation chain, rate limits, and nonce rotation are in. The leaderboard UI (top 25 view, version dropdown, PB highlight, PB celebration) is not yet started.
+**Status.** Partial. Server-side: storage model, `/api/race/start`, `/api/race/submit`, the full anti-cheat validation chain, rate limits, and nonce rotation are in. Client-side: auto-submit on lap completion and local PB tracking (session + all-time in `localStorage`) are live. The leaderboard UI (top 25 view, version dropdown, PB highlight on the board, PB celebration fanfare) is not yet started.
 
 ### Storage
 
@@ -375,7 +421,9 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 - **Silent-drop convention.** On any validation or rate-limit failure, submit returns HTTP 202 with `{ok: false}`. Rationale: 202 is semantically "accepted and being processed" which cleanly masks why a submission was rejected without teaching cheaters what to fix. The HUD still shows the local time.
 - Typed KV key helpers and TTL constants: `src/lib/kv.ts`. Mirrors the exact key names in Section 14.
 - Tests: `tests/unit/signToken.test.ts`, `tests/unit/anticheat.test.ts`, `tests/unit/api.raceStart.test.ts`, `tests/unit/api.raceSubmit.test.ts`. In-memory `FakeKv` for route tests: `tests/unit/_fakeKv.ts`.
-- **Not yet landed.** Leaderboard UI component, older-version dropdown, PB detection and celebration, PB highlight in the board, admin tooling to revoke racers by composite member.
+- Client auto-submit: `src/components/Game.tsx::startRaceServerSide` fires `POST /api/race/start` when the countdown ends and stores the returned token in `tokenRef`. `submitLap` fires `POST /api/race/submit` on every completed lap, rotating the token on success. If KV or `RACE_SIGNING_SECRET` is not configured the server returns 500 and the client swallows the error; gameplay is unaffected.
+- Local PB tracking: `src/lib/localBest.ts` stores `viberacer.best.<slug>.<versionHash>` in `localStorage`. `GameSession` seeds `bestAllTimeMs` from that key on mount and updates it on every new all-time PB. Session PB is held in React state only. `handleLapComplete` runs PB detection independent of the server round-trip; toast reads "NEW PB!" or "lap N saved".
+- **Not yet landed.** Leaderboard UI component, older-version dropdown, PB fanfare + visual celebration, PB highlight row on the leaderboard, admin tooling to revoke racers by composite member.
 
 ---
 
@@ -520,7 +568,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure files (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes) exist. Gameplay files (`game/tick.ts`, `game/physics.ts`, `game/collision.ts`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`) and most React components are not yet created.
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the essential React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`) all landed. Still pending: `TrackEditor`, `PauseMenu`, `TitleScreen`, `FeedbackFab`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -568,10 +616,16 @@ src/
 
 ### Build log
 
-- Files that currently exist under `src/`: `app/layout.tsx`, `app/page.tsx` (placeholder), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `game/track.ts`, `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `middleware.ts`.
+- Files currently under `src/`:
+  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`.
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`.
+  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig).
+  - `hooks/useKeyboard.ts`.
+  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
-- **Not yet landed.** Every `components/*` file, every `hooks/*` file, and the remaining `game/*` files (tick, physics, collision, virtual-joystick, music, audio).
+- Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
+- **Not yet landed.** `components/TrackEditor.tsx`, `components/PauseMenu.tsx`, `components/TitleScreen.tsx`, `components/FeedbackFab.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
 
 ---
 
