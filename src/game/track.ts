@@ -2,15 +2,19 @@ import { MAX_PIECES_PER_TRACK, type Piece, type PieceType } from '@/lib/schemas'
 
 export type Dir = 0 | 1 | 2 | 3 // N, E, S, W
 
-const DIR_OFFSETS: Record<Dir, { dr: number; dc: number }> = {
+export const DIR_OFFSETS: Record<Dir, { dr: number; dc: number }> = {
   0: { dr: -1, dc: 0 },
   1: { dr: 0, dc: 1 },
   2: { dr: 1, dc: 0 },
   3: { dr: 0, dc: -1 },
 }
 
-function opposite(d: Dir): Dir {
+export function opposite(d: Dir): Dir {
   return ((d + 2) % 4) as Dir
+}
+
+export function cellKey(row: number, col: number): string {
+  return `${row},${col}`
 }
 
 // Base connectors at rotation 0. Order is [entry, exit] but both are just open edges for graph purposes.
@@ -24,10 +28,6 @@ export function connectorsOf(piece: Piece): [Dir, Dir] {
   const [a, b] = BASE_CONNECTORS[piece.type]
   const shift = (piece.rotation / 90) as 0 | 1 | 2 | 3
   return [((a + shift) % 4) as Dir, ((b + shift) % 4) as Dir]
-}
-
-function cellKey(row: number, col: number): string {
-  return `${row},${col}`
 }
 
 export interface ValidationResult {

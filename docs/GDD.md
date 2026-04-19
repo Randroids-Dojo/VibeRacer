@@ -10,25 +10,25 @@
 
 | § | Section | Status |
 | - | - | - |
-| 2 | Core game loop | not started |
-| 3 | Camera and perspective | not started |
-| 4 | Controls | not started |
-| 5 | Vehicle | not started |
-| 6 | Track system | partial (validation + hashing done; editor UI and 3D geometry pending) |
-| 7 | Routing and user-owned paths | partial (middleware + racerId cookie done; pages and initials UI pending) |
-| 8 | Race flow | not started |
+| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit work; pause and edit pending) |
+| 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
+| 4 | Controls | partial (keyboard WASD/arrows/space; touch joystick pending) |
+| 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
+| 6 | Track system | partial (default track renders in 3D; editor UI still pending) |
+| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt; home UI and settings pending) |
+| 8 | Race flow | partial (traffic-light countdown, per-piece checkpoints, lap detection, HUD; pause and invalid-lap logic pending) |
 | 9 | Title, menu, pause | not started |
 | 10 | Physics tuning (dev panel) | not started |
-| 11 | Leaderboards | partial (storage + submit + anti-cheat done; leaderboard UI pending) |
+| 11 | Leaderboards | partial (autosubmit from client + anti-cheat live; leaderboard UI pending) |
 | 12 | Feedback FAB | partial (API route ported; React component pending) |
 | 13 | Audio | not started |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (directory layout + infrastructure files exist) |
+| 16 | Architecture | partial (game loop + Three.js scene + components landed; pause menu, editor, audio, touch pending) |
 | 17 | Deployment (manual setup) | pending user action |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Test harness: 65 Vitest unit tests and 6 Playwright smoke tests, all passing.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice (this change): `/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit. 84 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
 
 ---
 
