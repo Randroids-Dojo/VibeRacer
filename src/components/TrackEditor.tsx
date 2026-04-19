@@ -36,6 +36,11 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     return m
   }, [pieces])
 
+  // pieces[0] is always the start piece. The track path walker in buildTrackPath
+  // starts from it, the car spawns on its entry edge, and the finish line stripe
+  // in the 3D scene sits across the same edge.
+  const startKey = pieces.length > 0 ? `${pieces[0].row},${pieces[0].col}` : null
+
   function clickCell(row: number, col: number) {
     setPieces((prev) => {
       const next = withCellCycled(prev, row, col)
@@ -106,10 +111,12 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
             cols.map((c) => {
               const x = (c - colMin) * CELL
               const y = (r - rowMin) * CELL
-              const piece = cellMap.get(`${r},${c}`)
+              const key = `${r},${c}`
+              const piece = cellMap.get(key)
+              const isStart = key === startKey
               return (
                 <g
-                  key={`${r},${c}`}
+                  key={key}
                   transform={`translate(${x}, ${y})`}
                   onClick={() => clickCell(r, c)}
                   style={{ cursor: 'pointer' }}
@@ -117,11 +124,24 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
                   <rect
                     width={CELL}
                     height={CELL}
-                    fill={piece ? '#222e40' : '#1a2534'}
-                    stroke="#2b3a50"
-                    strokeWidth={1}
+                    fill={piece ? (isStart ? '#1f3a2a' : '#222e40') : '#1a2534'}
+                    stroke={isStart ? '#6ee787' : '#2b3a50'}
+                    strokeWidth={isStart ? 2 : 1}
                   />
                   {piece ? <PieceGlyph piece={piece} /> : null}
+                  {isStart ? (
+                    <text
+                      x={CELL / 2}
+                      y={12}
+                      textAnchor="middle"
+                      fontSize={9}
+                      fontWeight={700}
+                      fill="#6ee787"
+                      style={{ pointerEvents: 'none', letterSpacing: 1 }}
+                    >
+                      START
+                    </text>
+                  ) : null}
                 </g>
               )
             }),
@@ -231,11 +251,7 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
         </>
       ) : null}
-      {/* Tiny entry arrow at south edge so orientation is readable. */}
-      <polygon
-        points={`${cx - 4},${CELL - 10} ${cx + 4},${CELL - 10} ${cx},${CELL - 2}`}
-        fill="#9ad8ff"
-      />
+      <circle cx={cx} cy={CELL - 8} r={3} fill="#9ad8ff" />
     </g>
   )
 }
