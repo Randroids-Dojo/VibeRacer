@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
@@ -19,7 +19,6 @@ interface TrackEditorProps {
 
 const CELL = 56
 const PAD_CELLS = 2
-const LONG_PRESS_MS = 500
 
 export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
   const router = useRouter()
@@ -47,18 +46,6 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
   const startExitDir = getStartExitDir(pieces)
 
-  const pressTimerRef = useRef<number | null>(null)
-  const longPressFiredRef = useRef(false)
-
-  useEffect(() => {
-    return () => {
-      if (pressTimerRef.current !== null) {
-        window.clearTimeout(pressTimerRef.current)
-        pressTimerRef.current = null
-      }
-    }
-  }, [])
-
   function clickCell(row: number, col: number) {
     setPieces((prev) => {
       const next = withCellCycled(prev, row, col)
@@ -68,32 +55,7 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     if (error !== null) setError(null)
   }
 
-  function startPress(row: number, col: number) {
-    longPressFiredRef.current = false
-    if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current)
-    pressTimerRef.current = window.setTimeout(() => {
-      pressTimerRef.current = null
-      longPressFiredRef.current = true
-      onLongPress(row, col)
-    }, LONG_PRESS_MS)
-  }
-
-  function cancelPress() {
-    if (pressTimerRef.current !== null) {
-      window.clearTimeout(pressTimerRef.current)
-      pressTimerRef.current = null
-    }
-  }
-
-  function handleClick(row: number, col: number) {
-    if (longPressFiredRef.current) {
-      longPressFiredRef.current = false
-      return
-    }
-    clickCell(row, col)
-  }
-
-  function onLongPress(row: number, col: number) {
+  function setStartOrReverse(row: number, col: number) {
     const key = cellKey(row, col)
     if (!cellMap.has(key)) return
     setPieces((prev) =>
@@ -148,8 +110,9 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       <div style={header}>
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
-          Click a cell to cycle piece and rotation. Long-press a piece to make
-          it the start, or long-press the start piece to reverse direction.
+          Click a cell to cycle piece and rotation. Right-click (or long-press
+          on touch) to make a piece the start, or to reverse direction if it is
+          already the start.
         </div>
       </div>
 
@@ -171,12 +134,11 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
                 <g
                   key={key}
                   transform={`translate(${x}, ${y})`}
-                  onClick={() => handleClick(r, c)}
-                  onPointerDown={() => startPress(r, c)}
-                  onPointerUp={cancelPress}
-                  onPointerLeave={cancelPress}
-                  onPointerCancel={cancelPress}
-                  onContextMenu={(e) => e.preventDefault()}
+                  onClick={() => clickCell(r, c)}
+                  onContextMenu={(e) => {
+                    e.preventDefault()
+                    setStartOrReverse(r, c)
+                  }}
                   style={{ cursor: 'pointer', touchAction: 'manipulation' }}
                 >
                   <rect
