@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import { WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
 import { buildTrackPath } from '@/game/trackPath'
@@ -19,6 +20,8 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { InitialsPrompt, readStoredInitials } from './InitialsPrompt'
 import { Countdown } from './Countdown'
 import { HUD } from './HUD'
+import { PauseMenu } from './PauseMenu'
+import { FeedbackFab } from './FeedbackFab'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 
 interface GameProps {
@@ -64,14 +67,20 @@ interface HudState {
 const HUD_UPDATE_MS = 50 // Throttle HUD re-renders to ~20Hz; game loop still runs at 60Hz.
 
 function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
+  const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const keys = useKeyboard()
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+  const pendingResetRef = useRef(false)
+  const pausedRef = useRef(false)
+  const pauseStartTsRef = useRef<number | null>(null)
+  const resumeShiftRef = useRef(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [phase, setPhase] = useState<Phase>('countdown')
+  const [paused, setPaused] = useState(false)
   const [hud, setHud] = useState<HudState>(() => ({
     currentMs: 0,
     lastLapMs: null,
@@ -81,6 +90,62 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
     onTrack: true,
     toast: null,
   }))
+
+  const pause = useCallback(() => {
+    if (pausedRef.current) return
+    pausedRef.current = true
+    pauseStartTsRef.current = performance.now()
+    setPaused(true)
+  }, [])
+
+  const resume = useCallback(() => {
+    if (!pausedRef.current) return
+    if (pauseStartTsRef.current !== null) {
+      resumeShiftRef.current += performance.now() - pauseStartTsRef.current
+      pauseStartTsRef.current = null
+    }
+    pausedRef.current = false
+    setPaused(false)
+  }, [])
+
+  const restart = useCallback(() => {
+    pausedRef.current = false
+    pauseStartTsRef.current = null
+    resumeShiftRef.current = 0
+    pendingResetRef.current = true
+    tokenRef.current = null
+    if (toastTimerRef.current) {
+      clearTimeout(toastTimerRef.current)
+      toastTimerRef.current = null
+    }
+    setPaused(false)
+    setHud((prev) => ({
+      ...prev,
+      currentMs: 0,
+      lastLapMs: null,
+      bestSessionMs: null,
+      lapCount: 0,
+      onTrack: true,
+      toast: null,
+    }))
+    setPhase('countdown')
+  }, [])
+
+  const exitToTitle = useCallback(() => {
+    router.push('/')
+  }, [router])
+
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return
+      if (phase !== 'racing') return
+      e.preventDefault()
+      if (pausedRef.current) resume()
+      else pause()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [phase, pause, resume])
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -103,6 +168,11 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
 
     let state = initGameState(path)
     const rig: CameraRigState = initCameraRig(state.x, state.z, state.heading)
+
+    function resetRigFromState() {
+      Object.assign(rig, initCameraRig(state.x, state.z, state.heading))
+    }
+
     bundle.car.position.set(state.x, 0, state.z)
     bundle.car.rotation.y = state.heading
     bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
@@ -116,6 +186,39 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
 
     function loop(ts: number) {
       if (!running) return
+
+      if (pendingResetRef.current) {
+        state = initGameState(path)
+        resetRigFromState()
+        bundle.car.position.set(state.x, 0, state.z)
+        bundle.car.rotation.y = state.heading
+        bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
+        bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+        renderer.render(bundle.scene, bundle.camera)
+        pendingResetRef.current = false
+        pendingRaceStartRef.current = null
+        lastTs = ts
+        raf = requestAnimationFrame(loop)
+        return
+      }
+
+      if (pausedRef.current) {
+        lastTs = ts
+        raf = requestAnimationFrame(loop)
+        return
+      }
+
+      if (resumeShiftRef.current > 0) {
+        if (state.raceStartMs !== null) {
+          state = {
+            ...state,
+            raceStartMs: state.raceStartMs + resumeShiftRef.current,
+          }
+        }
+        resumeShiftRef.current = 0
+        lastTs = ts
+      }
+
       const dtMs = Math.min(50, ts - lastTs)
       lastTs = ts
 
@@ -269,6 +372,29 @@ function GameSession({ slug, versionHash, pieces, initials }: SessionProps) {
         initials={initials}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
+      {phase === 'racing' && !paused ? (
+        <button
+          onClick={pause}
+          aria-label="Pause"
+          style={pauseButton}
+        >
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
+            <rect x="6" y="5" width="4" height="14" rx="1" />
+            <rect x="14" y="5" width="4" height="14" rx="1" />
+          </svg>
+        </button>
+      ) : null}
+      {paused ? (
+        <>
+          <PauseMenu
+            onResume={resume}
+            onRestart={restart}
+            onLeaderboards={noop}
+            onExit={exitToTitle}
+          />
+          <FeedbackFab />
+        </>
+      ) : null}
     </div>
   )
 }
@@ -291,4 +417,22 @@ const loading: React.CSSProperties = {
   placeItems: 'center',
   color: 'white',
   fontFamily: 'system-ui, sans-serif',
+}
+function noop() {}
+
+const pauseButton: React.CSSProperties = {
+  position: 'fixed',
+  left: 16,
+  bottom: 20,
+  width: 48,
+  height: 48,
+  borderRadius: '50%',
+  border: 'none',
+  background: 'rgba(0,0,0,0.55)',
+  color: 'white',
+  cursor: 'pointer',
+  display: 'grid',
+  placeItems: 'center',
+  boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
+  zIndex: 20,
 }

@@ -10,25 +10,25 @@
 
 | § | Section | Status |
 | - | - | - |
-| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit work; pause and edit pending) |
+| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart all work; edit pending) |
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
-| 4 | Controls | partial (keyboard WASD/arrows/space; touch joystick pending) |
+| 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause; touch joystick pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI still pending) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt; home UI and settings pending) |
-| 8 | Race flow | partial (traffic-light countdown, per-piece checkpoints, lap detection, HUD; pause and invalid-lap logic pending) |
-| 9 | Title, menu, pause | not started |
+| 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
+| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Leaderboards/Exit ships; title screen and Leaderboards wiring pending) |
 | 10 | Physics tuning (dev panel) | not started |
-| 11 | Leaderboards | partial (autosubmit from client + anti-cheat live; leaderboard UI pending) |
-| 12 | Feedback FAB | partial (API route ported; React component pending) |
+| 11 | Leaderboards | partial (autosubmit from client + anti-cheat live; leaderboard UI button present but no-op) |
+| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
 | 13 | Audio | not started |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (game loop + Three.js scene + components landed; pause menu, editor, audio, touch pending) |
+| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab landed; editor, audio, touch pending) |
 | 17 | Deployment (manual setup) | pending user action |
 | 18 | Stretch and future | out of scope |
 
-Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 85 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
+Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). Vertical slice commit: `194bf91` (`/[slug]` route drives a default 8-piece oval with countdown, physics, camera, HUD, and auto-submit). 86 Vitest unit tests and 6 Playwright smoke tests passing; production build green.
 
 ---
 
@@ -46,7 +46,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 
 ## 2. Core Game Loop
 
-**Status.** Partial. Countdown, race, HUD, and per-lap auto-submit are live at `/[slug]`. Pause menu, track editing access, load-existing prompt, and PB celebration are not yet wired.
+**Status.** Partial. Countdown, race, HUD, per-lap auto-submit, pause (Esc + on-screen button), and restart are live at `/[slug]`. Track editing access, load-existing prompt, and PB celebration are not yet wired.
 
 1. Player lands on `/<slug>`.
 2. If a track exists at that slug, the latest version loads. If not, a prompt offers "create new track" or "load existing".
@@ -61,8 +61,10 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 - Orchestrator: `src/components/Game.tsx`. `Game` handles initials lifecycle; `GameSession` owns the Three.js canvas, tick loop, phase state (`countdown` | `racing`), and HUD state.
 - Tick: `src/game/tick.ts` is a pure `(state, input, dtMs, nowMs, path, params?) => { state, lapComplete | null }`. Physics is frozen until `startRace()` sets `raceStartMs`. Lap complete event fires when all checkpoints are hit in order and the car re-enters piece 0.
 - Render loop: `requestAnimationFrame` drives tick + Three.js render every frame. HUD `setState` is throttled to ~20 Hz with a reference-equality bail-out so the HUD tree doesn't re-render when nothing visible changed.
-- Tests: `tests/unit/tick.test.ts` covers init state, frozen physics before start, teleporting through all checkpoints to complete a lap, and ignoring unexpected cells.
-- **Not yet landed.** Pause (Section 9), load-existing prompt on a fresh slug, PB fanfare, "Edit Track" entry point from the pause menu.
+- Tests: `tests/unit/tick.test.ts` covers init state, frozen physics before start, teleporting through all checkpoints to complete a lap, ignoring unexpected cells, and invalid-lap reset when the car re-enters the start piece mid-lap.
+- Pause: `GameSession` owns `paused` state plus `pausedRef`, `pauseStartTsRef`, and `resumeShiftRef`. When paused, the RAF loop short-circuits before `tick()` runs. On resume, the accumulated pause duration is added to `state.raceStartMs` so the current lap timer resumes cleanly without a one-frame jump. Pause is only available during the `racing` phase (Esc is ignored during countdown).
+- Restart: `restart()` sets `pendingResetRef.current = true`; the loop re-inits game state, camera rig, and renders one frame. Phase flips back to `countdown` so the 3-2-1-GO sequence plays again. Tokens and session PB are cleared; all-time PB (persisted in `localStorage`) is preserved.
+- **Not yet landed.** Load-existing prompt on a fresh slug, PB fanfare, "Edit Track" entry point from the pause menu.
 
 ---
 
@@ -88,14 +90,15 @@ Trailing third-person camera, Forza Horizon style.
 
 ## 4. Controls
 
-**Status.** Partial. Keyboard (WASD + arrows + Space) is live via the `useKeyboard` hook. Touch joysticks, Esc-to-pause, and the reserved Q/E shift keys are not yet landed.
+**Status.** Partial. Keyboard (WASD + arrows + Space) plus Esc-to-pause are live. Touch joysticks and the reserved Q/E shift keys are not yet landed.
 
 ### Build log
 
 - `src/hooks/useKeyboard.ts` returns `{ current: KeyInput }` (ref-like) where `KeyInput = { forward, backward, left, right, handbrake }`. `keydown`/`keyup` listeners mutate the ref and `preventDefault` for recognized keys.
 - Mapping: `W`/`ArrowUp` = forward, `S`/`ArrowDown` = backward (brake/reverse), `A`/`ArrowLeft` = steer left, `D`/`ArrowRight` = steer right, `Space` = handbrake.
 - The tick loop reads `keys.current` each frame and synthesizes `{ throttle, steer, handbrake }` for `stepPhysics`.
-- **Not yet landed.** Esc pause (Section 9), touch joysticks (mobile spec below), remappable bindings, Q/E shifter keys, gamepad.
+- Esc pause: handled in `Game.tsx` via a window `keydown` listener that is gated on `phase === 'racing'`. First press calls `pause()`, second press calls `resume()`. See Section 9 for the pause lifecycle.
+- **Not yet landed.** Touch joysticks (mobile spec below), remappable bindings, Q/E shifter keys, gamepad.
 
 ### Keyboard (default, remappable in Settings later)
 
@@ -255,7 +258,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown, per-piece checkpoints, lap detection, and the full HUD are live. Animated traffic-light visuals, synth beeps (Section 13), a pause button, and invalid-lap handling are not yet landed.
+**Status.** Partial. Countdown, per-piece checkpoints, lap detection, the full HUD, pause button, and invalid-lap handling are live. Animated traffic-light visuals and synth beeps (Section 13) are not yet landed.
 
 ### Build log
 
@@ -263,7 +266,9 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Lap detection: cell-based. `tick.ts` compares `state.lastCellKey` against the current cell each frame. When the car enters the expected next piece's cell, it records `{cpId, tMs}` where `tMs = nowMs - raceStartMs`. Hitting piece 0 after N-1 CPs fires `LapCompleteEvent` with `{hits, lapTimeMs, lapNumber}` and resets `nextCpId=0`, `hits=[]`, `raceStartMs=nowMs` for the next lap. Lap count increments.
 - HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
 - Endless loop: no lap cap. Every completed lap triggers `handleLapComplete` which updates local PBs and fires `submitLap` (fire-and-forget).
-- **Not yet landed.** Animated 3-light traffic signal, countdown synth beeps (Section 13), always-visible pause button for touch, invalid-lap handling (wrong-order checkpoints currently do not reset the timer), per-track configurable checkpoint count.
+- Invalid-lap reset: in `tick.ts`, if the car transitions into the start-piece cell while `nextCpId > 0` (i.e., the player has partial checkpoint progress but is re-entering the start without a valid lap completion), `hits` is cleared, `nextCpId` is reset to 0, and `raceStartMs` is set to `nowMs`. The lap counter is not incremented and no `LapCompleteEvent` fires. Covers driving backward through the start line or taking a shortcut that re-enters piece 0 early. Test coverage in `tests/unit/tick.test.ts`.
+- Pause button: always-visible circular button at `bottom: 20, left: 16` (rendered only during the `racing` phase and hidden once the pause menu opens). Clicking calls `pause()` which freezes the tick and shows the pause menu.
+- **Not yet landed.** Animated 3-light traffic signal, countdown synth beeps (Section 13), per-track configurable checkpoint count.
 
 ### Start signal
 
@@ -294,7 +299,17 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 
 ## 9. Title Screen, Menu, and Pause
 
-**Status.** Not started.
+**Status.** Partial. Pause menu is live with Resume, Restart, Leaderboards (button present, no-op wired intentionally until §11 ships), and Exit to title. Title screen, Edit Track entry, and Settings entry are not yet started.
+
+### Build log
+
+- `src/components/PauseMenu.tsx` is a dark overlay card with four buttons (Resume highlighted as primary) plus a small "Esc to resume" hint. Pure presentational, no state of its own.
+- `src/components/Game.tsx` owns the pause lifecycle: Esc key while `phase === 'racing'` calls `pause()`; clicking the bottom-left pause button does the same. Both `pause()` and `resume()` set `pausedRef.current` synchronously so the RAF loop picks up the state change on the very next frame.
+- Pause freezes simulation without drift: on pause, `pauseStartTsRef.current = performance.now()`; on resume, `resumeShiftRef.current += performance.now() - pauseStartTsRef.current`. The loop drains the shift by adding it to `state.raceStartMs` so the lap timer resumes where it left off.
+- Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the 3-2-1-GO sequence plays again. All-time PB in `localStorage` is preserved.
+- Exit to title uses Next.js's `useRouter().push('/')`.
+- Leaderboards button: present in the menu but currently a no-op. Will be wired to the UI from Section 11 when that lands.
+- **Not yet landed.** Title screen at `/`, Edit Track entry, Settings entry, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
 ### Title screen (route `/`)
 
@@ -429,7 +444,7 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 
 ## 12. Feedback FAB (port from Epoch, with two modifications)
 
-**Status.** Partial. The API route is ported, targeted at `Randroids-Dojo/VibeRacer`, with em-dashes stripped. The `FeedbackFab.tsx` React component, the single-click-to-input modification, and the pause-only visibility wiring are not yet started.
+**Status.** Partial. API route ships (targets `Randroids-Dojo/VibeRacer`, em-dashes stripped). `FeedbackFab.tsx` component ships with both modifications: single-click opens the input panel directly, and the component is mounted only while the pause menu is open.
 
 ### Source files to port
 
@@ -466,7 +481,9 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 - `src/lib/consoleCapture.ts` ported verbatim from Epoch (no em-dashes in the source, ellipsis U+2026 on truncation is fine).
 - Route is on the Node.js runtime. Requires `GITHUB_PAT` to post issues; returns 500 if the env var is missing.
 - Tests: `tests/unit/api.feedback.test.ts` covers the missing-PAT path, the missing-title path, and a mocked happy path that asserts the GitHub issues URL contains `Randroids-Dojo/VibeRacer`.
-- **Not yet landed.** `components/FeedbackFab.tsx` port, the two modifications (single click to input panel, pause-only visibility), game-state context for `{ isPaused: boolean }`.
+- `src/components/FeedbackFab.tsx` ports the Epoch FAB with both modifications. The `View` type dropped to `'closed' | 'feedback'`; `toggle()` flips between them directly so a single click opens the input panel. Pause-only visibility is handled at the call site: `Game.tsx` only mounts `<FeedbackFab />` inside the `paused` branch alongside `<PauseMenu />`. No `isPaused` context needed since only `Game.tsx` renders the FAB.
+- Styling: inline `React.CSSProperties` objects instead of a global stylesheet, matching the project convention (HUD, PauseMenu, Countdown). FAB pill at `bottom-right`, panel opens immediately above it. Screenshot capture and console log buffering work unchanged from Epoch.
+- **Not yet landed.** Playwright coverage for the FAB open/close/submit flow. Visual polish pass on the panel.
 
 ---
 
@@ -568,7 +585,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the essential React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`) all landed. Still pending: `TrackEditor`, `PauseMenu`, `TitleScreen`, `FeedbackFab`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`) are all in. Still pending: `TrackEditor`, `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `music.ts`, `audio.ts`).
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -618,14 +635,14 @@ src/
 
 - Files currently under `src/`:
   - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`.
+  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`.
   - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig).
   - `hooks/useKeyboard.ts`.
   - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TrackEditor.tsx`, `components/PauseMenu.tsx`, `components/TitleScreen.tsx`, `components/FeedbackFab.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
+- **Not yet landed.** `components/TrackEditor.tsx`, `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/music.ts`, `game/audio.ts`, additional `hooks/*` (useGameState, useTouchControls).
 
 ---
 

@@ -103,6 +103,7 @@ export function tick(
     const expectedPieceIdx = (nextCpId + 1) % N
     const expectedPiece = path.order[expectedPieceIdx].piece
     const expectedKey = cellKey(expectedPiece.row, expectedPiece.col)
+    const startKey = cellKey(path.order[0].piece.row, path.order[0].piece.col)
 
     if (newKey === expectedKey) {
       const tMs = Math.max(1, Math.round(nowMs - raceStartMs))
@@ -118,6 +119,10 @@ export function tick(
         nextCpId = 0
         raceStartMs = nowMs
       }
+    } else if (newKey === startKey && nextCpId > 0) {
+      hits = []
+      nextCpId = 0
+      raceStartMs = nowMs
     }
   }
 

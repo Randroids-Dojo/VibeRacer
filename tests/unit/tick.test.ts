@@ -56,4 +56,26 @@ describe('tick', () => {
     expect(r.state.nextCpId).toBe(0)
     expect(r.state.onTrack).toBe(false)
   })
+
+  it('re-entering start piece mid-lap invalidates hits and restarts the timer', () => {
+    let s = startRace(initGameState(path), 0)
+    // Hit CP 0 by entering piece 1.
+    const piece1 = path.order[1].center
+    s = { ...s, x: piece1.x, z: piece1.z }
+    let r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, 300, path)
+    expect(r.state.nextCpId).toBe(1)
+    expect(r.state.hits.length).toBe(1)
+    s = r.state
+
+    // Now jump back to the start piece without completing the loop.
+    const start = path.order[0].center
+    s = { ...s, x: start.x, z: start.z }
+    r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, 900, path)
+
+    expect(r.lapComplete).toBeNull()
+    expect(r.state.nextCpId).toBe(0)
+    expect(r.state.hits.length).toBe(0)
+    expect(r.state.raceStartMs).toBe(900)
+    expect(r.state.lapCount).toBe(0)
+  })
 })
