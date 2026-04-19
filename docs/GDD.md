@@ -17,7 +17,7 @@
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
 | 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
-| 9 | Title, menu, pause | partial (pause menu with Resume/Restart/Edit Track/Leaderboards/Exit ships; title screen pending) |
+| 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings (stub) ship; Settings pane pending) |
 | 10 | Physics tuning (dev panel) | not started |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
@@ -310,7 +310,7 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 
 ## 9. Title Screen, Menu, and Pause
 
-**Status.** Partial. Pause menu is live with Resume, Restart, Leaderboards (button present, no-op wired intentionally until §11 ships), and Exit to title. Title screen, Edit Track entry, and Settings entry are not yet started.
+**Status.** Partial. Pause menu is live with Resume, Restart, Leaderboards (button present, no-op wired intentionally until §11 ships), and Exit to title. Title screen at `/` is live: a Fredoka-wordmark logo over a Three.js background loop (a car auto-driving the default oval track with a slow orbiting camera), with Play / Load existing track / Settings (disabled stub). Settings pane itself is not yet wired.
 
 ### Build log
 
@@ -321,7 +321,8 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 - Exit to title uses Next.js's `useRouter().push('/')`.
 - Leaderboards button: toggles a sub-view inside the paused overlay. `pauseView: 'menu' | 'leaderboard'` in `Game.tsx` drives which component renders. Leaderboard has a Back button that returns to the menu. Reopening pause always starts on `'menu'`.
 - Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
-- **Not yet landed.** Title screen at `/`, Settings entry, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
+- Title screen at `/`: server component in `src/app/page.tsx`. `next/font/google` loads Fredoka as the cartoony wordmark font (CSS var `--font-cartoony`). `src/components/TitleBackground.tsx` mounts a full-viewport canvas behind the menu that reuses `buildTrackPath` + `buildScene` to render the default oval track, then drives a car along the centerline (straights interpolate entry→exit, corners sample the arc at radius `CELL_SIZE/2`) with a slow camera orbit. Menu is Play (links to `/start`), Load existing track (the `RecentTrackList` of the latest-updated slugs, falling back to sample slugs), and a disabled Settings button.
+- **Not yet landed.** Settings pane, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
 ### Title screen (route `/`)
 

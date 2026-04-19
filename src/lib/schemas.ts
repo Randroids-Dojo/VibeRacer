@@ -49,6 +49,14 @@ export const SlugSchema = z
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'slug must be kebab-case')
 export type Slug = z.infer<typeof SlugSchema>
 
+export function normalizeSlug(raw: string): string {
+  return raw
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .replace(/^-+/, '')
+    .slice(0, 128)
+}
+
 export const VersionHashSchema = z.string().regex(/^[a-f0-9]{64}$/)
 export type VersionHash = z.infer<typeof VersionHashSchema>
 

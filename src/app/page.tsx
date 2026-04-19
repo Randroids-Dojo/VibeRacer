@@ -6,8 +6,11 @@ import {
   type RecentTrackListItem,
 } from '@/components/RecentTrackList'
 import { TitleMusic } from '@/components/TitleMusic'
+import { TitleBackground } from '@/components/TitleBackground'
+import { SlugInput } from '@/components/SlugInput'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
+const PLAY_SLUG = 'start'
 
 export default async function HomePage() {
   const recent = await loadRecentTracksSafe()
@@ -18,81 +21,142 @@ export default async function HomePage() {
 
   return (
     <main style={mainStyle}>
+      <TitleBackground />
       <TitleMusic />
-      <div style={cardStyle}>
-        <h1 style={titleStyle}>VibeRacer</h1>
-        <p style={subStyle}>Every URL is a track. Pick one and drive.</p>
+      <div style={skyFadeStyle} aria-hidden="true" />
+      <section style={stageStyle}>
+        <header style={logoWrapStyle}>
+          <h1 style={logoStyle}>VibeRacer</h1>
+          <p style={tagStyle}>Every URL is a track. Pick one and drive.</p>
+        </header>
 
-        <Link href="/start" style={primaryStyle}>
-          Play at /start
-        </Link>
+        <div style={menuStyle}>
+          <Link href={`/${PLAY_SLUG}`} style={primaryBtnStyle}>
+            Play
+          </Link>
 
-        <div style={sectionStyle}>
-          <div style={sectionHeaderStyle}>{hasRecent ? 'RECENT' : 'TRY'}</div>
-          <RecentTrackList items={items} />
+          <div style={sectionStyle}>
+            <div style={sectionHeaderStyle}>Go to any track</div>
+            <SlugInput />
+          </div>
+
+          <div style={sectionStyle}>
+            <div style={sectionHeaderStyle}>
+              {hasRecent ? 'Load existing track' : 'Try a sample track'}
+            </div>
+            <RecentTrackList items={items} />
+          </div>
+
+          <button type="button" style={settingsBtnStyle} disabled>
+            Settings
+            <span style={soonStyle}>coming soon</span>
+          </button>
         </div>
-
-        <p style={hintStyle}>
-          Or type any path into the URL bar. Every slug is its own track.
-        </p>
-      </div>
+      </section>
     </main>
   )
 }
 
 const mainStyle: React.CSSProperties = {
+  position: 'relative',
   minHeight: '100vh',
   display: 'grid',
   placeItems: 'center',
-  background: 'linear-gradient(180deg, #9ad8ff 0%, #5fa3ce 100%)',
-  fontFamily: 'system-ui, sans-serif',
+  fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
   color: 'white',
   padding: 24,
+  overflow: 'hidden',
+  background: '#9ad8ff',
 }
-const cardStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.35)',
-  padding: 32,
-  borderRadius: 16,
-  textAlign: 'center',
-  width: 460,
+const skyFadeStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 1,
+  background:
+    'radial-gradient(ellipse at center, rgba(0,0,0,0) 40%, rgba(0,0,0,0.35) 100%)',
+  pointerEvents: 'none',
+}
+const stageStyle: React.CSSProperties = {
+  position: 'relative',
+  zIndex: 2,
+  width: 480,
   maxWidth: 'calc(100vw - 32px)',
+  display: 'grid',
+  gap: 28,
 }
-const titleStyle: React.CSSProperties = {
-  fontSize: 52,
+const logoWrapStyle: React.CSSProperties = {
+  textAlign: 'center',
+  textShadow: '0 4px 0 rgba(0,0,0,0.25), 0 10px 24px rgba(0,0,0,0.35)',
+}
+const logoStyle: React.CSSProperties = {
   margin: 0,
-  letterSpacing: 1,
+  fontSize: 88,
+  fontWeight: 700,
+  letterSpacing: 2,
+  lineHeight: 0.95,
+  color: '#fff7b0',
+  WebkitTextStroke: '2px #1b1b1b',
 }
-const subStyle: React.CSSProperties = {
-  marginTop: 4,
-  marginBottom: 24,
-  opacity: 0.85,
+const tagStyle: React.CSSProperties = {
+  marginTop: 8,
+  marginBottom: 0,
+  fontSize: 16,
+  fontWeight: 500,
+  opacity: 0.95,
 }
-const primaryStyle: React.CSSProperties = {
+const menuStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.45)',
+  padding: 24,
+  borderRadius: 18,
+  display: 'grid',
+  gap: 18,
+  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+const primaryBtnStyle: React.CSSProperties = {
   display: 'block',
-  padding: '14px 24px',
+  padding: '18px 24px',
   background: '#e84a5f',
   color: 'white',
   textDecoration: 'none',
-  borderRadius: 10,
-  fontSize: 18,
+  borderRadius: 12,
+  fontSize: 22,
   fontWeight: 700,
-  letterSpacing: 0.3,
+  letterSpacing: 0.5,
+  textAlign: 'center',
+  boxShadow: '0 6px 0 #9c2a3c',
 }
 const sectionStyle: React.CSSProperties = {
-  marginTop: 24,
-  paddingTop: 18,
-  borderTop: '1px solid rgba(255,255,255,0.2)',
-  textAlign: 'left',
+  paddingTop: 8,
 }
 const sectionHeaderStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 12,
   letterSpacing: 1.5,
-  opacity: 0.7,
+  textTransform: 'uppercase',
+  opacity: 0.75,
   marginBottom: 10,
+  fontWeight: 600,
 }
-const hintStyle: React.CSSProperties = {
-  marginTop: 20,
-  fontSize: 13,
-  opacity: 0.7,
-  textAlign: 'center',
+const settingsBtnStyle: React.CSSProperties = {
+  padding: '12px 16px',
+  background: 'rgba(255,255,255,0.1)',
+  color: 'white',
+  border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: 10,
+  fontSize: 15,
+  fontFamily: 'inherit',
+  fontWeight: 600,
+  display: 'flex',
+  justifyContent: 'space-between',
+  alignItems: 'center',
+  cursor: 'not-allowed',
+  opacity: 0.55,
+}
+const soonStyle: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  opacity: 0.8,
+  fontWeight: 500,
 }

@@ -23,6 +23,8 @@ export function getStartExitDir(pieces: Piece[]): Dir | null {
 
 export const CELL_SIZE = 20
 export const TRACK_WIDTH = 8
+export const CORNER_ARC_RADIUS = CELL_SIZE / 2
+const CORNER_ARC_LENGTH = CORNER_ARC_RADIUS * (Math.PI / 2)
 
 export interface Vec3 {
   x: number
@@ -155,39 +157,59 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
   return { order, cellToOrderIdx, spawn, finishLine }
 }
 
+export function samplePieceAt(
+  op: OrderedPiece,
+  t: number,
+): { position: Vec3; heading: number } {
+  if (op.arcCenter === null) {
+    const dx = op.exit.x - op.entry.x
+    const dz = op.exit.z - op.entry.z
+    return {
+      position: { x: op.entry.x + dx * t, y: 0, z: op.entry.z + dz * t },
+      heading: Math.atan2(-dz, dx),
+    }
+  }
+  const { cx, cz } = op.arcCenter
+  const a1 = Math.atan2(op.entry.z - cz, op.entry.x - cx)
+  const a2 = Math.atan2(op.exit.z - cz, op.exit.x - cx)
+  let delta = a2 - a1
+  while (delta > Math.PI) delta -= 2 * Math.PI
+  while (delta < -Math.PI) delta += 2 * Math.PI
+  const a = a1 + delta * t
+  const sign = delta >= 0 ? 1 : -1
+  // Tangent along direction of travel: radius rotated 90 degrees toward the exit.
+  const tx = sign * -Math.sin(a)
+  const tz = sign * Math.cos(a)
+  return {
+    position: {
+      x: cx + CORNER_ARC_RADIUS * Math.cos(a),
+      y: 0,
+      z: cz + CORNER_ARC_RADIUS * Math.sin(a),
+    },
+    heading: Math.atan2(-tz, tx),
+  }
+}
+
 function pointAlongStartPiece(
   first: OrderedPiece,
   arcLength: number,
 ): { position: Vec3; heading: number } {
-  if (first.arcCenter === null) {
-    const travelDir = opposite(first.entryDir)
-    const d = DIR_OFFSETS[travelDir]
-    return {
-      position: {
-        x: first.entry.x + arcLength * d.dc,
-        y: 0,
-        z: first.entry.z + arcLength * d.dr,
-      },
-      heading: dirToHeading(travelDir),
-    }
+  const t =
+    first.arcCenter === null
+      ? arcLength / CELL_SIZE
+      : arcLength / CORNER_ARC_LENGTH
+  return samplePieceAt(first, t)
+}
+
+export function trackCenter(path: TrackPath): { x: number; z: number } {
+  let sumX = 0
+  let sumZ = 0
+  for (const op of path.order) {
+    sumX += op.center.x
+    sumZ += op.center.z
   }
-  const { cx, cz } = first.arcCenter
-  const a1 = Math.atan2(first.entry.z - cz, first.entry.x - cx)
-  const a2 = Math.atan2(first.exit.z - cz, first.exit.x - cx)
-  let delta = a2 - a1
-  while (delta > Math.PI) delta -= 2 * Math.PI
-  while (delta < -Math.PI) delta += 2 * Math.PI
-  const sign = delta >= 0 ? 1 : -1
-  const a = a1 + (sign * arcLength) / HALF
-  const position: Vec3 = {
-    x: cx + HALF * Math.cos(a),
-    y: 0,
-    z: cz + HALF * Math.sin(a),
-  }
-  // Tangent along direction of travel: radius rotated 90 degrees toward the exit.
-  const tx = sign * -Math.sin(a)
-  const tz = sign * Math.cos(a)
-  return { position, heading: Math.atan2(-tz, tx) }
+  const n = path.order.length
+  return { x: sumX / n, z: sumZ / n }
 }
 
 export function worldToCell(x: number, z: number): { row: number; col: number } {

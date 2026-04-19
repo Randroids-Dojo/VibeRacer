@@ -16,6 +16,7 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   CELL_SIZE,
   TRACK_WIDTH,
+  trackCenter,
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
@@ -142,26 +143,19 @@ export function buildScene(path: TrackPath): SceneBundle {
   scene.add(sun)
 
   const trackMat = new MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 })
-  let sumX = 0
-  let sumZ = 0
   for (const op of path.order) {
-    sumX += op.center.x
-    sumZ += op.center.z
     const mesh = new Mesh(pieceGeometry(op), trackMat)
     mesh.position.y = 0.01
     scene.add(mesh)
   }
 
+  const center = trackCenter(path)
   const ground = new Mesh(
     new PlaneGeometry(800, 800),
     new MeshStandardMaterial({ color: 0x6fb26f, roughness: 1.0 }),
   )
   ground.rotation.x = -Math.PI / 2
-  ground.position.set(
-    sumX / path.order.length,
-    -0.02,
-    sumZ / path.order.length,
-  )
+  ground.position.set(center.x, -0.02, center.z)
   scene.add(ground)
 
   const stripeGeom = new PlaneGeometry(TRACK_WIDTH, 1.2)
