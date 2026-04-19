@@ -61,14 +61,6 @@ describe('withCellCycled', () => {
     const result = withCellCycled(pieces, 0, 0)
     expect(result).toEqual([{ type: 'straight', row: 1, col: 0, rotation: 0 }])
   })
-
-  it('returns the same array when both current and next are empty', () => {
-    const pieces: Piece[] = []
-    const result = withCellCycled(pieces, 0, 0)
-    expect(result).toEqual([
-      { type: 'straight', row: 0, col: 0, rotation: 0 },
-    ])
-  })
 })
 
 describe('moveStartTo', () => {

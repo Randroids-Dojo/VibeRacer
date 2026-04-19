@@ -122,9 +122,9 @@ export async function PUT(
       }),
     ])
   } catch (e) {
-    const reason = e instanceof Error ? e.message : 'storage error'
+    console.error('Failed to persist track version', e)
     return NextResponse.json(
-      { error: 'storage unavailable', reason },
+      { error: 'storage unavailable', reason: 'temporary storage failure' },
       { status: 503 },
     )
   }

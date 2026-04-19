@@ -72,11 +72,12 @@ describe('PUT /api/track/[slug]', () => {
     expect(res.status).toBe(401)
   })
 
-  it('returns 503 when storage throws', async () => {
+  it('returns 503 without leaking the underlying error when storage throws', async () => {
     const { PUT } = await import('@/app/api/track/[slug]/route')
     const setSpy = vi
       .spyOn(fake, 'set')
       .mockRejectedValueOnce(new Error('kv exploded'))
+    const errSpy = vi.spyOn(console, 'error').mockImplementation(() => {})
     const req = new NextRequest('http://test/api/track/my-track', {
       method: 'PUT',
       headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
@@ -86,8 +87,10 @@ describe('PUT /api/track/[slug]', () => {
     expect(res.status).toBe(503)
     const body = (await res.json()) as { error: string; reason: string }
     expect(body.error).toBe('storage unavailable')
-    expect(body.reason).toContain('kv exploded')
+    expect(body.reason).not.toContain('kv exploded')
+    expect(errSpy).toHaveBeenCalled()
     setSpy.mockRestore()
+    errSpy.mockRestore()
   })
 })
 

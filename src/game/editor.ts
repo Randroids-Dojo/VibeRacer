@@ -32,7 +32,6 @@ export function withCellCycled(
   const current = idx === -1 ? null : { type: pieces[idx].type, rotation: pieces[idx].rotation }
   const next = cycleCell(current)
 
-  if (idx === -1 && next === null) return pieces
   if (next === null) {
     return pieces.filter((_, i) => i !== idx)
   }
