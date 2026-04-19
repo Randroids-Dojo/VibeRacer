@@ -1,8 +1,9 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
+import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import {
   getBounds,
@@ -46,21 +47,54 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
   const startExitDir = getStartExitDir(pieces)
 
-  function clickCell(row: number, col: number) {
+  // Keep callbacks stable so the memoized <Cell> children are not invalidated
+  // by every render. Latest state is read through refs.
+  const latestRef = useRef({ cellMap, startKey, error })
+  latestRef.current = { cellMap, startKey, error }
+
+  const cycleAt = useCallback((row: number, col: number) => {
     setPieces((prev) => {
       const next = withCellCycled(prev, row, col)
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
-    if (error !== null) setError(null)
+    if (latestRef.current.error !== null) setError(null)
+  }, [])
+
+  const setStartOrReverse = useCallback((row: number, col: number) => {
+    const key = cellKey(row, col)
+    const { cellMap: cm, startKey: sk, error: err } = latestRef.current
+    if (!cm.has(key)) return
+    setPieces((prev) =>
+      key === sk ? reverseStartDirection(prev) : moveStartTo(prev, row, col),
+    )
+    if (err !== null) setError(null)
+  }, [])
+
+  function cellFromEvent(e: React.MouseEvent<SVGSVGElement>): { row: number; col: number } | null {
+    const target = (e.target as Element).closest('[data-row]') as SVGElement | null
+    if (!target) return null
+    const row = Number(target.getAttribute('data-row'))
+    const col = Number(target.getAttribute('data-col'))
+    if (Number.isNaN(row) || Number.isNaN(col)) return null
+    return { row, col }
   }
 
-  function setStartOrReverse(row: number, col: number) {
-    const key = cellKey(row, col)
-    if (!cellMap.has(key)) return
-    setPieces((prev) =>
-      key === startKey ? reverseStartDirection(prev) : moveStartTo(prev, row, col),
-    )
+  const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const cell = cellFromEvent(e)
+    if (cell) cycleAt(cell.row, cell.col)
+  }, [cycleAt])
+
+  const handleSvgContextMenu = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    const cell = cellFromEvent(e)
+    if (!cell) return
+    e.preventDefault()
+    setStartOrReverse(cell.row, cell.col)
+  }, [setStartOrReverse])
+
+  function reverseDirection() {
+    if (pieces.length < 2) return
+    setPieces((prev) => reverseStartDirection(prev))
     if (error !== null) setError(null)
   }
 
@@ -111,8 +145,8 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
           Click a cell to cycle piece and rotation. Right-click (or long-press
-          on touch) to make a piece the start, or to reverse direction if it is
-          already the start.
+          on touch) a piece to make it the start. Reverse direction with the
+          button below.
         </div>
       </div>
 
@@ -121,7 +155,14 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
           width={width}
           height={height}
           viewBox={`0 0 ${width} ${height}`}
-          style={{ display: 'block', background: '#162233' }}
+          style={{
+            display: 'block',
+            background: '#162233',
+            cursor: 'pointer',
+            touchAction: 'manipulation',
+          }}
+          onClick={handleSvgClick}
+          onContextMenu={handleSvgContextMenu}
         >
           {rows.map((r) =>
             cols.map((c) => {
@@ -131,48 +172,16 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
               const piece = cellMap.get(key)
               const isStart = key === startKey
               return (
-                <g
+                <Cell
                   key={key}
-                  transform={`translate(${x}, ${y})`}
-                  onClick={() => clickCell(r, c)}
-                  onContextMenu={(e) => {
-                    e.preventDefault()
-                    setStartOrReverse(r, c)
-                  }}
-                  style={{ cursor: 'pointer', touchAction: 'manipulation' }}
-                >
-                  <rect
-                    width={CELL}
-                    height={CELL}
-                    fill={piece ? (isStart ? '#1f3a2a' : '#222e40') : '#1a2534'}
-                    stroke={isStart ? '#6ee787' : '#2b3a50'}
-                    strokeWidth={isStart ? 2 : 1}
-                  />
-                  {piece ? <PieceGlyph piece={piece} /> : null}
-                  {isStart ? (
-                    <>
-                      <text
-                        x={CELL / 2}
-                        y={12}
-                        textAnchor="middle"
-                        fontSize={9}
-                        fontWeight={700}
-                        fill="#6ee787"
-                        style={{ pointerEvents: 'none', letterSpacing: 1 }}
-                      >
-                        START
-                      </text>
-                      {startExitDir !== null ? (
-                        <polygon
-                          points={`${CELL / 2 - 5},${CELL / 2 + 3} ${CELL / 2 + 5},${CELL / 2 + 3} ${CELL / 2},${CELL / 2 - 5}`}
-                          transform={`rotate(${startExitDir * 90} ${CELL / 2} ${CELL / 2})`}
-                          fill="#6ee787"
-                          style={{ pointerEvents: 'none' }}
-                        />
-                      ) : null}
-                    </>
-                  ) : null}
-                </g>
+                  row={r}
+                  col={c}
+                  x={x}
+                  y={y}
+                  piece={piece}
+                  isStart={isStart}
+                  startExitDir={isStart ? startExitDir : null}
+                />
               )
             }),
           )}
@@ -189,6 +198,13 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
         </div>
         <div style={buttons}>
           <button onClick={cancel} style={btnGhost}>Cancel</button>
+          <button
+            onClick={reverseDirection}
+            style={btnGhost}
+            disabled={pieces.length < 2}
+          >
+            Reverse direction
+          </button>
           <button onClick={clearAll} style={btnGhost} disabled={pieces.length === 0}>
             Clear
           </button>
@@ -208,6 +224,54 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     </div>
   )
 }
+
+interface CellProps {
+  row: number
+  col: number
+  x: number
+  y: number
+  piece: Piece | undefined
+  isStart: boolean
+  startExitDir: Dir | null
+}
+
+const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }: CellProps) {
+  return (
+    <g transform={`translate(${x}, ${y})`} data-row={row} data-col={col}>
+      <rect
+        width={CELL}
+        height={CELL}
+        fill={piece ? (isStart ? '#1f3a2a' : '#222e40') : '#1a2534'}
+        stroke={isStart ? '#6ee787' : '#2b3a50'}
+        strokeWidth={isStart ? 2 : 1}
+      />
+      {piece ? <PieceGlyph piece={piece} /> : null}
+      {isStart ? (
+        <>
+          <text
+            x={CELL / 2}
+            y={12}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight={700}
+            fill="#6ee787"
+            style={{ pointerEvents: 'none', letterSpacing: 1 }}
+          >
+            START
+          </text>
+          {startExitDir !== null ? (
+            <polygon
+              points={`${CELL / 2 - 5},${CELL / 2 + 3} ${CELL / 2 + 5},${CELL / 2 + 3} ${CELL / 2},${CELL / 2 - 5}`}
+              transform={`rotate(${startExitDir * 90} ${CELL / 2} ${CELL / 2})`}
+              fill="#6ee787"
+              style={{ pointerEvents: 'none' }}
+            />
+          ) : null}
+        </>
+      ) : null}
+    </g>
+  )
+})
 
 function PieceGlyph({ piece }: { piece: Piece }) {
   const cx = CELL / 2
