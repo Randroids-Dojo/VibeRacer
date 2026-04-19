@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
+import { formatDate, formatIsoDate } from '@/lib/formatDate'
 
 interface LeaderboardProps {
   slug: string
@@ -47,22 +48,6 @@ function formatLapTime(ms: number): string {
   const seconds = Math.floor((total % 60000) / 1000)
   const millis = total % 1000
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
-}
-
-function formatTimestamp(ts: number): string {
-  const d = new Date(ts)
-  if (Number.isNaN(d.getTime())) return ''
-  const yyyy = d.getFullYear()
-  const mm = String(d.getMonth() + 1).padStart(2, '0')
-  const dd = String(d.getDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
-
-function formatIsoDate(iso: string | null): string {
-  if (!iso) return ''
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return ''
-  return formatTimestamp(t)
 }
 
 function shortHash(hash: string): string {
@@ -246,7 +231,7 @@ export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
                   <div style={{ ...cell, ...timeCell, fontFamily: 'monospace' }}>
                     {formatLapTime(e.lapTimeMs)}
                   </div>
-                  <div style={{ ...cell, ...dateCell }}>{formatTimestamp(e.ts)}</div>
+                  <div style={{ ...cell, ...dateCell }}>{formatDate(e.ts)}</div>
                 </div>
               ))}
             </div>

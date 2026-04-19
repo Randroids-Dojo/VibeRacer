@@ -1,6 +1,7 @@
 import { TrackVersionSchema, type Piece } from '@/lib/schemas'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
+import { hasKvConfigured } from '@/lib/kv'
 
 const DEFAULT_TRACK = {
   pieces: DEFAULT_TRACK_PIECES,
@@ -9,23 +10,28 @@ const DEFAULT_TRACK = {
 
 export type LoadTrackResult =
   | { kind: 'ok'; pieces: Piece[]; versionHash: string }
+  | { kind: 'fresh' }
   | { kind: 'notFound' }
+
+function defaultOrNotFound(requestedHash: string | null): LoadTrackResult {
+  if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
+    return { kind: 'notFound' }
+  }
+  return { kind: 'ok', ...DEFAULT_TRACK }
+}
 
 export async function loadTrack(
   slug: string,
   requestedHash: string | null = null,
 ): Promise<LoadTrackResult> {
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
-      return { kind: 'notFound' }
-    }
-    return { kind: 'ok', ...DEFAULT_TRACK }
-  }
+  if (!hasKvConfigured()) return defaultOrNotFound(requestedHash)
   try {
     const { getKv, kvKeys } = await import('@/lib/kv')
     const kv = getKv()
-    const targetHash =
-      requestedHash ?? (await kv.get<string>(kvKeys.trackLatest(slug)))
+    const latestHash = requestedHash
+      ? null
+      : await kv.get<string>(kvKeys.trackLatest(slug))
+    const targetHash = requestedHash ?? latestHash
     if (targetHash) {
       const version = await kv.get(kvKeys.trackVersion(slug, targetHash))
       const parsed = TrackVersionSchema.safeParse(version)
@@ -36,14 +42,12 @@ export async function loadTrack(
           versionHash: targetHash,
         }
       }
-      // A specific version was requested but not found: do not silently serve latest.
+      // A specific-version miss must not fall through to latest.
       if (requestedHash) return { kind: 'notFound' }
     }
+    if (!requestedHash && !latestHash) return { kind: 'fresh' }
   } catch {
-    // Fall through to default when KV is unavailable.
+    // Degrade to the default track so visitors still get something playable.
   }
-  if (requestedHash && requestedHash !== DEFAULT_TRACK.versionHash) {
-    return { kind: 'notFound' }
-  }
-  return { kind: 'ok', ...DEFAULT_TRACK }
+  return defaultOrNotFound(requestedHash)
 }

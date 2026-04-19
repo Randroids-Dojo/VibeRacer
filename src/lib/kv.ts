@@ -7,6 +7,10 @@ function requireEnv(name: string): string {
   return value
 }
 
+export function hasKvConfigured(): boolean {
+  return Boolean(process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN)
+}
+
 let _kv: Redis | null = null
 
 export function getKv(): Redis {

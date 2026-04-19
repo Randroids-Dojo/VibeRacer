@@ -1,15 +1,16 @@
 import { notFound } from 'next/navigation'
 import { SlugSchema, VersionHashSchema } from '@/lib/schemas'
+import { hasKvConfigured } from '@/lib/kv'
 import { loadTrack } from '@/lib/loadTrack'
 import { Game, type OverallRecord } from '@/components/Game'
+import { SlugLanding } from '@/components/SlugLanding'
+import { loadRecentTracksSafe } from '@/lib/recentTracks'
 
 async function loadOverallRecord(
   slug: string,
   versionHash: string,
 ): Promise<OverallRecord | null> {
-  if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
-    return null
-  }
+  if (!hasKvConfigured()) return null
   try {
     const { getKv } = await import('@/lib/kv')
     const { readLeaderboard } = await import('@/lib/leaderboard')
@@ -42,6 +43,10 @@ export default async function SlugPage(ctx: {
 
   const loaded = await loadTrack(slug, requestedHash)
   if (loaded.kind === 'notFound') notFound()
+  if (loaded.kind === 'fresh') {
+    const recent = await loadRecentTracksSafe(slug)
+    return <SlugLanding slug={slug} recent={recent} />
+  }
   const { pieces, versionHash } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
 

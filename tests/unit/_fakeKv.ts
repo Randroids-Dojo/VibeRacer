@@ -94,10 +94,11 @@ export class FakeKv {
     key: string,
     start: number,
     stop: number,
-    opts?: { withScores?: boolean },
+    opts?: { withScores?: boolean; rev?: boolean },
   ): Promise<string[]> {
     const list = this.zsets.get(key) ?? []
-    const slice = list.slice(start, stop === -1 ? undefined : stop + 1)
+    const ordered = opts?.rev ? [...list].reverse() : list
+    const slice = ordered.slice(start, stop === -1 ? undefined : stop + 1)
     if (opts?.withScores) {
       return slice.flatMap((e) => [e.member, String(e.score)])
     }
