@@ -1,6 +1,15 @@
 import { describe, it, expect } from 'vitest'
-import { cycleCell, withCellCycled, getBounds } from '@/game/editor'
+import {
+  cycleCell,
+  getBounds,
+  getStartExitDir,
+  moveStartTo,
+  reverseStartDirection,
+  withCellCycled,
+} from '@/game/editor'
+import { buildTrackPath } from '@/game/trackPath'
 import type { Piece } from '@/lib/schemas'
+import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 
 describe('cycleCell', () => {
   it('empty cycles to straight/0', () => {
@@ -59,6 +68,89 @@ describe('withCellCycled', () => {
     expect(result).toEqual([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
     ])
+  })
+})
+
+describe('moveStartTo', () => {
+  it('rotates the default track so a chosen cell becomes pieces[0]', () => {
+    const target = DEFAULT_TRACK_PIECES[3]
+    const rotated = moveStartTo(DEFAULT_TRACK_PIECES, target.row, target.col)
+    expect(rotated[0]).toEqual(target)
+    expect(rotated.length).toBe(DEFAULT_TRACK_PIECES.length)
+    // Every original piece is still present.
+    const expectSet = new Set(
+      DEFAULT_TRACK_PIECES.map((p) => `${p.row},${p.col}`),
+    )
+    const gotSet = new Set(rotated.map((p) => `${p.row},${p.col}`))
+    expect(gotSet).toEqual(expectSet)
+  })
+
+  it('preserves the travel order after rotation', () => {
+    const target = DEFAULT_TRACK_PIECES[2]
+    const rotated = moveStartTo(DEFAULT_TRACK_PIECES, target.row, target.col)
+    const beforePath = buildTrackPath(DEFAULT_TRACK_PIECES)
+    const afterPath = buildTrackPath(rotated)
+    // After rotating, the sequence should be the same loop traversal starting
+    // at the new index. So afterPath.order[i].piece should equal
+    // beforePath.order[(i + 2) % N].piece.
+    const N = beforePath.order.length
+    for (let i = 0; i < N; i++) {
+      expect(afterPath.order[i].piece).toEqual(
+        beforePath.order[(i + 2) % N].piece,
+      )
+    }
+  })
+
+  it('returns unchanged pieces when target is already start', () => {
+    const result = moveStartTo(
+      DEFAULT_TRACK_PIECES,
+      DEFAULT_TRACK_PIECES[0].row,
+      DEFAULT_TRACK_PIECES[0].col,
+    )
+    expect(result).toBe(DEFAULT_TRACK_PIECES)
+  })
+
+  it('returns unchanged pieces when target is not on the track', () => {
+    const result = moveStartTo(DEFAULT_TRACK_PIECES, 99, 99)
+    expect(result).toBe(DEFAULT_TRACK_PIECES)
+  })
+})
+
+describe('reverseStartDirection', () => {
+  it('keeps pieces[0] and reverses the rest', () => {
+    const reversed = reverseStartDirection(DEFAULT_TRACK_PIECES)
+    expect(reversed[0]).toEqual(DEFAULT_TRACK_PIECES[0])
+    for (let i = 1; i < DEFAULT_TRACK_PIECES.length; i++) {
+      expect(reversed[i]).toEqual(
+        DEFAULT_TRACK_PIECES[DEFAULT_TRACK_PIECES.length - i],
+      )
+    }
+  })
+
+  it('flips the exit direction used by buildTrackPath', () => {
+    const originalExit = buildTrackPath(DEFAULT_TRACK_PIECES).order[0].exitDir
+    const reversedExit = buildTrackPath(
+      reverseStartDirection(DEFAULT_TRACK_PIECES),
+    ).order[0].exitDir
+    expect(reversedExit).not.toBe(originalExit)
+  })
+})
+
+describe('getStartExitDir', () => {
+  it('returns null for an empty track', () => {
+    expect(getStartExitDir([])).toBeNull()
+  })
+
+  it('returns the connector that points at pieces[1]', () => {
+    // pieces[0] straight at (1,0) rot 0 has connectors [S(2), N(0)].
+    // pieces[1] at (0, 0) is one cell north, so exit is N = 0.
+    expect(getStartExitDir(DEFAULT_TRACK_PIECES)).toBe(0)
+  })
+
+  it('flips after reverseStartDirection', () => {
+    const before = getStartExitDir(DEFAULT_TRACK_PIECES)
+    const after = getStartExitDir(reverseStartDirection(DEFAULT_TRACK_PIECES))
+    expect(after).not.toBe(before)
   })
 })
 

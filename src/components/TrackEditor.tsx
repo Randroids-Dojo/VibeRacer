@@ -1,10 +1,16 @@
 'use client'
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
 import { cellKey, validateClosedLoop } from '@/game/track'
-import { getBounds, withCellCycled } from '@/game/editor'
+import {
+  getBounds,
+  getStartExitDir,
+  moveStartTo,
+  reverseStartDirection,
+  withCellCycled,
+} from '@/game/editor'
 
 interface TrackEditorProps {
   slug: string
@@ -13,6 +19,7 @@ interface TrackEditorProps {
 
 const CELL = 56
 const PAD_CELLS = 2
+const LONG_PRESS_MS = 500
 
 export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
   const router = useRouter()
@@ -38,6 +45,19 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
 
   const startKey =
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
+  const startExitDir = getStartExitDir(pieces)
+
+  const pressTimerRef = useRef<number | null>(null)
+  const longPressFiredRef = useRef(false)
+
+  useEffect(() => {
+    return () => {
+      if (pressTimerRef.current !== null) {
+        window.clearTimeout(pressTimerRef.current)
+        pressTimerRef.current = null
+      }
+    }
+  }, [])
 
   function clickCell(row: number, col: number) {
     setPieces((prev) => {
@@ -45,6 +65,40 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
+    if (error !== null) setError(null)
+  }
+
+  function startPress(row: number, col: number) {
+    longPressFiredRef.current = false
+    if (pressTimerRef.current !== null) window.clearTimeout(pressTimerRef.current)
+    pressTimerRef.current = window.setTimeout(() => {
+      pressTimerRef.current = null
+      longPressFiredRef.current = true
+      onLongPress(row, col)
+    }, LONG_PRESS_MS)
+  }
+
+  function cancelPress() {
+    if (pressTimerRef.current !== null) {
+      window.clearTimeout(pressTimerRef.current)
+      pressTimerRef.current = null
+    }
+  }
+
+  function handleClick(row: number, col: number) {
+    if (longPressFiredRef.current) {
+      longPressFiredRef.current = false
+      return
+    }
+    clickCell(row, col)
+  }
+
+  function onLongPress(row: number, col: number) {
+    const key = cellKey(row, col)
+    if (!cellMap.has(key)) return
+    setPieces((prev) =>
+      key === startKey ? reverseStartDirection(prev) : moveStartTo(prev, row, col),
+    )
     if (error !== null) setError(null)
   }
 
@@ -94,7 +148,8 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       <div style={header}>
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
-          Click a cell to cycle: empty, straight, left 90, right 90, across all four rotations.
+          Click a cell to cycle piece and rotation. Long-press a piece to make
+          it the start, or long-press the start piece to reverse direction.
         </div>
       </div>
 
@@ -116,8 +171,13 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
                 <g
                   key={key}
                   transform={`translate(${x}, ${y})`}
-                  onClick={() => clickCell(r, c)}
-                  style={{ cursor: 'pointer' }}
+                  onClick={() => handleClick(r, c)}
+                  onPointerDown={() => startPress(r, c)}
+                  onPointerUp={cancelPress}
+                  onPointerLeave={cancelPress}
+                  onPointerCancel={cancelPress}
+                  onContextMenu={(e) => e.preventDefault()}
+                  style={{ cursor: 'pointer', touchAction: 'manipulation' }}
                 >
                   <rect
                     width={CELL}
@@ -128,17 +188,27 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
                   />
                   {piece ? <PieceGlyph piece={piece} /> : null}
                   {isStart ? (
-                    <text
-                      x={CELL / 2}
-                      y={12}
-                      textAnchor="middle"
-                      fontSize={9}
-                      fontWeight={700}
-                      fill="#6ee787"
-                      style={{ pointerEvents: 'none', letterSpacing: 1 }}
-                    >
-                      START
-                    </text>
+                    <>
+                      <text
+                        x={CELL / 2}
+                        y={12}
+                        textAnchor="middle"
+                        fontSize={9}
+                        fontWeight={700}
+                        fill="#6ee787"
+                        style={{ pointerEvents: 'none', letterSpacing: 1 }}
+                      >
+                        START
+                      </text>
+                      {startExitDir !== null ? (
+                        <polygon
+                          points={`${CELL / 2 - 5},${CELL / 2 + 3} ${CELL / 2 + 5},${CELL / 2 + 3} ${CELL / 2},${CELL / 2 - 5}`}
+                          transform={`rotate(${startExitDir * 90} ${CELL / 2} ${CELL / 2})`}
+                          fill="#6ee787"
+                          style={{ pointerEvents: 'none' }}
+                        />
+                      ) : null}
+                    </>
                   ) : null}
                 </g>
               )

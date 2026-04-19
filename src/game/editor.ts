@@ -1,4 +1,7 @@
 import type { Piece, PieceType, Rotation } from '@/lib/schemas'
+import { buildTrackPath, getStartExitDir } from './trackPath'
+
+export { getStartExitDir }
 
 const PIECE_TYPES: PieceType[] = ['straight', 'left90', 'right90']
 const ROTATIONS: Rotation[] = [0, 90, 180, 270]
@@ -38,6 +41,32 @@ export function withCellCycled(
   const copy = pieces.slice()
   copy[idx] = updated
   return copy
+}
+
+export function moveStartTo(
+  pieces: Piece[],
+  row: number,
+  col: number,
+): Piece[] {
+  if (pieces.length === 0) return pieces
+  if (pieces[0].row === row && pieces[0].col === col) return pieces
+  try {
+    const path = buildTrackPath(pieces)
+    const idx = path.order.findIndex(
+      (o) => o.piece.row === row && o.piece.col === col,
+    )
+    if (idx <= 0) return pieces
+    const rotated = [...path.order.slice(idx), ...path.order.slice(0, idx)]
+    return rotated.map((o) => o.piece)
+  } catch {
+    return pieces
+  }
+}
+
+export function reverseStartDirection(pieces: Piece[]): Piece[] {
+  if (pieces.length < 2) return pieces
+  const [first, ...rest] = pieces
+  return [first, ...rest.slice().reverse()]
 }
 
 export function getBounds(pieces: Piece[]): {

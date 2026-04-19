@@ -1,6 +1,26 @@
 import type { Piece } from '@/lib/schemas'
 import { DIR_OFFSETS, cellKey, connectorsOf, opposite, type Dir } from './track'
 
+// Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
+// whichever connector points at pieces[1] is the exit. Falls back to connB
+// when pieces[1] is absent or non-adjacent.
+export function getStartExitDir(pieces: Piece[]): Dir | null {
+  if (pieces.length === 0) return null
+  const first = pieces[0]
+  const [connA, connB] = connectorsOf(first)
+  if (pieces.length >= 2) {
+    const second = pieces[1]
+    const aOff = DIR_OFFSETS[connA]
+    if (
+      first.row + aOff.dr === second.row &&
+      first.col + aOff.dc === second.col
+    ) {
+      return connA
+    }
+  }
+  return connB
+}
+
 export const CELL_SIZE = 20
 export const TRACK_WIDTH = 8
 
@@ -85,8 +105,8 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
 
   const first = pieces[0]
   const [connA, connB] = connectorsOf(first)
-  let entryDir: Dir = connA
-  let exitDir: Dir = connB
+  let exitDir: Dir = getStartExitDir(pieces)!
+  let entryDir: Dir = exitDir === connA ? connB : connA
   let current = first
 
   const order: OrderedPiece[] = []
