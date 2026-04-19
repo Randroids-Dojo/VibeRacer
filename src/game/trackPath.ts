@@ -124,11 +124,8 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
     cellToOrderIdx.set(cellKey(p.row, p.col), i)
   }
 
-  // Spawn at the entry edge midpoint, stepped SPAWN_INSET units inward along the
-  // tangent. For straights the entry-to-exit line passes through the cell center,
-  // so either point is on the centerline. For corners the cell center is off the
-  // arc by ~4 units; the entry midpoint lies exactly on the arc, so stepping
-  // inward from there keeps the car on-track and aligned with the arc tangent.
+  // Cell center sits off the arc for corners; entry midpoint lies on the arc.
+  // Spawn there, stepped inward so worldToCell does not round into the neighbor.
   const firstOrdered = order[0]
   const travelDir = opposite(firstOrdered.entryDir)
   const inward = DIR_OFFSETS[travelDir]

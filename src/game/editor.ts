@@ -3,13 +3,8 @@ import type { Piece, PieceType, Rotation } from '@/lib/schemas'
 const PIECE_TYPES: PieceType[] = ['straight', 'left90', 'right90']
 const ROTATIONS: Rotation[] = [0, 90, 180, 270]
 
-export interface CellSlot {
-  type: PieceType
-  rotation: Rotation
-}
+export type CellSlot = Pick<Piece, 'type' | 'rotation'>
 
-// Empty -> straight/0, 90, 180, 270 -> left90/0..270 -> right90/0..270 -> empty.
-// Cycle keeps the same cell; the caller writes the result back to the pieces array.
 export function cycleCell(current: CellSlot | null): CellSlot | null {
   if (current === null) {
     return { type: 'straight', rotation: 0 }

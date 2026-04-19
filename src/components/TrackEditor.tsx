@@ -3,7 +3,7 @@ import { useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
-import { validateClosedLoop } from '@/game/track'
+import { cellKey, validateClosedLoop } from '@/game/track'
 import { getBounds, withCellCycled } from '@/game/editor'
 
 interface TrackEditorProps {
@@ -32,14 +32,12 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
 
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
-    for (const p of pieces) m.set(`${p.row},${p.col}`, p)
+    for (const p of pieces) m.set(cellKey(p.row, p.col), p)
     return m
   }, [pieces])
 
-  // pieces[0] is always the start piece. The track path walker in buildTrackPath
-  // starts from it, the car spawns on its entry edge, and the finish line stripe
-  // in the 3D scene sits across the same edge.
-  const startKey = pieces.length > 0 ? `${pieces[0].row},${pieces[0].col}` : null
+  const startKey =
+    pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
 
   function clickCell(row: number, col: number) {
     setPieces((prev) => {
@@ -47,7 +45,7 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
-    setError(null)
+    if (error !== null) setError(null)
   }
 
   function clearAll() {
@@ -111,7 +109,7 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
             cols.map((c) => {
               const x = (c - colMin) * CELL
               const y = (r - rowMin) * CELL
-              const key = `${r},${c}`
+              const key = cellKey(r, c)
               const piece = cellMap.get(key)
               const isStart = key === startKey
               return (
@@ -180,8 +178,6 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
 }
 
 function PieceGlyph({ piece }: { piece: Piece }) {
-  // Piece is drawn at rotation 0 in local coords, then transformed.
-  // Coordinate system: +x right, +y down. North in-world = -y (up on screen).
   const cx = CELL / 2
   const cy = CELL / 2
   const stroke = '#ffd36b'
@@ -211,7 +207,6 @@ function PieceGlyph({ piece }: { piece: Piece }) {
       ) : null}
       {piece.type === 'right90' ? (
         <>
-          {/* Enters from south, exits east. Arc centered at (CELL, CELL). */}
           <path
             d={`M ${cx - roadWidth / 2} ${CELL}
                 L ${cx - roadWidth / 2} ${cx + roadWidth / 2}
@@ -232,7 +227,6 @@ function PieceGlyph({ piece }: { piece: Piece }) {
       ) : null}
       {piece.type === 'left90' ? (
         <>
-          {/* Enters from south, exits west. Arc centered at (0, CELL). */}
           <path
             d={`M ${cx + roadWidth / 2} ${CELL}
                 L ${cx + roadWidth / 2} ${cx + roadWidth / 2}

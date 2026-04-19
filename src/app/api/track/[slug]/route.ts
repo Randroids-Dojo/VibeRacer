@@ -109,16 +109,18 @@ export async function PUT(
 
   try {
     const kv = getKv()
-    await kv.set(kvKeys.trackVersion(slug, hash), JSON.stringify(version))
-    await kv.set(kvKeys.trackLatest(slug), hash)
-    await kv.lpush(
-      kvKeys.trackVersions(slug),
-      JSON.stringify({ hash, createdAt }),
-    )
-    await kv.zadd(kvKeys.trackIndex(), {
-      score: Date.now(),
-      member: slug,
-    })
+    await Promise.all([
+      kv.set(kvKeys.trackVersion(slug, hash), JSON.stringify(version)),
+      kv.set(kvKeys.trackLatest(slug), hash),
+      kv.lpush(
+        kvKeys.trackVersions(slug),
+        JSON.stringify({ hash, createdAt }),
+      ),
+      kv.zadd(kvKeys.trackIndex(), {
+        score: Date.now(),
+        member: slug,
+      }),
+    ])
   } catch (e) {
     const reason = e instanceof Error ? e.message : 'storage error'
     return NextResponse.json(
