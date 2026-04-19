@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
 import { SlugSchema } from '@/lib/schemas'
-import { loadLatestTrack } from '@/lib/loadTrack'
+import { loadTrack } from '@/lib/loadTrack'
 import { TrackEditor } from '@/components/TrackEditor'
 
 export default async function EditPage(ctx: { params: Promise<{ slug: string }> }) {
@@ -8,7 +8,8 @@ export default async function EditPage(ctx: { params: Promise<{ slug: string }> 
   const parsed = SlugSchema.safeParse(raw)
   if (!parsed.success) notFound()
   const slug = parsed.data
-  const { pieces } = await loadLatestTrack(slug)
+  const loaded = await loadTrack(slug)
+  if (loaded.kind === 'notFound') notFound()
 
-  return <TrackEditor slug={slug} initialPieces={pieces} />
+  return <TrackEditor slug={slug} initialPieces={loaded.pieces} />
 }

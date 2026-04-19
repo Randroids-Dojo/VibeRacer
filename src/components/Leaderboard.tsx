@@ -1,5 +1,6 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
+import { useRouter } from 'next/navigation'
 
 interface LeaderboardProps {
   slug: string
@@ -15,15 +16,30 @@ interface Entry {
   isMe: boolean
 }
 
-interface ApiResponse {
+interface LeaderboardApiResponse {
   entries: Entry[]
   meBestRank: number | null
 }
 
-type LoadState =
+interface VersionOption {
+  hash: string
+  createdAt: string | null
+}
+
+interface TrackApiResponse {
+  versionHash: string | null
+  versions: Array<{ hash: string; createdAt: string }>
+}
+
+type BoardState =
   | { kind: 'loading' }
   | { kind: 'ready'; entries: Entry[]; meBestRank: number | null }
   | { kind: 'error'; message: string }
+
+type VersionsState =
+  | { kind: 'loading' }
+  | { kind: 'ready'; latestHash: string | null; versions: VersionOption[] }
+  | { kind: 'error' }
 
 function formatLapTime(ms: number): string {
   const total = Math.max(0, Math.round(ms))
@@ -33,7 +49,7 @@ function formatLapTime(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
 }
 
-function formatDate(ts: number): string {
+function formatTimestamp(ts: number): string {
   const d = new Date(ts)
   if (Number.isNaN(d.getTime())) return ''
   const yyyy = d.getFullYear()
@@ -42,28 +58,80 @@ function formatDate(ts: number): string {
   return `${yyyy}-${mm}-${dd}`
 }
 
+function formatIsoDate(iso: string | null): string {
+  if (!iso) return ''
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return ''
+  return formatTimestamp(t)
+}
+
+function shortHash(hash: string): string {
+  return hash.slice(0, 8)
+}
+
 export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
-  const [state, setState] = useState<LoadState>({ kind: 'loading' })
+  const router = useRouter()
+  const [selectedHash, setSelectedHash] = useState<string>(versionHash)
+  const [board, setBoard] = useState<BoardState>({ kind: 'loading' })
+  const [versionsState, setVersionsState] = useState<VersionsState>({
+    kind: 'loading',
+  })
 
   useEffect(() => {
     let cancelled = false
     async function load() {
       try {
+        const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
+          cache: 'no-store',
+        })
+        if (!res.ok) throw new Error(`status ${res.status}`)
+        const body = (await res.json()) as TrackApiResponse
+        if (cancelled) return
+        const versions: VersionOption[] = Array.isArray(body.versions)
+          ? body.versions
+              .filter((v) => v && typeof v.hash === 'string')
+              .map((v) => ({ hash: v.hash, createdAt: v.createdAt }))
+          : []
+        const hasCurrent = versions.some((v) => v.hash === versionHash)
+        if (!hasCurrent) {
+          versions.unshift({ hash: versionHash, createdAt: null })
+        }
+        setVersionsState({
+          kind: 'ready',
+          latestHash: body.versionHash ?? null,
+          versions,
+        })
+      } catch {
+        if (cancelled) return
+        setVersionsState({ kind: 'error' })
+      }
+    }
+    load()
+    return () => {
+      cancelled = true
+    }
+  }, [slug, versionHash])
+
+  useEffect(() => {
+    let cancelled = false
+    setBoard({ kind: 'loading' })
+    async function load() {
+      try {
         const res = await fetch(
-          `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
+          `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${selectedHash}`,
           { cache: 'no-store' },
         )
         if (!res.ok) throw new Error(`status ${res.status}`)
-        const body = (await res.json()) as ApiResponse
+        const body = (await res.json()) as LeaderboardApiResponse
         if (cancelled) return
-        setState({
+        setBoard({
           kind: 'ready',
           entries: body.entries,
           meBestRank: body.meBestRank,
         })
       } catch (e) {
         if (cancelled) return
-        setState({
+        setBoard({
           kind: 'error',
           message: e instanceof Error ? e.message : 'failed to load',
         })
@@ -73,7 +141,34 @@ export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
     return () => {
       cancelled = true
     }
-  }, [slug, versionHash])
+  }, [slug, selectedHash])
+
+  const dropdown = useMemo(() => {
+    if (versionsState.kind !== 'ready') return null
+    const latestHash = versionsState.latestHash
+    const options = versionsState.versions.map((v) => {
+      const labelParts: string[] = [`v${shortHash(v.hash)}`]
+      const date = formatIsoDate(v.createdAt)
+      if (date) labelParts.push(date)
+      const tags: string[] = []
+      if (v.hash === latestHash) tags.push('latest')
+      if (v.hash === versionHash) tags.push('racing')
+      const tagSuffix = tags.length > 0 ? ` (${tags.join(', ')})` : ''
+      return {
+        hash: v.hash,
+        label: `${labelParts.join(' ')}${tagSuffix}`,
+      }
+    })
+    return options
+  }, [versionsState, versionHash])
+
+  const latestHash =
+    versionsState.kind === 'ready' ? versionsState.latestHash : null
+  const isRacingSelected = selectedHash === versionHash
+  const targetRaceHref =
+    latestHash && selectedHash === latestHash
+      ? `/${slug}`
+      : `/${slug}?v=${selectedHash}`
 
   return (
     <div style={overlay}>
@@ -86,14 +181,46 @@ export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
             Back
           </button>
           <div style={titleStyle}>LEADERBOARD</div>
-          <div style={versionStyle}>v{versionHash.slice(0, 8)}</div>
+          <div style={versionStyle}>v{shortHash(selectedHash)}</div>
         </div>
 
-        {state.kind === 'loading' ? (
+        <div style={controlsRow}>
+          <label style={dropdownLabel}>
+            VERSION
+            <select
+              value={selectedHash}
+              onChange={(e) => setSelectedHash(e.target.value)}
+              style={selectStyle}
+              disabled={dropdown === null || dropdown.length <= 1}
+              aria-label="Track version"
+            >
+              {dropdown === null ? (
+                <option value={selectedHash}>v{shortHash(selectedHash)}</option>
+              ) : (
+                dropdown.map((opt) => (
+                  <option key={opt.hash} value={opt.hash}>
+                    {opt.label}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          {!isRacingSelected ? (
+            <button
+              type="button"
+              onClick={() => router.push(targetRaceHref)}
+              style={raceBtn}
+            >
+              Race this version
+            </button>
+          ) : null}
+        </div>
+
+        {board.kind === 'loading' ? (
           <div style={status}>Loading leaderboard...</div>
-        ) : state.kind === 'error' ? (
+        ) : board.kind === 'error' ? (
           <div style={status}>Could not load leaderboard.</div>
-        ) : state.entries.length === 0 ? (
+        ) : board.entries.length === 0 ? (
           <div style={status}>
             No times yet on this track. Be the first.
           </div>
@@ -106,7 +233,7 @@ export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
               <div style={{ ...cell, ...dateCell }}>DATE</div>
             </div>
             <div style={scrollArea}>
-              {state.entries.map((e) => (
+              {board.entries.map((e) => (
                 <div
                   key={`${e.rank}-${e.ts}`}
                   style={{ ...row, ...(e.isMe ? meRow : null) }}
@@ -119,12 +246,12 @@ export function Leaderboard({ slug, versionHash, onBack }: LeaderboardProps) {
                   <div style={{ ...cell, ...timeCell, fontFamily: 'monospace' }}>
                     {formatLapTime(e.lapTimeMs)}
                   </div>
-                  <div style={{ ...cell, ...dateCell }}>{formatDate(e.ts)}</div>
+                  <div style={{ ...cell, ...dateCell }}>{formatTimestamp(e.ts)}</div>
                 </div>
               ))}
             </div>
-            {state.meBestRank !== null ? (
-              <div style={footer}>Your best on this track: #{state.meBestRank}</div>
+            {board.meBestRank !== null ? (
+              <div style={footer}>Your best on this track: #{board.meBestRank}</div>
             ) : null}
           </div>
         )}
@@ -185,6 +312,48 @@ const backBtn: React.CSSProperties = {
   alignItems: 'center',
   gap: 4,
   fontFamily: 'inherit',
+}
+const controlsRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-end',
+  gap: 10,
+  padding: '4px 2px 8px',
+  borderBottom: '1px solid #2a2a2a',
+}
+const dropdownLabel: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  fontSize: 10,
+  letterSpacing: 1.3,
+  opacity: 0.65,
+  flex: 1,
+  minWidth: 0,
+}
+const selectStyle: React.CSSProperties = {
+  background: '#2a2a2a',
+  color: 'white',
+  border: '1px solid #3a3a3a',
+  borderRadius: 6,
+  padding: '6px 8px',
+  fontSize: 13,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  minWidth: 0,
+  width: '100%',
+}
+const raceBtn: React.CSSProperties = {
+  background: '#ff6b35',
+  color: 'white',
+  border: 'none',
+  borderRadius: 6,
+  padding: '8px 12px',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
 }
 const status: React.CSSProperties = {
   textAlign: 'center',

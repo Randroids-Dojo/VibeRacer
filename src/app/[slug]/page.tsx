@@ -1,6 +1,6 @@
 import { notFound } from 'next/navigation'
-import { SlugSchema } from '@/lib/schemas'
-import { loadLatestTrack } from '@/lib/loadTrack'
+import { SlugSchema, VersionHashSchema } from '@/lib/schemas'
+import { loadTrack } from '@/lib/loadTrack'
 import { Game, type OverallRecord } from '@/components/Game'
 
 async function loadOverallRecord(
@@ -22,12 +22,27 @@ async function loadOverallRecord(
   }
 }
 
-export default async function SlugPage(ctx: { params: Promise<{ slug: string }> }) {
+export default async function SlugPage(ctx: {
+  params: Promise<{ slug: string }>
+  searchParams: Promise<Record<string, string | string[] | undefined>>
+}) {
   const { slug: raw } = await ctx.params
   const parsed = SlugSchema.safeParse(raw)
   if (!parsed.success) notFound()
   const slug = parsed.data
-  const { pieces, versionHash } = await loadLatestTrack(slug)
+
+  const sp = await ctx.searchParams
+  const vRaw = Array.isArray(sp.v) ? sp.v[0] : sp.v
+  let requestedHash: string | null = null
+  if (vRaw !== undefined) {
+    const hashParsed = VersionHashSchema.safeParse(vRaw)
+    if (!hashParsed.success) notFound()
+    requestedHash = hashParsed.data
+  }
+
+  const loaded = await loadTrack(slug, requestedHash)
+  if (loaded.kind === 'notFound') notFound()
+  const { pieces, versionHash } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
 
   return (
