@@ -10,7 +10,7 @@ type LampState = 'off' | 'red' | 'amber' | 'green'
 const STEP_LAMPS: readonly [LampState, LampState, LampState][] = [
   ['red', 'off', 'off'],     // 3
   ['red', 'amber', 'off'],   // 2
-  ['off', 'amber', 'off'],   // 1
+  ['red', 'amber', 'off'],   // 1
   ['off', 'off', 'green'],   // GO
 ]
 
