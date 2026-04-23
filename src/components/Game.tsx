@@ -22,6 +22,7 @@ import { Countdown } from './Countdown'
 import { HUD } from './HUD'
 import { PauseMenu } from './PauseMenu'
 import { FeedbackFab } from './FeedbackFab'
+import { TouchControls } from './TouchControls'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
 import {
@@ -432,6 +433,7 @@ function GameSession({
         initials={initials}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
+      <TouchControls keys={keys} enabled={phase === 'racing' && !paused} />
       {phase === 'racing' && !paused ? (
         <button
           onClick={pause}
@@ -473,6 +475,10 @@ const root: React.CSSProperties = {
   inset: 0,
   background: '#9ad8ff',
   overflow: 'hidden',
+  touchAction: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  WebkitTouchCallout: 'none',
 }
 const canvasStyle: React.CSSProperties = {
   display: 'block',

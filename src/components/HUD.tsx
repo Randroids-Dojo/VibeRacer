@@ -79,18 +79,20 @@ const wrap: React.CSSProperties = {
 }
 const topRow: React.CSSProperties = {
   position: 'absolute',
-  top: 12,
-  left: 16,
-  right: 16,
+  top: 8,
+  left: 8,
+  right: 8,
   display: 'flex',
-  gap: 24,
+  flexWrap: 'wrap',
+  gap: 6,
+  rowGap: 6,
   alignItems: 'flex-start',
 }
 const block: React.CSSProperties = {
   background: 'rgba(0,0,0,0.35)',
-  padding: '6px 10px',
+  padding: '4px 8px',
   borderRadius: 6,
-  minWidth: 90,
+  minWidth: 64,
 }
 const alignRightStyle: React.CSSProperties = { marginLeft: 'auto' }
 const labelStyle: React.CSSProperties = {
@@ -99,13 +101,15 @@ const labelStyle: React.CSSProperties = {
   letterSpacing: 1.5,
 }
 const timeBig: React.CSSProperties = {
-  fontSize: 28,
+  fontSize: 'clamp(18px, 5vw, 28px)',
   fontFamily: 'monospace',
   fontWeight: 700,
+  lineHeight: 1.1,
 }
 const timeSm: React.CSSProperties = {
-  fontSize: 18,
+  fontSize: 'clamp(13px, 3.5vw, 18px)',
   fontFamily: 'monospace',
+  lineHeight: 1.1,
 }
 const offTrack: React.CSSProperties = {
   position: 'absolute',

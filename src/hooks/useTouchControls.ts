@@ -1,0 +1,120 @@
+'use client'
+import { useEffect, useRef, useState } from 'react'
+import {
+  beginJoystick,
+  createJoystick,
+  endJoystick,
+  JOYSTICK_DEADZONE,
+  moveJoystick,
+  readJoystick,
+  type JoystickState,
+} from '@/game/virtual-joystick'
+import type { KeyInput } from './useKeyboard'
+
+export interface TouchJoysticks {
+  steer: JoystickState
+  throttle: JoystickState
+}
+
+// Dual-stick mobile controls. Left half of viewport spawns a steering stick
+// on first touch, right half spawns a gas/brake stick. Both release on
+// pointerup and respawn at the next tap. Writes to the same KeyInput ref
+// the keyboard hook uses so the game loop consumes a single source of truth.
+export function useTouchControls(
+  keys: { current: KeyInput },
+  enabled: boolean,
+): TouchJoysticks {
+  const sticksRef = useRef<TouchJoysticks>({
+    steer: createJoystick(),
+    throttle: createJoystick(),
+  })
+  const [, bump] = useState(0)
+  const rerender = () => bump((n) => n + 1)
+
+  useEffect(() => {
+    const sticks = sticksRef.current
+
+    function applyToKeys() {
+      const s = readJoystick(sticks.steer)
+      const t = readJoystick(sticks.throttle)
+      keys.current.left = s.x < -JOYSTICK_DEADZONE
+      keys.current.right = s.x > JOYSTICK_DEADZONE
+      keys.current.forward = t.y < -JOYSTICK_DEADZONE
+      keys.current.backward = t.y > JOYSTICK_DEADZONE
+    }
+
+    function clearSticks() {
+      endJoystick(sticks.steer)
+      endJoystick(sticks.throttle)
+      applyToKeys()
+      rerender()
+    }
+
+    if (!enabled) {
+      clearSticks()
+      return
+    }
+
+    function isInteractiveTarget(target: EventTarget | null): boolean {
+      if (!(target instanceof Element)) return false
+      return target.closest('button, input, textarea, select, a') !== null
+    }
+
+    function onPointerDown(e: PointerEvent) {
+      if (e.pointerType !== 'touch') return
+      if (isInteractiveTarget(e.target)) return
+      const rightHalf = e.clientX >= window.innerWidth / 2
+      const js = rightHalf ? sticks.throttle : sticks.steer
+      if (js.active) return
+      beginJoystick(js, e.pointerId, e.clientX, e.clientY)
+      applyToKeys()
+      rerender()
+      e.preventDefault()
+    }
+
+    function onPointerMove(e: PointerEvent) {
+      if (e.pointerType !== 'touch') return
+      if (sticks.steer.pointerId === e.pointerId) {
+        moveJoystick(sticks.steer, e.clientX, e.clientY)
+      } else if (sticks.throttle.pointerId === e.pointerId) {
+        moveJoystick(sticks.throttle, e.clientX, e.clientY)
+      } else {
+        return
+      }
+      applyToKeys()
+      rerender()
+    }
+
+    function onPointerUp(e: PointerEvent) {
+      if (e.pointerType !== 'touch') return
+      let changed = false
+      if (sticks.steer.pointerId === e.pointerId) {
+        endJoystick(sticks.steer)
+        changed = true
+      }
+      if (sticks.throttle.pointerId === e.pointerId) {
+        endJoystick(sticks.throttle)
+        changed = true
+      }
+      if (changed) {
+        applyToKeys()
+        rerender()
+      }
+    }
+
+    window.addEventListener('pointerdown', onPointerDown, { passive: false })
+    window.addEventListener('pointermove', onPointerMove)
+    window.addEventListener('pointerup', onPointerUp)
+    window.addEventListener('pointercancel', onPointerUp)
+
+    return () => {
+      window.removeEventListener('pointerdown', onPointerDown)
+      window.removeEventListener('pointermove', onPointerMove)
+      window.removeEventListener('pointerup', onPointerUp)
+      window.removeEventListener('pointercancel', onPointerUp)
+      clearSticks()
+    }
+  }, [enabled, keys])
+
+  return sticksRef.current
+}
