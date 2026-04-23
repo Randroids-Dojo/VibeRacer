@@ -1,8 +1,20 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { playCountdownBeep } from '@/game/music'
 
 const STEP_MS = 800
 const GO_HOLD_MS = 600
+
+type LampState = 'off' | 'red' | 'amber' | 'green'
+
+const STEP_LAMPS: readonly [LampState, LampState, LampState][] = [
+  ['red', 'off', 'off'],     // 3
+  ['red', 'amber', 'off'],   // 2
+  ['off', 'amber', 'off'],   // 1
+  ['off', 'off', 'green'],   // GO
+]
+
+const LABELS = ['3', '2', '1', 'GO'] as const
 
 export function Countdown({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0)
@@ -23,19 +35,56 @@ export function Countdown({ onDone }: { onDone: () => void }) {
   }, [])
 
   useEffect(() => {
+    playCountdownBeep(step === 3)
+  }, [step])
+
+  useEffect(() => {
     if (step !== 3) return
     const t = setTimeout(onDone, GO_HOLD_MS)
     return () => clearTimeout(t)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  const label = step === 0 ? '3' : step === 1 ? '2' : step === 2 ? '1' : 'GO'
-  const color = step === 3 ? '#5fe08a' : '#ffd24d'
+  const lamps = STEP_LAMPS[step]
+  const label = LABELS[step]
 
   return (
     <div style={overlay}>
-      <div style={{ ...big, color }}>{label}</div>
+      <div style={housing}>
+        <Lamp state={lamps[0]} color="#ff2d3a" glow="rgba(255,45,58,0.75)" />
+        <Lamp state={lamps[1]} color="#ffb020" glow="rgba(255,176,32,0.75)" />
+        <Lamp state={lamps[2]} color="#30d46a" glow="rgba(48,212,106,0.75)" />
+      </div>
+      <div style={{ ...label_s, color: step === 3 ? '#5fe08a' : '#ffd24d' }}>
+        {label}
+      </div>
     </div>
+  )
+}
+
+function Lamp({
+  state,
+  color,
+  glow,
+}: {
+  state: LampState
+  color: string
+  glow: string
+}) {
+  const lit = state !== 'off'
+  return (
+    <div
+      style={{
+        width: 84,
+        height: 84,
+        borderRadius: '50%',
+        background: lit ? color : '#1a1a1a',
+        boxShadow: lit
+          ? `0 0 36px 6px ${glow}, inset 0 6px 14px rgba(255,255,255,0.25), inset 0 -6px 14px rgba(0,0,0,0.4)`
+          : 'inset 0 6px 14px rgba(0,0,0,0.6), inset 0 -4px 10px rgba(255,255,255,0.04)',
+        transition: 'background 120ms ease, box-shadow 120ms ease',
+      }}
+    />
   )
 }
 
@@ -45,11 +94,27 @@ const overlay: React.CSSProperties = {
   pointerEvents: 'none',
   display: 'grid',
   placeItems: 'center',
+  gridAutoFlow: 'row',
+  gap: 24,
   zIndex: 50,
   fontFamily: 'system-ui, sans-serif',
 }
-const big: React.CSSProperties = {
-  fontSize: 180,
+
+const housing: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 14,
+  padding: 18,
+  borderRadius: 20,
+  background: '#0a0a0a',
+  border: '2px solid #2a2a2a',
+  boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+}
+
+const label_s: React.CSSProperties = {
+  fontSize: 72,
   fontWeight: 800,
   textShadow: '0 4px 24px rgba(0,0,0,0.6)',
+  letterSpacing: 2,
 }

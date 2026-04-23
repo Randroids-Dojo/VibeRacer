@@ -16,12 +16,12 @@
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
-| 8 | Race flow | partial (countdown, checkpoints, lap detection, invalid-lap reset, HUD all live; animated traffic light pending) |
+| 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, checkpoints, lap detection, invalid-lap reset, HUD all live; per-track configurable checkpoint count pending) |
 | 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings (stub) ship; Settings pane pending) |
 | 10 | Physics tuning (dev panel) | not started |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
-| 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; SFX pending) |
+| 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; countdown beep SFX ship, other SFX pending) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
 | 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls landed; SFX pending) |
@@ -270,17 +270,18 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown, per-piece checkpoints, lap detection, the full HUD, pause button, and invalid-lap handling are live. Animated traffic-light visuals and synth beeps (Section 13) are not yet landed.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-piece checkpoints, lap detection, the full HUD, pause button, and invalid-lap handling are live. Per-track configurable checkpoint count is still pending.
 
 ### Build log
 
-- Countdown: `src/components/Countdown.tsx` cycles `3 -> 2 -> 1 -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Currently renders as large text, not the traffic-light graphic. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
+- Countdown: `src/components/Countdown.tsx` cycles `3 -> 2 -> 1 -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Renders a three-lamp traffic-light housing (red, amber, green) with the current step label below. The lamp pattern follows the GDD: step 0 lights red, step 1 lights red + amber, step 2 lights amber, step 3 switches to green. Inactive lamps are inset-darkened; active lamps glow via `boxShadow`. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
+- Countdown beeps: `playCountdownBeep(isGo)` in `src/game/music.ts` fires a one-shot tone through the shared `AudioContext`, routed to the master gain so it is audible over any active music without piping through the step scheduler. Counting steps use a square wave at A4 (midi 69); GO uses a triangle wave at A5 (midi 81) with a slightly longer decay. Envelope is a 10 ms linear attack then exponential decay to 0.001. Countdown's `useEffect([step])` calls the helper once per step change (mount + each increment), so 3/2/1 play low beeps and GO plays the higher pitch.
 - Lap detection: cell-based. `tick.ts` compares `state.lastCellKey` against the current cell each frame. When the car enters the expected next piece's cell, it records `{cpId, tMs}` where `tMs = nowMs - raceStartMs`. Hitting piece 0 after N-1 CPs fires `LapCompleteEvent` with `{hits, lapTimeMs, lapNumber}` and resets `nextCpId=0`, `hits=[]`, `raceStartMs=nowMs` for the next lap. Lap count increments.
 - HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), RECORD (track-wide top time, loaded from KV in the RSC page and passed through), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
 - Endless loop: no lap cap. Every completed lap triggers `handleLapComplete` which updates local PBs and fires `submitLap` (fire-and-forget).
 - Invalid-lap reset: in `tick.ts`, if the car transitions into the start-piece cell while `nextCpId > 0` (i.e., the player has partial checkpoint progress but is re-entering the start without a valid lap completion), `hits` is cleared, `nextCpId` is reset to 0, and `raceStartMs` is set to `nowMs`. The lap counter is not incremented and no `LapCompleteEvent` fires. Covers driving backward through the start line or taking a shortcut that re-enters piece 0 early. Test coverage in `tests/unit/tick.test.ts`.
 - Pause button: always-visible circular button at `bottom: 20, left: 16` (rendered only during the `racing` phase and hidden once the pause menu opens). Clicking calls `pause()` which freezes the tick and shows the pause menu.
-- **Not yet landed.** Animated 3-light traffic signal, countdown synth beeps (Section 13), per-track configurable checkpoint count.
+- **Not yet landed.** Per-track configurable checkpoint count.
 
 ### Start signal
 
@@ -535,16 +536,16 @@ Three named tracks live in one engine (`src/game/music.ts`) and share the schedu
 - `src/components/Game.tsx` drives the transitions: `crossfadeTo('pause')` on pause, `crossfadeTo('game')` on resume, `crossfadeTo('title')` on restart, and `crossfadeTo('game', RACE_START_CROSSFADE_SEC)` when countdown ends. The rAF loop calls `setGameIntensity(|speed| / DEFAULT_CAR_PARAMS.maxSpeed)` each frame.
 - Tests: `tests/unit/music.test.ts` pins `midiFreq`, `scaleDeg` (wrap, octave shift, negative degrees), and the four canonical scale constants.
 
-### SFX (pending)
+### SFX
 
-- Countdown beeps.
-- Engine drone, pitch-shifted by speed.
-- Tire skid (noise burst with low-pass filter) when lateral grip saturates.
-- Finish-line fanfare on lap completion.
-- PB celebration jingle on new personal best.
-- UI click beeps.
+- Countdown beeps: shipped. `playCountdownBeep(isGo)` in `src/game/music.ts` plays a one-shot tone through the shared master gain. A4 square for 3/2/1, A5 triangle for GO.
+- Engine drone, pitch-shifted by speed: pending.
+- Tire skid (noise burst with low-pass filter) when lateral grip saturates: pending.
+- Finish-line fanfare on lap completion: pending.
+- PB celebration jingle on new personal best: pending.
+- UI click beeps: pending.
 
-All SFX will reuse the same `AudioContext` and `schedNote`/`schedNoise` helpers.
+All SFX reuse the same `AudioContext` and `schedNote` / `schedNoise` helpers. The pending items will migrate to `game/audio.ts` (Section 16) if the surface grows enough to warrant a split.
 
 ### Stretch: personalization (later)
 

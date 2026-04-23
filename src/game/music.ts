@@ -520,3 +520,34 @@ export function stopMusic(fadeSec = DEFAULT_FADE_OUT_SEC): void {
     fadeTrackTo(track, 0, fade)
   }
 }
+
+const COUNTDOWN_BEEP_MIDI_LOW = 69  // A4, counting steps
+const COUNTDOWN_BEEP_MIDI_HIGH = 81 // A5, GO
+const COUNTDOWN_BEEP_DUR_SEC = 0.18
+const COUNTDOWN_GO_DUR_SEC = 0.34
+const COUNTDOWN_BEEP_VOL = 0.28
+
+/**
+ * One-shot countdown beep. Plays a short tone through the shared AudioContext,
+ * bypassing the music tracks so it is audible over any active music. Pitched
+ * higher on GO to signal the start.
+ */
+export function playCountdownBeep(isGo: boolean): void {
+  const e = getEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  const start = Math.max(e.ctx.currentTime, e.ctx.currentTime + 0.005)
+  const midi = isGo ? COUNTDOWN_BEEP_MIDI_HIGH : COUNTDOWN_BEEP_MIDI_LOW
+  const dur = isGo ? COUNTDOWN_GO_DUR_SEC : COUNTDOWN_BEEP_DUR_SEC
+  const osc = e.ctx.createOscillator()
+  const gain = e.ctx.createGain()
+  osc.type = isGo ? 'triangle' : 'square'
+  osc.frequency.value = midiFreq(midi)
+  gain.gain.setValueAtTime(0, start)
+  gain.gain.linearRampToValueAtTime(COUNTDOWN_BEEP_VOL, start + 0.01)
+  gain.gain.exponentialRampToValueAtTime(0.001, start + dur)
+  osc.connect(gain)
+  gain.connect(e.master)
+  osc.start(start)
+  osc.stop(start + dur + 0.02)
+}
