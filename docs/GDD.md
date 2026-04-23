@@ -12,7 +12,7 @@
 | - | - | - |
 | 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt all work; edit pending) |
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
-| 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause; touch joystick pending) |
+| 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick touch; remappable bindings pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
@@ -24,7 +24,7 @@
 | 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; SFX pending) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler landed; SFX and touch pending) |
+| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls landed; SFX pending) |
 | 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
@@ -91,7 +91,7 @@ Trailing third-person camera, Forza Horizon style.
 
 ## 4. Controls
 
-**Status.** Partial. Keyboard (WASD + arrows + Space) plus Esc-to-pause are live. Touch joysticks and the reserved Q/E shift keys are not yet landed.
+**Status.** Partial. Keyboard (WASD + arrows + Space) plus Esc-to-pause are live. Dual-stick touch controls (float-where-you-tap) are live. The reserved Q/E shift keys and remappable bindings are still pending.
 
 ### Build log
 
@@ -99,7 +99,8 @@ Trailing third-person camera, Forza Horizon style.
 - Mapping: `W`/`ArrowUp` = forward, `S`/`ArrowDown` = backward (brake/reverse), `A`/`ArrowLeft` = steer left, `D`/`ArrowRight` = steer right, `Space` = handbrake.
 - The tick loop reads `keys.current` each frame and synthesizes `{ throttle, steer, handbrake }` for `stepPhysics`.
 - Esc pause: handled in `Game.tsx` via a window `keydown` listener that is gated on `phase === 'racing'`. First press calls `pause()`, second press calls `resume()`. See Section 9 for the pause lifecycle.
-- **Not yet landed.** Touch joysticks (mobile spec below), remappable bindings, Q/E shifter keys, gamepad.
+- Touch: `src/game/virtual-joystick.ts` exports pure stick state helpers (`createJoystick`, `beginJoystick`, `moveJoystick`, `endJoystick`, `readJoystick`). `src/hooks/useTouchControls.ts` wires pointer events to two sticks (left-half steer, right-half throttle), applies a dead zone, and writes booleans into the same `KeyInput` ref the keyboard hook owns so the game loop stays single-source. `src/components/TouchControls.tsx` renders the two visual rings + knobs while active. Game container uses `touch-action: none` so the browser does not steal pan/zoom.
+- **Not yet landed.** Remappable bindings, Q/E shifter keys, gamepad.
 
 ### Keyboard (default, remappable in Settings later)
 
@@ -615,7 +616,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`) are all in. Still pending: `TitleScreen`, and the remaining game files (`virtual-joystick.ts`, `audio.ts` for SFX).
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`, `game/virtual-joystick.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`, `TouchControls`) are all in. Still pending: `TitleScreen`, `game/audio.ts` for SFX.
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -667,12 +668,14 @@ src/
   - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
   - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`, `components/TitleMusic.tsx`.
   - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds), `game/music.ts` (Web Audio scheduler + title/game/pause tracks).
-  - `hooks/useKeyboard.ts`.
+  - `hooks/useKeyboard.ts`, `hooks/useTouchControls.ts`.
+  - `game/virtual-joystick.ts`.
+  - `components/TouchControls.tsx`.
   - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TitleScreen.tsx`, `game/virtual-joystick.ts`, `game/audio.ts` (SFX), additional `hooks/*` (useGameState, useTouchControls).
+- **Not yet landed.** `components/TitleScreen.tsx`, `game/audio.ts` (SFX), additional `hooks/*` (useGameState).
 
 ---
 
