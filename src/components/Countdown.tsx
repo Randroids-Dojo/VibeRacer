@@ -5,16 +5,14 @@ import { playCountdownBeep } from '@/game/music'
 const STEP_MS = 800
 const GO_HOLD_MS = 600
 
-type LampState = 'off' | 'red' | 'amber' | 'green'
-
-const STEP_LAMPS: readonly [LampState, LampState, LampState][] = [
-  ['red', 'off', 'off'],     // 3
-  ['red', 'amber', 'off'],   // 2
-  ['red', 'amber', 'off'],   // 1
-  ['off', 'off', 'green'],   // GO
-]
-
+const LAMP_COUNT = 5
+// F1 staging: lights light up sequentially, then all extinguish on GO.
+// Three numbered ticks fill the row to 5 lit, then GO blacks out the bar.
+const LIT_PER_STEP: readonly number[] = [2, 4, 5, 0]
 const LABELS = ['3', '2', '1', 'GO'] as const
+
+const RED = '#ff2d3a'
+const RED_GLOW = 'rgba(255,45,58,0.75)'
 
 export function Countdown({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0)
@@ -45,15 +43,15 @@ export function Countdown({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  const lamps = STEP_LAMPS[step]
+  const litCount = LIT_PER_STEP[step]
   const label = LABELS[step]
 
   return (
     <div style={overlay}>
       <div style={housing}>
-        <Lamp state={lamps[0]} color="#ff2d3a" glow="rgba(255,45,58,0.75)" />
-        <Lamp state={lamps[1]} color="#ffb020" glow="rgba(255,176,32,0.75)" />
-        <Lamp state={lamps[2]} color="#30d46a" glow="rgba(48,212,106,0.75)" />
+        {Array.from({ length: LAMP_COUNT }, (_, i) => (
+          <Lamp key={i} lit={i < litCount} />
+        ))}
       </div>
       <div style={{ ...label_s, color: step === 3 ? '#5fe08a' : '#ffd24d' }}>
         {label}
@@ -62,25 +60,16 @@ export function Countdown({ onDone }: { onDone: () => void }) {
   )
 }
 
-function Lamp({
-  state,
-  color,
-  glow,
-}: {
-  state: LampState
-  color: string
-  glow: string
-}) {
-  const lit = state !== 'off'
+function Lamp({ lit }: { lit: boolean }) {
   return (
     <div
       style={{
-        width: 84,
-        height: 84,
+        width: 64,
+        height: 64,
         borderRadius: '50%',
-        background: lit ? color : '#1a1a1a',
+        background: lit ? RED : '#1a1a1a',
         boxShadow: lit
-          ? `0 0 36px 6px ${glow}, inset 0 6px 14px rgba(255,255,255,0.25), inset 0 -6px 14px rgba(0,0,0,0.4)`
+          ? `0 0 32px 6px ${RED_GLOW}, inset 0 6px 14px rgba(255,255,255,0.25), inset 0 -6px 14px rgba(0,0,0,0.4)`
           : 'inset 0 6px 14px rgba(0,0,0,0.6), inset 0 -4px 10px rgba(255,255,255,0.04)',
         transition: 'background 120ms ease, box-shadow 120ms ease',
       }}
@@ -102,7 +91,7 @@ const overlay: React.CSSProperties = {
 
 const housing: React.CSSProperties = {
   display: 'flex',
-  flexDirection: 'column',
+  flexDirection: 'row',
   alignItems: 'center',
   gap: 14,
   padding: 18,
