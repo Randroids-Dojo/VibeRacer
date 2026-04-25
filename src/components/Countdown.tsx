@@ -5,17 +5,16 @@ import { playCountdownBeep } from '@/game/music'
 const STEP_MS = 800
 const GO_HOLD_MS = 600
 
-type LampState = 'off' | 'red' | 'amber' | 'green'
-
-const STEP_LAMPS: readonly [LampState, LampState, LampState][] = [
-  ['red', 'off', 'off'],     // READY
-  ['off', 'amber', 'off'],   // SET
-  ['off', 'off', 'green'],   // GO
-]
-
 const LABELS = ['READY', 'SET', 'GO'] as const
-const STEP_LABEL_COLORS = ['#ff6470', '#ffc566', '#5fe08a'] as const
 const LAST_STEP = LABELS.length - 1
+
+const LAMP_COLORS = [
+  { color: '#ff2d3a', glow: 'rgba(255,45,58,0.75)' },
+  { color: '#ffb020', glow: 'rgba(255,176,32,0.75)' },
+  { color: '#30d46a', glow: 'rgba(48,212,106,0.75)' },
+] as const
+
+const LABEL_COLORS = ['#ff6470', '#ffc566', '#5fe08a'] as const
 
 export function Countdown({ onDone }: { onDone: () => void }) {
   const [step, setStep] = useState(0)
@@ -46,33 +45,29 @@ export function Countdown({ onDone }: { onDone: () => void }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step])
 
-  const lamps = STEP_LAMPS[step]
-  const label = LABELS[step]
-
   return (
     <div style={overlay}>
       <div style={housing}>
-        <Lamp state={lamps[0]} color="#ff2d3a" glow="rgba(255,45,58,0.75)" />
-        <Lamp state={lamps[1]} color="#ffb020" glow="rgba(255,176,32,0.75)" />
-        <Lamp state={lamps[2]} color="#30d46a" glow="rgba(48,212,106,0.75)" />
+        {LAMP_COLORS.map((lamp, i) => (
+          <Lamp key={i} lit={step === i} color={lamp.color} glow={lamp.glow} />
+        ))}
       </div>
-      <div style={{ ...label_s, color: STEP_LABEL_COLORS[step] }}>
-        {label}
+      <div style={{ ...labelStyle, color: LABEL_COLORS[step] }}>
+        {LABELS[step]}
       </div>
     </div>
   )
 }
 
 function Lamp({
-  state,
+  lit,
   color,
   glow,
 }: {
-  state: LampState
+  lit: boolean
   color: string
   glow: string
 }) {
-  const lit = state !== 'off'
   return (
     <div
       style={{
@@ -113,7 +108,7 @@ const housing: React.CSSProperties = {
   boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
 }
 
-const label_s: React.CSSProperties = {
+const labelStyle: React.CSSProperties = {
   fontSize: 64,
   fontWeight: 800,
   textShadow: '0 4px 24px rgba(0,0,0,0.6)',

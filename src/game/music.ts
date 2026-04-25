@@ -521,22 +521,22 @@ export function stopMusic(fadeSec = DEFAULT_FADE_OUT_SEC): void {
   }
 }
 
-const COUNTDOWN_BEEP_MIDI_LOW = 69  // A4, counting steps
-const COUNTDOWN_BEEP_MIDI_HIGH = 81 // A5, GO
+const COUNTDOWN_BEEP_MIDI_LOW = 69
+const COUNTDOWN_BEEP_MIDI_HIGH = 81
 const COUNTDOWN_BEEP_DUR_SEC = 0.18
 const COUNTDOWN_GO_DUR_SEC = 0.34
 const COUNTDOWN_BEEP_VOL = 0.28
+const COUNTDOWN_SCHEDULE_OFFSET_SEC = 0.005
 
 /**
- * One-shot countdown beep. Plays a short tone through the shared AudioContext,
- * bypassing the music tracks so it is audible over any active music. Pitched
- * higher on GO to signal the start.
+ * One-shot countdown beep. Routes directly to master (bypassing the music
+ * tracks) so it stays audible over any active music. Higher pitch on GO.
  */
 export function playCountdownBeep(isGo: boolean): void {
   const e = getEngine()
   if (!e) return
   ensureAudioReady(e)
-  const start = Math.max(e.ctx.currentTime, e.ctx.currentTime + 0.005)
+  const start = e.ctx.currentTime + COUNTDOWN_SCHEDULE_OFFSET_SEC
   const midi = isGo ? COUNTDOWN_BEEP_MIDI_HIGH : COUNTDOWN_BEEP_MIDI_LOW
   const dur = isGo ? COUNTDOWN_GO_DUR_SEC : COUNTDOWN_BEEP_DUR_SEC
   const osc = e.ctx.createOscillator()
