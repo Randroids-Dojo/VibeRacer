@@ -12,6 +12,7 @@ import {
   type ControlSettings,
   type TouchMode,
 } from '@/lib/controlSettings'
+import { useClickSfx } from '@/hooks/useClickSfx'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -39,11 +40,15 @@ export function SettingsPane({
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
+  const clickConfirm = useClickSfx('confirm')
+  const clickBack = useClickSfx('back')
+  const clickSoft = useClickSfx('soft')
 
   function openTuningLab() {
     if (inRace && !window.confirm('Leave the race to open the Tuning Lab?')) {
       return
     }
+    clickConfirm()
     onClose()
     router.push('/tune')
   }
@@ -107,6 +112,7 @@ export function SettingsPane({
   }
 
   function resetAll() {
+    clickSoft()
     onReset()
     setCapture(null)
   }
@@ -116,7 +122,14 @@ export function SettingsPane({
       <div style={panel}>
         <div style={header}>
           <div style={title}>SETTINGS</div>
-          <button onClick={onClose} style={closeBtn} aria-label="Close settings">
+          <button
+            onClick={() => {
+              clickBack()
+              onClose()
+            }}
+            style={closeBtn}
+            aria-label="Close settings"
+          >
             CLOSE
           </button>
         </div>
@@ -212,7 +225,13 @@ export function SettingsPane({
           <button onClick={resetAll} style={resetBtn}>
             Reset to defaults
           </button>
-          <button onClick={onClose} style={doneBtn}>
+          <button
+            onClick={() => {
+              clickConfirm()
+              onClose()
+            }}
+            style={doneBtn}
+          >
             Done
           </button>
         </div>

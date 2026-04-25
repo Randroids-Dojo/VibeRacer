@@ -1,6 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { InitialsSchema } from '@/lib/schemas'
+import { useClickSfx } from '@/hooks/useClickSfx'
 
 export const INITIALS_STORAGE_KEY = 'viberacer.initials'
 
@@ -20,6 +21,7 @@ export function InitialsPrompt({ onDone }: { onDone: (initials: string) => void 
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
+  const click = useClickSfx('confirm')
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -31,6 +33,7 @@ export function InitialsPrompt({ onDone }: { onDone: (initials: string) => void 
       setError('3 letters, A to Z only.')
       return
     }
+    click()
     writeStoredInitials(parsed.data)
     onDone(parsed.data)
   }

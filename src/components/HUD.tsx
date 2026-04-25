@@ -21,8 +21,23 @@ interface HudProps {
   lapCount: number
   onTrack: boolean
   toast: string | null
+  toastKind: 'lap' | 'pb' | 'record' | null
   initials: string | null
 }
+
+const HUD_ANIMATIONS_CSS = `
+@keyframes viberacer-fade { 0% { opacity: 1 } 100% { opacity: 0 } }
+@keyframes viberacer-burst {
+  0% { transform: translate(-50%, -50%) scale(0); opacity: 0.95 }
+  60% { opacity: 0.6 }
+  100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0 }
+}
+@keyframes viberacer-edgeflash {
+  0% { opacity: 0.0 }
+  20% { opacity: 1 }
+  100% { opacity: 0 }
+}
+`
 
 function StatBlock({
   label,
@@ -51,8 +66,11 @@ export function HUD(props: HudProps) {
   const recordValue = props.overallRecord
     ? `${props.overallRecord.initials} ${formatLapTime(props.overallRecord.lapTimeMs)}`
     : '--'
+  const celebrate = props.toastKind === 'pb' || props.toastKind === 'record'
+  const isRecord = props.toastKind === 'record'
   return (
     <div style={wrap}>
+      <style>{HUD_ANIMATIONS_CSS}</style>
       <div style={topRow}>
         <StatBlock label="CURRENT" value={formatLapTime(props.currentMs)} big />
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
@@ -63,6 +81,20 @@ export function HUD(props: HudProps) {
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>
       {!props.onTrack ? <div style={offTrack}>OFF TRACK</div> : null}
+      {celebrate ? (
+        <>
+          <div
+            key={`burst-${isRecord ? 'r' : 'p'}-${props.toast}`}
+            style={isRecord ? burstRecord : burstPb}
+            aria-hidden
+          />
+          <div
+            key={`flash-${isRecord ? 'r' : 'p'}-${props.toast}`}
+            style={isRecord ? edgeFlashRecord : edgeFlashPb}
+            aria-hidden
+          />
+        </>
+      ) : null}
       {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
     </div>
   )
@@ -130,5 +162,41 @@ const toastStyle: React.CSSProperties = {
   fontSize: 28,
   fontWeight: 700,
   color: '#5fe08a',
-  animation: 'fade 1.6s linear',
+  animation: 'viberacer-fade 1.6s linear',
+}
+const burstBase: React.CSSProperties = {
+  position: 'absolute',
+  top: '36%',
+  left: '50%',
+  width: 240,
+  height: 240,
+  borderRadius: '50%',
+  pointerEvents: 'none',
+  transform: 'translate(-50%, -50%) scale(0)',
+  animation: 'viberacer-burst 1s ease-out forwards',
+}
+const burstPb: React.CSSProperties = {
+  ...burstBase,
+  background:
+    'radial-gradient(circle, rgba(95,224,138,0.85) 0%, rgba(95,224,138,0.35) 45%, rgba(95,224,138,0) 70%)',
+}
+const burstRecord: React.CSSProperties = {
+  ...burstBase,
+  background:
+    'radial-gradient(circle, rgba(255,210,90,0.9) 0%, rgba(255,170,60,0.4) 45%, rgba(255,140,40,0) 70%)',
+}
+const edgeFlashBase: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  opacity: 0,
+  animation: 'viberacer-edgeflash 0.7s ease-out forwards',
+}
+const edgeFlashPb: React.CSSProperties = {
+  ...edgeFlashBase,
+  boxShadow: 'inset 0 0 80px rgba(95,224,138,0.7)',
+}
+const edgeFlashRecord: React.CSSProperties = {
+  ...edgeFlashBase,
+  boxShadow: 'inset 0 0 90px rgba(255,200,80,0.85)',
 }
