@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CarParamsSchema, InputModeSchema } from './tuningSettings'
 
 export const PieceTypeSchema = z.enum(['straight', 'left90', 'right90'])
 export type PieceType = z.infer<typeof PieceTypeSchema>
@@ -80,5 +81,9 @@ export const SubmissionSchema = z.object({
   checkpoints: z.array(CheckpointHitSchema).min(1),
   lapTimeMs: z.number().int().positive(),
   initials: InitialsSchema,
+  // Both fields are optional to keep older clients submitting. The route
+  // backfills missing values from defaults / 'keyboard'.
+  tuning: CarParamsSchema.optional(),
+  inputMode: InputModeSchema.optional(),
 })
 export type Submission = z.infer<typeof SubmissionSchema>

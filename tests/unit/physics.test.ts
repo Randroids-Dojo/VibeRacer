@@ -62,4 +62,30 @@ describe('stepPhysics', () => {
     )
     expect(s.heading).not.toBe(0)
   })
+
+  it('honors a custom CarParams override (higher accel reaches a higher speed)', () => {
+    const slow = stepPhysics(
+      s0,
+      { throttle: 1, steer: 0, handbrake: false },
+      0.5,
+      true,
+    )
+    const fast = stepPhysics(
+      s0,
+      { throttle: 1, steer: 0, handbrake: false },
+      0.5,
+      true,
+      { ...DEFAULT_CAR_PARAMS, accel: DEFAULT_CAR_PARAMS.accel * 2 },
+    )
+    expect(fast.speed).toBeGreaterThan(slow.speed)
+  })
+
+  it('a custom maxSpeed cap is respected', () => {
+    let s = s0
+    const params = { ...DEFAULT_CAR_PARAMS, maxSpeed: 12 }
+    for (let i = 0; i < 30; i++) {
+      s = stepPhysics(s, { throttle: 1, steer: 0, handbrake: false }, 0.5, true, params)
+    }
+    expect(s.speed).toBeLessThanOrEqual(params.maxSpeed + 1e-6)
+  })
 })

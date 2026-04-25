@@ -50,6 +50,10 @@ export class FakeKv {
     }
   }
 
+  async mget<T = unknown>(...keys: string[]): Promise<(T | null)[]> {
+    return Promise.all(keys.map((k) => this.get<T>(k)))
+  }
+
   async del(...keys: string[]): Promise<number> {
     let n = 0
     for (const k of keys) {

@@ -161,6 +161,54 @@ describe('POST /api/race/submit', () => {
     expect(body.ok).toBe(false)
   })
 
+  it('persists tuning and inputMode in lap meta when provided', async () => {
+    const { DEFAULT_CAR_PARAMS } = await import('@/game/physics')
+    const { token, payload } = issueToken({ nonce: 'dd'.repeat(16) })
+    await seedNonce(payload.nonce)
+    const tuned = { ...DEFAULT_CAR_PARAMS, accel: 24 }
+    const { POST } = await import('@/app/api/race/submit/route')
+    const res = await POST(
+      buildReq({
+        token,
+        checkpoints: [
+          { cpId: 0, tMs: 1000 },
+          { cpId: 1, tMs: 2000 },
+        ],
+        lapTimeMs: 2000,
+        initials: 'abc',
+        tuning: tuned,
+        inputMode: 'touch',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const meta = (await fake.get(`lap:meta:${payload.nonce}`)) as {
+      tuning: Record<string, number>
+      inputMode: string
+    }
+    expect(meta.tuning).toEqual(tuned)
+    expect(meta.inputMode).toBe('touch')
+  })
+
+  it('rejects out-of-range tuning by silently dropping', async () => {
+    const { token, payload } = issueToken({ nonce: 'ee'.repeat(16) })
+    await seedNonce(payload.nonce)
+    const { POST } = await import('@/app/api/race/submit/route')
+    const res = await POST(
+      buildReq({
+        token,
+        checkpoints: [
+          { cpId: 0, tMs: 1000 },
+          { cpId: 1, tMs: 2000 },
+        ],
+        lapTimeMs: 2000,
+        initials: 'abc',
+        tuning: { maxSpeed: 9999 },
+        inputMode: 'keyboard',
+      }),
+    )
+    expect(res.status).toBe(202)
+  })
+
   it('silently drops with no racerId cookie', async () => {
     const { POST } = await import('@/app/api/race/submit/route')
     const req = new NextRequest(

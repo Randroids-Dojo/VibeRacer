@@ -31,6 +31,7 @@ export const kvKeys = {
   trackIndex: () => 'track:index',
   leaderboard: (slug: Slug, hash: VersionHash) => `lb:${slug}:${hash}`,
   raceToken: (nonce: string) => `race:token:${nonce}`,
+  lapMeta: (nonce: string) => `lap:meta:${nonce}`,
   racerFirstSeen: (racerId: RacerId) => `racer:${racerId}:firstSeen`,
   racerLastSubmit: (racerId: RacerId) => `racer:${racerId}:lastSubmit`,
   ratelimitIp: (ip: string) => `ratelimit:submit:ip:${ip}`,
