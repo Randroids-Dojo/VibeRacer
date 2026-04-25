@@ -14,6 +14,7 @@ const STEP_LAMPS: readonly [LampState, LampState, LampState][] = [
 ]
 
 const LABELS = ['READY', 'SET', 'GO'] as const
+const STEP_LABEL_COLORS = ['#ff6470', '#ffc566', '#5fe08a'] as const
 const LAST_STEP = LABELS.length - 1
 
 export function Countdown({ onDone }: { onDone: () => void }) {
@@ -55,7 +56,7 @@ export function Countdown({ onDone }: { onDone: () => void }) {
         <Lamp state={lamps[1]} color="#ffb020" glow="rgba(255,176,32,0.75)" />
         <Lamp state={lamps[2]} color="#30d46a" glow="rgba(48,212,106,0.75)" />
       </div>
-      <div style={{ ...label_s, color: step === LAST_STEP ? '#5fe08a' : '#ffd24d' }}>
+      <div style={{ ...label_s, color: STEP_LABEL_COLORS[step] }}>
         {label}
       </div>
     </div>
