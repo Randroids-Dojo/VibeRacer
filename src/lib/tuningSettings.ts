@@ -71,13 +71,22 @@ export const TUNING_PARAM_META: TuningParamMeta[] = [
     hint: 'Coast deceleration with no input.',
   },
   {
-    key: 'steerRate',
-    label: 'Steer rate',
+    key: 'steerRateLow',
+    label: 'Steer rate (low speed)',
     min: 0.5,
     max: 5.0,
     step: 0.05,
     unit: 'rad/s',
-    hint: 'How fast the heading turns at full lock.',
+    hint: 'Heading rate at the bottom of the steering band (near minimum speed).',
+  },
+  {
+    key: 'steerRateHigh',
+    label: 'Steer rate (high speed)',
+    min: 0.5,
+    max: 5.0,
+    step: 0.05,
+    unit: 'rad/s',
+    hint: 'Heading rate at top speed. Lower than the low-speed value gives stable straights with sharp U-turns.',
   },
   {
     key: 'minSpeedForSteering',
@@ -140,9 +149,13 @@ export const CarParamsSchema = z.object({
     TUNING_BOUNDS.rollingFriction.min,
     TUNING_BOUNDS.rollingFriction.max,
   ),
-  steerRate: boundedNumber(
-    TUNING_BOUNDS.steerRate.min,
-    TUNING_BOUNDS.steerRate.max,
+  steerRateLow: boundedNumber(
+    TUNING_BOUNDS.steerRateLow.min,
+    TUNING_BOUNDS.steerRateLow.max,
+  ),
+  steerRateHigh: boundedNumber(
+    TUNING_BOUNDS.steerRateHigh.min,
+    TUNING_BOUNDS.steerRateHigh.max,
   ),
   minSpeedForSteering: boundedNumber(
     TUNING_BOUNDS.minSpeedForSteering.min,

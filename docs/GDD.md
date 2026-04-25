@@ -148,7 +148,7 @@ Pause button floats in a corner and is always tappable during a race.
 
 - `src/game/physics.ts` exports `stepPhysics(state, input, dtSec, onTrack, params?)`, `DEFAULT_CAR_PARAMS`, and `PhysicsState` / `PhysicsInput` / `CarParams` types.
 - Simplified arcade model: scalar speed + heading, no lateral velocity. Throttle adds `accel * dt`; reverse throttle brakes forward motion first, then accelerates backward at `reverseAccel`. Coasting decays at `rollingFriction`. Handbrake adds a drag proportional to `brake * 1.5`. Off-track applies `offTrackDrag` and caps at `offTrackMaxSpeed`. Steering multiplies by `sign(speed)` so reverse steers naturally.
-- Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRate=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`.
+- Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRateLow=2.2`, `steerRateHigh=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`. Steering rate lerps between the low and high values across `[minSpeedForSteering, maxSpeed]`, so a low high-speed value tames twitchiness on straights while keeping low-speed agility.
 - On-track detection: `distanceToCenterline(op, x, z) <= TRACK_WIDTH/2` in `tick.ts`. Centerlines: straights use segment distance; corners use `|hypot(x - cx, z - cz) - CELL_SIZE/2|` with `arcCenter` cached on each `OrderedPiece` at build time.
 - Car visual: `src/game/sceneBuilder.ts::buildCar` returns an outer Group with an inner Group containing the Kenney `race.glb` scene. The inner Group applies `rotation.y = PI/2` (model's local +Z forward remapped to world +X, matching physics heading 0) and a uniform `scale = 1.65` so the ~2.56-unit model matches the prior 4.2-length footprint. Asset served from `public/models/car.glb` (CC0, Kenney Car Kit v3.1). License note in `public/models/KENNEY-LICENSE.txt`. Orientation via `car.rotation.y = state.heading` on the outer Group.
 - Tests: `tests/unit/physics.test.ts` covers throttle, max-speed cap, off-track cap, brake-while-moving, coast-to-zero, low-speed steering lockout, and steering while moving.
@@ -375,6 +375,7 @@ The feedback FAB appears only while paused. See Section 12.
 - Pause menu entry: "Setup".
 - Component: `src/components/TuningPanel.tsx`.
 - Each parameter has a slider and a numeric input. Per-field "reset" link reverts that field to its default. Footer has "Reset to defaults" for the whole setup.
+- The two `steerRate*` fields share a 2D pad: horizontal axis = low-speed steering, vertical axis = top-speed steering. A small grey dot marks the defaults; the live value tracks the orange dot. Numeric inputs sit alongside for precision.
 - A status line shows a STOCK chip when the setup matches `DEFAULT_CAR_PARAMS`, otherwise a TUNED chip.
 
 ### Storage
@@ -397,7 +398,8 @@ Bounds double as anti-cheat sanity caps (server validates with the same numbers 
 | brake | 36 | 8 | 80 | 1 | u/s² |
 | reverseAccel | 12 | 2 | 30 | 0.5 | u/s² |
 | rollingFriction | 4 | 0 | 20 | 0.25 | u/s² |
-| steerRate | 2.2 | 0.5 | 5.0 | 0.05 | rad/s |
+| steerRateLow | 2.2 | 0.5 | 5.0 | 0.05 | rad/s |
+| steerRateHigh | 2.2 | 0.5 | 5.0 | 0.05 | rad/s |
 | minSpeedForSteering | 0.8 | 0 | 5 | 0.1 | u/s |
 | offTrackMaxSpeed | 10 | 2 | 30 | 0.5 | u/s |
 | offTrackDrag | 16 | 0 | 60 | 1 | u/s² |

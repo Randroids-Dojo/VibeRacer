@@ -31,7 +31,8 @@ describe('clampParams', () => {
     const insane = {
       ...cloneDefaultParams(),
       maxSpeed: 999,
-      steerRate: -1,
+      steerRateLow: -1,
+      steerRateHigh: 99,
       offTrackDrag: 99999,
     }
     const out = clampParams(insane)
@@ -74,7 +75,7 @@ describe('CarParamsSchema', () => {
 
   it('rejects missing keys', () => {
     const partial = { ...cloneDefaultParams() } as Record<string, unknown>
-    delete partial.steerRate
+    delete partial.steerRateLow
     const parsed = CarParamsSchema.safeParse(partial)
     expect(parsed.success).toBe(false)
   })
@@ -93,7 +94,8 @@ describe('parseStoredParams', () => {
       TUNING_PARAM_META.find((m) => m.key === 'maxSpeed')!.max,
     )
     expect(out!.accel).toBe(12)
-    expect(out!.steerRate).toBe(DEFAULT_CAR_PARAMS.steerRate)
+    expect(out!.steerRateLow).toBe(DEFAULT_CAR_PARAMS.steerRateLow)
+    expect(out!.steerRateHigh).toBe(DEFAULT_CAR_PARAMS.steerRateHigh)
   })
 })
 
