@@ -63,7 +63,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 - Render loop: `requestAnimationFrame` drives tick + Three.js render every frame. HUD `setState` is throttled to ~20 Hz with a reference-equality bail-out so the HUD tree doesn't re-render when nothing visible changed.
 - Tests: `tests/unit/tick.test.ts` covers init state, frozen physics before start, teleporting through all checkpoints to complete a lap, ignoring unexpected cells, and invalid-lap reset when the car re-enters the start piece mid-lap.
 - Pause: `GameSession` owns `paused` state plus `pausedRef`, `pauseStartTsRef`, and `resumeShiftRef`. When paused, the RAF loop short-circuits before `tick()` runs. On resume, the accumulated pause duration is added to `state.raceStartMs` so the current lap timer resumes cleanly without a one-frame jump. Pause is only available during the `racing` phase (Esc is ignored during countdown).
-- Restart: `restart()` sets `pendingResetRef.current = true`; the loop re-inits game state, camera rig, and renders one frame. Phase flips back to `countdown` so the 3-2-1-GO sequence plays again. Tokens and session PB are cleared; all-time PB (persisted in `localStorage`) is preserved.
+- Restart: `restart()` sets `pendingResetRef.current = true`; the loop re-inits game state, camera rig, and renders one frame. Phase flips back to `countdown` so the READY-SET-GO sequence plays again. Tokens and session PB are cleared; all-time PB (persisted in `localStorage`) is preserved.
 - Fresh-slug prompt: `src/app/[slug]/page.tsx` now differentiates "KV configured but no saved track for this slug" from "KV unreachable". In the former case it renders `src/components/SlugLanding.tsx` instead of silently serving the default oval. The landing shows the slug as an eyebrow, a `Create new track` CTA linking to `/<slug>/edit`, and a `Load existing` list of recently-updated slugs read from `track:index` via `src/lib/recentTracks.ts` (`zrange` with `{ rev: true, withScores: true }`, top 10). When KV is empty the list shows a friendly "nothing built yet" message. When KV env vars are missing (local dev without KV), the page keeps falling back to the default track so `npm run dev` remains playable with no setup.
 - **Not yet landed.** PB fanfare, "Edit Track" entry point from the pause menu.
 
@@ -274,8 +274,8 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ### Build log
 
-- Countdown: `src/components/Countdown.tsx` cycles `3 -> 2 -> 1 -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Renders an F1-style start gantry: a horizontal row of five round red lamps in a dark housing with the current step label below. The row fills progressively across the count (2 lit on `3`, 4 lit on `2`, all 5 lit on `1`), then all lamps extinguish on `GO` and the label flashes green. This deliberately departs from the GDD's red / red+amber / green wording in favor of the more racing-game-appropriate "lights out" idiom. Inactive lamps are inset-darkened; active lamps glow via `boxShadow`. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
-- Countdown beeps: `playCountdownBeep(isGo)` in `src/game/music.ts` fires a one-shot tone through the shared `AudioContext`, routed to the master gain so it is audible over any active music without piping through the step scheduler. Counting steps use a square wave at A4 (midi 69); GO uses a triangle wave at A5 (midi 81) with a slightly longer decay. Envelope is a 10 ms linear attack then exponential decay to 0.001. Countdown's `useEffect([step])` calls the helper once per step change (mount + each increment), so 3/2/1 play low beeps and GO plays the higher pitch.
+- Countdown: `src/components/Countdown.tsx` cycles `READY -> SET -> GO` on an 800 ms interval, then holds GO for 600 ms and fires `onDone`. Renders a vertical three-lamp traffic-light housing (red, amber, green) with the current step label below. Each step lights exactly one lamp: READY = red, SET = amber, GO = green. Inactive lamps are inset-darkened; the lit lamp glows via `boxShadow`. The label text is gold during READY / SET and green on GO. During countdown, `GameSession` keeps the tick loop running but `state.raceStartMs` is null so physics is frozen and the timer shows 00:00.000.
+- Countdown beeps: `playCountdownBeep(isGo)` in `src/game/music.ts` fires a one-shot tone through the shared `AudioContext`, routed to the master gain so it is audible over any active music without piping through the step scheduler. Counting steps use a square wave at A4 (midi 69); GO uses a triangle wave at A5 (midi 81) with a slightly longer decay. Envelope is a 10 ms linear attack then exponential decay to 0.001. Countdown's `useEffect([step])` calls the helper once per step change (mount + each increment), so READY and SET play low beeps and GO plays the higher pitch.
 - Lap detection: cell-based. `tick.ts` compares `state.lastCellKey` against the current cell each frame. When the car enters the expected next piece's cell, it records `{cpId, tMs}` where `tMs = nowMs - raceStartMs`. Hitting piece 0 after N-1 CPs fires `LapCompleteEvent` with `{hits, lapTimeMs, lapNumber}` and resets `nextCpId=0`, `hits=[]`, `raceStartMs=nowMs` for the next lap. Lap count increments.
 - HUD: `src/components/HUD.tsx` renders CURRENT (big), LAST LAP, BEST (SESSION), BEST (ALL TIME), RECORD (track-wide top time, loaded from KV in the RSC page and passed through), LAP, RACER, plus an OFF TRACK warning and a transient toast for PB / lap-saved messages. Stat blocks share a `StatBlock` subcomponent. `setHud` is throttled to ~20 Hz with a reference-equality bail-out so the tree doesn't re-render unnecessarily.
 - Endless loop: no lap cap. Every completed lap triggers `handleLapComplete` which updates local PBs and fires `submitLap` (fire-and-forget).
@@ -285,7 +285,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ### Start signal
 
-- Animated traffic light: red, red plus amber, green (GO).
+- Three-step traffic light: READY (red), SET (amber), GO (green). One lamp lit per step.
 - Synth beep per step. Final beep is a higher pitch on GO.
 - Input ignored until GO.
 
@@ -319,7 +319,7 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 - `src/components/PauseMenu.tsx` is a dark overlay card with four buttons (Resume highlighted as primary) plus a small "Esc to resume" hint. Pure presentational, no state of its own.
 - `src/components/Game.tsx` owns the pause lifecycle: Esc key while `phase === 'racing'` calls `pause()`; clicking the bottom-left pause button does the same. Both `pause()` and `resume()` set `pausedRef.current` synchronously so the RAF loop picks up the state change on the very next frame.
 - Pause freezes simulation without drift: on pause, `pauseStartTsRef.current = performance.now()`; on resume, `resumeShiftRef.current += performance.now() - pauseStartTsRef.current`. The loop drains the shift by adding it to `state.raceStartMs` so the lap timer resumes where it left off.
-- Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the 3-2-1-GO sequence plays again. All-time PB in `localStorage` is preserved.
+- Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the READY-SET-GO sequence plays again. All-time PB in `localStorage` is preserved.
 - Exit to title uses Next.js's `useRouter().push('/')`.
 - Leaderboards button: toggles a sub-view inside the paused overlay. `pauseView: 'menu' | 'leaderboard'` in `Game.tsx` drives which component renders. Leaderboard has a Back button that returns to the menu. Reopening pause always starts on `'menu'`.
 - Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
@@ -638,7 +638,7 @@ src/
     PauseMenu.tsx
     TitleScreen.tsx
     FeedbackFab.tsx       # ported from Epoch, with mods
-    Countdown.tsx         # 3-2-1-GO traffic light
+    Countdown.tsx         # READY-SET-GO traffic light
   game/
     tick.ts               # pure (state, input, dt) returns state (unit-testable)
     physics.ts            # car integrator
