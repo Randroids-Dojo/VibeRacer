@@ -10,24 +10,34 @@ import {
   type JoystickState,
 } from '@/game/virtual-joystick'
 import type { KeyInput } from './useKeyboard'
+import type { TouchMode } from '@/lib/controlSettings'
 
 export interface TouchJoysticks {
   steer: JoystickState
   throttle: JoystickState
+  mode: TouchMode
 }
 
-// Dual-stick mobile controls. Left half of viewport spawns a steering stick
-// on first touch, right half spawns a gas/brake stick. Both release on
-// pointerup and respawn at the next tap. Writes to the same KeyInput ref
-// the keyboard hook uses so the game loop consumes a single source of truth.
+// Touch controls. Two modes share the same KeyInput ref the keyboard uses,
+// so the game loop keeps a single source of truth.
+//
+// dual: left half spawns a steering stick on first touch, right half spawns
+// a gas/brake stick. Both release on pointerup and respawn at the next tap.
+//
+// single: any touch anywhere spawns one stick. Horizontal axis steers;
+// vertical axis is gas (up) / brake (down). The throttle joystick state is
+// kept inactive in this mode so only one ring renders.
 export function useTouchControls(
   keys: { current: KeyInput },
   enabled: boolean,
+  mode: TouchMode = 'dual',
 ): TouchJoysticks {
   const sticksRef = useRef<TouchJoysticks>({
     steer: createJoystick(),
     throttle: createJoystick(),
+    mode,
   })
+  sticksRef.current.mode = mode
   const [, bump] = useState(0)
   const rerender = () => bump((n) => n + 1)
 
@@ -36,11 +46,16 @@ export function useTouchControls(
 
     function applyToKeys() {
       const s = readJoystick(sticks.steer)
-      const t = readJoystick(sticks.throttle)
       keys.current.left = s.x < -JOYSTICK_DEADZONE
       keys.current.right = s.x > JOYSTICK_DEADZONE
-      keys.current.forward = t.y < -JOYSTICK_DEADZONE
-      keys.current.backward = t.y > JOYSTICK_DEADZONE
+      if (mode === 'single') {
+        keys.current.forward = s.y < -JOYSTICK_DEADZONE
+        keys.current.backward = s.y > JOYSTICK_DEADZONE
+      } else {
+        const t = readJoystick(sticks.throttle)
+        keys.current.forward = t.y < -JOYSTICK_DEADZONE
+        keys.current.backward = t.y > JOYSTICK_DEADZONE
+      }
     }
 
     function clearSticks() {
@@ -63,10 +78,15 @@ export function useTouchControls(
     function onPointerDown(e: PointerEvent) {
       if (e.pointerType !== 'touch') return
       if (isInteractiveTarget(e.target)) return
-      const rightHalf = e.clientX >= window.innerWidth / 2
-      const js = rightHalf ? sticks.throttle : sticks.steer
-      if (js.active) return
-      beginJoystick(js, e.pointerId, e.clientX, e.clientY)
+      if (mode === 'single') {
+        if (sticks.steer.active) return
+        beginJoystick(sticks.steer, e.pointerId, e.clientX, e.clientY)
+      } else {
+        const rightHalf = e.clientX >= window.innerWidth / 2
+        const js = rightHalf ? sticks.throttle : sticks.steer
+        if (js.active) return
+        beginJoystick(js, e.pointerId, e.clientX, e.clientY)
+      }
       applyToKeys()
       rerender()
       e.preventDefault()
@@ -76,7 +96,7 @@ export function useTouchControls(
       if (e.pointerType !== 'touch') return
       if (sticks.steer.pointerId === e.pointerId) {
         moveJoystick(sticks.steer, e.clientX, e.clientY)
-      } else if (sticks.throttle.pointerId === e.pointerId) {
+      } else if (mode !== 'single' && sticks.throttle.pointerId === e.pointerId) {
         moveJoystick(sticks.throttle, e.clientX, e.clientY)
       } else {
         return
@@ -114,7 +134,7 @@ export function useTouchControls(
       window.removeEventListener('pointercancel', onPointerUp)
       clearSticks()
     }
-  }, [enabled, keys])
+  }, [enabled, keys, mode])
 
   return sticksRef.current
 }
