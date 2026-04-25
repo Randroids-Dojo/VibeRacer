@@ -18,6 +18,7 @@ import {
 } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt, readStoredInitials } from './InitialsPrompt'
 import { Countdown } from './Countdown'
 import { HUD } from './HUD'
@@ -25,8 +26,11 @@ import { PauseMenu } from './PauseMenu'
 import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
+import { TuningPanel } from './TuningPanel'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
+import type { CarParams } from '@/game/physics'
+import type { InputMode } from '@/lib/tuningSettings'
 import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
@@ -34,7 +38,6 @@ import {
   setGameIntensity,
 } from '@/game/music'
 import { TitleMusic } from './TitleMusic'
-import { DEFAULT_CAR_PARAMS } from '@/game/physics'
 
 export interface OverallRecord {
   initials: string
@@ -83,7 +86,7 @@ interface HudState {
   toast: string | null
 }
 
-type PauseView = 'menu' | 'leaderboard' | 'settings'
+type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning'
 
 const HUD_UPDATE_MS = 50 // Throttle HUD re-renders to ~20Hz; game loop still runs at 60Hz.
 
@@ -97,6 +100,12 @@ function GameSession({
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const { settings, setSettings, resetSettings } = useControlSettings()
+  const {
+    params: tuning,
+    setParams: setTuning,
+    applyParams: applyTuning,
+    resetParams: resetTuning,
+  } = useTuning(slug)
   const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
@@ -106,6 +115,14 @@ function GameSession({
   const pauseStartTsRef = useRef<number | null>(null)
   const resumeShiftRef = useRef(0)
   const toastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Live tuning the rAF loop reads each frame. Updated whenever the
+  // useTuning hook refreshes (player edited or migrated state).
+  const paramsRef = useRef<CarParams>(tuning)
+  paramsRef.current = tuning
+  // Last-input-wins detector for the leaderboard input-mode badge. Defaults to
+  // 'keyboard' on first paint; flips to 'touch' on the first touch pointerdown
+  // and back on any keydown. Snapshot at submit time.
+  const inputModeRef = useRef<InputMode>('keyboard')
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -183,6 +200,23 @@ function GameSession({
   const editTrack = useCallback(() => {
     router.push(`/${slug}/edit`)
   }, [router, slug])
+
+  useEffect(() => {
+    function onKeyDown() {
+      inputModeRef.current = 'keyboard'
+    }
+    function onPointer(e: PointerEvent) {
+      if (e.pointerType === 'touch') {
+        inputModeRef.current = 'touch'
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    window.addEventListener('pointerdown', onPointer)
+    return () => {
+      window.removeEventListener('keydown', onKeyDown)
+      window.removeEventListener('pointerdown', onPointer)
+    }
+  }, [])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -287,6 +321,7 @@ function GameSession({
         dtMs,
         ts,
         path,
+        paramsRef.current,
       )
       state = result.state
 
@@ -297,7 +332,7 @@ function GameSession({
       bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
       renderer.render(bundle.scene, bundle.camera)
 
-      setGameIntensity(Math.abs(state.speed) / DEFAULT_CAR_PARAMS.maxSpeed)
+      setGameIntensity(Math.abs(state.speed) / paramsRef.current.maxSpeed)
 
       if (result.lapComplete) handleLapComplete(result.lapComplete)
 
@@ -398,6 +433,8 @@ function GameSession({
             checkpoints: event.hits,
             lapTimeMs: event.lapTimeMs,
             initials,
+            tuning: paramsRef.current,
+            inputMode: inputModeRef.current,
           }),
         },
       )
@@ -462,6 +499,7 @@ function GameSession({
               onEditTrack={editTrack}
               onLeaderboards={() => setPauseView('leaderboard')}
               onSettings={() => setPauseView('settings')}
+              onTuning={() => setPauseView('tuning')}
               onExit={exitToTitle}
             />
           ) : pauseView === 'leaderboard' ? (
@@ -469,6 +507,17 @@ function GameSession({
               slug={slug}
               versionHash={versionHash}
               onBack={() => setPauseView('menu')}
+              onApplyTuning={(p) => {
+                applyTuning(p)
+                setPauseView('menu')
+              }}
+            />
+          ) : pauseView === 'tuning' ? (
+            <TuningPanel
+              params={tuning}
+              onChange={setTuning}
+              onReset={resetTuning}
+              onClose={() => setPauseView('menu')}
             />
           ) : (
             <SettingsPane

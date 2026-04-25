@@ -117,4 +117,70 @@ describe('GET /api/leaderboard', () => {
     expect(body.entries).toEqual([])
     expect(body.meBestRank).toBeNull()
   })
+
+  it('attaches tuning + inputMode from lap meta and tolerates absence', async () => {
+    const { DEFAULT_CAR_PARAMS } = await import('@/game/physics')
+    const tuned = { ...DEFAULT_CAR_PARAMS, accel: 24, maxSpeed: 30 }
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'nWith')
+    await fake.set(
+      `lap:meta:nWith`,
+      JSON.stringify({ tuning: tuned, inputMode: 'touch' }),
+    )
+    await seedLap('BBB', racerB, 2500, 1_700_000_000_100, 'nNone')
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash }))
+    const body = (await res.json()) as {
+      entries: Array<{
+        initials: string
+        tuning: Record<string, number> | null
+        inputMode: string | null
+      }>
+    }
+    const a = body.entries.find((e) => e.initials === 'AAA')
+    const b = body.entries.find((e) => e.initials === 'BBB')
+    expect(a?.tuning).toEqual(tuned)
+    expect(a?.inputMode).toBe('touch')
+    expect(b?.tuning).toBeNull()
+    expect(b?.inputMode).toBeNull()
+  })
+
+  it('legacy lap meta with the pre-split steerRate field is dropped to null', async () => {
+    const { DEFAULT_CAR_PARAMS } = await import('@/game/physics')
+    const legacy = {
+      ...DEFAULT_CAR_PARAMS,
+    } as Record<string, unknown>
+    delete legacy.steerRateLow
+    delete legacy.steerRateHigh
+    legacy.steerRate = 2.2
+    await seedLap('LEG', racerA, 1500, 1_700_000_000_000, 'nLeg')
+    await fake.set(
+      `lap:meta:nLeg`,
+      JSON.stringify({ tuning: legacy, inputMode: 'keyboard' }),
+    )
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash }))
+    const body = (await res.json()) as {
+      entries: Array<{ tuning: unknown; inputMode: string | null }>
+    }
+    expect(body.entries[0].tuning).toBeNull()
+    expect(body.entries[0].inputMode).toBe('keyboard')
+  })
+
+  it('out-of-range stored tuning is dropped to null rather than served', async () => {
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'nBad')
+    await fake.set(
+      `lap:meta:nBad`,
+      JSON.stringify({ tuning: { maxSpeed: 9999 }, inputMode: 'keyboard' }),
+    )
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash }))
+    const body = (await res.json()) as {
+      entries: Array<{ tuning: unknown; inputMode: string | null }>
+    }
+    expect(body.entries[0].tuning).toBeNull()
+    expect(body.entries[0].inputMode).toBe('keyboard')
+  })
 })

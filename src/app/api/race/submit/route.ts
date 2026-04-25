@@ -96,6 +96,16 @@ export async function POST(req: NextRequest) {
     score: submission.data.lapTimeMs,
     member,
   })
+
+  // Per-lap metadata is tracked in a side-key keyed by nonce so the leaderboard
+  // can show what setup the time was set with, and which input device was used.
+  // Optional in the payload to keep old clients submitting (we backfill below).
+  const lapMeta = {
+    tuning: submission.data.tuning ?? null,
+    inputMode: submission.data.inputMode ?? 'keyboard',
+  }
+  await kv.set(kvKeys.lapMeta(payload.nonce), JSON.stringify(lapMeta))
+
   await kv.set(kvKeys.racerLastSubmit(racerId), new Date(ts).toISOString())
 
   // Rotate nonce for the next lap. Same slug/version/racerId, new nonce + issuedAt.

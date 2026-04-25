@@ -5,7 +5,12 @@ export interface CarParams {
   brake: number
   reverseAccel: number
   rollingFriction: number
-  steerRate: number
+  // Speed-aware steering. Heading rate at the low-speed end of the band (just
+  // above minSpeedForSteering) is steerRateLow; at maxSpeed it is steerRateHigh.
+  // Linear interp in between so the player can split low-speed responsiveness
+  // from high-speed twitchiness via the 2D pad in the Setup panel.
+  steerRateLow: number
+  steerRateHigh: number
   minSpeedForSteering: number
   offTrackMaxSpeed: number
   offTrackDrag: number
@@ -18,7 +23,8 @@ export const DEFAULT_CAR_PARAMS: CarParams = {
   brake: 36,
   reverseAccel: 12,
   rollingFriction: 4,
-  steerRate: 2.2,
+  steerRateLow: 2.2,
+  steerRateHigh: 2.2,
   minSpeedForSteering: 0.8,
   offTrackMaxSpeed: 10,
   offTrackDrag: 16,
@@ -88,7 +94,18 @@ export function stepPhysics(
 
   let heading = s.heading
   if (Math.abs(speed) >= params.minSpeedForSteering) {
-    heading += params.steerRate * steer * dtSec * sign(speed)
+    const span = params.maxSpeed - params.minSpeedForSteering
+    const t =
+      span > 1e-6
+        ? clamp(
+            (Math.abs(speed) - params.minSpeedForSteering) / span,
+            0,
+            1,
+          )
+        : 0
+    const rate =
+      params.steerRateLow + (params.steerRateHigh - params.steerRateLow) * t
+    heading += rate * steer * dtSec * sign(speed)
   }
 
   // Heading: 0 = +X (east), PI/2 = -Z (north). Move along (cos, -sin) in XZ.

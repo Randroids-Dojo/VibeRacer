@@ -18,7 +18,7 @@
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + Settings pane on home and pause menu live; initials editing in Settings pending) |
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, checkpoints, lap detection, invalid-lap reset, HUD all live; per-track configurable checkpoint count pending) |
 | 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings ship; Settings pane is now live for keyboard remap and dual / single touch mode) |
-| 10 | Physics tuning (dev panel) | not started |
+| 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
 | 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; countdown beep SFX ship, other SFX pending) |
@@ -148,7 +148,7 @@ Pause button floats in a corner and is always tappable during a race.
 
 - `src/game/physics.ts` exports `stepPhysics(state, input, dtSec, onTrack, params?)`, `DEFAULT_CAR_PARAMS`, and `PhysicsState` / `PhysicsInput` / `CarParams` types.
 - Simplified arcade model: scalar speed + heading, no lateral velocity. Throttle adds `accel * dt`; reverse throttle brakes forward motion first, then accelerates backward at `reverseAccel`. Coasting decays at `rollingFriction`. Handbrake adds a drag proportional to `brake * 1.5`. Off-track applies `offTrackDrag` and caps at `offTrackMaxSpeed`. Steering multiplies by `sign(speed)` so reverse steers naturally.
-- Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRate=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`.
+- Defaults: `maxSpeed=26`, `maxReverseSpeed=8`, `accel=18`, `brake=36`, `reverseAccel=12`, `rollingFriction=4`, `steerRateLow=2.2`, `steerRateHigh=2.2`, `minSpeedForSteering=0.8`, `offTrackMaxSpeed=10`, `offTrackDrag=16`. Steering rate lerps between the low and high values across `[minSpeedForSteering, maxSpeed]`, so a low high-speed value tames twitchiness on straights while keeping low-speed agility.
 - On-track detection: `distanceToCenterline(op, x, z) <= TRACK_WIDTH/2` in `tick.ts`. Centerlines: straights use segment distance; corners use `|hypot(x - cx, z - cz) - CELL_SIZE/2|` with `arcCenter` cached on each `OrderedPiece` at build time.
 - Car visual: `src/game/sceneBuilder.ts::buildCar` returns an outer Group with an inner Group containing the Kenney `race.glb` scene. The inner Group applies `rotation.y = PI/2` (model's local +Z forward remapped to world +X, matching physics heading 0) and a uniform `scale = 1.65` so the ~2.56-unit model matches the prior 4.2-length footprint. Asset served from `public/models/car.glb` (CC0, Kenney Car Kit v3.1). License note in `public/models/KENNEY-LICENSE.txt`. Orientation via `car.rotation.y = state.heading` on the outer Group.
 - Tests: `tests/unit/physics.test.ts` covers throttle, max-speed cap, off-track cap, brake-while-moving, coast-to-zero, low-speed steering lockout, and steering while moving.
@@ -366,18 +366,47 @@ The feedback FAB appears only while paused. See Section 12.
 
 ---
 
-## 10. Physics and Controls Tuning (dev-time)
+## 10. Physics and Controls Tuning (player Setup)
 
-**Status.** Not started.
+**Status.** Done. Tuning is a first-class player feature: a Setup panel in the pause menu exposes live sliders for every `CarParams` field, saves per track, and carries the most recent setup forward to fresh tracks. Each lap submission carries its setup so leaderboard viewers can see and one-tap reuse another player's tuning.
 
-A collapsible dev panel exposes live sliders for all car and camera parameters. This is for the developer, not shipped as a user-facing feature in v1.
+### Setup panel
 
-- Gated behind the `~` key or `?dev=1` query param.
-- All values persist to `localStorage` under `viberacer.dev.tuning`.
-- Not shown in production unless the query param or keystroke is used.
-- Includes a "Reset to defaults" button.
+- Pause menu entry: "Setup".
+- Component: `src/components/TuningPanel.tsx`.
+- Each parameter has a slider and a numeric input. Per-field "reset" link reverts that field to its default. Footer has "Reset to defaults" for the whole setup.
+- The two `steerRate*` fields share a 2D pad: horizontal axis = low-speed steering, vertical axis = top-speed steering. A small grey dot marks the defaults; the live value tracks the orange dot. Numeric inputs sit alongside for precision.
+- A status line shows a STOCK chip when the setup matches `DEFAULT_CAR_PARAMS`, otherwise a TUNED chip.
 
-A player-facing tuning UI is a stretch feature (Section 18).
+### Storage
+
+- Per-track key: `viberacer.tuning.track:<slug>` in `localStorage`.
+- Last-loaded key: `viberacer.tuning.lastLoaded` (mirrors whichever per-track tuning was most recently saved).
+- Resolution order on load: per-track save, then last-loaded carryover, then `DEFAULT_CAR_PARAMS`.
+- One-shot migration from the old dev-only key `viberacer.dev.tuning` if present.
+- Resolver, schema, and helpers live in `src/lib/tuningSettings.ts`. Hook is `src/hooks/useTuning.ts` (slug-scoped, hydrates on mount, listens for cross-tab `storage` changes).
+
+### Slider ranges
+
+Bounds double as anti-cheat sanity caps (server validates with the same numbers via `CarParamsSchema`):
+
+| field | default | min | max | step | unit |
+|---|---|---|---|---|---|
+| maxSpeed | 26 | 12 | 50 | 0.5 | u/s |
+| maxReverseSpeed | 8 | 2 | 20 | 0.5 | u/s |
+| accel | 18 | 4 | 48 | 0.5 | u/s² |
+| brake | 36 | 8 | 80 | 1 | u/s² |
+| reverseAccel | 12 | 2 | 30 | 0.5 | u/s² |
+| rollingFriction | 4 | 0 | 20 | 0.25 | u/s² |
+| steerRateLow | 2.2 | 0.5 | 5.0 | 0.05 | rad/s |
+| steerRateHigh | 2.2 | 0.5 | 5.0 | 0.05 | rad/s |
+| minSpeedForSteering | 0.8 | 0 | 5 | 0.1 | u/s |
+| offTrackMaxSpeed | 10 | 2 | 30 | 0.5 | u/s |
+| offTrackDrag | 16 | 0 | 60 | 1 | u/s² |
+
+### Leaderboard attachment
+
+Each lap submit includes `tuning` (current `CarParams`) and `inputMode` ('keyboard' or 'touch'; last-input-wins detection). Server stores them under `lap:meta:<nonce>` in KV; the leaderboard read batches these via `mget` and serves them on each entry. Older entries with no meta surface as `null` and the UI shows a dim placeholder. Out-of-range tuning is rejected at submit time (silent drop) and replaced with `null` if it ever sneaks through.
 
 ---
 
@@ -451,6 +480,8 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 - Default view: top 25 for the current track version.
 - Dropdown to browse older versions of the same slug.
 - Sortable columns (rank, initials, time, date).
+- Per-row input-mode icon: keyboard / phone glyph (or dim placeholder for entries without meta).
+- Per-row STOCK / SETUP chip next to the initials. Tap SETUP to open a popover that lists every `CarParams` value side by side with the defaults, plus "Copy JSON" and "Try this setup" (the latter applies the entry's tuning to your local setup and resumes).
 - Personal best is highlighted if the current `racerId` has a score on this board.
 - PB celebration (larger flash plus a small synth fanfare) fires only on a new personal best against this track version.
 
@@ -758,7 +789,6 @@ These are steps the user performs in external dashboards. Every step is mandator
 Not v1. Listed so agents know not to scope-creep into them without approval.
 
 - Car customization (paint, decals, multiple body shapes).
-- In-game physics tuning UI for players (not just dev).
 - Share button (copy URL plus personal best to clipboard).
 - Music personalization (hash slug or initials to perturb music parameters).
 - More track pieces (ramps, banked turns, jumps, 45-degree turns).
