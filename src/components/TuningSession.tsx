@@ -11,10 +11,10 @@ import {
   ASPECTS,
   CONTROL_TYPE_LABELS,
   TRACK_TAG_LABELS,
-  cloneDefaultParams,
   createDefaultDamping,
   makeSavedTuning,
   makeTuningId,
+  persistLabLastLoaded,
   recommendNextParams,
   upsertTuning,
   type AspectRatings,
@@ -207,6 +207,23 @@ export function TuningSession({
     }
   }, [phase])
 
+  // Snapshot the lab's live params into lastLoaded on every change so an
+  // unsaved session still carries its most-recent setup forward when the
+  // user leaves the lab. The initial write is a no-op (initialParams already
+  // came from the same key) but keeps the contract simple.
+  useEffect(() => {
+    persistLabLastLoaded(params)
+  }, [params])
+
+  function restartCurrentRun() {
+    pausedRef.current = false
+    pendingResetRef.current = true
+    pendingRaceStartRef.current = null
+    setPendingRound(null)
+    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null })
+    setPhase('countdown')
+  }
+
   const showCanvas = phase === 'countdown' || phase === 'drive'
 
   return (
@@ -252,9 +269,22 @@ export function TuningSession({
             mode={settings.touchMode}
           />
           {phase === 'drive' ? (
-            <button onClick={abortDrive} style={abortBtn} aria-label="Stop run">
-              Stop run
-            </button>
+            <div style={driveActions}>
+              <button
+                onClick={restartCurrentRun}
+                style={driveActionBtn}
+                aria-label="Restart run"
+              >
+                Restart
+              </button>
+              <button
+                onClick={abortDrive}
+                style={driveActionBtn}
+                aria-label="Stop run"
+              >
+                Stop run
+              </button>
+            </div>
           ) : null}
           {phase === 'countdown' ? <Countdown onDone={onCountdownDone} /> : null}
         </div>
@@ -614,10 +644,15 @@ const offTrackBadge: CSSProperties = {
   textAlign: 'center',
   letterSpacing: 1,
 }
-const abortBtn: CSSProperties = {
+const driveActions: CSSProperties = {
   position: 'fixed',
   left: 16,
   bottom: 20,
+  display: 'flex',
+  gap: 8,
+  zIndex: 20,
+}
+const driveActionBtn: CSSProperties = {
   background: 'rgba(0,0,0,0.55)',
   color: 'white',
   border: 'none',
@@ -625,7 +660,6 @@ const abortBtn: CSSProperties = {
   padding: '10px 16px',
   fontSize: 13,
   cursor: 'pointer',
-  zIndex: 20,
   fontFamily: 'inherit',
 }
 const formScroll: CSSProperties = {

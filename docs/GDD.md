@@ -419,6 +419,7 @@ A dedicated mode at `/tune` for players who want guided tuning instead of raw sl
 - Aspects rated (5-point Likert, 3 = just right): top speed, pickup, braking, low-speed turn, high-speed turn, coast, off-track penalty.
 - Saved tunings in localStorage under `viberacer.tuningLab.saved`. Each row tags `controlType` (`keyboard` / `touch_single` / `touch_dual`) and up to four `trackTags` (`twisty` / `fast` / `mixed` / `technical`). Sortable by recency, mean rating, fastest lap, or name. Filterable by control and tag, plus name search.
 - "Apply to next race" writes through to the existing `viberacer.tuning.lastLoaded` key (and a synthetic `viberacer.tuning.track:__lab__` save) so the next slug the user opens picks the lab tuning up automatically.
+- The session also auto-persists the live params to `lastLoaded` on every change so an unsaved session still carries its most-recent setup forward when the user leaves the lab. During the drive phase a "Restart" button resets the car to the start line without going to feedback.
 - Export and import are clipboard-based. "Copy JSON" on a saved tuning copies a single `SavedTuning`. The home view also offers "Copy all saved tunings". Import view accepts pasted JSON and dispatches via `parseImportedJson`: a single tuning lands directly in the saved list; a session payload saves its final round.
 
 ---

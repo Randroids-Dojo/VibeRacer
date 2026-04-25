@@ -373,6 +373,14 @@ export function applySavedAsLastLoaded(t: SavedTuning): void {
   writeTuning(TUNING_LAB_SYNTHETIC_SLUG, t.params)
 }
 
+// Snapshot the lab's live params into the lastLoaded key so the next race
+// (or the next time the lab opens) starts from whatever the player most
+// recently drove. Called on every params change in the session and on exit
+// so an unsaved session still carries its winning setup forward.
+export function persistLabLastLoaded(params: CarParams): void {
+  writeTuning(TUNING_LAB_SYNTHETIC_SLUG, params)
+}
+
 export interface RoundLog {
   params: CarParams
   ratings: AspectRatings

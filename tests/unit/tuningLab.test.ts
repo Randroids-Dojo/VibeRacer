@@ -13,6 +13,7 @@ import {
   getTuning,
   makeSavedTuning,
   parseImportedJson,
+  persistLabLastLoaded,
   readSavedTunings,
   recommendNextParams,
   sortSaved,
@@ -332,6 +333,21 @@ describe('localStorage saved-tunings store', () => {
     expect(stored.maxSpeed).toBe(30)
     const perTrack = JSON.parse(store[perTrackKey(TUNING_LAB_SYNTHETIC_SLUG)])
     expect(perTrack.maxSpeed).toBe(30)
+  })
+
+  it('persistLabLastLoaded snapshots raw params into lastLoaded', () => {
+    const params = { ...cloneDefaultParams(), accel: 25 }
+    persistLabLastLoaded(params)
+    expect(JSON.parse(store[TUNING_LAST_LOADED_KEY]).accel).toBe(25)
+    expect(
+      JSON.parse(store[perTrackKey(TUNING_LAB_SYNTHETIC_SLUG)]).accel,
+    ).toBe(25)
+  })
+
+  it('persistLabLastLoaded overwrites with the latest params on each call', () => {
+    persistLabLastLoaded({ ...cloneDefaultParams(), accel: 25 })
+    persistLabLastLoaded({ ...cloneDefaultParams(), accel: 30 })
+    expect(JSON.parse(store[TUNING_LAST_LOADED_KEY]).accel).toBe(30)
   })
 })
 
