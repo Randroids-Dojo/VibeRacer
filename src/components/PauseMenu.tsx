@@ -1,5 +1,7 @@
 'use client'
 
+import { useClickSfx, type ClickVariant } from '@/hooks/useClickSfx'
+
 interface PauseMenuProps {
   onResume: () => void
   onRestart: () => void
@@ -23,13 +25,13 @@ export function PauseMenu({
     <div style={overlay}>
       <div style={panel}>
         <div style={title}>PAUSED</div>
-        <MenuButton label="Resume" onClick={onResume} primary />
-        <MenuButton label="Restart" onClick={onRestart} />
-        <MenuButton label="Edit Track" onClick={onEditTrack} />
-        <MenuButton label="Leaderboards" onClick={onLeaderboards} />
-        <MenuButton label="Setup" onClick={onTuning} />
-        <MenuButton label="Settings" onClick={onSettings} />
-        <MenuButton label="Exit to title" onClick={onExit} />
+        <MenuButton label="Resume" onClick={onResume} variant="confirm" primary />
+        <MenuButton label="Restart" onClick={onRestart} variant="confirm" />
+        <MenuButton label="Edit Track" onClick={onEditTrack} variant="soft" />
+        <MenuButton label="Leaderboards" onClick={onLeaderboards} variant="soft" />
+        <MenuButton label="Setup" onClick={onTuning} variant="soft" />
+        <MenuButton label="Settings" onClick={onSettings} variant="soft" />
+        <MenuButton label="Exit to title" onClick={onExit} variant="back" />
         <div style={hint}>Esc to resume</div>
       </div>
     </div>
@@ -39,15 +41,21 @@ export function PauseMenu({
 function MenuButton({
   label,
   onClick,
+  variant,
   primary,
 }: {
   label: string
   onClick: () => void
+  variant: ClickVariant
   primary?: boolean
 }) {
+  const click = useClickSfx(variant)
   return (
     <button
-      onClick={onClick}
+      onClick={() => {
+        click()
+        onClick()
+      }}
       style={{
         ...btn,
         background: primary ? '#ff6b35' : '#2a2a2a',

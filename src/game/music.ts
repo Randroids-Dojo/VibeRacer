@@ -3,7 +3,18 @@
  *
  * Scheduler pattern: each 50 ms tick looks 120 ms ahead and queues any 16th-note
  * steps that fall inside that window onto the AudioContext clock.
+ *
+ * The AudioContext, master gain, and first-gesture resume handler live in
+ * audioEngine.ts so both the music scheduler and the SFX layer share one
+ * mixer.
  */
+
+import {
+  ensureAudioReady,
+  getAudioEngine,
+  getOrMakeNoiseBuffer,
+  type AudioEngine,
+} from './audioEngine'
 
 const LOOKAHEAD_SEC = 0.12
 const SCHEDULE_INTERVAL_MS = 50
@@ -16,7 +27,6 @@ const PRUNE_GRACE_MS = 20
 export const RACE_START_CROSSFADE_SEC = 3.0
 export const PAUSE_CROSSFADE_SEC = 0.8
 
-const MASTER_GAIN = 1.0
 const INTENSITY_EPSILON = 0.01
 const GAME_DRUMS_INTENSITY_THRESHOLD = 0.15
 const COUNTER_MELODY_INTENSITY_THRESHOLD = 0.5
@@ -48,17 +58,13 @@ interface Track {
   pruneHandle: ReturnType<typeof setTimeout> | null
 }
 
-interface Engine {
-  ctx: AudioContext
-  master: GainNode
+interface MusicSystem {
+  audio: AudioEngine
   schedulerHandle: ReturnType<typeof setTimeout> | null
   tracks: Map<TrackName, Track>
-  snareBuffer: AudioBuffer | null
-  hatBuffer: AudioBuffer | null
 }
 
-let engine: Engine | null = null
-let firstGestureHandler: (() => void) | null = null
+let system: MusicSystem | null = null
 
 export function midiFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
@@ -88,74 +94,32 @@ export const SCALES = {
   dorian: [0, 2, 3, 5, 7, 9, 10],
 } as const
 
-function getEngine(): Engine | null {
-  if (engine) return engine
-  if (typeof window === 'undefined') return null
-  const Ctor: typeof AudioContext | undefined =
-    window.AudioContext ??
-    (window as Window & { webkitAudioContext?: typeof AudioContext })
-      .webkitAudioContext
-  if (!Ctor) return null
-  const ctx = new Ctor()
-  const master = ctx.createGain()
-  master.gain.value = MASTER_GAIN
-  master.connect(ctx.destination)
-  engine = {
-    ctx,
-    master,
+function getSystem(): MusicSystem | null {
+  if (system) return system
+  const audio = getAudioEngine()
+  if (!audio) return null
+  system = {
+    audio,
     schedulerHandle: null,
     tracks: new Map(),
-    snareBuffer: null,
-    hatBuffer: null,
   }
-  return engine
+  return system
 }
 
-function makeNoiseBuffer(ctx: AudioContext, durationSec: number): AudioBuffer {
-  const size = Math.floor(ctx.sampleRate * durationSec)
-  const buf = ctx.createBuffer(1, size, ctx.sampleRate)
-  const data = buf.getChannelData(0)
-  for (let i = 0; i < size; i++) data[i] = Math.random() * 2 - 1
-  return buf
-}
-
-function ensureScheduler(e: Engine): void {
-  if (e.schedulerHandle !== null) return
+function ensureScheduler(s: MusicSystem): void {
+  if (s.schedulerHandle !== null) return
   runScheduler()
 }
 
-/**
- * Resume the AudioContext if it is suspended. If the browser rejects the
- * resume (autoplay policy), attach a one-time document-level gesture handler
- * that retries on the next pointerdown or keydown. Idempotent.
- */
-function ensureAudioReady(e: Engine): void {
-  if (e.ctx.state !== 'suspended') return
-  void e.ctx.resume()
-  if (firstGestureHandler) return
-  const handler = () => {
-    const cur = engine
-    if (cur) void cur.ctx.resume()
-    if (firstGestureHandler) {
-      window.removeEventListener('pointerdown', firstGestureHandler)
-      window.removeEventListener('keydown', firstGestureHandler)
-      firstGestureHandler = null
-    }
-  }
-  firstGestureHandler = handler
-  window.addEventListener('pointerdown', handler)
-  window.addEventListener('keydown', handler)
-}
-
 function runScheduler(): void {
-  const e = engine
-  if (!e) return
-  if (e.tracks.size === 0) {
-    e.schedulerHandle = null
+  const s = system
+  if (!s) return
+  if (s.tracks.size === 0) {
+    s.schedulerHandle = null
     return
   }
-  const horizon = e.ctx.currentTime + LOOKAHEAD_SEC
-  for (const track of e.tracks.values()) {
+  const horizon = s.audio.ctx.currentTime + LOOKAHEAD_SEC
+  for (const track of s.tracks.values()) {
     while (track.nextTime < horizon) {
       updateTempo(track)
       track.playStep(track, track.step, track.nextTime)
@@ -163,7 +127,7 @@ function runScheduler(): void {
       track.nextTime += track.stepDur
     }
   }
-  e.schedulerHandle = setTimeout(runScheduler, SCHEDULE_INTERVAL_MS)
+  s.schedulerHandle = setTimeout(runScheduler, SCHEDULE_INTERVAL_MS)
 }
 
 function schedNote(
@@ -174,10 +138,10 @@ function schedNote(
   wave: OscillatorType,
   vol: number,
 ): void {
-  const e = engine
-  if (!e) return
-  const osc = e.ctx.createOscillator()
-  const gain = e.ctx.createGain()
+  const s = system
+  if (!s) return
+  const osc = s.audio.ctx.createOscillator()
+  const gain = s.audio.ctx.createGain()
   osc.type = wave
   osc.frequency.value = freq
   gain.gain.setValueAtTime(vol, startTime)
@@ -192,10 +156,10 @@ function schedNote(
 }
 
 function schedKick(track: Track, startTime: number, vol = 0.18): void {
-  const e = engine
-  if (!e) return
-  const osc = e.ctx.createOscillator()
-  const gain = e.ctx.createGain()
+  const s = system
+  if (!s) return
+  const osc = s.audio.ctx.createOscillator()
+  const gain = s.audio.ctx.createGain()
   osc.type = 'sine'
   osc.frequency.setValueAtTime(160, startTime)
   osc.frequency.exponentialRampToValueAtTime(40, startTime + 0.1)
@@ -215,14 +179,14 @@ interface NoiseOpts {
 }
 
 function schedNoise(track: Track, startTime: number, opts: NoiseOpts): void {
-  const e = engine
-  if (!e) return
-  const src = e.ctx.createBufferSource()
+  const s = system
+  if (!s) return
+  const src = s.audio.ctx.createBufferSource()
   src.buffer = opts.buffer
-  const filt = e.ctx.createBiquadFilter()
+  const filt = s.audio.ctx.createBiquadFilter()
   filt.type = 'highpass'
   filt.frequency.value = opts.hpHz
-  const gain = e.ctx.createGain()
+  const gain = s.audio.ctx.createGain()
   gain.gain.setValueAtTime(opts.vol, startTime)
   gain.gain.exponentialRampToValueAtTime(0.001, startTime + opts.durationSec)
   src.connect(filt)
@@ -233,11 +197,11 @@ function schedNoise(track: Track, startTime: number, opts: NoiseOpts): void {
 }
 
 function schedSnare(track: Track, startTime: number, vol = 0.14): void {
-  const e = engine
-  if (!e) return
-  if (!e.snareBuffer) e.snareBuffer = makeNoiseBuffer(e.ctx, SNARE_NOISE_DURATION_SEC)
+  const s = system
+  if (!s) return
+  const buffer = getOrMakeNoiseBuffer(s.audio, 'snare', SNARE_NOISE_DURATION_SEC)
   schedNoise(track, startTime, {
-    buffer: e.snareBuffer,
+    buffer,
     durationSec: SNARE_NOISE_DURATION_SEC,
     hpHz: 1200,
     vol,
@@ -245,11 +209,11 @@ function schedSnare(track: Track, startTime: number, vol = 0.14): void {
 }
 
 function schedHat(track: Track, startTime: number, vol = 0.05): void {
-  const e = engine
-  if (!e) return
-  if (!e.hatBuffer) e.hatBuffer = makeNoiseBuffer(e.ctx, HAT_NOISE_DURATION_SEC)
+  const s = system
+  if (!s) return
+  const buffer = getOrMakeNoiseBuffer(s.audio, 'hat', HAT_NOISE_DURATION_SEC)
   schedNoise(track, startTime, {
-    buffer: e.hatBuffer,
+    buffer,
     durationSec: HAT_NOISE_DURATION_SEC,
     hpHz: 6000,
     vol,
@@ -392,16 +356,16 @@ const TRACK_CONFIG: Record<TrackName, TrackConfig> = {
   },
 }
 
-function makeTrack(e: Engine, name: TrackName): Track {
+function makeTrack(s: MusicSystem, name: TrackName): Track {
   const cfg = TRACK_CONFIG[name]
-  const gain = e.ctx.createGain()
+  const gain = s.audio.ctx.createGain()
   gain.gain.value = 0
-  gain.connect(e.master)
+  gain.connect(s.audio.master)
   const stepDur = 60 / cfg.bpm / 4
   return {
     name,
     step: 0,
-    nextTime: e.ctx.currentTime + 0.05,
+    nextTime: s.audio.ctx.currentTime + 0.05,
     baseStepDur: stepDur,
     stepDur,
     rootMidi: cfg.rootMidi,
@@ -430,20 +394,20 @@ function cancelPrune(track: Track): void {
 function schedulePrune(track: Track, afterSec: number): void {
   cancelPrune(track)
   track.pruneHandle = setTimeout(() => {
-    const e = engine
-    if (!e) return
+    const s = system
+    if (!s) return
     // Guard against a newer track replacing this one under the same name.
-    if (e.tracks.get(track.name) !== track) return
+    if (s.tracks.get(track.name) !== track) return
     track.gain.disconnect()
-    e.tracks.delete(track.name)
+    s.tracks.delete(track.name)
     track.pruneHandle = null
   }, Math.ceil(afterSec * 1000) + PRUNE_GRACE_MS)
 }
 
 function fadeTrackTo(track: Track, value: number, fadeSec: number): void {
-  const e = engine
-  if (!e) return
-  const now = e.ctx.currentTime
+  const s = system
+  if (!s) return
+  const now = s.audio.ctx.currentTime
   const g = track.gain.gain
   if (typeof g.cancelAndHoldAtTime === 'function') {
     g.cancelAndHoldAtTime(now)
@@ -457,11 +421,11 @@ function fadeTrackTo(track: Track, value: number, fadeSec: number): void {
   else cancelPrune(track)
 }
 
-function upsertTrack(e: Engine, name: TrackName): Track {
-  let track = e.tracks.get(name)
+function upsertTrack(s: MusicSystem, name: TrackName): Track {
+  let track = s.tracks.get(name)
   if (!track) {
-    track = makeTrack(e, name)
-    e.tracks.set(name, track)
+    track = makeTrack(s, name)
+    s.tracks.set(name, track)
   }
   return track
 }
@@ -474,17 +438,17 @@ export function crossfadeTo(
   target: TrackName,
   fadeSec = DEFAULT_CROSSFADE_SEC,
 ): void {
-  const e = getEngine()
-  if (!e) return
-  ensureAudioReady(e)
+  const s = getSystem()
+  if (!s) return
+  ensureAudioReady(s.audio)
 
-  for (const track of e.tracks.values()) {
+  for (const track of s.tracks.values()) {
     if (track.name !== target) fadeTrackTo(track, 0, fadeSec)
   }
 
-  const targetTrack = upsertTrack(e, target)
+  const targetTrack = upsertTrack(s, target)
   fadeTrackTo(targetTrack, targetTrack.targetGain, fadeSec)
-  ensureScheduler(e)
+  ensureScheduler(s)
 }
 
 /**
@@ -502,9 +466,9 @@ export function startTitleMusic(fadeSec = DEFAULT_FADE_IN_SEC): void {
  * safe to call every frame.
  */
 export function setGameIntensity(intensity: number): void {
-  const e = engine
-  if (!e) return
-  const track = e.tracks.get('game')
+  const s = system
+  if (!s) return
+  const track = s.tracks.get('game')
   if (!track) return
   const clamped = Math.max(0, Math.min(1, intensity))
   if (Math.abs(clamped - track.intensity) < INTENSITY_EPSILON) return
@@ -513,10 +477,10 @@ export function setGameIntensity(intensity: number): void {
 
 /** Fade out all tracks. Each track auto-prunes after its fade completes. */
 export function stopMusic(fadeSec = DEFAULT_FADE_OUT_SEC): void {
-  const e = engine
-  if (!e) return
+  const s = system
+  if (!s) return
   const fade = Math.max(fadeSec, 0.05)
-  for (const track of e.tracks.values()) {
+  for (const track of s.tracks.values()) {
     fadeTrackTo(track, 0, fade)
   }
 }
@@ -533,7 +497,7 @@ const COUNTDOWN_SCHEDULE_OFFSET_SEC = 0.005
  * tracks) so it stays audible over any active music. Higher pitch on GO.
  */
 export function playCountdownBeep(isGo: boolean): void {
-  const e = getEngine()
+  const e = getAudioEngine()
   if (!e) return
   ensureAudioReady(e)
   const start = e.ctx.currentTime + COUNTDOWN_SCHEDULE_OFFSET_SEC

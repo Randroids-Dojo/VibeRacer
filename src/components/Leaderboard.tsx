@@ -9,6 +9,7 @@ import {
   isStockParams,
   type InputMode,
 } from '@/lib/tuningSettings'
+import { useClickSfx } from '@/hooks/useClickSfx'
 
 interface LeaderboardProps {
   slug: string
@@ -79,6 +80,8 @@ export function Leaderboard({
     kind: 'loading',
   })
   const [setupForEntry, setSetupForEntry] = useState<Entry | null>(null)
+  const clickBack = useClickSfx('back')
+  const clickConfirm = useClickSfx('confirm')
 
   useEffect(() => {
     let cancelled = false
@@ -177,7 +180,14 @@ export function Leaderboard({
     <div style={overlay}>
       <div style={panel}>
         <div style={header}>
-          <button onClick={onBack} style={backBtn} aria-label="Back">
+          <button
+            onClick={() => {
+              clickBack()
+              onBack()
+            }}
+            style={backBtn}
+            aria-label="Back"
+          >
             <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <polyline points="15 18 9 12 15 6" />
             </svg>
@@ -211,7 +221,10 @@ export function Leaderboard({
           {!isRacingSelected ? (
             <button
               type="button"
-              onClick={() => router.push(targetRaceHref)}
+              onClick={() => {
+                clickConfirm()
+                router.push(targetRaceHref)
+              }}
               style={raceBtn}
             >
               Race this version
