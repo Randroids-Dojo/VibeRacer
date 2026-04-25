@@ -15,10 +15,16 @@ import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
 import { TuningPanel } from './TuningPanel'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
-import { readLocalBest, writeLocalBest } from '@/lib/localBest'
+import {
+  readLocalBest,
+  writeLocalBest,
+  readLocalBestReplay,
+  writeLocalBestReplay,
+} from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
+import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
@@ -107,6 +113,17 @@ function GameSession({
   // 'keyboard' on first paint; flips to 'touch' on the first touch pointerdown
   // and back on any keydown. Snapshot at submit time.
   const inputModeRef = useRef<InputMode>('keyboard')
+  // Ghost replay being rendered alongside the player. Updated on mount from
+  // local PB / leaderboard top, and after every personal-best lap. RaceCanvas
+  // reads this each frame so swaps take effect on the next finish-line cross.
+  const activeGhostRef = useRef<Replay | null>(null)
+  // Replay buffer captured by RaceCanvas for the most recent lap, queued for
+  // bundling into the next /api/race/submit POST.
+  const pendingReplayForSubmitRef = useRef<Replay | null>(null)
+  // Mirrors settings.showGhost into the rAF loop without re-mounting the
+  // canvas every time the toggle flips.
+  const showGhostRef = useRef<boolean>(settings.showGhost)
+  showGhostRef.current = settings.showGhost
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -196,6 +213,36 @@ function GameSession({
   }, [router, slug])
 
   useEffect(() => {
+    // Resolve the initial ghost: prefer the player's local PB replay, fall
+    // back to whatever the server reports as the leaderboard's top recording
+    // for this track. Once set, this ref is updated only on personal-best
+    // laps (see handleLapComplete).
+    let cancelled = false
+    const local = readLocalBestReplay(slug, versionHash)
+    if (local) {
+      activeGhostRef.current = local
+      return
+    }
+    fetch(
+      `/api/replay/top?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
+    )
+      .then(async (res) => {
+        if (!res.ok) return
+        const body = await res.json().catch(() => null)
+        const parsed = ReplaySchema.safeParse(body)
+        if (!cancelled && parsed.success) {
+          activeGhostRef.current = parsed.data
+        }
+      })
+      .catch(() => {
+        // Best-effort; absent ghost is a non-fatal degradation.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slug, versionHash])
+
+  useEffect(() => {
     function onKeyDown() {
       inputModeRef.current = 'keyboard'
     }
@@ -230,6 +277,13 @@ function GameSession({
     }
   }, [])
 
+  function handleLapReplay(replay: Replay) {
+    // Always queue the buffered replay for the next submit so the server can
+    // store it. The PB swap happens in handleLapComplete where we know the
+    // previous best from React state.
+    pendingReplayForSubmitRef.current = replay
+  }
+
   function handleLapComplete(event: LapCompleteEvent) {
     const lapMs = event.lapTimeMs
     setHud((prev) => {
@@ -237,7 +291,14 @@ function GameSession({
       const isAllTimePb = prev.bestAllTimeMs === null || lapMs < prev.bestAllTimeMs
       const isNewRecord =
         prev.overallRecord === null || lapMs < prev.overallRecord.lapTimeMs
-      if (isAllTimePb) writeLocalBest(slug, versionHash, lapMs)
+      if (isAllTimePb) {
+        writeLocalBest(slug, versionHash, lapMs)
+        const pending = pendingReplayForSubmitRef.current
+        if (pending) {
+          writeLocalBestReplay(slug, versionHash, pending)
+          activeGhostRef.current = pending
+        }
+      }
       const toast = isNewRecord
         ? 'NEW RECORD!'
         : isAllTimePb
@@ -281,6 +342,8 @@ function GameSession({
     const token = tokenRef.current
     if (!token) return
     submittingRef.current = true
+    const replay = pendingReplayForSubmitRef.current
+    pendingReplayForSubmitRef.current = null
     try {
       const res = await fetch(
         `/api/race/submit?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
@@ -294,6 +357,7 @@ function GameSession({
             initials,
             tuning: paramsRef.current,
             inputMode: inputModeRef.current,
+            ...(replay ? { replay } : {}),
           }),
         },
       )
@@ -329,6 +393,9 @@ function GameSession({
         pendingRaceStartRef={pendingRaceStartRef}
         onLapComplete={handleLapComplete}
         onHudUpdate={onCanvasHud}
+        activeGhostRef={activeGhostRef}
+        showGhostRef={showGhostRef}
+        onLapReplay={handleLapReplay}
         style={canvasStyle}
       />
       <HUD

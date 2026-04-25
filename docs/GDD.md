@@ -320,6 +320,18 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 No lap cap. The player keeps racing until they pause and exit. Every completed lap tries to submit.
 
+### Ghost car
+
+A translucent cyan ghost car races alongside the player, replaying the path of the leaderboard's fastest known lap (or the player's own personal best, once they have one). The ghost is purely visual: there is no collision with the player, no input from it, and it never affects physics or anti-cheat. It is toggleable on or off in Settings (`showGhost: boolean` in `ControlSettings`, default on, persisted via the existing localStorage key `viberacer.controls`).
+
+Each lap, `RaceCanvas` samples the player's `(x, z, heading)` at a fixed 30 Hz cadence into an in-memory buffer. On `LapCompleteEvent` the buffer is flushed as a `Replay` (`{lapTimeMs, samples: [x, z, heading][]}`) and bundled into the next `/api/race/submit` POST. The server stores it under `lap:replay:<nonce>` and updates `track:<slug>:<hash>:topReplay` to point at the new nonce when the lap takes rank 1. As a one-time bootstrap, if `topReplayPointer` is empty (the existing #1 predates this feature and has no recorded replay), the next submission with a replay is promoted regardless of rank so a ghost appears immediately rather than waiting for someone to beat the legacy time.
+
+On race load `GameSession` resolves the active replay in priority order: local PB replay (`viberacer.replay.<slug>.<hash>` in localStorage) first, then `GET /api/replay/top` for the leaderboard top. The active replay is stored in `activeGhostRef` and consulted each frame; ghost pose is computed by interpolating the samples at `t = nowMs - state.raceStartMs`. Because `tick.ts` resets `raceStartMs` on every finish-line crossing, the ghost automatically restarts from `t=0` in lock-step with the player's lap timer.
+
+When the player completes a lap that beats their previous local PB, the buffered replay becomes the new local PB replay and immediately replaces `activeGhostRef.current`, so the next lap is run against the player's own freshly-recorded path.
+
+Ghost rendering reuses the player car's GLB through `buildGhostCar()` in `sceneBuilder.ts`, which clones the model and overrides every material with a translucent emissive cyan (`opacity 0.45, depthWrite: false`). The ghost mesh is added to the same scene as the player, rendered after the track and the player car so it draws on top in case of overlap.
+
 ---
 
 ## 9. Title Screen, Menu, and Pause
@@ -624,6 +636,9 @@ track:<slug>:version:<hash>     : JSON { pieces, createdByRacerId, createdAt }
 track:<slug>:versions           : list of { hash, createdAt } (newest first)
 track:index                     : sorted set (score = updatedAt) for "load existing"
 lb:<slug>:<hash>                : sorted set (score = lapTimeMs, member = "initials:racerId:ts:nonce")
+lap:meta:<nonce>                : JSON { tuning, inputMode } per-lap metadata for the leaderboard side-panel
+lap:replay:<nonce>              : JSON Replay { lapTimeMs, samples: [x, z, heading][] } for the ghost car
+track:<slug>:<hash>:topReplay   : string nonce that points at the active ghost replay for this track version
 race:token:<nonce>              : JSON { slug, versionHash, racerId, issuedAt } TTL 15min, deleted on submit
 racer:<racerId>:firstSeen       : ISO timestamp (set once on first visit)
 racer:<racerId>:lastSubmit      : ISO timestamp (updated on each submit, for audit)
@@ -806,7 +821,6 @@ Not v1. Listed so agents know not to scope-creep into them without approval.
 - Share button (copy URL plus personal best to clipboard).
 - Music personalization (hash slug or initials to perturb music parameters).
 - More track pieces (ramps, banked turns, jumps, 45-degree turns).
-- Ghost car of best lap on current track version.
 - Friend challenges (tap to race a ghost from a link).
 - Weather or time-of-day variations per slug.
 - Swap the custom physics integrator for Rapier if the arcade model proves insufficient for depth.

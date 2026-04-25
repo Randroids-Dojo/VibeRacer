@@ -8,6 +8,7 @@ import {
   type Material,
   Mesh,
   MeshStandardMaterial,
+  type Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   Scene,
@@ -111,7 +112,9 @@ function pieceGeometry(op: OrderedPiece): BufferGeometry {
   return op.piece.type === 'straight' ? straightGeometry(op) : cornerGeometry(op)
 }
 
-function buildCar(): { car: Group; cancel: () => void } {
+function buildCarFrame(
+  onLoaded?: (clone: Object3D) => void,
+): { car: Group; cancel: () => void } {
   const outer = new Group()
   const inner = new Group()
   inner.rotation.y = CAR_MODEL_YAW_OFFSET
@@ -122,7 +125,9 @@ function buildCar(): { car: Group; cancel: () => void } {
   loadCarGltf().then(
     (gltf) => {
       if (cancelled) return
-      inner.add(gltf.scene.clone())
+      const clone = gltf.scene.clone()
+      onLoaded?.(clone)
+      inner.add(clone)
     },
     (err) => {
       console.error('Failed to load car model', err)
@@ -130,6 +135,36 @@ function buildCar(): { car: Group; cancel: () => void } {
   )
 
   return { car: outer, cancel: () => { cancelled = true } }
+}
+
+function buildCar(): { car: Group; cancel: () => void } {
+  return buildCarFrame()
+}
+
+// Ghost variant of the player car: same GLB clone, but every material is
+// swapped for a translucent cyan tint so it reads as a recording rather than
+// another vehicle. Returned `dispose` releases the override material.
+export function buildGhostCar(): { ghost: Group; dispose: () => void } {
+  const ghostMat = new MeshStandardMaterial({
+    color: 0x66e3ff,
+    emissive: 0x114a55,
+    transparent: true,
+    opacity: 0.45,
+    depthWrite: false,
+  })
+  const { car, cancel } = buildCarFrame((clone) => {
+    clone.traverse((obj) => {
+      const mesh = obj as Mesh
+      if (mesh.isMesh) mesh.material = ghostMat
+    })
+  })
+  return {
+    ghost: car,
+    dispose: () => {
+      cancel()
+      ghostMat.dispose()
+    },
+  }
 }
 
 export function buildScene(path: TrackPath): SceneBundle {

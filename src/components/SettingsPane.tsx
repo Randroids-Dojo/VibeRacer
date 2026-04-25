@@ -99,6 +99,10 @@ export function SettingsPane({
     onChange({ ...settings, touchMode: mode })
   }
 
+  function setShowGhost(value: boolean) {
+    onChange({ ...settings, showGhost: value })
+  }
+
   function clearSlot(action: ControlAction, slot: number) {
     onChange({
       ...settings,
@@ -192,6 +196,36 @@ export function SettingsPane({
               </div>
             </div>
           ) : null}
+
+          <div style={subSection}>
+            <div style={subTitle}>Ghost car</div>
+            <div style={kbHint}>
+              Race a translucent car that drives the fastest known lap on this
+              track. Switches to your own path once you set a personal best.
+            </div>
+            <div style={touchToggleRow}>
+              <button
+                onClick={() => setShowGhost(true)}
+                style={{
+                  ...touchToggleBtn,
+                  background: settings.showGhost ? '#ff6b35' : '#2a2a2a',
+                  color: 'white',
+                }}
+              >
+                On
+              </button>
+              <button
+                onClick={() => setShowGhost(false)}
+                style={{
+                  ...touchToggleBtn,
+                  background: !settings.showGhost ? '#ff6b35' : '#2a2a2a',
+                  color: 'white',
+                }}
+              >
+                Off
+              </button>
+            </div>
+          </div>
         </div>
 
         <div style={sectionWrap}>

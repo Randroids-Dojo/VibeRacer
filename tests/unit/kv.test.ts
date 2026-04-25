@@ -23,6 +23,11 @@ describe('kvKeys', () => {
     expect(kvKeys.ratelimitDaily('1.2.3.4')).toBe(
       'ratelimit:submit:daily:1.2.3.4',
     )
+    expect(kvKeys.lapMeta('abc')).toBe('lap:meta:abc')
+    expect(kvKeys.lapReplay('abc')).toBe('lap:replay:abc')
+    expect(kvKeys.topReplayPointer(slug, hash)).toBe(
+      `track:my-track:${hash}:topReplay`,
+    )
   })
 })
 
