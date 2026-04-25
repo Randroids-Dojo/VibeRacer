@@ -147,7 +147,7 @@ function buildDrone(e: AudioEngine): DroneVoice {
   gain.gain.value = 0
   osc.connect(filter)
   filter.connect(gain)
-  gain.connect(e.master)
+  gain.connect(e.sfxBus)
   return { osc, filter, gain, started: false }
 }
 
@@ -207,7 +207,7 @@ function buildSkid(e: AudioEngine): SkidVoice {
   gain.gain.value = 0
   src.connect(filter)
   filter.connect(gain)
-  gain.connect(e.master)
+  gain.connect(e.sfxBus)
   return { src, filter, gain, started: false }
 }
 
@@ -292,7 +292,7 @@ function schedMasterNote(e: AudioEngine, opts: OneShotNoteOpts): void {
   gain.gain.linearRampToValueAtTime(opts.vol, opts.startTime + attack)
   gain.gain.exponentialRampToValueAtTime(0.001, opts.startTime + opts.durSec)
   osc.connect(gain)
-  gain.connect(e.master)
+  gain.connect(e.sfxBus)
   osc.start(opts.startTime)
   osc.stop(opts.startTime + opts.durSec + 0.02)
 }
@@ -365,7 +365,7 @@ export function playPbFanfare(variant: 'pb' | 'record'): void {
     kgain.gain.setValueAtTime(0.22, start)
     kgain.gain.exponentialRampToValueAtTime(0.001, start + 0.18)
     kick.connect(kgain)
-    kgain.connect(e.master)
+    kgain.connect(e.sfxBus)
     kick.start(start)
     kick.stop(start + 0.25)
   }
@@ -404,7 +404,7 @@ export function playOffTrackRumble(): void {
   gain.gain.exponentialRampToValueAtTime(0.001, start + RUMBLE_DUR_SEC)
   src.connect(filter)
   filter.connect(gain)
-  gain.connect(e.master)
+  gain.connect(e.sfxBus)
   src.start(start)
   src.stop(start + RUMBLE_DUR_SEC + 0.02)
 }

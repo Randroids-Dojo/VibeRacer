@@ -1,7 +1,7 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { InitialsSchema } from '@/lib/schemas'
-import { useClickSfx } from '@/hooks/useClickSfx'
+import { MenuButton, MenuOverlay, MenuPanel } from './MenuUI'
 
 export const INITIALS_STORAGE_KEY = 'viberacer.initials'
 
@@ -17,11 +17,14 @@ export function writeStoredInitials(value: string): void {
   window.localStorage.setItem(INITIALS_STORAGE_KEY, value)
 }
 
-export function InitialsPrompt({ onDone }: { onDone: (initials: string) => void }) {
+export function InitialsPrompt({
+  onDone,
+}: {
+  onDone: (initials: string) => void
+}) {
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
   const inputRef = useRef<HTMLInputElement | null>(null)
-  const click = useClickSfx('confirm')
 
   useEffect(() => {
     inputRef.current?.focus()
@@ -33,18 +36,19 @@ export function InitialsPrompt({ onDone }: { onDone: (initials: string) => void 
       setError('3 letters, A to Z only.')
       return
     }
-    click()
     writeStoredInitials(parsed.data)
     onDone(parsed.data)
   }
 
   return (
-    <div style={overlay}>
-      <div style={panel}>
-        <h2 style={{ margin: 0, fontSize: 22 }}>Enter 3 initials</h2>
-        <p style={{ opacity: 0.8, fontSize: 14, margin: '8px 0 16px' }}>
-          They will tag your lap times on the leaderboards.
-        </p>
+    <MenuOverlay zIndex={100}>
+      <MenuPanel>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Enter 3 initials</h2>
+          <p style={{ opacity: 0.8, fontSize: 14, margin: '8px 0 4px' }}>
+            They will tag your lap times on the leaderboards.
+          </p>
+        </div>
         <input
           ref={inputRef}
           value={value}
@@ -56,60 +60,37 @@ export function InitialsPrompt({ onDone }: { onDone: (initials: string) => void 
           onKeyDown={(e) => {
             if (e.key === 'Enter') submit()
           }}
-          style={input}
           autoComplete="off"
           spellCheck={false}
+          style={{
+            fontSize: 48,
+            fontFamily: 'monospace',
+            textAlign: 'center',
+            width: 200,
+            padding: 8,
+            letterSpacing: 12,
+            background: '#0d0d0d',
+            color: 'white',
+            border: '2px solid #555',
+            borderRadius: 8,
+            alignSelf: 'center',
+          }}
         />
-        {error ? <div style={errStyle}>{error}</div> : null}
-        <button onClick={submit} style={btn}>
+        {error ? (
+          <div
+            style={{
+              color: '#ffb3b3',
+              fontSize: 13,
+              textAlign: 'center',
+            }}
+          >
+            {error}
+          </div>
+        ) : null}
+        <MenuButton variant="primary" click="confirm" onClick={submit}>
           Save
-        </button>
-      </div>
-    </div>
+        </MenuButton>
+      </MenuPanel>
+    </MenuOverlay>
   )
-}
-
-const overlay: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
-  background: 'rgba(0,0,0,0.65)',
-  display: 'grid',
-  placeItems: 'center',
-  zIndex: 100,
-  fontFamily: 'system-ui, sans-serif',
-  color: 'white',
-}
-const panel: React.CSSProperties = {
-  background: '#1b1b1b',
-  padding: 24,
-  borderRadius: 12,
-  width: 320,
-  textAlign: 'center',
-}
-const input: React.CSSProperties = {
-  fontSize: 48,
-  fontFamily: 'monospace',
-  textAlign: 'center',
-  width: 180,
-  padding: 8,
-  letterSpacing: 12,
-  background: '#0d0d0d',
-  color: 'white',
-  border: '2px solid #555',
-  borderRadius: 8,
-}
-const btn: React.CSSProperties = {
-  marginTop: 16,
-  padding: '10px 24px',
-  fontSize: 16,
-  background: '#e84a5f',
-  color: 'white',
-  border: 'none',
-  borderRadius: 6,
-  cursor: 'pointer',
-}
-const errStyle: React.CSSProperties = {
-  color: '#ffb3b3',
-  marginTop: 8,
-  fontSize: 13,
 }
