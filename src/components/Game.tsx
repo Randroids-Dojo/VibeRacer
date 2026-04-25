@@ -1,21 +1,8 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
-import { buildTrackPath } from '@/game/trackPath'
-import {
-  buildScene,
-  initCameraRig,
-  updateCameraRig,
-  type CameraRigState,
-} from '@/game/sceneBuilder'
-import {
-  initGameState,
-  startRace,
-  tick,
-  type LapCompleteEvent,
-} from '@/game/tick'
+import type { LapCompleteEvent } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { useTuning } from '@/hooks/useTuning'
@@ -27,6 +14,7 @@ import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
 import { TuningPanel } from './TuningPanel'
+import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
 import type { CarParams } from '@/game/physics'
@@ -35,7 +23,6 @@ import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
-  setGameIntensity,
 } from '@/game/music'
 import { TitleMusic } from './TitleMusic'
 
@@ -88,8 +75,6 @@ interface HudState {
 
 type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning'
 
-const HUD_UPDATE_MS = 50 // Throttle HUD re-renders to ~20Hz; game loop still runs at 60Hz.
-
 function GameSession({
   slug,
   versionHash,
@@ -98,7 +83,6 @@ function GameSession({
   initialRecord,
 }: SessionProps) {
   const router = useRouter()
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const { settings, setSettings, resetSettings } = useControlSettings()
   const {
     params: tuning,
@@ -137,6 +121,16 @@ function GameSession({
     onTrack: true,
     toast: null,
   }))
+
+  const onCanvasHud = useCallback((next: RaceCanvasHud) => {
+    setHud((prev) => ({
+      ...prev,
+      currentMs: next.currentMs,
+      lapCount: next.lapCount,
+      onTrack: next.onTrack,
+      lastLapMs: next.lastLapMs ?? prev.lastLapMs,
+    }))
+  }, [])
 
   const pause = useCallback(() => {
     if (pausedRef.current) return
@@ -231,145 +225,10 @@ function GameSession({
   }, [phase, pause, resume])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const path = buildTrackPath(pieces)
-    const bundle = buildScene(path)
-    const renderer = new WebGLRenderer({ canvas, antialias: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-
-    function resize() {
-      const el = canvasRef.current
-      if (!el) return
-      renderer.setSize(el.clientWidth, el.clientHeight, false)
-      bundle.camera.aspect = el.clientWidth / el.clientHeight
-      bundle.camera.updateProjectionMatrix()
-    }
-    resize()
-    window.addEventListener('resize', resize)
-
-    let state = initGameState(path)
-    const rig: CameraRigState = initCameraRig(state.x, state.z, state.heading)
-
-    function resetRigFromState() {
-      Object.assign(rig, initCameraRig(state.x, state.z, state.heading))
-    }
-
-    bundle.car.position.set(state.x, 0, state.z)
-    bundle.car.rotation.y = state.heading
-    bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-    bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
-    renderer.render(bundle.scene, bundle.camera)
-
-    let raf = 0
-    let lastTs = performance.now()
-    let lastHudTs = 0
-    let running = true
-
-    function loop(ts: number) {
-      if (!running) return
-
-      if (pendingResetRef.current) {
-        state = initGameState(path)
-        resetRigFromState()
-        bundle.car.position.set(state.x, 0, state.z)
-        bundle.car.rotation.y = state.heading
-        bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-        bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
-        renderer.render(bundle.scene, bundle.camera)
-        pendingResetRef.current = false
-        pendingRaceStartRef.current = null
-        lastTs = ts
-        raf = requestAnimationFrame(loop)
-        return
-      }
-
-      if (pausedRef.current) {
-        lastTs = ts
-        raf = requestAnimationFrame(loop)
-        return
-      }
-
-      if (resumeShiftRef.current > 0) {
-        if (state.raceStartMs !== null) {
-          state = {
-            ...state,
-            raceStartMs: state.raceStartMs + resumeShiftRef.current,
-          }
-        }
-        resumeShiftRef.current = 0
-        lastTs = ts
-      }
-
-      const dtMs = Math.min(50, ts - lastTs)
-      lastTs = ts
-
-      if (pendingRaceStartRef.current !== null) {
-        state = startRace(state, pendingRaceStartRef.current)
-        pendingRaceStartRef.current = null
-      }
-
-      const k = keys.current
-      const result = tick(
-        state,
-        {
-          throttle: (k.forward ? 1 : 0) + (k.backward ? -1 : 0),
-          steer: (k.left ? 1 : 0) + (k.right ? -1 : 0),
-          handbrake: k.handbrake,
-        },
-        dtMs,
-        ts,
-        path,
-        paramsRef.current,
-      )
-      state = result.state
-
-      bundle.car.position.set(state.x, 0, state.z)
-      bundle.car.rotation.y = state.heading
-      updateCameraRig(rig, state.x, state.z, state.heading)
-      bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-      bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
-      renderer.render(bundle.scene, bundle.camera)
-
-      setGameIntensity(Math.abs(state.speed) / paramsRef.current.maxSpeed)
-
-      if (result.lapComplete) handleLapComplete(result.lapComplete)
-
-      if (ts - lastHudTs >= HUD_UPDATE_MS) {
-        lastHudTs = ts
-        const currentMs =
-          state.raceStartMs !== null ? Math.round(ts - state.raceStartMs) : 0
-        const lapCount = state.lapCount
-        const onTrack = state.onTrack
-        const lastLapMs = state.lastLapTimeMs
-        setHud((prev) => {
-          if (
-            prev.currentMs === currentMs &&
-            prev.lapCount === lapCount &&
-            prev.onTrack === onTrack &&
-            prev.lastLapMs === lastLapMs
-          ) {
-            return prev
-          }
-          return { ...prev, currentMs, lapCount, onTrack, lastLapMs: lastLapMs ?? prev.lastLapMs }
-        })
-      }
-
-      raf = requestAnimationFrame(loop)
-    }
-    raf = requestAnimationFrame(loop)
-
     return () => {
-      running = false
-      cancelAnimationFrame(raf)
-      window.removeEventListener('resize', resize)
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
-      bundle.dispose()
-      renderer.dispose()
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces])
+  }, [])
 
   function handleLapComplete(event: LapCompleteEvent) {
     const lapMs = event.lapTimeMs
@@ -460,7 +319,18 @@ function GameSession({
   return (
     <div style={root}>
       <TitleMusic />
-      <canvas ref={canvasRef} style={canvasStyle} />
+      <RaceCanvas
+        pieces={pieces}
+        paramsRef={paramsRef}
+        keys={keys}
+        pausedRef={pausedRef}
+        resumeShiftRef={resumeShiftRef}
+        pendingResetRef={pendingResetRef}
+        pendingRaceStartRef={pendingRaceStartRef}
+        onLapComplete={handleLapComplete}
+        onHudUpdate={onCanvasHud}
+        style={canvasStyle}
+      />
       <HUD
         currentMs={hud.currentMs}
         lastLapMs={hud.lastLapMs}
@@ -525,6 +395,7 @@ function GameSession({
               onChange={setSettings}
               onClose={() => setPauseView('menu')}
               onReset={resetSettings}
+              inRace
             />
           )}
           <FeedbackFab />

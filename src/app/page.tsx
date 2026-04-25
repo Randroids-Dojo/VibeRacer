@@ -9,6 +9,7 @@ import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
+import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -48,6 +49,7 @@ export default async function HomePage() {
             <RecentTrackList items={items} />
           </div>
 
+          <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
         </div>
       </section>

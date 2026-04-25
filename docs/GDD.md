@@ -408,6 +408,20 @@ Bounds double as anti-cheat sanity caps (server validates with the same numbers 
 
 Each lap submit includes `tuning` (current `CarParams`) and `inputMode` ('keyboard' or 'touch'; last-input-wins detection). Server stores them under `lap:meta:<nonce>` in KV; the leaderboard read batches these via `mget` and serves them on each entry. Older entries with no meta surface as `null` and the UI shows a dim placeholder. Out-of-range tuning is rejected at submit time (silent drop) and replaced with `null` if it ever sneaks through.
 
+### Interactive Tuning Lab
+
+A dedicated mode at `/tune` for players who want guided tuning instead of raw sliders. Reachable from the title-screen menu (button next to Settings) and from the Settings pane (in-game and on the title screen). Mobile-first, no leaderboards, no KV.
+
+- Curated test loop in `src/lib/tuningLabTrack.ts`: a 12-piece closed loop with straights, two left turns, four right turns, an S-curve, and a hairpin. Verified by `tests/unit/tuningLabTrack.test.ts` against `validateClosedLoop` and a simulated centerline drive that fires `lapComplete`.
+- Render primitive `src/components/RaceCanvas.tsx` (extracted from `Game.tsx`) drives the canvas, scene, and rAF loop. Both the race flow and the lab use it.
+- Session flow in `src/components/TuningSession.tsx`: intro (control-type and tag chips) -> countdown -> drive (one full lap) -> 5-point Likert form -> recommendation diff -> drive again or save.
+- Recommendation engine in `src/lib/tuningLab.ts`: pure `recommendNextParams(current, ratings, prevDeltas, damping)`. Each rated aspect maps to one or more `CarParams` keys with a sign and weight; the per-param delta is `unit * sign * weight * (max - min) * baseStep * damping`, averaged across contributing aspects, and clamped via `clampParams`. Damping halves a per-param multiplier (floor 1/16) when the next round flips its delta sign, so oscillation tames itself.
+- Aspects rated (5-point Likert, 3 = just right): top speed, pickup, braking, low-speed turn, high-speed turn, coast, off-track penalty.
+- Saved tunings in localStorage under `viberacer.tuningLab.saved`. Each row tags `controlType` (`keyboard` / `touch_single` / `touch_dual`) and up to four `trackTags` (`twisty` / `fast` / `mixed` / `technical`). Sortable by recency, mean rating, fastest lap, or name. Filterable by control and tag, plus name search.
+- "Apply to next race" writes through to the existing `viberacer.tuning.lastLoaded` key (and a synthetic `viberacer.tuning.track:__lab__` save) so the next slug the user opens picks the lab tuning up automatically.
+- The session also auto-persists the live params to `lastLoaded` on every change so an unsaved session still carries its most-recent setup forward when the user leaves the lab. During the drive phase a "Restart" button resets the car to the start line without going to feedback.
+- Export and import are clipboard-based. "Copy JSON" on a saved tuning copies a single `SavedTuning`. The home view also offers "Copy all saved tunings". Import view accepts pasted JSON and dispatches via `parseImportedJson`: a single tuning lands directly in the saved list; a session payload saves its final round.
+
 ---
 
 ## 11. Leaderboards
