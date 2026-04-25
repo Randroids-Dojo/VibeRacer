@@ -520,3 +520,34 @@ export function stopMusic(fadeSec = DEFAULT_FADE_OUT_SEC): void {
     fadeTrackTo(track, 0, fade)
   }
 }
+
+const COUNTDOWN_BEEP_MIDI_LOW = 69
+const COUNTDOWN_BEEP_MIDI_HIGH = 81
+const COUNTDOWN_BEEP_DUR_SEC = 0.18
+const COUNTDOWN_GO_DUR_SEC = 0.34
+const COUNTDOWN_BEEP_VOL = 0.28
+const COUNTDOWN_SCHEDULE_OFFSET_SEC = 0.005
+
+/**
+ * One-shot countdown beep. Routes directly to master (bypassing the music
+ * tracks) so it stays audible over any active music. Higher pitch on GO.
+ */
+export function playCountdownBeep(isGo: boolean): void {
+  const e = getEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  const start = e.ctx.currentTime + COUNTDOWN_SCHEDULE_OFFSET_SEC
+  const midi = isGo ? COUNTDOWN_BEEP_MIDI_HIGH : COUNTDOWN_BEEP_MIDI_LOW
+  const dur = isGo ? COUNTDOWN_GO_DUR_SEC : COUNTDOWN_BEEP_DUR_SEC
+  const osc = e.ctx.createOscillator()
+  const gain = e.ctx.createGain()
+  osc.type = isGo ? 'triangle' : 'square'
+  osc.frequency.value = midiFreq(midi)
+  gain.gain.setValueAtTime(0, start)
+  gain.gain.linearRampToValueAtTime(COUNTDOWN_BEEP_VOL, start + 0.01)
+  gain.gain.exponentialRampToValueAtTime(0.001, start + dur)
+  osc.connect(gain)
+  gain.connect(e.master)
+  osc.start(start)
+  osc.stop(start + dur + 0.02)
+}
