@@ -32,7 +32,7 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
 
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
-  touchMode: 'dual',
+  touchMode: 'single',
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'

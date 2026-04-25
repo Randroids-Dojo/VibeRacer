@@ -12,7 +12,7 @@ interface TouchControlsProps {
 
 const KNOB_RADIUS = 26
 
-export function TouchControls({ keys, enabled, mode = 'dual' }: TouchControlsProps) {
+export function TouchControls({ keys, enabled, mode = 'single' }: TouchControlsProps) {
   const sticks = useTouchControls(keys, enabled, mode)
   if (!enabled) return null
   // Single-stick mode reuses the steer joystick for both axes, so we render

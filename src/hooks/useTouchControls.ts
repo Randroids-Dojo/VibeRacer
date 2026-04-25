@@ -30,7 +30,7 @@ export interface TouchJoysticks {
 export function useTouchControls(
   keys: { current: KeyInput },
   enabled: boolean,
-  mode: TouchMode = 'dual',
+  mode: TouchMode = 'single',
 ): TouchJoysticks {
   const sticksRef = useRef<TouchJoysticks>({
     steer: createJoystick(),

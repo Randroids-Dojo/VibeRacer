@@ -128,13 +128,13 @@ Manual gearing is a stretch feature. Default car is automatic.
 
 Virtual joysticks with no fixed positions. Two layouts, switchable in Settings.
 
-**Dual stick (default):**
+**Single stick (default):**
+- Any touch spawns one stick anywhere. Horizontal axis steers, vertical axis is gas (up) / brake (down). Releases on touchend and respawns at the next touch point.
+
+**Dual stick:**
 - **Left half of screen.** First touch spawns a steering stick at that point. Horizontal axis steers.
 - **Right half of screen.** First touch spawns a gas/brake stick. Up = accelerate, down = brake.
 - Both sticks release on touchend and respawn at the next touch point.
-
-**Single stick:**
-- Any touch spawns one stick anywhere. Horizontal axis steers, vertical axis is gas (up) / brake (down). Releases on touchend and respawns at the next touch point.
 
 Pause button floats in a corner and is always tappable during a race.
 
