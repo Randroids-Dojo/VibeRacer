@@ -360,7 +360,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
   const cfg = TRACK_CONFIG[name]
   const gain = s.audio.ctx.createGain()
   gain.gain.value = 0
-  gain.connect(s.audio.master)
+  gain.connect(s.audio.musicBus)
   const stepDur = 60 / cfg.bpm / 4
   return {
     name,
@@ -493,8 +493,9 @@ const COUNTDOWN_BEEP_VOL = 0.28
 const COUNTDOWN_SCHEDULE_OFFSET_SEC = 0.005
 
 /**
- * One-shot countdown beep. Routes directly to master (bypassing the music
- * tracks) so it stays audible over any active music. Higher pitch on GO.
+ * One-shot countdown beep. Routes through the SFX bus (not the music
+ * tracks) so it follows SFX volume and stays audible over any active
+ * music. Higher pitch on GO.
  */
 export function playCountdownBeep(isGo: boolean): void {
   const e = getAudioEngine()
@@ -511,7 +512,7 @@ export function playCountdownBeep(isGo: boolean): void {
   gain.gain.linearRampToValueAtTime(COUNTDOWN_BEEP_VOL, start + 0.01)
   gain.gain.exponentialRampToValueAtTime(0.001, start + dur)
   osc.connect(gain)
-  gain.connect(e.master)
+  gain.connect(e.sfxBus)
   osc.start(start)
   osc.stop(start + dur + 0.02)
 }
