@@ -8,6 +8,7 @@ import {
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { SlugInput } from '@/components/SlugInput'
+import { SettingsLauncher } from '@/components/SettingsLauncher'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -47,10 +48,7 @@ export default async function HomePage() {
             <RecentTrackList items={items} />
           </div>
 
-          <button type="button" style={settingsBtnStyle} disabled>
-            Settings
-            <span style={soonStyle}>coming soon</span>
-          </button>
+          <SettingsLauncher buttonStyle={settingsBtnStyle} />
         </div>
       </section>
     </main>
@@ -147,16 +145,6 @@ const settingsBtnStyle: React.CSSProperties = {
   fontSize: 15,
   fontFamily: 'inherit',
   fontWeight: 600,
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  cursor: 'not-allowed',
-  opacity: 0.55,
-}
-const soonStyle: React.CSSProperties = {
-  fontSize: 11,
-  letterSpacing: 1,
-  textTransform: 'uppercase',
-  opacity: 0.8,
-  fontWeight: 500,
+  textAlign: 'center',
+  cursor: 'pointer',
 }

@@ -1,5 +1,10 @@
 'use client'
 import { useEffect, useRef } from 'react'
+import {
+  DEFAULT_KEY_BINDINGS,
+  actionForCode,
+  type KeyBindings,
+} from '@/lib/controlSettings'
 
 export interface KeyInput {
   forward: boolean
@@ -9,7 +14,13 @@ export interface KeyInput {
   handbrake: boolean
 }
 
-export function useKeyboard(): { current: KeyInput } {
+// Subscribes to window keydown / keyup and writes booleans into a shared ref
+// the game loop reads each frame. Bindings are user-configurable; the latest
+// value lives in a ref so the listener picks up changes without re-binding
+// (and without losing the held-key state on every settings tweak).
+export function useKeyboard(
+  bindings: KeyBindings = DEFAULT_KEY_BINDINGS,
+): { current: KeyInput } {
   const state = useRef<KeyInput>({
     forward: false,
     backward: false,
@@ -17,6 +28,8 @@ export function useKeyboard(): { current: KeyInput } {
     right: false,
     handbrake: false,
   })
+  const bindingsRef = useRef<KeyBindings>(bindings)
+  bindingsRef.current = bindings
 
   useEffect(() => {
     function isEditableTarget(target: EventTarget | null): boolean {
@@ -29,29 +42,9 @@ export function useKeyboard(): { current: KeyInput } {
       // Let editable targets (feedback textarea, initials input) handle typing.
       // Always process keyup so a held key clears if focus shifts mid-press.
       if (pressed && isEditableTarget(e.target)) return
-      switch (e.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-          state.current.forward = pressed
-          break
-        case 'KeyS':
-        case 'ArrowDown':
-          state.current.backward = pressed
-          break
-        case 'KeyA':
-        case 'ArrowLeft':
-          state.current.left = pressed
-          break
-        case 'KeyD':
-        case 'ArrowRight':
-          state.current.right = pressed
-          break
-        case 'Space':
-          state.current.handbrake = pressed
-          break
-        default:
-          return
-      }
+      const action = actionForCode(bindingsRef.current, e.code)
+      if (!action) return
+      state.current[action] = pressed
       e.preventDefault()
     }
     const down = (e: KeyboardEvent) => apply(e, true)

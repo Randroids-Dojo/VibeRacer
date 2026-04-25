@@ -2,17 +2,24 @@
 import { JOYSTICK_RADIUS, type JoystickState } from '@/game/virtual-joystick'
 import { useTouchControls } from '@/hooks/useTouchControls'
 import type { KeyInput } from '@/hooks/useKeyboard'
+import type { TouchMode } from '@/lib/controlSettings'
 
 interface TouchControlsProps {
   keys: { current: KeyInput }
   enabled: boolean
+  mode?: TouchMode
 }
 
 const KNOB_RADIUS = 26
 
-export function TouchControls({ keys, enabled }: TouchControlsProps) {
-  const sticks = useTouchControls(keys, enabled)
+export function TouchControls({ keys, enabled, mode = 'single' }: TouchControlsProps) {
+  const sticks = useTouchControls(keys, enabled, mode)
   if (!enabled) return null
+  // Single-stick mode reuses the steer joystick for both axes, so we render
+  // it with a neutral tint to signal "this controls everything".
+  if (mode === 'single') {
+    return <JoystickVisual js={sticks.steer} tint="rgba(255, 255, 255, 0.85)" />
+  }
   return (
     <>
       <JoystickVisual js={sticks.steer} tint="rgba(95, 224, 138, 0.85)" />

@@ -17,12 +17,14 @@ import {
   type LapCompleteEvent,
 } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useControlSettings } from '@/hooks/useControlSettings'
 import { InitialsPrompt, readStoredInitials } from './InitialsPrompt'
 import { Countdown } from './Countdown'
 import { HUD } from './HUD'
 import { PauseMenu } from './PauseMenu'
 import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
+import { SettingsPane } from './SettingsPane'
 import { readLocalBest, writeLocalBest } from '@/lib/localBest'
 import { Leaderboard } from './Leaderboard'
 import {
@@ -81,7 +83,7 @@ interface HudState {
   toast: string | null
 }
 
-type PauseView = 'menu' | 'leaderboard'
+type PauseView = 'menu' | 'leaderboard' | 'settings'
 
 const HUD_UPDATE_MS = 50 // Throttle HUD re-renders to ~20Hz; game loop still runs at 60Hz.
 
@@ -94,7 +96,8 @@ function GameSession({
 }: SessionProps) {
   const router = useRouter()
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const keys = useKeyboard()
+  const { settings, setSettings, resetSettings } = useControlSettings()
+  const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
@@ -433,7 +436,11 @@ function GameSession({
         initials={initials}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
-      <TouchControls keys={keys} enabled={phase === 'racing' && !paused} />
+      <TouchControls
+        keys={keys}
+        enabled={phase === 'racing' && !paused}
+        mode={settings.touchMode}
+      />
       {phase === 'racing' && !paused ? (
         <button
           onClick={pause}
@@ -454,13 +461,21 @@ function GameSession({
               onRestart={restart}
               onEditTrack={editTrack}
               onLeaderboards={() => setPauseView('leaderboard')}
+              onSettings={() => setPauseView('settings')}
               onExit={exitToTitle}
             />
-          ) : (
+          ) : pauseView === 'leaderboard' ? (
             <Leaderboard
               slug={slug}
               versionHash={versionHash}
               onBack={() => setPauseView('menu')}
+            />
+          ) : (
+            <SettingsPane
+              settings={settings}
+              onChange={setSettings}
+              onClose={() => setPauseView('menu')}
+              onReset={resetSettings}
             />
           )}
           <FeedbackFab />

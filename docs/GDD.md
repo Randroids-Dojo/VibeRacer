@@ -12,12 +12,12 @@
 | - | - | - |
 | 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt all work; edit pending) |
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
-| 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick touch; remappable bindings pending) |
+| 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
-| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load; home UI and settings pending) |
+| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + Settings pane on home and pause menu live; initials editing in Settings pending) |
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, checkpoints, lap detection, invalid-lap reset, HUD all live; per-track configurable checkpoint count pending) |
-| 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings (stub) ship; Settings pane pending) |
+| 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings ship; Settings pane is now live for keyboard remap and dual / single touch mode) |
 | 10 | Physics tuning (dev panel) | not started |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
@@ -91,18 +91,25 @@ Trailing third-person camera, Forza Horizon style.
 
 ## 4. Controls
 
-**Status.** Partial. Keyboard (WASD + arrows + Space) plus Esc-to-pause are live. Dual-stick touch controls (float-where-you-tap) are live. The reserved Q/E shift keys and remappable bindings are still pending.
+**Status.** Partial. Keyboard (WASD + arrows + Space, all remappable) plus Esc-to-pause are live. Touch controls support both a dual-stick layout and a single-stick layout, switchable in Settings. The reserved Q/E shift keys and gamepad are still pending.
 
 ### Build log
 
-- `src/hooks/useKeyboard.ts` returns `{ current: KeyInput }` (ref-like) where `KeyInput = { forward, backward, left, right, handbrake }`. `keydown`/`keyup` listeners mutate the ref and `preventDefault` for recognized keys.
-- Mapping: `W`/`ArrowUp` = forward, `S`/`ArrowDown` = backward (brake/reverse), `A`/`ArrowLeft` = steer left, `D`/`ArrowRight` = steer right, `Space` = handbrake.
+- `src/hooks/useKeyboard.ts` returns `{ current: KeyInput }` (ref-like) where `KeyInput = { forward, backward, left, right, handbrake }`. `keydown`/`keyup` listeners mutate the ref and `preventDefault` for recognized keys. The hook now takes a `KeyBindings` argument (with `DEFAULT_KEY_BINDINGS` as a fallback) and reads it through a ref so changing bindings at runtime does not require rebinding listeners.
+- Default mapping: `W`/`ArrowUp` = forward, `S`/`ArrowDown` = backward (brake/reverse), `A`/`ArrowLeft` = steer left, `D`/`ArrowRight` = steer right, `Space` = handbrake.
 - The tick loop reads `keys.current` each frame and synthesizes `{ throttle, steer, handbrake }` for `stepPhysics`.
 - Esc pause: handled in `Game.tsx` via a window `keydown` listener that is gated on `phase === 'racing'`. First press calls `pause()`, second press calls `resume()`. See Section 9 for the pause lifecycle.
-- Touch: `src/game/virtual-joystick.ts` exports pure stick state helpers (`createJoystick`, `beginJoystick`, `moveJoystick`, `endJoystick`, `readJoystick`). `src/hooks/useTouchControls.ts` wires pointer events to two sticks (left-half steer, right-half throttle), applies a dead zone, and writes booleans into the same `KeyInput` ref the keyboard hook owns so the game loop stays single-source. `src/components/TouchControls.tsx` renders the two visual rings + knobs while active. Game container uses `touch-action: none` so the browser does not steal pan/zoom.
-- **Not yet landed.** Remappable bindings, Q/E shifter keys, gamepad.
+- Touch: `src/game/virtual-joystick.ts` exports pure stick state helpers (`createJoystick`, `beginJoystick`, `moveJoystick`, `endJoystick`, `readJoystick`). `src/hooks/useTouchControls.ts` wires pointer events to one or two sticks depending on `touchMode` and writes booleans into the same `KeyInput` ref the keyboard hook owns so the game loop stays single-source.
+  - Dual mode: left half spawns a steering stick, right half spawns a gas/brake stick. Both release on pointerup and respawn at the next tap.
+  - Single mode: any touch anywhere spawns one stick. X axis steers, Y axis is gas (up) / brake (down). Only one ring renders.
+- `src/components/TouchControls.tsx` takes the same `mode` and renders one or two visual rings + knobs while active. Game container uses `touch-action: none` so the browser does not steal pan/zoom.
+- Settings storage: `src/lib/controlSettings.ts` defines `ControlSettings = { keyBindings, touchMode }`, defaults, schema validation, and pure helpers (`actionForCode`, `rebindKey`, `clearBinding`, `formatKeyCode`). Persisted to `localStorage` under `viberacer.controls`. `src/hooks/useControlSettings.ts` exposes `{ settings, setSettings, resetSettings, hydrated }` and listens to the `storage` event so a tweak in one tab reaches the live game in another.
+- Settings UI: `src/components/SettingsPane.tsx` is a modal pane. The keyboard section detects `(any-pointer: fine)`; the touch section detects `(any-pointer: coarse)` (with `navigator.maxTouchPoints` fallback). Each action shows two slot buttons. Click a slot then press a key to bind. Reassigning a code that was already bound elsewhere transfers it. Reset to defaults is one click. Esc cancels capture.
+- Wiring: `src/components/SettingsLauncher.tsx` exposes the Settings button on the home page (`src/app/page.tsx`). The pause menu (`src/components/PauseMenu.tsx`) gains a Settings entry that switches `pauseView` to `'settings'` in `Game.tsx`.
+- Tests: `tests/unit/controlSettings.test.ts` covers default-binding lookup, rebind transfers across actions, immutability of inputs, slot growth past current length, clear bounds, key-code formatting, and the localStorage round-trip (defaults on missing or malformed payloads).
+- **Not yet landed.** Q/E shifter keys, gamepad, initials editing in Settings.
 
-### Keyboard (default, remappable in Settings later)
+### Keyboard (defaults, remappable in Settings)
 
 | Action          | Keys                  |
 | --------------- | --------------------- |
@@ -119,12 +126,17 @@ Manual gearing is a stretch feature. Default car is automatic.
 
 ### Mobile touch: floats where you tap
 
-Two virtual joysticks, no fixed positions. Port the custom joystick from `FrackingAsteroids/src/game/virtual-joystick.ts`.
+Virtual joysticks with no fixed positions. Two layouts, switchable in Settings.
 
+**Single stick (default):**
+- Any touch spawns one stick anywhere. Horizontal axis steers, vertical axis is gas (up) / brake (down). Releases on touchend and respawns at the next touch point.
+
+**Dual stick:**
 - **Left half of screen.** First touch spawns a steering stick at that point. Horizontal axis steers.
 - **Right half of screen.** First touch spawns a gas/brake stick. Up = accelerate, down = brake.
 - Both sticks release on touchend and respawn at the next touch point.
-- Pause button floats in a corner and is always tappable during a race.
+
+Pause button floats in a corner and is always tappable during a race.
 
 ---
 
@@ -316,15 +328,16 @@ No lap cap. The player keeps racing until they pause and exit. Every completed l
 
 ### Build log
 
-- `src/components/PauseMenu.tsx` is a dark overlay card with four buttons (Resume highlighted as primary) plus a small "Esc to resume" hint. Pure presentational, no state of its own.
+- `src/components/PauseMenu.tsx` is a dark overlay card with six buttons (Resume highlighted as primary, Restart, Edit Track, Leaderboards, Settings, Exit to title) plus a small "Esc to resume" hint. Pure presentational, no state of its own.
 - `src/components/Game.tsx` owns the pause lifecycle: Esc key while `phase === 'racing'` calls `pause()`; clicking the bottom-left pause button does the same. Both `pause()` and `resume()` set `pausedRef.current` synchronously so the RAF loop picks up the state change on the very next frame.
 - Pause freezes simulation without drift: on pause, `pauseStartTsRef.current = performance.now()`; on resume, `resumeShiftRef.current += performance.now() - pauseStartTsRef.current`. The loop drains the shift by adding it to `state.raceStartMs` so the lap timer resumes where it left off.
 - Restart replays the countdown: `restart()` sets `pendingResetRef.current = true`, clears the token, resets session HUD state, and flips `phase` back to `'countdown'`. The Countdown component remounts and the READY-SET-GO sequence plays again. All-time PB in `localStorage` is preserved.
 - Exit to title uses Next.js's `useRouter().push('/')`.
 - Leaderboards button: toggles a sub-view inside the paused overlay. `pauseView: 'menu' | 'leaderboard'` in `Game.tsx` drives which component renders. Leaderboard has a Back button that returns to the menu. Reopening pause always starts on `'menu'`.
 - Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
-- Title screen at `/`: server component in `src/app/page.tsx`. `next/font/google` loads Fredoka as the cartoony wordmark font (CSS var `--font-cartoony`). `src/components/TitleBackground.tsx` mounts a full-viewport canvas behind the menu that reuses `buildTrackPath` + `buildScene` to render the default oval track, then drives a car along the centerline (straights interpolate entry→exit, corners sample the arc at radius `CELL_SIZE/2`) with a slow camera orbit. Menu is Play (links to `/start`), Load existing track (the `RecentTrackList` of the latest-updated slugs, falling back to sample slugs), and a disabled Settings button.
-- **Not yet landed.** Settings pane, always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
+- Title screen at `/`: server component in `src/app/page.tsx`. `next/font/google` loads Fredoka as the cartoony wordmark font (CSS var `--font-cartoony`). `src/components/TitleBackground.tsx` mounts a full-viewport canvas behind the menu that reuses `buildTrackPath` + `buildScene` to render the default oval track, then drives a car along the centerline (straights interpolate entry→exit, corners sample the arc at radius `CELL_SIZE/2`) with a slow camera orbit. Menu is Play (links to `/start`), Load existing track (the `RecentTrackList` of the latest-updated slugs, falling back to sample slugs), and a Settings button that opens the Settings pane in a modal via `src/components/SettingsLauncher.tsx`.
+- Settings pane: `src/components/SettingsPane.tsx` ships keyboard remap (with a click-then-press capture flow per slot, modifier keys ignored, conflict transfer to the new action) plus a dual / single touch mode toggle. Reachable from both the title screen and the pause menu. See Section 4 build log for storage and detection details.
+- **Not yet landed.** Always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
 ### Title screen (route `/`)
 
