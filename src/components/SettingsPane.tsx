@@ -1,5 +1,6 @@
 'use client'
 import { useEffect, useState } from 'react'
+import { useRouter } from 'next/navigation'
 import {
   ACTION_LABELS,
   CONTROL_ACTIONS,
@@ -17,6 +18,9 @@ interface SettingsPaneProps {
   onChange: (next: ControlSettings) => void
   onClose: () => void
   onReset: () => void
+  // Set when SettingsPane is rendered inside the in-game pause overlay so
+  // navigating away can warn the player before abandoning the race.
+  inRace?: boolean
 }
 
 interface CaptureTarget {
@@ -29,10 +33,20 @@ export function SettingsPane({
   onChange,
   onClose,
   onReset,
+  inRace,
 }: SettingsPaneProps) {
+  const router = useRouter()
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
+
+  function openTuningLab() {
+    if (inRace && !window.confirm('Leave the race to open the Tuning Lab?')) {
+      return
+    }
+    onClose()
+    router.push('/tune')
+  }
 
   useEffect(() => {
     const fineQuery = window.matchMedia('(any-pointer: fine)')
@@ -178,6 +192,20 @@ export function SettingsPane({
               </div>
             </div>
           ) : null}
+        </div>
+
+        <div style={sectionWrap}>
+          <div style={sectionTitle}>Tuning</div>
+          <div style={subSection}>
+            <div style={kbHint}>
+              The Tuning Lab drives a curated test loop and uses your feedback
+              to suggest car-param updates. Saved tunings can be applied to
+              your next race.
+            </div>
+            <button onClick={openTuningLab} style={openLabBtn}>
+              Open Tuning Lab
+            </button>
+          </div>
         </div>
 
         <div style={footer}>
@@ -353,6 +381,17 @@ const touchToggleBtn: React.CSSProperties = {
   border: 'none',
   borderRadius: 8,
   padding: '10px 12px',
+  fontSize: 14,
+  fontWeight: 700,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const openLabBtn: React.CSSProperties = {
+  background: '#ff6b35',
+  color: 'white',
+  border: 'none',
+  borderRadius: 8,
+  padding: '10px 14px',
   fontSize: 14,
   fontWeight: 700,
   cursor: 'pointer',
