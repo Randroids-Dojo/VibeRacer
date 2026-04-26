@@ -15,6 +15,10 @@ import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
 import type { HapticMode } from '@/lib/haptics'
+import {
+  TIME_OF_DAY_CYCLE_PERIOD_MS,
+  activeTimeOfDayAt,
+} from '@/lib/timeOfDayCycle'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -462,21 +466,45 @@ function GameSession({
     playerWeather: settings.weather,
     respectTrackMood: settings.respectTrackMood,
   })
+  // Time-of-day auto cycle. When `settings.timeOfDayCycle !== 'off'` an effect
+  // below mutates `cycleTimeOfDayRef.current` on a wall-clock cadence so the
+  // active sky rotates through noon -> morning -> sunset -> night even mid-race.
+  // The render-time assignment to `timeOfDayRef.current` reads from this ref
+  // (when cycle is on) so a re-render does not clobber the in-flight cycle.
+  // Track-author baked moods are honored: when the author picked a time of day
+  // and the player has "respect track mood" on, the cycle is suppressed (the
+  // author's baked time is the entire point).
+  const trackMoodLocksTimeOfDay =
+    settings.respectTrackMood && Boolean(trackMood?.timeOfDay)
+  const cycleEffective =
+    settings.timeOfDayCycle !== 'off' && !trackMoodLocksTimeOfDay
+  const cycleTimeOfDayRef = useRef<TimeOfDay>(
+    activeMood.timeOfDay ?? settings.timeOfDay,
+  )
+  // The effective time-of-day for this render: the cycle's latest value when
+  // the cycle is running, otherwise the resolver's baseline. Reading the ref
+  // (not state) keeps the cycle from forcing 60Hz re-renders into the rest of
+  // the HUD tree; the renderer notices via the same poll-and-set pattern as
+  // every other settings ref.
+  const effectiveTimeOfDay: TimeOfDay = cycleEffective
+    ? cycleTimeOfDayRef.current
+    : activeMood.timeOfDay ?? settings.timeOfDay
   // Mirrors the active time-of-day preset into the rAF loop. Same poll-and-set
   // pattern as carPaintRef: the renderer reads it each frame and reapplies the
   // sky / ambient / sun preset whenever the value changes.
-  const timeOfDayRef = useRef<TimeOfDay | null>(activeMood.timeOfDay)
-  timeOfDayRef.current = activeMood.timeOfDay
+  const timeOfDayRef = useRef<TimeOfDay | null>(effectiveTimeOfDay)
+  timeOfDayRef.current = effectiveTimeOfDay
   const weatherRef = useRef<Weather | null>(activeMood.weather)
   weatherRef.current = activeMood.weather
   // Resolve the headlight visibility from the player's HeadlightMode pick plus
   // the active mood. Mirroring the boolean (not the mode) into the renderer ref
   // keeps the renderer-side logic dumb (just flip a group's visibility) and
   // means a track mood change automatically lights the lamps without any
-  // additional renderer work.
+  // additional renderer work. When the cycle rotates the sky into night the
+  // headlights also pop on, so the cosmetic stays coherent.
   const headlightsOn = shouldHeadlightsBeOn(
     settings.headlights,
-    activeMood.timeOfDay,
+    effectiveTimeOfDay,
     activeMood.weather,
   )
   const headlightsOnRef = useRef<boolean>(headlightsOn)
@@ -1162,6 +1190,56 @@ function GameSession({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [restartLap])
+
+  // Time-of-day auto cycle. When the player picks 'slow' or 'fast' in Settings
+  // (and no track-author baked time-of-day is locking the scene), a wall-clock
+  // interval rotates `cycleTimeOfDayRef.current` through noon -> morning ->
+  // sunset -> night at the picked cadence. The renderer reads the ref each
+  // frame via `syncTimeOfDay` so the sky reskins on the next frame after the
+  // ref advances; no React re-render is needed for the visual update. A small
+  // setState forces the headlights / chip in the menu to refresh on each step
+  // so the visible label and the physical scene stay in sync.
+  const baseTimeOfDayForCycle = activeMood.timeOfDay ?? settings.timeOfDay
+  const [, setCycleTick] = useState(0)
+  useEffect(() => {
+    if (settings.timeOfDayCycle === 'off' || trackMoodLocksTimeOfDay) {
+      // Snap the cycle back to the base pick so a flip off lands on the
+      // player's chosen sky on the next frame instead of stranding the scene
+      // mid-rotation.
+      cycleTimeOfDayRef.current = baseTimeOfDayForCycle
+      return
+    }
+    const period = TIME_OF_DAY_CYCLE_PERIOD_MS[settings.timeOfDayCycle]
+    if (!Number.isFinite(period) || period <= 0) return
+    const startMs = Date.now()
+    // Seed the cycle's starting value to whatever the base resolves to right
+    // now so the first transition lands one period later, not immediately.
+    cycleTimeOfDayRef.current = activeTimeOfDayAt(
+      startMs,
+      startMs,
+      settings.timeOfDayCycle,
+      baseTimeOfDayForCycle,
+    )
+    const id = window.setInterval(() => {
+      const next = activeTimeOfDayAt(
+        startMs,
+        Date.now(),
+        settings.timeOfDayCycle,
+        baseTimeOfDayForCycle,
+      )
+      if (next !== cycleTimeOfDayRef.current) {
+        cycleTimeOfDayRef.current = next
+        // Bump local state so the headlight effect (and any other consumer of
+        // `effectiveTimeOfDay`) picks up the new value on the next render.
+        setCycleTick((n) => n + 1)
+      }
+    }, period)
+    return () => window.clearInterval(id)
+  }, [
+    settings.timeOfDayCycle,
+    trackMoodLocksTimeOfDay,
+    baseTimeOfDayForCycle,
+  ])
 
   useEffect(() => {
     return () => {

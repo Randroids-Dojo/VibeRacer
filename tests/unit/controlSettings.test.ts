@@ -571,6 +571,49 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().haptics).toBe('auto')
   })
 
+  it("defaults timeOfDayCycle to 'off'", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.timeOfDayCycle).toBe('off')
+    expect(cloneDefaultSettings().timeOfDayCycle).toBe('off')
+  })
+
+  it("round-trips a timeOfDayCycle pick of 'slow'", () => {
+    const custom = cloneDefaultSettings()
+    custom.timeOfDayCycle = 'slow'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("round-trips a timeOfDayCycle pick of 'fast'", () => {
+    const custom = cloneDefaultSettings()
+    custom.timeOfDayCycle = 'fast'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("backfills timeOfDayCycle to 'off' when reading legacy storage that omits it", () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().timeOfDayCycle).toBe('off')
+  })
+
+  it('rejects an unknown stored timeOfDayCycle value and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      timeOfDayCycle: 'instant',
+    })
+    expect(readStoredControlSettings().timeOfDayCycle).toBe('off')
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

@@ -92,6 +92,12 @@ import {
   type HapticMode,
 } from '@/lib/haptics'
 import {
+  TIME_OF_DAY_CYCLE_DESCRIPTIONS,
+  TIME_OF_DAY_CYCLE_LABELS,
+  TIME_OF_DAY_CYCLE_MODES,
+  type TimeOfDayCycleMode,
+} from '@/lib/timeOfDayCycle'
+import {
   MenuButton,
   MenuHeader,
   MenuHint,
@@ -465,6 +471,11 @@ export function SettingsPane({
   function setTimeOfDay(value: TimeOfDay) {
     clickSoft()
     onChange({ ...settings, timeOfDay: value })
+  }
+
+  function setTimeOfDayCycle(value: TimeOfDayCycleMode) {
+    clickSoft()
+    onChange({ ...settings, timeOfDayCycle: value })
   }
 
   function setWeather(value: Weather) {
@@ -1162,6 +1173,29 @@ export function SettingsPane({
               )
             })}
           </div>
+          <MenuHint>
+            Auto cycle the sky through noon, morning, sunset, and night while
+            you race. The cycle is suppressed when a track author baked in a
+            time of day.
+          </MenuHint>
+          <div style={touchToggleRow}>
+            {TIME_OF_DAY_CYCLE_MODES.map((mode) => {
+              const active = settings.timeOfDayCycle === mode
+              return (
+                <MenuButton
+                  key={mode}
+                  variant={active ? 'primary' : 'secondary'}
+                  onClick={() => setTimeOfDayCycle(mode)}
+                  title={TIME_OF_DAY_CYCLE_DESCRIPTIONS[mode]}
+                >
+                  {TIME_OF_DAY_CYCLE_LABELS[mode]}
+                </MenuButton>
+              )
+            })}
+          </div>
+          <MenuHint>
+            {TIME_OF_DAY_CYCLE_DESCRIPTIONS[settings.timeOfDayCycle]}
+          </MenuHint>
         </MenuSection>
 
         <MenuSection title="Weather">

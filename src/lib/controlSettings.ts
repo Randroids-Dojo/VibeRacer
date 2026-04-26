@@ -40,6 +40,11 @@ import {
   HapticModeSchema,
   type HapticMode,
 } from './haptics'
+import {
+  DEFAULT_TIME_OF_DAY_CYCLE,
+  TimeOfDayCycleModeSchema,
+  type TimeOfDayCycleMode,
+} from './timeOfDayCycle'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -271,6 +276,14 @@ export interface ControlSettings {
   // suppresses every buzz. Default 'auto' so phone players opt in by default
   // and desktop sessions stay quiet.
   haptics: HapticMode
+  // Auto-rotate the active time-of-day skin through noon -> morning -> sunset
+  // -> night while the player races. Pure cosmetic. Default 'off' so legacy
+  // stored payloads keep their existing screen exactly as it was; players who
+  // want a Forza Horizon-style sky cycle can flip to 'slow' (5 min per skin)
+  // or 'fast' (60s per skin) once. Composes with the static `timeOfDay` pick:
+  // the cycle starts on whichever preset the player picked and rotates from
+  // there so a flip on does not snap to noon mid-race.
+  timeOfDayCycle: TimeOfDayCycleMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -312,6 +325,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   headlights: DEFAULT_HEADLIGHT_MODE,
   brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
   haptics: DEFAULT_HAPTIC_MODE,
+  timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -442,6 +456,10 @@ const ControlSettingsSchema = z.object({
   // stored payloads pick up the same default so the upgrade is opt-out, not
   // opt-in.
   haptics: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
+  // Time-of-day auto cycle landed after haptics. Default 'off' so legacy stored
+  // payloads keep their existing screen exactly as it was; players who want a
+  // Forza Horizon-style rotating sky have to flip it on once in Settings.
+  timeOfDayCycle: TimeOfDayCycleModeSchema.default(DEFAULT_TIME_OF_DAY_CYCLE),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -475,6 +493,7 @@ export function cloneDefaultSettings(): ControlSettings {
     headlights: DEFAULT_CONTROL_SETTINGS.headlights,
     brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
     haptics: DEFAULT_CONTROL_SETTINGS.haptics,
+    timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
   }
 }
 
