@@ -60,6 +60,8 @@ import {
   writeLocalBestReaction,
   readLifetimeBestReaction,
   writeLifetimeBestReaction,
+  readLocalBestRank,
+  writeLocalBestRank,
 } from '@/lib/localBest'
 import {
   REACTION_TIME_DISPLAY_MS,
@@ -174,6 +176,11 @@ import {
 import { TitleMusic } from './TitleMusic'
 import { buildSharePayload, shareOrCopy } from '@/lib/share'
 import { buildToastWithRank, isLapRankInfo } from '@/lib/lapToast'
+import {
+  isRankUpgrade,
+  sanitizeRankInfo,
+  type LeaderboardRankInfo,
+} from '@/game/leaderboardRank'
 import { fireHaptic, isTouchRuntime, shouldHapticFire } from '@/lib/haptics'
 import {
   FAVORITE_TRACKS_EVENT,
@@ -322,6 +329,14 @@ interface HudState {
   // starts on a clean slate.
   reactionTime: { reactionMs: number; isPb: boolean; generatedAtMs: number } | null
   pbReactionMs: number | null
+  // Player's best leaderboard placement on this (slug, versionHash). Loaded
+  // from localStorage on mount so a recognized layout shows the rank chip
+  // immediately, then refreshed on every successful race-submit response so
+  // a fresh top-3 lap upgrades the chip in place. null until the player has
+  // ever submitted a lap on this layout (the chip slot collapses cleanly
+  // until then so a brand-new track does not show a misleading "ranked"
+  // pill before the first submit lands).
+  leaderboardRank: { rank: number; boardSize: number } | null
 }
 
 type PauseView =
@@ -812,6 +827,7 @@ function GameSession({
       ghostGapMs: null,
       reactionTime: null,
       pbReactionMs: readLocalBestReaction(slug, versionHash),
+      leaderboardRank: readLocalBestRank(slug, versionHash),
     }
   })
 
@@ -849,6 +865,10 @@ function GameSession({
       // player has not produced a fresh measurement for this layout yet.
       reactionTime: null,
       pbReactionMs: readLocalBestReaction(slug, versionHash),
+      // Leaderboard rank is per (slug, versionHash). Reload from disk so a
+      // navigation between layouts surfaces the rank for the new track
+      // immediately rather than carrying over the previous slug's chip.
+      leaderboardRank: readLocalBestRank(slug, versionHash),
     }))
     // Engagement stats are also (slug, version)-scoped: reload them so the
     // pause-menu Stats pane reflects what the player banked on this layout
@@ -2128,11 +2148,33 @@ function GameSession({
           : null
         if (rankInfo) {
           setHud((prev) => {
-            if (prev.toast === null || prev.toastKind === null) return prev
-            const next = buildToastWithRank(prev.toast, prev.toastKind, rankInfo)
-            if (next === prev.toast) return prev
-            return { ...prev, toast: next }
+            const next: typeof prev = { ...prev }
+            // Upgrade the toast in place so the existing celebratory phrasing
+            // gains the rank suffix; bail when the toast already cleared so a
+            // slow round-trip never revives a stale lane.
+            if (prev.toast !== null && prev.toastKind !== null) {
+              const upgraded = buildToastWithRank(prev.toast, prev.toastKind, rankInfo)
+              if (upgraded !== prev.toast) next.toast = upgraded
+            }
+            // Mirror the placement into HudState so the persistent rank chip
+            // refreshes the moment the server response lands. We always reflect
+            // the latest known rank so the chip honestly tracks the player's
+            // current standing (even if it slipped to a worse rank because
+            // someone else posted a faster lap).
+            next.leaderboardRank = rankInfo
+            return next
           })
+          // Persist the BEST observed rank to disk so a fresh page load on
+          // this layout shows the chip immediately. Only write when the new
+          // rank improves on the prior so a slower lap never demotes the
+          // stored "best ever" badge that the player earned previously.
+          const sanitized = sanitizeRankInfo(rankInfo)
+          if (sanitized) {
+            const prior: LeaderboardRankInfo | null = readLocalBestRank(slug, versionHash)
+            if (isRankUpgrade(prior, sanitized)) {
+              writeLocalBestRank(slug, versionHash, sanitized)
+            }
+          }
         }
       }
     } catch {
@@ -2286,6 +2328,9 @@ function GameSession({
           phase === 'racing' && !paused && settings.showReactionTime
             ? hud.reactionTime
             : null
+        }
+        leaderboardRank={
+          settings.showLeaderboardRank ? hud.leaderboardRank : null
         }
       />
       {achievementToast ? (

@@ -3,6 +3,10 @@ import { ReplaySchema, type Replay } from './replay'
 import { CheckpointHitSchema, type CheckpointHit } from './schemas'
 import type { SectorDuration } from '@/game/optimalLap'
 import { emptyStats, type TrackStats } from '@/game/trackStats'
+import {
+  isLeaderboardRankInfo,
+  type LeaderboardRankInfo,
+} from '@/game/leaderboardRank'
 
 function bestKey(slug: string, versionHash: string): string {
   return `viberacer.best.${slug}.${versionHash}`
@@ -38,6 +42,10 @@ function lastSubmitNonceKey(slug: string, versionHash: string): string {
 
 function reactionTimeBestKey(slug: string, versionHash: string): string {
   return `viberacer.bestReaction.${slug}.${versionHash}`
+}
+
+function bestRankKey(slug: string, versionHash: string): string {
+  return `viberacer.bestRank.${slug}.${versionHash}`
 }
 
 // Lifetime best across every (slug, version). The per-track key tracks "best
@@ -418,5 +426,51 @@ export function writeLifetimeBestReaction(reactionMs: number): void {
     )
   } catch {
     // Best-effort, never breaks gameplay.
+  }
+}
+
+// Per-track best leaderboard placement. Stored alongside the local PB lap
+// time so the HUD can surface the player's standing on the (slug, version)
+// leaderboard between sessions without waiting for a fresh submit. The
+// "best" semantics mean strictly lower 1-indexed rank wins; the board size
+// at the moment the best rank was reached is preserved alongside so the
+// chip can label tiers honestly even when the live board has grown since.
+const StoredRankSchema = z.object({
+  rank: z.number().int().positive(),
+  boardSize: z.number().int().positive(),
+})
+
+export function readLocalBestRank(
+  slug: string,
+  versionHash: string,
+): LeaderboardRankInfo | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(bestRankKey(slug, versionHash))
+  if (!raw) return null
+  try {
+    const parsed = StoredRankSchema.safeParse(JSON.parse(raw))
+    if (!parsed.success) return null
+    if (parsed.data.rank > parsed.data.boardSize) return null
+    return parsed.data
+  } catch {
+    return null
+  }
+}
+
+export function writeLocalBestRank(
+  slug: string,
+  versionHash: string,
+  info: LeaderboardRankInfo,
+): void {
+  if (typeof window === 'undefined') return
+  if (!isLeaderboardRankInfo(info)) return
+  try {
+    window.localStorage.setItem(
+      bestRankKey(slug, versionHash),
+      JSON.stringify({ rank: info.rank, boardSize: info.boardSize }),
+    )
+  } catch {
+    // Rank persistence is a best-effort UX enhancement. A quota failure
+    // should never break the lap-submit flow.
   }
 }

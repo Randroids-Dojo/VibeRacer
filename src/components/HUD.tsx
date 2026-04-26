@@ -18,6 +18,14 @@ import {
   classifyReactionTime,
   formatReactionTime,
 } from '@/game/reactionTime'
+import {
+  RANK_TIER_COLORS,
+  classifyRank,
+  formatRankAriaLabel,
+  formatRankBadge,
+  isLeaderboardRankInfo,
+  type LeaderboardRankInfo,
+} from '@/game/leaderboardRank'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -109,6 +117,12 @@ interface HudProps {
   // hides the chip. `isPb` flips the accent to gold so a fresh personal best
   // pops alongside the tier color.
   reactionTime?: { reactionMs: number; isPb: boolean; generatedAtMs: number } | null
+  // Player's leaderboard placement on this (slug, version). Drives the rank
+  // chip pinned alongside the medal badge on the BEST (ALL TIME) tile so the
+  // player can see where they currently stand without opening the
+  // leaderboard pane. null hides the chip (no submitted lap on file or the
+  // Settings toggle is off upstream).
+  leaderboardRank?: { rank: number; boardSize: number } | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -332,6 +346,36 @@ function StreakBadge({ label }: { label: string }) {
   )
 }
 
+// Leaderboard rank chip. Pinned in the BEST (ALL TIME) cluster so the
+// player's current standing on the (slug, version) leaderboard reads as
+// another property OF their PB lane. The accent color tracks the tier
+// (platinum / gold / amber / bronze / muted) so the chip's hue communicates
+// "how flattering" at a glance, and the formatted label keeps the rank
+// number visible inside the pill so a TOP 10 #5 is distinguishable from a
+// TOP 10 #1.
+function RankBadge({ info }: { info: LeaderboardRankInfo }) {
+  const tier = classifyRank(info)
+  const accent = RANK_TIER_COLORS[tier]
+  const label = formatRankBadge(info)
+  return (
+    <span
+      style={{
+        ...rankBadgeStyle,
+        color: accent,
+        borderColor: hexWithAlpha(accent, 0.55),
+        boxShadow: `0 0 8px ${hexWithAlpha(accent, 0.35)}`,
+      }}
+      title={formatRankAriaLabel(info)}
+      aria-label={formatRankAriaLabel(info)}
+    >
+      <span style={rankGlyphStyle} aria-hidden>
+        {'#'}
+      </span>
+      <span style={rankLabelStyle}>{label}</span>
+    </span>
+  )
+}
+
 // Reaction-time chip. Pops the moment the player presses throttle for a
 // fresh race and stays for REACTION_TIME_DISPLAY_MS before fading. The
 // border + value tint follow the tier color (lightning blue / gold / green
@@ -501,6 +545,9 @@ export function HUD(props: HudProps) {
             <NextMedalChip tier={nextMedal.tier} label={nextMedalLabel} />
           ) : null}
           {streakLabel ? <StreakBadge label={streakLabel} /> : null}
+          {props.leaderboardRank && isLeaderboardRankInfo(props.leaderboardRank) ? (
+            <RankBadge info={props.leaderboardRank} />
+          ) : null}
         </div>
         <OptimalBlock
           optimalLapMs={props.optimalLapMs}
@@ -1205,5 +1252,35 @@ const streakFlameStyle: React.CSSProperties = {
   textShadow: '0 0 5px currentColor',
 }
 const streakLabelStyle: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
+}
+
+// Leaderboard rank chip styles. Mirrors the medal / streak badge shape so
+// the rank chip nests cleanly into the existing BEST (ALL TIME) cluster.
+// Color, border, and box-shadow come from the tier accent so the chip's
+// hue communicates the player's standing at a glance; the per-instance
+// styles are merged in the RankBadge component above.
+const rankBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background:
+    'linear-gradient(180deg, rgba(20, 24, 32, 0.85), rgba(8, 10, 16, 0.85))',
+  border: '1px solid rgba(255, 255, 255, 0.4)',
+  fontWeight: 800,
+  fontSize: 10,
+  letterSpacing: 1.2,
+  lineHeight: 1.2,
+}
+const rankGlyphStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 10,
+  lineHeight: 1,
+  color: 'currentColor',
+  textShadow: '0 0 5px currentColor',
+}
+const rankLabelStyle: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
 }

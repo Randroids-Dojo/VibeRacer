@@ -4,6 +4,7 @@ import {
   readLocalBestDrift,
   readLastSubmit,
   readLocalBestPbStreak,
+  readLocalBestRank,
   readLocalBestSectors,
   readLocalBestSplits,
   readLocalBestReaction,
@@ -12,6 +13,7 @@ import {
   writeLastSubmit,
   writeLocalBestDrift,
   writeLocalBestPbStreak,
+  writeLocalBestRank,
   writeLocalBestReaction,
   writeLifetimeBestReaction,
   writeLocalBestSectors,
@@ -741,5 +743,98 @@ describe('lifetime best reaction time storage (single key, all tracks)', () => {
       throw new Error('quota exceeded')
     }
     expect(() => writeLifetimeBestReaction(245)).not.toThrow()
+  })
+})
+
+describe('local best leaderboard rank storage', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no rank is stored', () => {
+    expect(readLocalBestRank('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a stored rank', () => {
+    writeLocalBestRank('oval', HASH, { rank: 3, boardSize: 47 })
+    expect(readLocalBestRank('oval', HASH)).toEqual({ rank: 3, boardSize: 47 })
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeLocalBestRank('oval', HASH, { rank: 1, boardSize: 50 })
+    writeLocalBestRank('oval', 'b'.repeat(64), { rank: 5, boardSize: 80 })
+    writeLocalBestRank('hairpin', HASH, { rank: 2, boardSize: 30 })
+    expect(readLocalBestRank('oval', HASH)).toEqual({ rank: 1, boardSize: 50 })
+    expect(readLocalBestRank('oval', 'b'.repeat(64))).toEqual({
+      rank: 5,
+      boardSize: 80,
+    })
+    expect(readLocalBestRank('hairpin', HASH)).toEqual({ rank: 2, boardSize: 30 })
+    expect(readLocalBestRank('sandbox', HASH)).toBeNull()
+  })
+
+  it('refuses to persist a structurally invalid rank', () => {
+    writeLocalBestRank('oval', HASH, { rank: 0, boardSize: 50 })
+    writeLocalBestRank('oval', HASH, { rank: 5, boardSize: 0 })
+    writeLocalBestRank('oval', HASH, { rank: 80, boardSize: 50 })
+    expect(readLocalBestRank('oval', HASH)).toBeNull()
+  })
+
+  it('returns null on a malformed JSON payload', () => {
+    store[`viberacer.bestRank.oval.${HASH}`] = 'not json'
+    expect(readLocalBestRank('oval', HASH)).toBeNull()
+  })
+
+  it('returns null on a payload that fails the schema', () => {
+    store[`viberacer.bestRank.oval.${HASH}`] = JSON.stringify({
+      rank: 'first',
+      boardSize: 5,
+    })
+    expect(readLocalBestRank('oval', HASH)).toBeNull()
+  })
+
+  it('returns null on a payload where rank exceeds boardSize', () => {
+    store[`viberacer.bestRank.oval.${HASH}`] = JSON.stringify({
+      rank: 80,
+      boardSize: 50,
+    })
+    expect(readLocalBestRank('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() =>
+      writeLocalBestRank('oval', HASH, { rank: 3, boardSize: 47 }),
+    ).not.toThrow()
   })
 })

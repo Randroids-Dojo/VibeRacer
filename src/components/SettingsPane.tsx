@@ -438,6 +438,10 @@ export function SettingsPane({
     onChange({ ...settings, showReactionTime: value })
   }
 
+  function setShowLeaderboardRank(value: boolean) {
+    onChange({ ...settings, showLeaderboardRank: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -1062,6 +1066,23 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showReactionTime}
                 onChange={setShowReactionTime}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Leaderboard rank</div>
+            <MenuHint>
+              Pins a small badge alongside your BEST (ALL TIME) tile showing
+              where you sit on this track version&apos;s leaderboard: P1 for
+              the record holder, PODIUM for top 3, TOP 10 #N, TOP %, TOP
+              HALF, or RANKED otherwise. Refreshes after every submitted lap.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show rank chip</div>
+              <MenuToggle
+                value={settings.showLeaderboardRank}
+                onChange={setShowLeaderboardRank}
               />
             </div>
           </div>

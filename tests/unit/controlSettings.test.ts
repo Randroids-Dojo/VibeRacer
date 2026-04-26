@@ -937,6 +937,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showReactionTime).toBe(true)
   })
 
+  it('defaults showLeaderboardRank to true (rank chip on by default)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showLeaderboardRank).toBe(true)
+    expect(cloneDefaultSettings().showLeaderboardRank).toBe(true)
+  })
+
+  it('round-trips a disabled showLeaderboardRank flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showLeaderboardRank = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().showLeaderboardRank).toBe(false)
+  })
+
+  it('backfills showLeaderboardRank to true when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showLeaderboardRank).toBe(true)
+  })
+
   it('defaults showTopSpeedMarker to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker).toBe(true)
     expect(cloneDefaultSettings().showTopSpeedMarker).toBe(true)

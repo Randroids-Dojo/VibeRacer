@@ -253,6 +253,13 @@ export interface ControlSettings {
   // mid-race HUD. Default on so existing players see the chip on their next
   // race; the toggle is here for users who prefer a clean post-launch HUD.
   showReactionTime: boolean
+  // Toggle the leaderboard-rank HUD chip. When on, the HUD pins a small
+  // pill alongside the medal badge showing the player's current standing on
+  // the (slug, version) leaderboard ("P1", "PODIUM", "TOP 10 #5", etc.).
+  // Persists across sessions per (slug, version) so the chip lights up the
+  // moment a recognized layout loads, before the next submit lands. Default
+  // on; the toggle is here for users who prefer a clean post-launch HUD.
+  showLeaderboardRank: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -347,6 +354,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showRacingLine: false,
   showSpeedLines: true,
   showReactionTime: true,
+  showLeaderboardRank: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   racingNumber: DEFAULT_RACING_NUMBER,
@@ -461,6 +469,10 @@ const ControlSettingsSchema = z.object({
   // payloads start showing the post-launch chip on their next race; players
   // who want a clean HUD immediately after GO can flip it off in Settings.
   showReactionTime: z.boolean().default(true),
+  // Leaderboard rank chip landed after reaction time. Default ON so legacy
+  // stored payloads start showing the placement chip on their next race;
+  // players who want a clean HUD can flip it off in Settings.
+  showLeaderboardRank: z.boolean().default(true),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Top-speed marker landed after the speedometer toggle. Default on so legacy
   // stored payloads start showing the peak tick on their next race; players
@@ -537,6 +549,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showRacingLine: DEFAULT_CONTROL_SETTINGS.showRacingLine,
     showSpeedLines: DEFAULT_CONTROL_SETTINGS.showSpeedLines,
     showReactionTime: DEFAULT_CONTROL_SETTINGS.showReactionTime,
+    showLeaderboardRank: DEFAULT_CONTROL_SETTINGS.showLeaderboardRank,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     racingNumber: { ...DEFAULT_RACING_NUMBER },
