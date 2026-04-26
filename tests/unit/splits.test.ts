@@ -4,6 +4,7 @@ import {
   computeSplitDeltaForLastHit,
   formatSplitDelta,
   isSplitExpired,
+  predictLapTimeFromHits,
   type SplitDelta,
 } from '@/game/splits'
 import type { CheckpointHit } from '@/lib/schemas'
@@ -109,5 +110,103 @@ describe('isSplitExpired', () => {
   it('respects a custom window', () => {
     expect(isSplitExpired(split, 11_500, 1000)).toBe(true)
     expect(isSplitExpired(split, 11_500, 2000)).toBe(false)
+  })
+})
+
+describe('predictLapTimeFromHits', () => {
+  const PB_LAP_MS = 5000
+
+  it('returns null when no PB splits are stored', () => {
+    expect(
+      predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], null, PB_LAP_MS),
+    ).toBeNull()
+    expect(
+      predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], [], PB_LAP_MS),
+    ).toBeNull()
+  })
+
+  it('returns null when no PB lap time is stored', () => {
+    expect(predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], PB, null)).toBeNull()
+  })
+
+  it('rejects bogus PB lap times defensively', () => {
+    expect(predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], PB, 0)).toBeNull()
+    expect(predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], PB, -1)).toBeNull()
+    expect(predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], PB, NaN)).toBeNull()
+    expect(
+      predictLapTimeFromHits([{ cpId: 0, tMs: 950 }], PB, Infinity),
+    ).toBeNull()
+  })
+
+  it('returns null when current hits are empty', () => {
+    expect(predictLapTimeFromHits([], PB, PB_LAP_MS)).toBeNull()
+  })
+
+  it('returns null when the last cpId is not in PB', () => {
+    expect(
+      predictLapTimeFromHits([{ cpId: 99, tMs: 1000 }], PB, PB_LAP_MS),
+    ).toBeNull()
+  })
+
+  it('projects faster lap when ahead of PB', () => {
+    // 200ms ahead at cp1 -> projected = 5000 - 200 = 4800
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2000 }],
+      PB,
+      PB_LAP_MS,
+    )
+    expect(out).toEqual({ predictedMs: 4800, deltaMs: -200, cpId: 1 })
+  })
+
+  it('projects slower lap when behind PB', () => {
+    // 350ms behind at cp2 -> projected = 5000 + 350 = 5350
+    const out = predictLapTimeFromHits(
+      [{ cpId: 2, tMs: 3850 }],
+      PB,
+      PB_LAP_MS,
+    )
+    expect(out).toEqual({ predictedMs: 5350, deltaMs: 350, cpId: 2 })
+  })
+
+  it('matches PB exactly when delta is zero', () => {
+    const out = predictLapTimeFromHits(
+      [{ cpId: 3, tMs: 4800 }],
+      PB,
+      PB_LAP_MS,
+    )
+    expect(out).toEqual({ predictedMs: 5000, deltaMs: 0, cpId: 3 })
+  })
+
+  it('uses the latest hit when multiple checkpoints have fired', () => {
+    const current: CheckpointHit[] = [
+      { cpId: 0, tMs: 1000 },
+      { cpId: 1, tMs: 2200 },
+      { cpId: 2, tMs: 3400 },
+    ]
+    // Latest is cp2 (PB at 3500, current 3400 -> 100ms ahead).
+    expect(predictLapTimeFromHits(current, PB, PB_LAP_MS)).toEqual({
+      predictedMs: 4900,
+      deltaMs: -100,
+      cpId: 2,
+    })
+  })
+
+  it('clamps non-negative when a wild PB delta would project below zero', () => {
+    // 9999ms ahead is implausible but should not produce a negative projection.
+    const out = predictLapTimeFromHits(
+      [{ cpId: 0, tMs: -8999 }],
+      PB,
+      PB_LAP_MS,
+    )
+    expect(out?.predictedMs).toBe(0)
+  })
+
+  it('rounds the projected ms to a whole number', () => {
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2200 }],
+      PB,
+      5000.7,
+    )
+    expect(out?.predictedMs).toBe(5001)
   })
 })

@@ -1,5 +1,5 @@
 'use client'
-import { formatSplitDelta } from '@/game/splits'
+import { formatSplitDelta, type LapPrediction } from '@/game/splits'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -35,6 +35,11 @@ interface HudProps {
   // The cpId the delta was generated at. Used as a React key so each fresh
   // checkpoint cross retriggers the pop-in animation.
   splitCpId: number | null
+  // Projected final lap time for the lap currently in progress, derived from
+  // PB splits + latest checkpoint hit. Updates only at checkpoint crosses so
+  // it does not jitter mid-sector. null hides the PROJECTED block (no PB on
+  // file or no checkpoints crossed yet this lap).
+  prediction: LapPrediction | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -84,6 +89,32 @@ function StatBlock({
   )
 }
 
+// Compact prediction block. Shares the StatBlock layout but tints the
+// lap-time numerals green when the player is ahead of PB and red when
+// behind, with a subtle delta line below the time so the prediction reads
+// at a glance without consuming a full extra row of HUD real estate.
+function PredictionBlock({ prediction }: { prediction: LapPrediction }) {
+  const ahead = prediction.deltaMs < 0
+  const tone = prediction.deltaMs === 0
+    ? predictionNeutral
+    : ahead
+      ? predictionAhead
+      : predictionBehind
+  return (
+    <div
+      key={`pred-${prediction.cpId}`}
+      style={{ ...block, ...predictionBlock }}
+      aria-live="polite"
+    >
+      <div style={labelStyle}>PROJECTED</div>
+      <div style={{ ...timeSm, ...tone }}>{formatLapTime(prediction.predictedMs)}</div>
+      <div style={{ ...predictionDelta, ...tone }}>
+        {formatSplitDelta(prediction.deltaMs)}
+      </div>
+    </div>
+  )
+}
+
 function timeOrDash(ms: number | null): string {
   return ms !== null ? formatLapTime(ms) : '--'
 }
@@ -101,6 +132,7 @@ export function HUD(props: HudProps) {
       <style>{HUD_ANIMATIONS_CSS}</style>
       <div style={topRow}>
         <StatBlock label="CURRENT" value={formatLapTime(props.currentMs)} big />
+        {props.prediction ? <PredictionBlock prediction={props.prediction} /> : null}
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
         <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
         <StatBlock label="BEST (ALL TIME)" value={timeOrDash(props.bestAllTimeMs)} />
@@ -327,3 +359,23 @@ const splitValue: React.CSSProperties = {
   fontWeight: 700,
   lineHeight: 1.1,
 }
+// Predicted lap-time block. Slots into the top stat row beside CURRENT so the
+// player can glance at "where this lap is heading" without taking eyes off
+// the road. The lap-time numerals tint to match ahead/behind so even a quick
+// glance reads as good or bad.
+const predictionBlock: React.CSSProperties = {
+  // Slightly wider than a standard StatBlock to fit the delta line.
+  minWidth: 96,
+}
+const predictionDelta: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  lineHeight: 1.1,
+  marginTop: 1,
+  opacity: 0.95,
+}
+const predictionAhead: React.CSSProperties = { color: '#5fe08a' }
+const predictionBehind: React.CSSProperties = { color: '#ff7b6e' }
+const predictionNeutral: React.CSSProperties = { color: '#f4d774' }

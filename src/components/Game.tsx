@@ -37,6 +37,8 @@ import type { CheckpointHit } from '@/lib/schemas'
 import {
   SPLIT_DISPLAY_MS,
   computeSplitDeltaForLastHit,
+  predictLapTimeFromHits,
+  type LapPrediction,
   type SplitDelta,
 } from '@/game/splits'
 import { Leaderboard } from './Leaderboard'
@@ -134,6 +136,11 @@ interface HudState {
   toast: string | null
   toastKind: ToastKind | null
   splitDelta: SplitDelta | null
+  // Live projection of the final lap time, refreshed on every checkpoint
+  // cross. Persists between checkpoints so the HUD keeps showing the latest
+  // estimate while the player drives a sector. Cleared at lap completion and
+  // on Restart / Restart Lap so a fresh lap starts blank.
+  prediction: LapPrediction | null
 }
 
 type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning' | 'lapHistory'
@@ -230,6 +237,10 @@ function GameSession({
   // compares against the freshest reference. A ref (not state) so updates do
   // not re-render the canvas.
   const pbSplitsRef = useRef<CheckpointHit[] | null>(null)
+  // PB lap time mirrored into a ref so the checkpoint handler can compute the
+  // projected final lap time without closing over `hud.bestAllTimeMs` (which
+  // would stale-close inside handleCheckpointHit between renders).
+  const pbLapMsRef = useRef<number | null>(null)
   const splitClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [phase, setPhase] = useState<Phase>('countdown')
@@ -256,6 +267,7 @@ function GameSession({
     toast: null,
     toastKind: null,
     splitDelta: null,
+    prediction: null,
   }))
 
   // Hydrate the PB-splits ref on mount / slug change. Stored alongside the
@@ -263,6 +275,7 @@ function GameSession({
   // first checkpoint of the new race.
   useEffect(() => {
     pbSplitsRef.current = readLocalBestSplits(slug, versionHash)
+    pbLapMsRef.current = readLocalBest(slug, versionHash)
   }, [slug, versionHash])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
@@ -338,6 +351,7 @@ function GameSession({
       toast: null,
       toastKind: null,
       splitDelta: null,
+      prediction: null,
     }))
     setPhase('countdown')
   }, [])
@@ -360,6 +374,7 @@ function GameSession({
       onTrack: true,
       wrongWay: false,
       splitDelta: null,
+      prediction: null,
     }))
   }, [])
 
@@ -555,9 +570,15 @@ function GameSession({
     const out = computeSplitDeltaForLastHit([hit], pb)
     if (!out) return
     const generatedAtMs = performance.now()
+    // Live projected lap time. Same input ingredients as the split tile, plus
+    // the stored PB lap time. Only refreshes at checkpoints so it does not
+    // jitter mid-sector. Persists in HudState until the next checkpoint or the
+    // lap completes / restarts.
+    const prediction = predictLapTimeFromHits([hit], pb, pbLapMsRef.current)
     setHud((prev) => ({
       ...prev,
       splitDelta: { deltaMs: out.deltaMs, cpId: out.cpId, generatedAtMs },
+      prediction: prediction ?? prev.prediction,
     }))
     if (splitClearTimerRef.current) clearTimeout(splitClearTimerRef.current)
     splitClearTimerRef.current = setTimeout(() => {
@@ -593,6 +614,9 @@ function GameSession({
         // expects.
         writeLocalBestSplits(slug, versionHash, event.hits)
         pbSplitsRef.current = event.hits
+        // Mirror the new PB lap time into the prediction ref so the very next
+        // checkpoint of the next lap projects against the freshest baseline.
+        pbLapMsRef.current = lapMs
         const pending = pendingReplayForSubmitRef.current
         if (pending) {
           writeLocalBestReplay(slug, versionHash, pending)
@@ -624,6 +648,10 @@ function GameSession({
         // rather than freezing on the final checkpoint's value. The first
         // checkpoint of the new lap will populate it again.
         splitDelta: null,
+        // Same rule for the projected lap-time block. A finished lap's
+        // projection is meaningless once a new lap has begun; clear it so the
+        // PROJECTED slot disappears until the first checkpoint of the next lap.
+        prediction: null,
       }
     })
     if (splitClearTimerRef.current) {
@@ -761,6 +789,7 @@ function GameSession({
         initials={initials}
         splitDeltaMs={hud.splitDelta?.deltaMs ?? null}
         splitCpId={hud.splitDelta?.cpId ?? null}
+        prediction={hud.prediction}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls

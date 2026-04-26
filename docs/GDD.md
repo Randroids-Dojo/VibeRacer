@@ -294,7 +294,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB at each checkpoint), top-down minimap card, pause button, skid mark trail, invalid-lap handling, and a wrong-way warning banner are all live.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB and a projected final lap time at each checkpoint), top-down minimap card, pause button, skid mark trail, invalid-lap handling, and a wrong-way warning banner are all live.
 
 ### Build log
 
@@ -328,6 +328,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Best-ever for this track version (smaller, persistent; from KV).
 - Lap counter.
 - Live split delta vs local PB (color-coded, pops in at each checkpoint, see below).
+- Projected final lap time (color-coded, refreshed at each checkpoint, see below).
 - Pause button (always visible on touch devices).
 - Minimap (bottom-right, top-down, toggleable in Settings).
 - Speedometer (bottom-center, swept needle plus numeric readout, toggleable in Settings).
@@ -367,6 +368,18 @@ Pure helpers live in `src/game/splits.ts` (`computeSplitDeltaForLastHit`, `forma
 `RaceCanvas` exposes a new optional `onCheckpointHit(hit)` prop that fires once per in-lap checkpoint (the lap-complete checkpoint stays on the existing `onLapComplete` channel because it carries the full lap info). `Game.tsx` consumes the callback, computes the delta, and pushes it through React state into the HUD. Display state (`splitDelta` on `HudState`) is cleared on `restart()` and on every lap completion.
 
 Tests: `tests/unit/splits.test.ts` covers null-PB and empty-current short-circuits, ahead / behind / exact deltas, the multi-hit "use the last entry" case, missing-cpId fallback, formatter sign and zero-pad, NaN / Infinity defensiveness, the 999.5 ms millis-rollover case, and the display window in `isSplitExpired`. `tests/unit/localBest.test.ts` covers null-on-empty, namespacing per slug + hash, malformed-JSON rejection, schema rejection, and quota-exception silence on writes.
+
+### Projected lap time
+
+A small `PROJECTED` block sits in the top stat row, immediately to the right of `CURRENT`, and shows where the in-flight lap is heading based on the player's pace at the most recent checkpoint. The block renders a formatted `mm:ss.mmm` lap time with a signed `+/-S.mmm` delta line beneath it. The numerals tint green when the projection is ahead of PB, red when behind, and gold when exactly matching. The block is hidden until the player has both a recorded PB lap and at least one matching checkpoint of the current lap, so a fresh page load (no PB) and the first sector after restart never show stale numbers.
+
+The projection is intentionally checkpoint-paced (not per-frame): it is recomputed only when the player crosses an in-lap checkpoint, then persists in `HudState.prediction` until the next checkpoint, lap completion, or restart. This keeps the value calm and readable instead of jittering with every meter of road.
+
+Pure helper `predictLapTimeFromHits(currentHits, pbHits, pbLapMs)` lives in `src/game/splits.ts` and returns `{ predictedMs, deltaMs, cpId } | null`. The formula is `predictedMs = max(0, round(pbLapMs + lastDelta))` where `lastDelta = currentHit.tMs - matchingPbHit.tMs`. The clamp guards against an implausible negative projection if a hit's `tMs` ever drifts wildly. `Game.tsx` calls the helper from inside `handleCheckpointHit`, mirrors the all-time PB lap time into a `pbLapMsRef` (kept fresh on mount + after every PB-class lap completion) so the closure never reads a stale value, and clears `HudState.prediction` from `restart()`, `armLapReset()`, and `handleLapComplete()`.
+
+The HUD's `PredictionBlock` reuses `formatSplitDelta` for the delta line so the sign + 3-decimal-second formatting stays consistent with the existing live split tile. The block is keyed on `cpId` so a fresh checkpoint cross retriggers React's mount path (the existing top-row stat blocks are unaffected).
+
+Tests: `tests/unit/splits.test.ts` covers null-PB / null-PB-lap / empty-hits short-circuits, defensive bogus PB lap rejection (zero, negative, NaN, Infinity), missing cpId in PB, ahead / behind / exact projections, multi-hit latest-entry selection, the negative-projection clamp, and the rounding case for fractional PB lap inputs.
 
 ### Endless loop
 

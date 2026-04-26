@@ -56,3 +56,43 @@ export function isSplitExpired(
   if (!split) return true
   return nowMs - split.generatedAtMs >= windowMs
 }
+
+// Live projection of the final lap time, computed at each checkpoint hit.
+// The HUD shows this as a "PROJECTED" stat block alongside CURRENT so the
+// player can see whether their pace is on track to beat their PB before the
+// finish line crosses. The projection updates only when a checkpoint fires
+// (so it does not drift mid-sector); between checkpoints the previous value
+// stays on screen.
+export interface LapPrediction {
+  // Projected total lap time in ms, derived from PB lap time plus the latest
+  // delta vs PB at the most recently crossed checkpoint.
+  predictedMs: number
+  // Signed delta vs PB lap time. Negative = ahead, positive = behind. Same
+  // value as the latest split delta but kept here so the HUD can render it
+  // without re-deriving from PB.
+  deltaMs: number
+  // The cpId the projection was derived from. Used as a React key so a fresh
+  // checkpoint cross retriggers a subtle pop animation.
+  cpId: number
+}
+
+// Project the final lap time using the most recent checkpoint hit and the
+// stored PB splits + PB lap time. Returns null when any required input is
+// missing (no PB recorded yet, no current hits, last cpId not in PB), so the
+// HUD can hide the tile cleanly until the first matching checkpoint of the
+// next attempt.
+export function predictLapTimeFromHits(
+  currentHits: CheckpointHit[],
+  pbHits: CheckpointHit[] | null,
+  pbLapMs: number | null,
+): LapPrediction | null {
+  if (!pbHits || pbHits.length === 0) return null
+  if (pbLapMs === null || !Number.isFinite(pbLapMs) || pbLapMs <= 0) return null
+  if (currentHits.length === 0) return null
+  const last = currentHits[currentHits.length - 1]
+  const pb = pbHits.find((h) => h.cpId === last.cpId)
+  if (!pb) return null
+  const deltaMs = last.tMs - pb.tMs
+  const predictedMs = Math.max(0, Math.round(pbLapMs + deltaMs))
+  return { predictedMs, deltaMs, cpId: last.cpId }
+}
