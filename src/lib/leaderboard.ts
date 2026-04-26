@@ -23,6 +23,69 @@ export interface LeaderboardEntry {
   inputMode: InputMode | null
 }
 
+// Sort keys exposed in the leaderboard column headers. The server always
+// returns entries in rank order (lapTimeMs ascending), which is the natural
+// "leaderboard" view. The UI lets the player flip the order or sort by other
+// columns without re-fetching, so this is a pure client-side reshape.
+export type LeaderboardSortKey = 'rank' | 'racer' | 'time' | 'date'
+export type SortDirection = 'asc' | 'desc'
+
+// Default direction per column when first clicked. Rank/time/date open ascending
+// (best/oldest first feels natural for "best to worst"), but racer text feels
+// most intuitive A->Z which is also ascending. Kept here as a single source of
+// truth so the helper and the UI agree.
+export const DEFAULT_SORT_DIRECTION: Record<LeaderboardSortKey, SortDirection> = {
+  rank: 'asc',
+  racer: 'asc',
+  time: 'asc',
+  date: 'desc',
+}
+
+// Pure helper. Returns a new array with the entries sorted by the requested
+// key + direction. The original `rank` field is preserved on every entry so
+// callers can still display the leaderboard rank even after re-sorting (e.g.
+// sorting by date still shows that the row is rank #3 overall).
+//
+// Tie-break is always by ascending rank so two entries with the same key
+// land in their natural leaderboard order.
+export function sortLeaderboardEntries(
+  entries: readonly LeaderboardEntry[],
+  key: LeaderboardSortKey,
+  direction: SortDirection,
+): LeaderboardEntry[] {
+  const copy = entries.slice()
+  const sign = direction === 'asc' ? 1 : -1
+  copy.sort((a, b) => {
+    const cmp = compareByKey(a, b, key)
+    if (cmp !== 0) return cmp * sign
+    // Stable tie-break on rank so re-sorts are deterministic.
+    return a.rank - b.rank
+  })
+  return copy
+}
+
+function compareByKey(
+  a: LeaderboardEntry,
+  b: LeaderboardEntry,
+  key: LeaderboardSortKey,
+): number {
+  switch (key) {
+    case 'rank':
+      return a.rank - b.rank
+    case 'racer': {
+      const ai = a.initials.toUpperCase()
+      const bi = b.initials.toUpperCase()
+      if (ai < bi) return -1
+      if (ai > bi) return 1
+      return 0
+    }
+    case 'time':
+      return a.lapTimeMs - b.lapTimeMs
+    case 'date':
+      return a.ts - b.ts
+  }
+}
+
 export interface LeaderboardResponse {
   slug: string
   versionHash: string
