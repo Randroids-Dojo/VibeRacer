@@ -28,6 +28,10 @@ function trackStatsKey(slug: string, versionHash: string): string {
   return `viberacer.stats.${slug}.${versionHash}`
 }
 
+function pbStreakBestKey(slug: string, versionHash: string): string {
+  return `viberacer.pbStreakBest.${slug}.${versionHash}`
+}
+
 const SplitsArraySchema = z.array(CheckpointHitSchema)
 
 // Persisted shape mirrors SectorDuration but validates each entry so a
@@ -247,4 +251,39 @@ export function writeTrackStats(
 // helper so callers do not have to import from two places.
 export function freshTrackStats(): TrackStats {
   return emptyStats()
+}
+
+// All-time best PB streak (consecutive PB laps) for this (slug, versionHash).
+// Persists across sessions so the pause-menu Stats pane can surface it as a
+// long-standing personal achievement and the player has a target to beat.
+// The live in-session counter is held in HudState only; this storage is for
+// the high-water mark across all sessions.
+export function readLocalBestPbStreak(
+  slug: string,
+  versionHash: string,
+): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(pbStreakBestKey(slug, versionHash))
+  if (!raw) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  return Math.floor(n)
+}
+
+export function writeLocalBestPbStreak(
+  slug: string,
+  versionHash: string,
+  streak: number,
+): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(streak) || streak <= 0) return
+  try {
+    window.localStorage.setItem(
+      pbStreakBestKey(slug, versionHash),
+      String(Math.floor(streak)),
+    )
+  } catch {
+    // PB streak persistence is a best-effort UX enhancement. A quota
+    // failure should never break the lap-complete flow.
+  }
 }

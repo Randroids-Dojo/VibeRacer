@@ -8,6 +8,7 @@ import {
   medalForTime,
   type MedalTier,
 } from '@/game/medals'
+import { formatStreakLabel } from '@/game/pbStreak'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -73,6 +74,11 @@ interface HudProps {
   // ever best). The HUD pops in a small "S<n> PB" badge that fades after
   // SECTOR_PB_DISPLAY_MS. null hides it.
   sectorPb: { cpId: number; durationMs: number; generatedAtMs: number } | null
+  // Live count of consecutive PB laps in the current session. The HUD shows
+  // a small gold chip below the BEST tile when this reaches 2 or more so a
+  // player chaining personal bests gets a visible reward beyond the existing
+  // toast / fanfare / confetti. Below the threshold the chip slot collapses.
+  pbStreak: number
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -242,6 +248,27 @@ function MedalBadge({ tier }: { tier: MedalTier }) {
   )
 }
 
+// PB streak chip. Pinned under the BEST (ALL TIME) tile alongside the medal
+// badge so the streak reads as another property OF the player's PB lane.
+// Gold palette mirrors the OPTIMAL block, the sector-PB badge, and the
+// lap-history PB chip so the visual language for "personal best" stays
+// consistent across the HUD. The label string is built upstream so the
+// badge stays a pure presentational shell.
+function StreakBadge({ label }: { label: string }) {
+  return (
+    <span
+      style={streakBadgeStyle}
+      title="Consecutive PB laps in this session"
+      aria-label={label}
+    >
+      <span style={streakFlameStyle} aria-hidden>
+        {'>>'}
+      </span>
+      <span style={streakLabelStyle}>{label}</span>
+    </span>
+  )
+}
+
 // Append an alpha component to a "#rrggbb" color. Returns rgba(r,g,b,a).
 // Returns the original color unchanged when the input is not a 7-char hex.
 function hexWithAlpha(hex: string, alpha: number): string {
@@ -335,6 +362,10 @@ export function HUD(props: HudProps) {
     props.bestAllTimeMs,
     props.overallRecord ? props.overallRecord.lapTimeMs : null,
   )
+  // PB streak chip. Returns null when the live count is below the HUD
+  // threshold (formatStreakLabel handles the cutoff) so the slot collapses
+  // cleanly and a single first-PB does not double up the existing toast.
+  const streakLabel = formatStreakLabel(props.pbStreak)
   return (
     <div style={wrap}>
       <style>{HUD_ANIMATIONS_CSS}</style>
@@ -349,6 +380,7 @@ export function HUD(props: HudProps) {
             value={timeOrDash(props.bestAllTimeMs)}
           />
           {medalTier ? <MedalBadge tier={medalTier} /> : null}
+          {streakLabel ? <StreakBadge label={streakLabel} /> : null}
         </div>
         <OptimalBlock
           optimalLapMs={props.optimalLapMs}
@@ -795,5 +827,34 @@ const medalGlyphStyle: React.CSSProperties = {
   textShadow: '0 0 5px currentColor',
 }
 const medalLabelStyle: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
+}
+// PB streak chip. Same compact pill shape as the medal badge so the two read
+// as siblings hanging off the BEST tile. Gold accent keeps the visual
+// language for "personal best" consistent with the OPTIMAL block, the lap-
+// history PB chip, and the sector-PB badge.
+const streakBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background: 'linear-gradient(180deg, rgba(60, 40, 0, 0.7), rgba(40, 24, 0, 0.7))',
+  border: '1px solid rgba(244, 215, 116, 0.65)',
+  boxShadow: '0 0 8px rgba(244, 215, 116, 0.35)',
+  color: '#f4d774',
+  fontWeight: 800,
+  fontSize: 10,
+  letterSpacing: 1.2,
+  lineHeight: 1.2,
+}
+const streakFlameStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 10,
+  lineHeight: 1,
+  color: '#ffe892',
+  textShadow: '0 0 5px currentColor',
+}
+const streakLabelStyle: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
 }

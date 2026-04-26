@@ -19,6 +19,14 @@ interface TrackStatsPaneProps {
   // Player's local PB on this slug + version. Surfaced beside the average so
   // the player can see "your fastest lap vs your typical lap" at a glance.
   bestAllTimeMs: number | null
+  // All-time best PB streak (consecutive PB laps in a single session) on this
+  // slug + version. Persists across sessions; null when no streak has been
+  // recorded yet.
+  pbStreakBestEver: number | null
+  // Live PB streak in the CURRENT session. Surfaced as a "now" pill so the
+  // player can see how close they are to beating the all-time mark while
+  // paused. Zero collapses the live pill cleanly.
+  pbStreakLive: number
   onBack: () => void
 }
 
@@ -26,6 +34,8 @@ export function TrackStatsPane({
   stats,
   slug,
   bestAllTimeMs,
+  pbStreakBestEver,
+  pbStreakLive,
   onBack,
 }: TrackStatsPaneProps) {
   const safe = stats ?? {
@@ -89,6 +99,19 @@ export function TrackStatsPane({
             label="Last played"
             value={formatPlayedAt(safe.lastPlayedAt)}
           />
+          <StatTile
+            label="Best PB streak"
+            value={
+              pbStreakBestEver !== null && pbStreakBestEver > 0
+                ? `x${pbStreakBestEver}`
+                : '--'
+            }
+            sub={
+              pbStreakLive >= 1
+                ? `now: x${pbStreakLive}`
+                : 'consecutive PBs'
+            }
+          />
         </div>
 
         {safe.firstPlayedAt !== null ? (
@@ -129,10 +152,15 @@ function StatTile({
   label,
   value,
   accent,
+  sub,
 }: {
   label: string
   value: string
   accent?: boolean
+  // Optional secondary line under the value. Used by the streak tile to show
+  // the live in-session count under the all-time best so the player can see
+  // both numbers without leaving the pane.
+  sub?: string
 }) {
   return (
     <div
@@ -168,6 +196,17 @@ function StatTile({
       >
         {value}
       </div>
+      {sub ? (
+        <div
+          style={{
+            fontSize: 10,
+            color: menuTheme.textMuted,
+            letterSpacing: 0.4,
+          }}
+        >
+          {sub}
+        </div>
+      ) : null}
     </div>
   )
 }

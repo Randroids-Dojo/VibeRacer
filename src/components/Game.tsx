@@ -41,7 +41,14 @@ import {
   readTrackStats,
   writeTrackStats,
   freshTrackStats,
+  readLocalBestPbStreak,
+  writeLocalBestPbStreak,
 } from '@/lib/localBest'
+import {
+  incrementStreak,
+  isStreakBest,
+  resetStreak,
+} from '@/game/pbStreak'
 import {
   recordLap as recordTrackStatsLap,
   recordSession as recordTrackStatsSession,
@@ -196,6 +203,17 @@ interface HudState {
   // Best drift score across every lap on this (slug, hash). Loaded from
   // localStorage on mount and rewritten when a new lap-best beats it.
   driftAllTimeBest: number | null
+  // Live count of consecutive PB laps in the current session. Increments on
+  // every lap that beats the all-time PB, resets to zero on any non-PB lap
+  // and on Restart / Restart Lap. The HUD chip surfaces only when the live
+  // count reaches STREAK_HUD_MIN so a single first-PB does not double up the
+  // existing toast and confetti celebration.
+  pbStreak: number
+  // All-time best PB streak on this (slug, versionHash). Loaded from
+  // localStorage on mount and rewritten whenever the live counter exceeds
+  // it. Surfaced in the pause-menu Stats pane as a long-standing target so
+  // a player who clears their streak today still sees the bar to beat.
+  pbStreakBest: number | null
 }
 
 type PauseView =
@@ -429,6 +447,8 @@ function GameSession({
       driftMultiplier: 1,
       driftLapBest: null,
       driftAllTimeBest: readLocalBestDrift(slug, versionHash),
+      pbStreak: 0,
+      pbStreakBest: readLocalBestPbStreak(slug, versionHash),
     }
   })
 
@@ -451,6 +471,12 @@ function GameSession({
         freshSectors,
         expectedSectorCount,
       ),
+      // PB streak is per (slug, versionHash). The live counter resets on a
+      // slug change since "consecutive PBs" only makes sense within a single
+      // track-version run; the all-time best loads from disk so a target the
+      // player chases survives a navigation.
+      pbStreak: 0,
+      pbStreakBest: readLocalBestPbStreak(slug, versionHash),
     }))
     // Engagement stats are also (slug, version)-scoped: reload them so the
     // pause-menu Stats pane reflects what the player banked on this layout
@@ -554,6 +580,10 @@ function GameSession({
       driftScore: 0,
       driftMultiplier: 1,
       driftLapBest: null,
+      // The live streak only counts within a continuous race session. A full
+      // Restart abandons the session, so the counter zeroes; the all-time
+      // best is preserved (it lives on disk and stays in HudState).
+      pbStreak: 0,
     }))
     setPhase('countdown')
   }, [])
@@ -587,6 +617,10 @@ function GameSession({
       driftScore: 0,
       driftMultiplier: 1,
       driftLapBest: null,
+      // Restart Lap abandons the in-flight lap which the player almost
+      // certainly intends to be a "do-over"; counting a streak across a
+      // restart would feel like the chip is gaming the rules. Zero it.
+      pbStreak: 0,
     }))
   }, [])
 
@@ -943,6 +977,25 @@ function GameSession({
           )
         }
       }
+      // Maintain the consecutive-PB streak. A PB lap (or the first lap on a
+      // fresh slug, since `isAllTimePb` is true when there is no prior best)
+      // increments the live counter; any non-PB lap zeroes it. The all-time
+      // best is bumped (and persisted) only when the live counter exceeds it
+      // so a slow-and-steady weekend that never beats a peak streak does not
+      // overwrite a hard-won record.
+      const nextStreak = isAllTimePb
+        ? incrementStreak(prev.pbStreak)
+        : resetStreak()
+      const nextStreakBest = isStreakBest(nextStreak, prev.pbStreakBest)
+        ? nextStreak
+        : prev.pbStreakBest
+      if (
+        nextStreakBest !== prev.pbStreakBest &&
+        nextStreakBest !== null &&
+        nextStreakBest > 0
+      ) {
+        writeLocalBestPbStreak(slug, versionHash, nextStreakBest)
+      }
       const toastKind: ToastKind = isNewRecord
         ? 'record'
         : isAllTimePb
@@ -977,6 +1030,8 @@ function GameSession({
         // Same rule for the sector PB badge: a finished lap's celebration
         // belongs to the lap that just ended; the next lap should start clean.
         sectorPb: null,
+        pbStreak: nextStreak,
+        pbStreakBest: nextStreakBest,
       }
     })
     // Reset the per-sector PB tracking ref so the very first checkpoint of the
@@ -1176,6 +1231,7 @@ function GameSession({
         driftLapBest={hud.driftLapBest}
         driftAllTimeBest={hud.driftAllTimeBest}
         showDrift={settings.showDrift}
+        pbStreak={hud.pbStreak}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls
@@ -1247,6 +1303,8 @@ function GameSession({
               stats={trackStats}
               slug={slug}
               bestAllTimeMs={hud.bestAllTimeMs}
+              pbStreakBestEver={hud.pbStreakBest}
+              pbStreakLive={hud.pbStreak}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (

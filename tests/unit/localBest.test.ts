@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   freshTrackStats,
   readLocalBestDrift,
+  readLocalBestPbStreak,
   readLocalBestSectors,
   readLocalBestSplits,
   readTrackStats,
   writeLocalBestDrift,
+  writeLocalBestPbStreak,
   writeLocalBestSectors,
   writeLocalBestSplits,
   writeTrackStats,
@@ -375,5 +377,94 @@ describe('per-track stats storage', () => {
       firstPlayedAt: null,
       lastPlayedAt: null,
     })
+  })
+})
+
+describe('local best PB streak storage', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no streak is stored', () => {
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a stored streak value', () => {
+    writeLocalBestPbStreak('oval', HASH, 5)
+    expect(readLocalBestPbStreak('oval', HASH)).toBe(5)
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeLocalBestPbStreak('oval', HASH, 3)
+    writeLocalBestPbStreak('oval', 'b'.repeat(64), 8)
+    writeLocalBestPbStreak('hairpin', HASH, 2)
+    expect(readLocalBestPbStreak('oval', HASH)).toBe(3)
+    expect(readLocalBestPbStreak('oval', 'b'.repeat(64))).toBe(8)
+    expect(readLocalBestPbStreak('hairpin', HASH)).toBe(2)
+    expect(readLocalBestPbStreak('sandbox', HASH)).toBeNull()
+  })
+
+  it('floors a fractional value on write', () => {
+    writeLocalBestPbStreak('oval', HASH, 4.9)
+    expect(readLocalBestPbStreak('oval', HASH)).toBe(4)
+  })
+
+  it('refuses to persist a non-finite value', () => {
+    writeLocalBestPbStreak('oval', HASH, Number.NaN)
+    writeLocalBestPbStreak('oval', HASH, Number.POSITIVE_INFINITY)
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+  })
+
+  it('refuses to persist a non-positive value', () => {
+    writeLocalBestPbStreak('oval', HASH, 0)
+    writeLocalBestPbStreak('oval', HASH, -3)
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited non-finite payload', () => {
+    store['viberacer.pbStreakBest.oval.' + HASH] = 'not a number'
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited zero or negative payload', () => {
+    store['viberacer.pbStreakBest.oval.' + HASH] = '0'
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+    store['viberacer.pbStreakBest.oval.' + HASH] = '-2'
+    expect(readLocalBestPbStreak('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeLocalBestPbStreak('oval', HASH, 4)).not.toThrow()
   })
 })
