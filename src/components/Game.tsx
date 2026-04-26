@@ -147,6 +147,12 @@ import { TitleMusic } from './TitleMusic'
 import { buildSharePayload, shareOrCopy } from '@/lib/share'
 import { buildToastWithRank, isLapRankInfo } from '@/lib/lapToast'
 import { fireHaptic, isTouchRuntime, shouldHapticFire } from '@/lib/haptics'
+import {
+  FAVORITE_TRACKS_EVENT,
+  isFavoriteTrack,
+  readFavoriteTracks,
+  toggleFavoriteTrack,
+} from '@/lib/favoriteTracks'
 
 export type ToastKind = 'lap' | 'pb' | 'record'
 
@@ -1078,6 +1084,32 @@ function GameSession({
       }
     }
   }, [])
+
+  // Favorite-track tracker. Mirrors the live localStorage favorites list so
+  // the pause-menu Star button reads as toggled correctly even when another
+  // tab (or the home page) modifies the list mid-session. Reads the slug
+  // membership through `isFavoriteTrack` so a malformed stored payload (or
+  // SSR) defaults to false.
+  const [favorited, setFavorited] = useState(false)
+  useEffect(() => {
+    setFavorited(isFavoriteTrack(readFavoriteTracks(), slug))
+    function refresh() {
+      setFavorited(isFavoriteTrack(readFavoriteTracks(), slug))
+    }
+    window.addEventListener('storage', refresh)
+    window.addEventListener(FAVORITE_TRACKS_EVENT, refresh as EventListener)
+    return () => {
+      window.removeEventListener('storage', refresh)
+      window.removeEventListener(
+        FAVORITE_TRACKS_EVENT,
+        refresh as EventListener,
+      )
+    }
+  }, [slug])
+  const handleToggleFavorite = useCallback(() => {
+    const next = toggleFavoriteTrack(slug)
+    setFavorited(isFavoriteTrack(next, slug))
+  }, [slug])
 
   useEffect(() => {
     // Resolve the initial ghost based on the player's source preference:
@@ -2040,6 +2072,8 @@ function GameSession({
               }}
               challengeAvailable={lastSubmit !== null}
               challengeLabel={challengeLabel ?? undefined}
+              onToggleFavorite={handleToggleFavorite}
+              isFavorite={favorited}
               trackMoodLabel={trackMoodLabel}
               onExit={handleExitClick}
             />

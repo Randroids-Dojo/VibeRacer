@@ -38,6 +38,12 @@ interface PauseMenuProps {
   // a brief explanatory hint can describe what will happen on click.
   challengeAvailable?: boolean
   challengeLabel?: string
+  // Favorite (star) toggle. Mounting `onToggleFavorite` opts the row in;
+  // omit when the host has no notion of a favorite (e.g. SSR-rendered routes
+  // that never gained the storage). `isFavorite` drives the label and a
+  // gold star glyph so the row reads as "starred" at a glance.
+  onToggleFavorite?: () => void
+  isFavorite?: boolean
   // Short label describing the active track-author mood (e.g. "Sunset, Foggy")
   // when the player is racing under a baked-in author mood. Renders as a
   // small caption above the Esc hint so the player understands why the scene
@@ -68,6 +74,8 @@ export function PauseMenu({
   onChallenge,
   challengeAvailable,
   challengeLabel,
+  onToggleFavorite,
+  isFavorite,
   trackMoodLabel,
   onExit,
 }: PauseMenuProps) {
@@ -98,6 +106,18 @@ export function PauseMenu({
         <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
         <MenuButton onClick={onPhotoMode}>Photo mode</MenuButton>
         <MenuButton onClick={onShare}>{shareLabel ?? 'Share track'}</MenuButton>
+        {onToggleFavorite ? (
+          <MenuButton
+            onClick={onToggleFavorite}
+            title={
+              isFavorite
+                ? 'Remove this track from your home-page favorites.'
+                : 'Pin this track to a Favorites section on the home page.'
+            }
+          >
+            {isFavorite ? 'Unstar track' : 'Star track'}
+          </MenuButton>
+        ) : null}
         {onChallenge ? (
           <MenuButton
             onClick={onChallenge}
