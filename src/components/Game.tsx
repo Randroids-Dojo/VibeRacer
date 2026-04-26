@@ -551,16 +551,19 @@ function GameSession({
         mode={settings.touchMode}
       />
       {phase === 'racing' && !paused ? (
-        <button
-          onClick={pause}
-          aria-label="Pause"
-          style={pauseButton}
-        >
-          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor">
-            <rect x="6" y="5" width="4" height="14" rx="1" />
-            <rect x="14" y="5" width="4" height="14" rx="1" />
-          </svg>
-        </button>
+        <>
+          <style>{PAUSE_BUTTON_CSS}</style>
+          <button
+            onClick={pause}
+            aria-label="Pause"
+            className="viberacer-pause-btn"
+          >
+            <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden>
+              <rect x="6" y="5" width="4" height="14" rx="1" />
+              <rect x="14" y="5" width="4" height="14" rx="1" />
+            </svg>
+          </button>
+        </>
       ) : null}
       {paused ? (
         <>
@@ -634,19 +637,52 @@ const loading: React.CSSProperties = {
   color: 'white',
   fontFamily: 'system-ui, sans-serif',
 }
-const pauseButton: React.CSSProperties = {
-  position: 'fixed',
-  left: 16,
-  bottom: 20,
-  width: 48,
-  height: 48,
-  borderRadius: '50%',
-  border: 'none',
-  background: 'rgba(0,0,0,0.55)',
-  color: 'white',
-  cursor: 'pointer',
-  display: 'grid',
-  placeItems: 'center',
-  boxShadow: '0 4px 12px rgba(0,0,0,0.35)',
-  zIndex: 20,
+// Pause button. Always visible during the racing phase (per Section 9 of the
+// GDD). Sizing is responsive to pointer kind: a fine pointer (mouse) gets a
+// compact 48x48 hit target, while a coarse pointer (touch) gets a larger 64x64
+// target with extra inset so a one-thumb reach lands cleanly without fighting
+// the iOS home indicator or the Android nav bar (env safe-area-inset-bottom).
+const PAUSE_BUTTON_CSS = `
+.viberacer-pause-btn {
+  position: fixed;
+  left: 16px;
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid rgba(255, 255, 255, 0.25);
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+  z-index: 20;
+  padding: 0;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
 }
+.viberacer-pause-btn:focus-visible {
+  outline: 2px solid #5fe08a;
+  outline-offset: 2px;
+}
+.viberacer-pause-btn svg {
+  width: 22px;
+  height: 22px;
+}
+@media (any-pointer: coarse) {
+  .viberacer-pause-btn {
+    left: 20px;
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    width: 64px;
+    height: 64px;
+    border-width: 2px;
+    background: rgba(0, 0, 0, 0.6);
+    box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  }
+  .viberacer-pause-btn svg {
+    width: 30px;
+    height: 30px;
+  }
+}
+`
