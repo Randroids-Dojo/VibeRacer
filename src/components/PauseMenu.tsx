@@ -29,6 +29,15 @@ interface PauseMenuProps {
   onPhotoMode: () => void
   onShare: () => void
   shareLabel?: string
+  // Friend challenge entry. Renders only when the player has a submitted PB
+  // ghost on this (slug, version) so the link points at a real recorded lap.
+  // The handler builds the challenge URL and routes through the same Web
+  // Share / clipboard flow as the regular share button.
+  onChallenge?: () => void
+  // True when a submitted PB exists locally so the button can be enabled and
+  // a brief explanatory hint can describe what will happen on click.
+  challengeAvailable?: boolean
+  challengeLabel?: string
   onExit: () => void
 }
 
@@ -50,6 +59,9 @@ export function PauseMenu({
   onPhotoMode,
   onShare,
   shareLabel,
+  onChallenge,
+  challengeAvailable,
+  challengeLabel,
   onExit,
 }: PauseMenuProps) {
   return (
@@ -79,6 +91,19 @@ export function PauseMenu({
         <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
         <MenuButton onClick={onPhotoMode}>Photo mode</MenuButton>
         <MenuButton onClick={onShare}>{shareLabel ?? 'Share track'}</MenuButton>
+        {onChallenge ? (
+          <MenuButton
+            onClick={onChallenge}
+            disabled={!challengeAvailable}
+            title={
+              challengeAvailable
+                ? 'Send a friend a link that races them against your PB ghost.'
+                : 'Set a personal best on this track first to unlock challenges.'
+            }
+          >
+            {challengeLabel ?? 'Challenge a friend'}
+          </MenuButton>
+        ) : null}
         <MenuButton click="back" onClick={onExit}>
           Exit to title
         </MenuButton>

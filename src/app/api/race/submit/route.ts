@@ -165,5 +165,10 @@ export async function POST(req: NextRequest) {
     ok: true,
     nextToken: newToken,
     nextNonce: newNonce,
+    // The nonce that was just submitted (one-shot, already deleted from KV
+    // race tokens). The replay key for this lap is `lap:replay:<submittedNonce>`
+    // when a replay was uploaded. Used by the client to build a friend
+    // challenge link that races recipients against this exact lap's ghost.
+    submittedNonce: payload.nonce,
   })
 }

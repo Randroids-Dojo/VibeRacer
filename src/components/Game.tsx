@@ -43,6 +43,8 @@ import {
   freshTrackStats,
   readLocalBestPbStreak,
   writeLocalBestPbStreak,
+  readLastSubmit,
+  writeLastSubmit,
 } from '@/lib/localBest'
 import {
   incrementStreak,
@@ -105,6 +107,10 @@ import {
   pickGhostReplay,
 } from '@/lib/ghostSource'
 import {
+  buildChallengeSharePayload,
+  type ChallengePayload,
+} from '@/lib/challenge'
+import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
@@ -137,6 +143,11 @@ interface GameProps {
   pieces: Piece[]
   checkpointCount?: number
   initialRecord: OverallRecord | null
+  // Friend-challenge payload parsed from the URL (?challenge=...&from=...&time=...).
+  // Null when the player landed on the page through a normal link. When
+  // present, the race uses the referenced replay as the active ghost and
+  // shows a banner naming the sender + target lap time.
+  challenge?: ChallengePayload | null
 }
 
 export function Game(props: GameProps) {
@@ -260,6 +271,7 @@ function GameSession({
   checkpointCount,
   initials,
   initialRecord,
+  challenge = null,
 }: SessionProps) {
   const router = useRouter()
   const { settings, setSettings, resetSettings } = useControlSettings()
@@ -324,6 +336,11 @@ function GameSession({
   // Replay buffer captured by RaceCanvas for the most recent lap, queued for
   // bundling into the next /api/race/submit POST.
   const pendingReplayForSubmitRef = useRef<Replay | null>(null)
+  // Whether the just-completed lap was a new local PB. Set inside the lap
+  // complete handler before submitLap fires so the submit response handler
+  // knows whether to promote the returned `submittedNonce` into the
+  // last-submit pointer used by the friend-challenge link.
+  const pendingPbForSubmitRef = useRef<{ lapTimeMs: number } | null>(null)
   // Mirrors settings.showGhost into the rAF loop without re-mounting the
   // canvas every time the toggle flips.
   const showGhostRef = useRef<boolean>(settings.showGhost)
@@ -814,6 +831,68 @@ function GameSession({
     }
   }, [])
 
+  // Tracks whether the player has a submitted PB ghost on this (slug, version).
+  // Set on mount, refreshed on every PB lap completion (the only path that
+  // promotes the last-submit pointer). Drives the disabled / enabled state of
+  // the pause-menu Challenge button so it reads as available exactly when the
+  // generated link will resolve to a real ghost.
+  const [lastSubmit, setLastSubmit] = useState<{
+    nonce: string
+    lapTimeMs: number
+  } | null>(null)
+  useEffect(() => {
+    setLastSubmit(readLastSubmit(slug, versionHash))
+  }, [slug, versionHash])
+  // Refresh when a PB lap completes so the button enables in-place. We
+  // re-read from disk rather than threading the value through submitLap so a
+  // failed write (quota / disabled storage) leaves the button correctly
+  // disabled without a phantom-enabled state.
+  useEffect(() => {
+    setLastSubmit(readLastSubmit(slug, versionHash))
+  }, [slug, versionHash, hud.bestAllTimeMs])
+
+  const [challengeLabel, setChallengeLabel] = useState<string | null>(null)
+  const challengeLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  const handleChallenge = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    if (!lastSubmit) return
+    const payload = buildChallengeSharePayload({
+      origin: window.location.origin,
+      slug,
+      versionHash,
+      nonce: lastSubmit.nonce,
+      from: initials,
+      timeMs: lastSubmit.lapTimeMs,
+    })
+    const outcome = await shareOrCopy(payload)
+    const next =
+      outcome === 'shared'
+        ? 'Challenge sent!'
+        : outcome === 'copied'
+          ? 'Challenge copied!'
+          : outcome === 'cancelled'
+            ? null
+            : 'Could not share'
+    if (next === null) return
+    setChallengeLabel(next)
+    if (challengeLabelTimerRef.current) {
+      clearTimeout(challengeLabelTimerRef.current)
+    }
+    challengeLabelTimerRef.current = setTimeout(() => {
+      setChallengeLabel(null)
+      challengeLabelTimerRef.current = null
+    }, 1600)
+  }, [slug, versionHash, initials, lastSubmit])
+  useEffect(() => {
+    return () => {
+      if (challengeLabelTimerRef.current) {
+        clearTimeout(challengeLabelTimerRef.current)
+      }
+    }
+  }, [])
+
   useEffect(() => {
     // Resolve the initial ghost based on the player's source preference:
     //   auto: prefer the local PB replay; fall back to leaderboard top.
@@ -852,6 +931,37 @@ function GameSession({
       cancelled = true
     }
   }, [slug, versionHash, settings.ghostSource])
+
+  // Friend-challenge ghost. When the player opens a `?challenge=<nonce>` link,
+  // override the active ghost with the referenced lap so the recipient races
+  // the sender's exact ghost rather than the leaderboard top or their own PB.
+  // Runs after the regular ghost-resolution effect so we always overwrite the
+  // ref last; the network fetch order does not matter since this writes the
+  // same ref on completion.
+  useEffect(() => {
+    if (!challenge) return
+    let cancelled = false
+    const params = new URLSearchParams({
+      slug,
+      v: versionHash,
+      nonce: challenge.nonce,
+    })
+    fetch(`/api/replay/byNonce?${params.toString()}`)
+      .then(async (res) => {
+        if (!res.ok) return
+        const body = await res.json().catch(() => null)
+        const parsed = ReplaySchema.safeParse(body)
+        if (cancelled || !parsed.success) return
+        activeGhostRef.current = parsed.data
+      })
+      .catch(() => {
+        // Best-effort; if the challenge replay cannot be loaded we degrade to
+        // whichever ghost the regular flow resolved.
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [slug, versionHash, challenge])
 
   useEffect(() => {
     function onKeyDown() {
@@ -1096,6 +1206,9 @@ function GameSession({
       }
       if (isAllTimePb) {
         writeLocalBest(slug, versionHash, lapMs)
+        // Mark this submit as a PB so the response handler knows to promote
+        // the returned `submittedNonce` into the friend-challenge pointer.
+        pendingPbForSubmitRef.current = { lapTimeMs: lapMs }
         // Capture the lap's checkpoint splits so the next lap's live delta
         // tile compares against this fresh reference. The hits array carries
         // {cpId, tMs} pairs in lap order, exactly what the splits helper
@@ -1108,15 +1221,19 @@ function GameSession({
         const pending = pendingReplayForSubmitRef.current
         if (pending) {
           writeLocalBestReplay(slug, versionHash, pending)
-          // Honor the player's source preference: 'top' keeps chasing the
-          // leaderboard #1 even after a personal best, 'auto' and 'pb' swap
+          // In challenge mode, keep racing the friend's ghost across PBs so
+          // the player can keep trying to beat the same target. Otherwise
+          // honor the player's source preference: 'top' keeps chasing the
+          // leaderboard #1 even after a personal best; 'auto' and 'pb' swap
           // to the freshly recorded PB so the next lap chases the player's
           // own best path.
-          activeGhostRef.current = pickGhostAfterPb(
-            ghostSourceRef.current,
-            pending,
-            activeGhostRef.current,
-          )
+          if (challenge === null) {
+            activeGhostRef.current = pickGhostAfterPb(
+              ghostSourceRef.current,
+              pending,
+              activeGhostRef.current,
+            )
+          }
         }
       }
       // Maintain the consecutive-PB streak. A PB lap (or the first lap on a
@@ -1319,6 +1436,11 @@ function GameSession({
     submittingRef.current = true
     const replay = pendingReplayForSubmitRef.current
     pendingReplayForSubmitRef.current = null
+    // Consume the PB flag latched by handleLapComplete so a slow lap that
+    // submits after a fast PB submit cannot accidentally clobber the
+    // last-submit pointer with the slower lap's nonce.
+    const pbFlag = pendingPbForSubmitRef.current
+    pendingPbForSubmitRef.current = null
     try {
       const res = await fetch(
         `/api/race/submit?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
@@ -1339,8 +1461,25 @@ function GameSession({
       const body = (await res.json().catch(() => ({}))) as {
         ok?: boolean
         nextToken?: string
+        submittedNonce?: string
       }
       if (body.ok && body.nextToken) tokenRef.current = body.nextToken
+      // Persist the just-submitted nonce when this lap was both a local PB
+      // (so the lap is the player's best) and the server actually accepted
+      // it (so the nonce points at a real lap:replay:<nonce> entry on the
+      // server). The pause-menu Challenge a Friend flow reads this pointer
+      // to build a URL pinned to the player's current PB ghost.
+      if (
+        body.ok &&
+        body.submittedNonce &&
+        pbFlag !== null &&
+        replay !== null
+      ) {
+        writeLastSubmit(slug, versionHash, {
+          nonce: body.submittedNonce,
+          lapTimeMs: pbFlag.lapTimeMs,
+        })
+      }
     } catch {
       // Local PB tracking already handled the lap.
     } finally {
@@ -1459,6 +1598,11 @@ function GameSession({
         driftAllTimeBest={hud.driftAllTimeBest}
         showDrift={settings.showDrift}
         pbStreak={hud.pbStreak}
+        challenge={
+          challenge && phase === 'racing' && !paused
+            ? { from: challenge.from, targetMs: challenge.timeMs }
+            : null
+        }
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">
@@ -1516,6 +1660,11 @@ function GameSession({
                 void handleShare()
               }}
               shareLabel={shareLabel ?? undefined}
+              onChallenge={() => {
+                void handleChallenge()
+              }}
+              challengeAvailable={lastSubmit !== null}
+              challengeLabel={challengeLabel ?? undefined}
               onExit={exitToTitle}
             />
           ) : pauseView === 'leaderboard' ? (

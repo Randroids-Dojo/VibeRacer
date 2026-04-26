@@ -93,10 +93,14 @@ describe('POST /api/race/submit', () => {
       ok: boolean
       nextToken: string
       nextNonce: string
+      submittedNonce: string
     }
     expect(out.ok).toBe(true)
     expect(out.nextNonce).toMatch(/^[a-f0-9]{32}$/)
     expect(out.nextToken).toMatch(/^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/)
+    // The just-submitted nonce should match the one we issued so the client
+    // can build a friend-challenge URL pinned to this lap's recorded ghost.
+    expect(out.submittedNonce).toBe(payload.nonce)
 
     const score = await fake.zscore(
       `lb:track:${'a'.repeat(64)}`,

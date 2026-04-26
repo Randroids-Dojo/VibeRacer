@@ -32,6 +32,22 @@ function pbStreakBestKey(slug: string, versionHash: string): string {
   return `viberacer.pbStreakBest.${slug}.${versionHash}`
 }
 
+function lastSubmitNonceKey(slug: string, versionHash: string): string {
+  return `viberacer.lastSubmitNonce.${slug}.${versionHash}`
+}
+
+// The nonce of the player's most recent successful submission on this
+// (slug, version), tracked alongside the lap time it represents. Used by the
+// pause-menu Challenge a Friend flow to build a URL pinned to that exact
+// recorded ghost. Stored as JSON because the lap time is needed in the URL
+// even when the player no longer matches their displayed PB on disk.
+const LastSubmitSchema = z.object({
+  // 16 random bytes hex-encoded, matches the race-token nonce shape.
+  nonce: z.string().regex(/^[a-f0-9]{32}$/),
+  lapTimeMs: z.number().int().positive(),
+})
+export type LastSubmit = z.infer<typeof LastSubmitSchema>
+
 const SplitsArraySchema = z.array(CheckpointHitSchema)
 
 // Persisted shape mirrors SectorDuration but validates each entry so a
@@ -285,5 +301,44 @@ export function writeLocalBestPbStreak(
   } catch {
     // PB streak persistence is a best-effort UX enhancement. A quota
     // failure should never break the lap-complete flow.
+  }
+}
+
+// Most-recent-submit pointer for the friend-challenge link. Updated on every
+// successful PB submit (the only laps that promote the local PB replay). The
+// stored nonce is the lookup key for `/api/replay/byNonce`.
+export function readLastSubmit(
+  slug: string,
+  versionHash: string,
+): LastSubmit | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(lastSubmitNonceKey(slug, versionHash))
+  if (!raw) return null
+  try {
+    const parsed = LastSubmitSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+export function writeLastSubmit(
+  slug: string,
+  versionHash: string,
+  value: LastSubmit,
+): void {
+  if (typeof window === 'undefined') return
+  // Validate before write so an upstream caller passing garbage cannot poison
+  // the localStorage entry. A failed validation is a no-op rather than a
+  // throw so the caller's lap-complete path keeps working.
+  const parsed = LastSubmitSchema.safeParse(value)
+  if (!parsed.success) return
+  try {
+    window.localStorage.setItem(
+      lastSubmitNonceKey(slug, versionHash),
+      JSON.stringify(parsed.data),
+    )
+  } catch {
+    // Quota or storage disabled. Best-effort, never breaks gameplay.
   }
 }

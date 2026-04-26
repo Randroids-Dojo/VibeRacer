@@ -79,6 +79,11 @@ interface HudProps {
   // player chaining personal bests gets a visible reward beyond the existing
   // toast / fanfare / confetti. Below the threshold the chip slot collapses.
   pbStreak: number
+  // Friend-challenge banner. Populated when the page was opened with a
+  // ?challenge=<nonce>&from=<INI>&time=<MS> query. The HUD pins a banner at
+  // the top of the screen naming the sender and target lap time so the
+  // recipient knows what they are racing for. null hides the banner.
+  challenge: { from: string; targetMs: number } | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -399,6 +404,16 @@ export function HUD(props: HudProps) {
           allTimeBest={props.driftAllTimeBest}
         />
       ) : null}
+      {props.challenge ? (
+        <div style={challengeBanner} role="status">
+          <span>Challenge from</span>
+          <span style={challengeBannerInitials}>{props.challenge.from}</span>
+          <span>beat</span>
+          <span style={challengeBannerTime}>
+            {formatLapTime(props.challenge.targetMs)}
+          </span>
+        </div>
+      ) : null}
       {props.wrongWay ? (
         <div style={wrongWayBanner} role="alert" aria-live="assertive">
           <span style={wrongWayArrow} aria-hidden>
@@ -528,6 +543,41 @@ const wrongWayArrow: React.CSSProperties = {
   fontSize: 28,
   color: '#ffe892',
   animation: 'viberacer-wrongway-arrow 0.6s ease-in-out infinite',
+}
+// Friend-challenge banner. Anchored just below the rear-view mirror inset so
+// it does not collide with the top stat row or the wrong-way alert. Cyan
+// accent matches the ghost car's color so the player intuitively links the
+// two: "the cyan ghost is the challenge target".
+const challengeBanner: React.CSSProperties = {
+  position: 'absolute',
+  top: 92,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  padding: '6px 16px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  borderRadius: 999,
+  background: 'rgba(8, 32, 48, 0.78)',
+  border: '1.5px solid rgba(120, 220, 255, 0.6)',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+  color: '#cdf2ff',
+  fontSize: 14,
+  fontWeight: 700,
+  letterSpacing: 1.4,
+  pointerEvents: 'none',
+  textTransform: 'uppercase',
+}
+const challengeBannerInitials: React.CSSProperties = {
+  color: '#fff',
+  fontWeight: 900,
+  letterSpacing: 2,
+}
+const challengeBannerTime: React.CSSProperties = {
+  color: '#7fe6ff',
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  letterSpacing: 0,
 }
 const toastStyle: React.CSSProperties = {
   position: 'absolute',

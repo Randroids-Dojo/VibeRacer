@@ -2,10 +2,12 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   freshTrackStats,
   readLocalBestDrift,
+  readLastSubmit,
   readLocalBestPbStreak,
   readLocalBestSectors,
   readLocalBestSplits,
   readTrackStats,
+  writeLastSubmit,
   writeLocalBestDrift,
   writeLocalBestPbStreak,
   writeLocalBestSectors,
@@ -466,5 +468,92 @@ describe('local best PB streak storage', () => {
       throw new Error('quota exceeded')
     }
     expect(() => writeLocalBestPbStreak('oval', HASH, 4)).not.toThrow()
+  })
+})
+
+describe('last submit pointer storage (friend challenge)', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+  const NONCE = 'c'.repeat(32)
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when nothing is stored', () => {
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a written value', () => {
+    writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: 42123 })
+    expect(readLastSubmit('oval', HASH)).toEqual({
+      nonce: NONCE,
+      lapTimeMs: 42123,
+    })
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: 1000 })
+    writeLastSubmit('oval', 'b'.repeat(64), { nonce: 'd'.repeat(32), lapTimeMs: 2000 })
+    writeLastSubmit('hairpin', HASH, { nonce: 'e'.repeat(32), lapTimeMs: 3000 })
+    expect(readLastSubmit('oval', HASH)?.lapTimeMs).toBe(1000)
+    expect(readLastSubmit('oval', 'b'.repeat(64))?.lapTimeMs).toBe(2000)
+    expect(readLastSubmit('hairpin', HASH)?.lapTimeMs).toBe(3000)
+    expect(readLastSubmit('sandbox', HASH)).toBeNull()
+  })
+
+  it('refuses to persist a malformed nonce', () => {
+    writeLastSubmit('oval', HASH, { nonce: 'short', lapTimeMs: 1000 })
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+    writeLastSubmit('oval', HASH, { nonce: 'Z'.repeat(32), lapTimeMs: 1000 })
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+  })
+
+  it('refuses to persist a non-positive lap time', () => {
+    writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: 0 })
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+    writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: -100 })
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited malformed payload', () => {
+    store['viberacer.lastSubmitNonce.oval.' + HASH] = 'not json'
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+    store['viberacer.lastSubmitNonce.oval.' + HASH] = '{}'
+    expect(readLastSubmit('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() =>
+      writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: 1000 }),
+    ).not.toThrow()
   })
 })
