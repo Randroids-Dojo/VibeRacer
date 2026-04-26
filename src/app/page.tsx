@@ -17,6 +17,7 @@ import { FavoriteTracks } from '@/components/FavoriteTracks'
 import { LifetimeStats } from '@/components/LifetimeStats'
 import { MostPlayed } from '@/components/MostPlayed'
 import { MedalCabinet } from '@/components/MedalCabinet'
+import { TrophyCase } from '@/components/TrophyCase'
 import { DailyChallenge } from '@/components/DailyChallenge'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
@@ -75,6 +76,8 @@ export default async function HomePage() {
           <LifetimeStats />
 
           <MedalCabinet />
+
+          <TrophyCase />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
