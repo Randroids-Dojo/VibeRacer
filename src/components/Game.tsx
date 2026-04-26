@@ -93,6 +93,7 @@ import {
 import { Leaderboard } from './Leaderboard'
 import { LapHistory } from './LapHistory'
 import { HowToPlay } from './HowToPlay'
+import { PhotoMode } from './PhotoMode'
 import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import type { CarParams } from '@/game/physics'
@@ -250,6 +251,7 @@ type PauseView =
   | 'stats'
   | 'achievements'
   | 'howToPlay'
+  | 'photo'
 
 function GameSession({
   slug,
@@ -382,6 +384,13 @@ function GameSession({
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
   const rearviewCanvasRef = useRef<HTMLCanvasElement | null>(null)
+  // Photo Mode capture handle. RaceCanvas installs a function on this ref
+  // (and clears it on unmount) that synchronously force-renders the scene
+  // and returns a data URL of the current frame. PhotoMode.tsx calls it
+  // when the player picks a format.
+  const captureScreenshotRef = useRef<
+    ((mimeType?: string, quality?: number) => string | null) | null
+  >(null)
   // Mirrors the chosen time-of-day preset into the rAF loop. Same poll-and-set
   // pattern as carPaintRef: the renderer reads it each frame and reapplies the
   // sky / ambient / sun preset whenever the value changes.
@@ -1395,6 +1404,7 @@ function GameSession({
         onLapReplay={handleLapReplay}
         onCheckpointHit={handleCheckpointHit}
         onLapDriftBest={handleLapDriftBest}
+        captureScreenshotRef={captureScreenshotRef}
         style={canvasStyle}
       />
       <canvas
@@ -1501,6 +1511,7 @@ function GameSession({
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
               onHowToPlay={() => setPauseView('howToPlay')}
+              onPhotoMode={() => setPauseView('photo')}
               onShare={() => {
                 void handleShare()
               }}
@@ -1552,6 +1563,12 @@ function GameSession({
               touchMode={settings.touchMode}
               onClose={() => setPauseView('menu')}
             />
+          ) : pauseView === 'photo' ? (
+            <PhotoMode
+              slug={slug}
+              captureRef={captureScreenshotRef}
+              onClose={() => setPauseView('menu')}
+            />
           ) : (
             <SettingsPane
               settings={settings}
@@ -1561,7 +1578,7 @@ function GameSession({
               inRace
             />
           )}
-          <FeedbackFab />
+          {pauseView !== 'photo' ? <FeedbackFab /> : null}
         </>
       ) : null}
     </div>

@@ -163,6 +163,17 @@ export interface RaceCanvasProps {
   // persist the score as a new local PB. Always emitted on lap complete
   // (even when the score is 0) so consumers can clear stale UI.
   onLapDriftBest?: (score: number) => void
+  // Out-ref the parent can call to grab a synchronous screenshot of the
+  // current scene. The function force-renders the latest scene + camera
+  // before reading pixels so the buffer is always fresh, even when the
+  // rAF loop is short-circuited by a pause. The returned data URL matches
+  // the requested mime type (default 'image/png'); JPEG accepts a quality
+  // value in [0..1]. Returns null when the canvas is unavailable or the
+  // GPU read fails (e.g. cross-origin tainting after a glTF load from a
+  // mismatched origin). See `src/components/PhotoMode.tsx` for the caller.
+  captureScreenshotRef?: MutableRefObject<
+    ((mimeType?: string, quality?: number) => string | null) | null
+  >
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -202,6 +213,7 @@ export function RaceCanvas({
   onLapReplay,
   onCheckpointHit,
   onLapDriftBest,
+  captureScreenshotRef,
   disableMusicIntensity,
   className,
   style,
@@ -228,6 +240,28 @@ export function RaceCanvas({
     const bundle = buildScene(path)
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+    // Photo Mode capture hook. Force-render the latest scene + camera, then
+    // immediately read the canvas pixels to a data URL inside the same JS
+    // task so the WebGL drawing buffer is still valid (we did not opt into
+    // preserveDrawingBuffer). The function is a pure read; it does not
+    // mutate any game state. Returns null when the GPU read throws (e.g. a
+    // cross-origin tainted texture).
+    if (captureScreenshotRef) {
+      captureScreenshotRef.current = (
+        mimeType: string = 'image/png',
+        quality?: number,
+      ): string | null => {
+        try {
+          renderer.render(bundle.scene, bundle.camera)
+          // toDataURL reads the back buffer immediately; combined with the
+          // fresh render above this works even when paused (rAF stopped).
+          return canvas.toDataURL(mimeType, quality)
+        } catch {
+          return null
+        }
+      }
+    }
 
     // Apply the initial paint synchronously. The setter buffers internally
     // when the GLB is still loading, so this is safe even on a cold cache.
@@ -897,6 +931,11 @@ export function RaceCanvas({
       if (rearRenderer) {
         rearRenderer.dispose()
         rearRenderer = null
+      }
+      // Detach the photo-mode hook so a stale closure cannot fire after the
+      // renderer is disposed.
+      if (captureScreenshotRef) {
+        captureScreenshotRef.current = null
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
