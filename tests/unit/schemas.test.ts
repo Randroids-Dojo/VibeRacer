@@ -46,6 +46,38 @@ describe('TrackSchema', () => {
   it('requires at least one piece', () => {
     expect(TrackSchema.safeParse({ pieces: [] }).success).toBe(false)
   })
+
+  it('accepts a valid checkpointCount', () => {
+    const pieces = Array.from({ length: 8 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(TrackSchema.safeParse({ pieces, checkpointCount: 4 }).success).toBe(true)
+    expect(TrackSchema.safeParse({ pieces, checkpointCount: 8 }).success).toBe(true)
+    expect(TrackSchema.safeParse({ pieces }).success).toBe(true)
+  })
+
+  it('rejects checkpointCount below MIN_CHECKPOINT_COUNT', () => {
+    const pieces = Array.from({ length: 8 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(TrackSchema.safeParse({ pieces, checkpointCount: 2 }).success).toBe(false)
+  })
+
+  it('rejects checkpointCount above piece count', () => {
+    const pieces = Array.from({ length: 4 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(TrackSchema.safeParse({ pieces, checkpointCount: 5 }).success).toBe(false)
+  })
 })
 
 describe('InitialsSchema', () => {

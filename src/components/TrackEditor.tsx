@@ -1,31 +1,63 @@
 'use client'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece } from '@/lib/schemas'
-import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
+import type { Piece, PieceType, Rotation } from '@/lib/schemas'
+import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import {
   getBounds,
   getStartExitDir,
   moveStartTo,
+  nextRotation,
   reverseStartDirection,
-  withCellCycled,
+  withPiecePlaced,
+  withPieceRemoved,
+  withPieceRotated,
 } from '@/game/editor'
+
+type Tool = 'erase' | PieceType | 'start'
+const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90']
+const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
+const TOOL_LABELS: Record<Tool, string> = {
+  erase: 'Erase',
+  straight: 'Straight',
+  left90: 'Left turn',
+  right90: 'Right turn',
+  start: 'Set start',
+}
 
 interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
+  initialCheckpointCount?: number
 }
 
 const CELL = 56
 const PAD_CELLS = 2
 
-export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
+export function TrackEditor({
+  slug,
+  initialPieces,
+  initialCheckpointCount,
+}: TrackEditorProps) {
   const router = useRouter()
   const [pieces, setPieces] = useState<Piece[]>(initialPieces)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null = "default" (one CP per piece). Number = explicit override.
+  const [checkpointCount, setCheckpointCount] = useState<number | null>(
+    initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length
+      ? initialCheckpointCount
+      : null,
+  )
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(
+    initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length,
+  )
+  const [tool, setTool] = useState<Tool>('straight')
+  const [toolRotation, setToolRotation] = useState<Rotation>(0)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -49,17 +81,53 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
-  const latestRef = useRef({ cellMap, startKey, error })
-  latestRef.current = { cellMap, startKey, error }
+  const latestRef = useRef({ cellMap, startKey, error, tool, toolRotation })
+  latestRef.current = { cellMap, startKey, error, tool, toolRotation }
 
-  const cycleAt = useCallback((row: number, col: number) => {
+  const applyTool = useCallback((row: number, col: number) => {
+    const {
+      tool: t,
+      toolRotation: tr,
+      cellMap: cm,
+      startKey: sk,
+      error: err,
+    } = latestRef.current
+    const key = cellKey(row, col)
+    const existing = cm.get(key)
     setPieces((prev) => {
-      const next = withCellCycled(prev, row, col)
+      if (t === 'erase') {
+        return existing ? withPieceRemoved(prev, row, col) : prev
+      }
+      if (t === 'start') {
+        // Mirrors the right-click semantics: re-tapping the current start
+        // reverses the loop direction; tapping any other piece relocates
+        // start to it. Tapping an empty cell is a no-op.
+        if (!existing) return prev
+        return key === sk
+          ? reverseStartDirection(prev)
+          : moveStartTo(prev, row, col)
+      }
+      // Tapping any existing piece rotates it. To change the piece type,
+      // erase it first and then place the new one.
+      if (existing) {
+        return withPieceRotated(prev, row, col)
+      }
+      const next = withPiecePlaced(prev, row, col, t, tr)
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
-    if (latestRef.current.error !== null) setError(null)
+    if (err !== null) setError(null)
   }, [])
+
+  function selectTool(next: Tool) {
+    // Only piece tools have a rotation; tapping the same erase or start
+    // tool is a no-op.
+    if (next === tool && (PIECE_TOOLS as Tool[]).includes(next)) {
+      setToolRotation((r) => nextRotation(r))
+      return
+    }
+    setTool(next)
+  }
 
   const setStartOrReverse = useCallback((row: number, col: number) => {
     const key = cellKey(row, col)
@@ -82,8 +150,8 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const cell = cellFromEvent(e)
-    if (cell) cycleAt(cell.row, cell.col)
-  }, [cycleAt])
+    if (cell) applyTool(cell.row, cell.col)
+  }, [applyTool])
 
   const handleSvgContextMenu = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const cell = cellFromEvent(e)
@@ -103,27 +171,51 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     setError(null)
   }
 
+  // Clamp the override whenever piece count drops below it.
+  const cpMax = pieces.length
+  const cpMin = Math.min(MIN_CHECKPOINT_COUNT, cpMax)
+  const effectiveCp =
+    checkpointCount === null
+      ? cpMax
+      : Math.max(cpMin, Math.min(cpMax, checkpointCount))
+  const cpInputDisabled = cpMax < MIN_CHECKPOINT_COUNT
+
+  function onCpChange(raw: string) {
+    if (raw === '') {
+      setCheckpointCount(null)
+      return
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n)) return
+    const clamped = Math.max(cpMin, Math.min(cpMax, Math.round(n)))
+    setCheckpointCount(clamped === cpMax ? null : clamped)
+  }
+
   async function save() {
     if (!validation.ok || saving) return
     setSaving(true)
     setError(null)
     try {
+      const reqBody: { pieces: Piece[]; checkpointCount?: number } = { pieces }
+      if (checkpointCount !== null && effectiveCp !== cpMax) {
+        reqBody.checkpointCount = effectiveCp
+      }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pieces }),
+        body: JSON.stringify(reqBody),
       })
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
+        const errBody = (await res.json().catch(() => ({}))) as {
           error?: string
           reason?: string
         }
-        setError(body.reason || body.error || `save failed (${res.status})`)
+        setError(errBody.reason || errBody.error || `save failed (${res.status})`)
         setSaving(false)
         return
       }
-      const body = (await res.json()) as { versionHash: string }
-      router.push(`/${slug}?v=${body.versionHash}`)
+      const okBody = (await res.json()) as { versionHash: string }
+      router.push(`/${slug}?v=${okBody.versionHash}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed')
       setSaving(false)
@@ -144,10 +236,46 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       <div style={header}>
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
-          Click a cell to cycle piece and rotation. Right-click (or long-press
-          on touch) a piece to make it the start. Reverse direction with the
-          button below.
+          Pick a tool below, then tap a cell to place it. Tap the selected
+          tool again to rotate. Tap a placed piece to rotate it in place.
+          Right-click (or long-press on touch) is a shortcut for the Set
+          start tool.
         </div>
+      </div>
+
+      <div style={paletteBar} role="toolbar" aria-label="Piece palette">
+        {TOOLS.map((t) => {
+          const selected = t === tool
+          const isPiece = (PIECE_TOOLS as Tool[]).includes(t)
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => selectTool(t)}
+              style={selected ? toolBtnSelected : toolBtnIdle}
+              aria-pressed={selected}
+              aria-label={
+                selected && isPiece
+                  ? `${TOOL_LABELS[t]}, tap again to rotate`
+                  : TOOL_LABELS[t]
+              }
+            >
+              <svg width={36} height={36} viewBox={`0 0 ${CELL} ${CELL}`}>
+                {t === 'erase' ? (
+                  <EraseGlyph />
+                ) : t === 'start' ? (
+                  <StartGlyph />
+                ) : (
+                  <PieceGlyph
+                    piece={{ type: t, row: 0, col: 0, rotation: toolRotation }}
+                  />
+                )}
+              </svg>
+              <span style={toolBtnLabel}>{TOOL_LABELS[t]}</span>
+            </button>
+          )
+        })}
+        <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
 
       <div style={gridWrap}>
@@ -188,12 +316,68 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
         </svg>
       </div>
 
+      {advancedOpen ? (
+        <div style={advancedPanel}>
+          <div style={advancedHeader}>
+            <span style={advancedTitle}>Advanced</span>
+            <button
+              onClick={() => setAdvancedOpen(false)}
+              style={btnGhostSmall}
+            >
+              Hide
+            </button>
+          </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
+              <div style={advancedLabel}>Checkpoints</div>
+              <p style={advancedHelp}>
+                Invisible gates around the loop. The car has to cross every
+                gate, in order, before a lap counts. The default is one gate
+                per piece, which is the strictest setting and forces the
+                player to follow the whole track. Lowering the count spreads
+                the gates out evenly so racers can experiment with shortcut
+                lines or cut a corner without invalidating the lap. Most
+                tracks should leave this on default.
+              </p>
+            </div>
+            <div style={advancedControl}>
+              <input
+                type="number"
+                min={cpMin}
+                max={cpMax}
+                value={effectiveCp}
+                disabled={cpInputDisabled}
+                onChange={(e) => onCpChange(e.target.value)}
+                style={cpInput}
+                aria-label="Checkpoint count"
+              />
+              <span style={cpHint}>
+                {checkpointCount === null ? 'default' : `of ${cpMax}`}
+              </span>
+              {checkpointCount !== null ? (
+                <button
+                  onClick={() => setCheckpointCount(null)}
+                  style={btnGhostSmall}
+                >
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div style={footer}>
         <div style={status}>
           <span>{pieces.length} / {MAX_PIECES_PER_TRACK} pieces</span>
           <span style={{ color: validation.ok ? '#6ee787' : '#ffb86b' }}>
             {validation.ok ? 'valid closed loop' : (validation.reason ?? 'invalid')}
           </span>
+          {checkpointCount !== null ? (
+            <span style={cpHint}>
+              {effectiveCp} of {cpMax} checkpoints
+            </span>
+          ) : null}
           {error ? <span style={{ color: '#ff6b6b' }}>{error}</span> : null}
         </div>
         <div style={buttons}>
@@ -208,6 +392,12 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
           <button onClick={clearAll} style={btnGhost} disabled={pieces.length === 0}>
             Clear
           </button>
+          {!advancedOpen ? (
+            <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
+              Advanced
+              {checkpointCount !== null ? <span style={advancedDot} /> : null}
+            </button>
+          ) : null}
           <button
             onClick={save}
             disabled={!validation.ok || saving}
@@ -272,6 +462,48 @@ const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }
     </g>
   )
 })
+
+function StartGlyph() {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  const r = CELL * 0.32
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={r} stroke="#6ee787" strokeWidth={3} fill="none" />
+      <polygon
+        points={`${cx - 7},${cy + 4} ${cx + 7},${cy + 4} ${cx},${cy - 8}`}
+        fill="#6ee787"
+      />
+    </g>
+  )
+}
+
+function paletteHintText(tool: Tool, rotation: Rotation): string {
+  if (tool === 'erase') return 'Tap a placed piece to remove it.'
+  if (tool === 'start') {
+    return 'Tap any piece to make it the start. Tap the current start to reverse direction.'
+  }
+  return `Rotation ${rotation}°. Tap the tile above to spin it.`
+}
+
+function EraseGlyph() {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  const r = CELL * 0.32
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={r} stroke="#ff6b6b" strokeWidth={4} fill="none" />
+      <line
+        x1={cx - r * 0.7}
+        y1={cy - r * 0.7}
+        x2={cx + r * 0.7}
+        y2={cy + r * 0.7}
+        stroke="#ff6b6b"
+        strokeWidth={4}
+      />
+    </g>
+  )
+}
 
 function PieceGlyph({ piece }: { piece: Piece }) {
   const cx = CELL / 2
@@ -369,6 +601,48 @@ const hint: React.CSSProperties = {
   opacity: 0.65,
   marginTop: 4,
 }
+const paletteBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 16px',
+  borderBottom: '1px solid #1f2b3d',
+  background: '#111a28',
+  flexWrap: 'wrap',
+}
+const toolBtnBase: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
+  padding: '6px 8px',
+  borderRadius: 8,
+  background: 'transparent',
+  border: '1px solid #2b3a50',
+  color: 'white',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  minWidth: 64,
+}
+const toolBtnIdle: React.CSSProperties = {
+  ...toolBtnBase,
+}
+const toolBtnSelected: React.CSSProperties = {
+  ...toolBtnBase,
+  background: '#1f2b3d',
+  borderColor: '#ff6b35',
+  boxShadow: '0 0 0 1px #ff6b35 inset',
+}
+const toolBtnLabel: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 0.5,
+  opacity: 0.85,
+}
+const paletteHint: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.6,
+  marginLeft: 'auto',
+}
 const gridWrap: React.CSSProperties = {
   flex: 1,
   overflow: 'auto',
@@ -395,6 +669,85 @@ const status: React.CSSProperties = {
 const buttons: React.CSSProperties = {
   display: 'flex',
   gap: 10,
+}
+const cpInput: React.CSSProperties = {
+  width: 56,
+  background: '#162233',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '4px 6px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+}
+const cpHint: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.6,
+}
+const advancedPanel: React.CSSProperties = {
+  borderTop: '1px solid #1f2b3d',
+  background: '#111a28',
+  padding: '14px 20px',
+}
+const advancedHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 10,
+}
+const advancedTitle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  opacity: 0.7,
+}
+const advancedRow: React.CSSProperties = {
+  display: 'flex',
+  gap: 20,
+  alignItems: 'flex-start',
+  flexWrap: 'wrap',
+}
+const advancedCopy: React.CSSProperties = {
+  flex: '1 1 320px',
+  minWidth: 240,
+}
+const advancedLabel: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  marginBottom: 4,
+}
+const advancedHelp: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.5,
+  opacity: 0.75,
+  margin: 0,
+}
+const advancedControl: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexShrink: 0,
+}
+const btnGhostSmall: React.CSSProperties = {
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: 'white',
+  padding: '4px 10px',
+  borderRadius: 6,
+  fontWeight: 600,
+  fontSize: 12,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const advancedDot: React.CSSProperties = {
+  display: 'inline-block',
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  background: '#ffd36b',
+  marginLeft: 6,
+  verticalAlign: 'middle',
 }
 const btnPrimary: React.CSSProperties = {
   border: 'none',

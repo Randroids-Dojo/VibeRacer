@@ -11,6 +11,14 @@ export default async function EditPage(ctx: { params: Promise<{ slug: string }> 
   const loaded = await loadTrack(slug)
   if (loaded.kind === 'notFound') notFound()
   const initialPieces: Piece[] = loaded.kind === 'fresh' ? [] : loaded.pieces
+  const initialCheckpointCount =
+    loaded.kind === 'ok' ? loaded.checkpointCount : undefined
 
-  return <TrackEditor slug={slug} initialPieces={initialPieces} />
+  return (
+    <TrackEditor
+      slug={slug}
+      initialPieces={initialPieces}
+      initialCheckpointCount={initialCheckpointCount}
+    />
+  )
 }

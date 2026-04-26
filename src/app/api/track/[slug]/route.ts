@@ -99,10 +99,13 @@ export async function PUT(
     )
   }
 
-  const hash = hashTrack(track.data.pieces)
+  const hash = hashTrack(track.data.pieces, track.data.checkpointCount)
   const createdAt = new Date().toISOString()
   const version: TrackVersion = {
     pieces: track.data.pieces as Piece[],
+    ...(track.data.checkpointCount !== undefined
+      ? { checkpointCount: track.data.checkpointCount }
+      : {}),
     createdByRacerId: racerId,
     createdAt,
   }

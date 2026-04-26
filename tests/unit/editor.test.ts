@@ -1,65 +1,84 @@
 import { describe, it, expect } from 'vitest'
 import {
-  cycleCell,
   getBounds,
   getStartExitDir,
   moveStartTo,
+  nextRotation,
   reverseStartDirection,
-  withCellCycled,
+  withPiecePlaced,
+  withPieceRemoved,
+  withPieceRotated,
 } from '@/game/editor'
 import { buildTrackPath } from '@/game/trackPath'
 import type { Piece } from '@/lib/schemas'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 
-describe('cycleCell', () => {
-  it('empty cycles to straight/0', () => {
-    expect(cycleCell(null)).toEqual({ type: 'straight', rotation: 0 })
-  })
-
-  it('advances rotation within a type', () => {
-    expect(cycleCell({ type: 'straight', rotation: 0 }))
-      .toEqual({ type: 'straight', rotation: 90 })
-    expect(cycleCell({ type: 'straight', rotation: 180 }))
-      .toEqual({ type: 'straight', rotation: 270 })
-  })
-
-  it('advances to next type after 270 rotation', () => {
-    expect(cycleCell({ type: 'straight', rotation: 270 }))
-      .toEqual({ type: 'left90', rotation: 0 })
-    expect(cycleCell({ type: 'left90', rotation: 270 }))
-      .toEqual({ type: 'right90', rotation: 0 })
-  })
-
-  it('cycles back to empty after the final state', () => {
-    expect(cycleCell({ type: 'right90', rotation: 270 })).toBeNull()
+describe('nextRotation', () => {
+  it('advances 0 to 90 to 180 to 270 to 0', () => {
+    expect(nextRotation(0)).toBe(90)
+    expect(nextRotation(90)).toBe(180)
+    expect(nextRotation(180)).toBe(270)
+    expect(nextRotation(270)).toBe(0)
   })
 })
 
-describe('withCellCycled', () => {
-  it('adds a new piece when cell is empty', () => {
-    const result = withCellCycled([], 2, 3)
-    expect(result).toEqual([
-      { type: 'straight', row: 2, col: 3, rotation: 0 },
-    ])
+describe('withPiecePlaced', () => {
+  it('appends a new piece when the cell is empty', () => {
+    const result = withPiecePlaced([], 2, 3, 'straight', 90)
+    expect(result).toEqual([{ type: 'straight', row: 2, col: 3, rotation: 90 }])
   })
 
-  it('advances an existing piece without changing position', () => {
+  it('replaces an existing piece in place without changing array order', () => {
     const pieces: Piece[] = [
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'left90', row: 1, col: 1, rotation: 90 },
     ]
-    const result = withCellCycled(pieces, 1, 1)
-    expect(result[1]).toEqual({ type: 'left90', row: 1, col: 1, rotation: 180 })
+    const result = withPiecePlaced(pieces, 1, 1, 'right90', 270)
     expect(result[0]).toEqual(pieces[0])
+    expect(result[1]).toEqual({ type: 'right90', row: 1, col: 1, rotation: 270 })
+  })
+})
+
+describe('withPieceRotated', () => {
+  it('rotates the piece at the cell by 90', () => {
+    const pieces: Piece[] = [
+      { type: 'left90', row: 1, col: 1, rotation: 90 },
+    ]
+    const result = withPieceRotated(pieces, 1, 1)
+    expect(result[0]).toEqual({ type: 'left90', row: 1, col: 1, rotation: 180 })
   })
 
-  it('removes the piece when cycling past the final state', () => {
+  it('returns the same array when the cell is empty', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+    ]
+    expect(withPieceRotated(pieces, 5, 5)).toBe(pieces)
+  })
+
+  it('wraps from 270 back to 0', () => {
     const pieces: Piece[] = [
       { type: 'right90', row: 0, col: 0, rotation: 270 },
-      { type: 'straight', row: 1, col: 0, rotation: 0 },
     ]
-    const result = withCellCycled(pieces, 0, 0)
-    expect(result).toEqual([{ type: 'straight', row: 1, col: 0, rotation: 0 }])
+    const result = withPieceRotated(pieces, 0, 0)
+    expect(result[0].rotation).toBe(0)
+  })
+})
+
+describe('withPieceRemoved', () => {
+  it('removes the piece at the cell', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'left90', row: 1, col: 1, rotation: 0 },
+    ]
+    const result = withPieceRemoved(pieces, 0, 0)
+    expect(result).toEqual([{ type: 'left90', row: 1, col: 1, rotation: 0 }])
+  })
+
+  it('returns the same array when the cell is empty', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+    ]
+    expect(withPieceRemoved(pieces, 5, 5)).toBe(pieces)
   })
 })
 
@@ -107,7 +126,7 @@ describe('moveStartTo', () => {
     expect(result).toBe(DEFAULT_TRACK_PIECES)
   })
 
-  it('does not drop pieces when the track is not a closed loop', () => {
+  it('promotes the picked piece to index 0 on an open track without dropping any', () => {
     // A dangling straight at (0, 0) and an orphan piece at (5, 5). The walker
     // from pieces[0] can't reach the orphan, and the loop isn't closed.
     const dangling: Piece[] = [
@@ -115,8 +134,11 @@ describe('moveStartTo', () => {
       { type: 'straight', row: 5, col: 5, rotation: 0 },
     ]
     const result = moveStartTo(dangling, 5, 5)
-    expect(result).toBe(dangling)
     expect(result.length).toBe(dangling.length)
+    expect(result[0]).toEqual(dangling[1])
+    const before = new Set(dangling.map((p) => `${p.row},${p.col}`))
+    const after = new Set(result.map((p) => `${p.row},${p.col}`))
+    expect(after).toEqual(before)
   })
 })
 

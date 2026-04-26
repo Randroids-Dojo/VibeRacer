@@ -99,8 +99,8 @@ export function tick(
   const newKey = cellKey(newCell.row, newCell.col)
 
   if (raceStartMs !== null && newKey !== state.lastCellKey) {
-    const N = path.order.length
-    const expectedPieceIdx = (nextCpId + 1) % N
+    const K = path.cpTriggerPieceIdx.length
+    const expectedPieceIdx = path.cpTriggerPieceIdx[nextCpId]
     const expectedPiece = path.order[expectedPieceIdx].piece
     const expectedKey = cellKey(expectedPiece.row, expectedPiece.col)
     const startKey = cellKey(path.order[0].piece.row, path.order[0].piece.col)
@@ -110,7 +110,7 @@ export function tick(
       hits = [...hits, { cpId: nextCpId, tMs }]
       nextCpId += 1
 
-      if (nextCpId === N) {
+      if (nextCpId === K) {
         const lapTimeMs = hits[hits.length - 1].tMs
         lapCount += 1
         lastLapTimeMs = lapTimeMs

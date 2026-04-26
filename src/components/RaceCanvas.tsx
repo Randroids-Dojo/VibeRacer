@@ -44,6 +44,7 @@ const HUD_UPDATE_MS = 50
 
 export interface RaceCanvasProps {
   pieces: Piece[]
+  checkpointCount?: number
   paramsRef: MutableRefObject<CarParams>
   keys: ReturnType<typeof useKeyboard>
   pausedRef: MutableRefObject<boolean>
@@ -72,6 +73,7 @@ export interface RaceCanvasProps {
 // tuning lab. Behavior is identical to the original inline effect.
 export function RaceCanvas({
   pieces,
+  checkpointCount,
   paramsRef,
   keys,
   pausedRef,
@@ -101,7 +103,7 @@ export function RaceCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const path = buildTrackPath(pieces)
+    const path = buildTrackPath(pieces, checkpointCount)
     const bundle = buildScene(path)
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -358,7 +360,7 @@ export function RaceCanvas({
       renderer.dispose()
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces])
+  }, [pieces, checkpointCount])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }

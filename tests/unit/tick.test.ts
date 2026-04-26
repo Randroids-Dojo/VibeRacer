@@ -79,3 +79,49 @@ describe('tick', () => {
     expect(r.state.lapCount).toBe(0)
   })
 })
+
+describe('tick with reduced checkpointCount', () => {
+  const sparsePath = buildTrackPath(DEFAULT_TRACK_PIECES, 4)
+
+  it('completes the lap after K hits at the K trigger pieces', () => {
+    let s = startRace(initGameState(sparsePath), 0)
+    let now = 0
+    const triggers = sparsePath.cpTriggerPieceIdx
+    expect(triggers).toEqual([2, 4, 6, 0])
+
+    for (let k = 0; k < triggers.length; k++) {
+      now += 600
+      const cell = sparsePath.order[triggers[k]].center
+      s = { ...s, x: cell.x, z: cell.z }
+      const r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, now, sparsePath)
+      s = r.state
+      if (k < triggers.length - 1) {
+        expect(r.lapComplete).toBeNull()
+        expect(s.nextCpId).toBe(k + 1)
+      } else {
+        expect(r.lapComplete).not.toBeNull()
+        expect(r.lapComplete!.hits.length).toBe(triggers.length)
+        expect(s.lapCount).toBe(1)
+        expect(s.nextCpId).toBe(0)
+      }
+    }
+  })
+
+  it('still resets when the car re-enters start before the final CP', () => {
+    let s = startRace(initGameState(sparsePath), 0)
+    // Hit CP 0 at piece 2.
+    const cp0 = sparsePath.order[2].center
+    s = { ...s, x: cp0.x, z: cp0.z }
+    let r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, 500, sparsePath)
+    expect(r.state.nextCpId).toBe(1)
+    s = r.state
+
+    // Bail back to piece 0 instead of continuing.
+    const start = sparsePath.order[0].center
+    s = { ...s, x: start.x, z: start.z }
+    r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, 900, sparsePath)
+    expect(r.lapComplete).toBeNull()
+    expect(r.state.nextCpId).toBe(0)
+    expect(r.state.hits.length).toBe(0)
+  })
+})

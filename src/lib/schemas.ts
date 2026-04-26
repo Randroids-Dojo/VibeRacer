@@ -22,14 +22,36 @@ export const PieceSchema = z.object({
 export type Piece = z.infer<typeof PieceSchema>
 
 export const MAX_PIECES_PER_TRACK = 64
+export const MIN_CHECKPOINT_COUNT = 3
 
-export const TrackSchema = z.object({
-  pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
-})
+const CheckpointCountSchema = z
+  .number()
+  .int()
+  .min(MIN_CHECKPOINT_COUNT)
+  .max(MAX_PIECES_PER_TRACK)
+
+export const TrackSchema = z
+  .object({
+    pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
+    checkpointCount: CheckpointCountSchema.optional(),
+  })
+  .superRefine((track, ctx) => {
+    if (
+      track.checkpointCount !== undefined &&
+      track.checkpointCount > track.pieces.length
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkpointCount'],
+        message: 'checkpointCount must not exceed piece count',
+      })
+    }
+  })
 export type Track = z.infer<typeof TrackSchema>
 
 export const TrackVersionSchema = z.object({
   pieces: z.array(PieceSchema),
+  checkpointCount: CheckpointCountSchema.optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
 })
