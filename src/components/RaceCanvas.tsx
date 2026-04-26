@@ -68,6 +68,7 @@ import {
   stepDriftSession,
   type DriftSessionState,
 } from '@/game/drift'
+import { ghostGapMs } from '@/game/ghostGap'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -84,6 +85,12 @@ export interface RaceCanvasHud {
   driftMultiplier: number
   // Best drift session score across the current lap. Resets on lap-complete.
   driftLapBest: number
+  // Live "ghost gap" in milliseconds: positive = player is BEHIND the ghost,
+  // negative = AHEAD. null when no ghost is active, the player has drifted
+  // too far from the recorded path to measure honestly, or the gap toggle is
+  // off in Settings. Computed every HUD frame from the active ghost replay
+  // and the player's current world position.
+  ghostGapMs: number | null
 }
 
 const HUD_UPDATE_MS = 50
@@ -126,6 +133,11 @@ export interface RaceCanvasProps {
   // each frame; setting it false hides the plate without disposing it so a
   // flip back is cheap.
   showGhostNameplateRef?: MutableRefObject<boolean>
+  // Toggle the live ghost-gap chip. Polled each frame so a Settings flip
+  // takes effect without rebuilding any state. When false, the gap math is
+  // skipped entirely so a hidden chip costs zero per frame. Default when
+  // omitted: enabled.
+  showGhostGapRef?: MutableRefObject<boolean>
   // Live camera-rig overrides from Settings. The rAF loop reads this every
   // frame so a slider tweak in the pause menu takes effect on resume without
   // rebuilding the renderer.
@@ -250,6 +262,7 @@ export function RaceCanvas({
   activeGhostMetaRef,
   ghostSourceRef,
   showGhostNameplateRef,
+  showGhostGapRef,
   cameraRigRef,
   carPaintRef,
   racingNumberRef,
@@ -572,6 +585,12 @@ export function RaceCanvas({
     // player can see how big a chain just landed.
     let driftSession: DriftSessionState = initDriftSession()
     let driftLapBest = 0
+    // Hint index for the windowed ghost-gap search. Survives across HUD
+    // ticks so the per-frame search stays O(W) instead of O(N). Reset on a
+    // full Restart and on a lap-restart pulse so a teleport never carries a
+    // stale hint into the new lap. The pure helper falls back to a wider
+    // search when the hint is wrong, so even a stale value resolves cleanly.
+    let ghostGapHintIdx = 0
 
     function loop(ts: number) {
       if (!running) return
@@ -630,6 +649,7 @@ export function RaceCanvas({
         wrongWayState = initWrongWayDetector()
         driftSession = initDriftSession()
         driftLapBest = 0
+        ghostGapHintIdx = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -679,6 +699,7 @@ export function RaceCanvas({
         wrongWayState = initWrongWayDetector()
         driftSession = initDriftSession()
         driftLapBest = 0
+        ghostGapHintIdx = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -1095,6 +1116,12 @@ export function RaceCanvas({
         driftLapBest = 0
         driftSession = initDriftSession()
         resetRecording()
+        // Reset the ghost-gap hint: the player just crossed the finish line,
+        // so the ghost replay restarts from sample 0 in lockstep. Holding a
+        // stale large hint here would slow the windowed search until the
+        // helper's nearest-pass widens it, but a clean zero is essentially
+        // free.
+        ghostGapHintIdx = 0
         onLapCompleteRef.current(result.lapComplete)
       }
 
@@ -1114,6 +1141,34 @@ export function RaceCanvas({
               Math.min(4, 1 + (driftSession.activeMs / 4000) * 3) * 10,
             ) / 10
           : 1
+        // Live ghost gap: only computed when the chip is on AND the ghost
+        // itself is on AND a replay is loaded AND the player has started
+        // the lap. The pure helper short-circuits and returns null in every
+        // other case so the chip slot collapses cleanly. The hint index
+        // survives across HUD ticks so the per-tick search stays O(W).
+        let ghostGapMsValue: number | null = null
+        const gapShown = showGhostGapRef?.current ?? true
+        const ghostShown = showGhostRef?.current ?? true
+        const replayForGap = activeGhostRef?.current ?? null
+        if (
+          gapShown &&
+          ghostShown &&
+          replayForGap !== null &&
+          state.raceStartMs !== null &&
+          currentMs > 0
+        ) {
+          const result = ghostGapMs(
+            replayForGap,
+            state.x,
+            state.z,
+            currentMs,
+            ghostGapHintIdx,
+          )
+          if (result) {
+            ghostGapMsValue = result.gapMs
+            ghostGapHintIdx = result.sampleIdx
+          }
+        }
         const next: RaceCanvasHud = {
           currentMs,
           lapCount: state.lapCount,
@@ -1124,6 +1179,7 @@ export function RaceCanvas({
           driftScore: driftScoreInt,
           driftMultiplier: driftMultInt,
           driftLapBest: driftLapBestInt,
+          ghostGapMs: ghostGapMsValue,
         }
         if (
           prevHud === null ||
@@ -1135,7 +1191,8 @@ export function RaceCanvas({
           prevHud.driftActive !== next.driftActive ||
           prevHud.driftScore !== next.driftScore ||
           prevHud.driftMultiplier !== next.driftMultiplier ||
-          prevHud.driftLapBest !== next.driftLapBest
+          prevHud.driftLapBest !== next.driftLapBest ||
+          prevHud.ghostGapMs !== next.ghostGapMs
         ) {
           prevHud = next
           onHudUpdateRef.current(next)

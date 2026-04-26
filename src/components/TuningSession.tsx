@@ -111,6 +111,7 @@ export function TuningSession({
     driftScore: 0,
     driftMultiplier: 1,
     driftLapBest: 0,
+    ghostGapMs: null,
   })
   const [saveName, setSaveName] = useState('')
 
@@ -195,6 +196,7 @@ export function TuningSession({
       driftScore: 0,
       driftMultiplier: 1,
       driftLapBest: 0,
+      ghostGapMs: null,
     })
     setPhase('countdown')
   }
@@ -303,6 +305,7 @@ export function TuningSession({
       driftScore: 0,
       driftMultiplier: 1,
       driftLapBest: 0,
+      ghostGapMs: null,
     })
     setPhase('countdown')
   }

@@ -267,6 +267,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showGhostNameplate).toBe(true)
   })
 
+  it('defaults showGhostGap to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showGhostGap).toBe(true)
+    expect(cloneDefaultSettings().showGhostGap).toBe(true)
+  })
+
+  it('round-trips a disabled showGhostGap flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showGhostGap = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showGhostGap when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showGhostGap).toBe(true)
+  })
+
   it('defaults showMinimap to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showMinimap).toBe(true)
     expect(cloneDefaultSettings().showMinimap).toBe(true)

@@ -386,6 +386,10 @@ export function SettingsPane({
     onChange({ ...settings, showGhostNameplate: value })
   }
 
+  function setShowGhostGap(value: boolean) {
+    onChange({ ...settings, showGhostGap: value })
+  }
+
   function setShowMinimap(value: boolean) {
     onChange({ ...settings, showMinimap: value })
   }
@@ -837,6 +841,19 @@ export function SettingsPane({
               Floats the ghost racer&apos;s initials and lap time above their
               car so you know whose lap you are chasing without opening the
               leaderboard.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show live gap</div>
+              <MenuToggle
+                value={settings.showGhostGap}
+                onChange={setShowGhostGap}
+                disabled={!settings.showGhost}
+              />
+            </div>
+            <MenuHint>
+              A small chip below the &quot;vs PB&quot; tile showing the live
+              time gap between you and the ghost car. Negative numbers mean you
+              are ahead of the ghost; positive means behind.
             </MenuHint>
           </div>
 

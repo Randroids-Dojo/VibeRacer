@@ -11,6 +11,7 @@ import {
   type MedalTier,
 } from '@/game/medals'
 import { formatStreakLabel } from '@/game/pbStreak'
+import { formatGhostGap } from '@/game/ghostGap'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -93,6 +94,10 @@ interface HudProps {
   // The string is pre-formatted by `formatRivalBannerLabel` upstream so the
   // HUD does not have to know the rival shape. null hides the banner.
   rivalLabel?: string | null
+  // Live ghost gap in milliseconds: positive = behind the ghost, negative =
+  // ahead. null hides the chip (no ghost on screen, no replay loaded, the
+  // player has drifted off the recorded line, or the chip toggle is off).
+  ghostGapMs?: number | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -421,6 +426,14 @@ export function HUD(props: HudProps) {
   // threshold (formatStreakLabel handles the cutoff) so the slot collapses
   // cleanly and a single first-PB does not double up the existing toast.
   const streakLabel = formatStreakLabel(props.pbStreak)
+  // Live ghost-gap chip. The formatter handles non-finite / null inputs and
+  // returns null in those cases so the chip slot collapses cleanly. A
+  // negative gap means the player is AHEAD of the ghost (good, green); a
+  // positive gap means BEHIND (red). Zero reads as ahead so a tied moment
+  // pops in the celebratory color rather than the alarm color.
+  const ghostGapMsValue = props.ghostGapMs ?? null
+  const ghostGapLabel = formatGhostGap(ghostGapMsValue)
+  const ghostGapAhead = ghostGapMsValue !== null && ghostGapMsValue <= 0
   return (
     <div style={wrap}>
       <style>{HUD_ANIMATIONS_CSS}</style>
@@ -517,6 +530,16 @@ export function HUD(props: HudProps) {
           <div style={splitValue}>
             {formatSplitDelta(props.splitDeltaMs as number)}
           </div>
+        </div>
+      ) : null}
+      {ghostGapLabel !== null ? (
+        <div
+          style={ghostGapAhead ? ghostGapChipAhead : ghostGapChipBehind}
+          aria-live="off"
+          title="Live gap to the ghost car at your current position"
+        >
+          <span style={ghostGapChipLabelStyle}>vs GHOST</span>
+          <span style={ghostGapChipValueStyle}>{ghostGapLabel}</span>
         </div>
       ) : null}
       {props.sectorPb ? <SectorPbBadge sectorPb={props.sectorPb} /> : null}
@@ -758,6 +781,55 @@ const splitValue: React.CSSProperties = {
   fontSize: 'clamp(16px, 4vw, 22px)',
   fontWeight: 700,
   lineHeight: 1.1,
+}
+// Live ghost-gap chip. Sits just below the live "vs PB" split tile so the
+// two read as a stacked pair (PB delta on top, GHOST delta below). The chip
+// updates every HUD tick (~20 Hz) so the value is always live, unlike the
+// split tile which pops per checkpoint and fades. No animation: a constant
+// readout reads as a steady speedometer-style instrument rather than the
+// celebratory pop of a fresh PB split.
+const ghostGapChipBase: React.CSSProperties = {
+  position: 'absolute',
+  top: 132,
+  left: '50%',
+  transform: 'translate(-50%, 0)',
+  padding: '3px 10px',
+  borderRadius: 999,
+  background: 'rgba(8, 32, 48, 0.78)',
+  border: '1px solid rgba(120, 220, 255, 0.4)',
+  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35)',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 8,
+  pointerEvents: 'none',
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  minWidth: 110,
+  justifyContent: 'center',
+}
+const ghostGapChipAhead: React.CSSProperties = {
+  ...ghostGapChipBase,
+  color: '#5fe08a',
+  borderColor: 'rgba(95, 224, 138, 0.5)',
+  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35), 0 0 8px rgba(95, 224, 138, 0.3)',
+}
+const ghostGapChipBehind: React.CSSProperties = {
+  ...ghostGapChipBase,
+  color: '#ff7b6e',
+  borderColor: 'rgba(255, 123, 110, 0.5)',
+  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35), 0 0 8px rgba(255, 123, 110, 0.3)',
+}
+const ghostGapChipLabelStyle: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.85,
+  fontFamily: 'system-ui, sans-serif',
+}
+const ghostGapChipValueStyle: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  lineHeight: 1,
 }
 // Predicted lap-time block. Slots into the top stat row beside CURRENT so the
 // player can glance at "where this lap is heading" without taking eyes off

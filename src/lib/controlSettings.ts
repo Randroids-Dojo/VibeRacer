@@ -181,6 +181,14 @@ export interface ControlSettings {
   // a totally clean ghost car silhouette. Has no effect when `showGhost`
   // is false (the nameplate hides whenever the ghost itself is hidden).
   showGhostNameplate: boolean
+  // Toggle the live "ghost gap" HUD chip: a small pill rendered alongside
+  // the existing live split tile that shows the player's real-time time
+  // delta vs the ghost car's recorded path (negative = ahead, green;
+  // positive = behind, red). Updated every HUD frame from the same source
+  // the ghost car uses, so a flip in `ghostSource` swaps both at once. Has
+  // no effect when `showGhost` is false (no ghost on screen means no gap to
+  // measure). Default on so players see the chip on their next race.
+  showGhostGap: boolean
   // Toggle the bottom-right top-down minimap card. Default on for new users
   // (cheap render, useful on unfamiliar tracks); turning it off hides the
   // card entirely with no other side effects.
@@ -318,6 +326,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showGhost: true,
   ghostSource: DEFAULT_GHOST_SOURCE,
   showGhostNameplate: true,
+  showGhostGap: true,
   showMinimap: true,
   showSkidMarks: true,
   showTireSmoke: true,
@@ -401,6 +410,11 @@ const ControlSettingsSchema = z.object({
   // above the ghost car automatically without losing any other choices;
   // players who want a clean silhouette can flip it off.
   showGhostNameplate: z.boolean().default(true),
+  // Live ghost-gap chip landed after the nameplate toggle. Default on so
+  // legacy stored payloads start showing the chip automatically without
+  // losing any other choices; players who want a totally clean HUD can flip
+  // it off in Settings.
+  showGhostGap: z.boolean().default(true),
   // Minimap toggle landed after the original settings shape. Default on for
   // legacy stored payloads so the upgrade is opt-out, not opt-in.
   showMinimap: z.boolean().default(true),
@@ -497,6 +511,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
     ghostSource: DEFAULT_CONTROL_SETTINGS.ghostSource,
     showGhostNameplate: DEFAULT_CONTROL_SETTINGS.showGhostNameplate,
+    showGhostGap: DEFAULT_CONTROL_SETTINGS.showGhostGap,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
     showTireSmoke: DEFAULT_CONTROL_SETTINGS.showTireSmoke,

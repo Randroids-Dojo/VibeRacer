@@ -287,6 +287,11 @@ interface HudState {
   // it. Surfaced in the pause-menu Stats pane as a long-standing target so
   // a player who clears their streak today still sees the bar to beat.
   pbStreakBest: number | null
+  // Live "ghost gap" in milliseconds: positive = player is BEHIND the ghost
+  // car at the same world point, negative = AHEAD. null hides the chip
+  // (no ghost on screen, no replay loaded, player has drifted off the line,
+  // or the Settings toggle is off).
+  ghostGapMs: number | null
 }
 
 type PauseView =
@@ -415,6 +420,11 @@ function GameSession({
   // flip lands on the next frame without re-mounting the renderer.
   const showGhostNameplateRef = useRef<boolean>(settings.showGhostNameplate)
   showGhostNameplateRef.current = settings.showGhostNameplate
+  // Mirrors settings.showGhostGap into the rAF loop so a Settings flip
+  // takes effect on the next HUD tick. When false the renderer skips the
+  // gap math entirely so a hidden chip costs zero per frame.
+  const showGhostGapRef = useRef<boolean>(settings.showGhostGap)
+  showGhostGapRef.current = settings.showGhostGap
   // Identity tuple (initials + lap time) for the active ghost replay. Kept
   // in lockstep with `activeGhostRef` so the floating nameplate above the
   // ghost car always shows the right "WHO + TIME". null hides the plate
@@ -754,6 +764,7 @@ function GameSession({
       driftAllTimeBest: readLocalBestDrift(slug, versionHash),
       pbStreak: 0,
       pbStreakBest: readLocalBestPbStreak(slug, versionHash),
+      ghostGapMs: null,
     }
   })
 
@@ -818,6 +829,7 @@ function GameSession({
         next.driftLapBest > 0
           ? Math.max(prev.driftLapBest ?? 0, next.driftLapBest)
           : prev.driftLapBest,
+      ghostGapMs: next.ghostGapMs,
     }))
   }, [])
 
@@ -920,6 +932,10 @@ function GameSession({
       // Restart abandons the session, so the counter zeroes; the all-time
       // best is preserved (it lives on disk and stays in HudState).
       pbStreak: 0,
+      // Ghost gap clears so the chip slot collapses cleanly during the
+      // post-restart countdown. RaceCanvas will repopulate it on the first
+      // post-GO HUD tick.
+      ghostGapMs: null,
     }))
     setPhase('countdown')
   }, [])
@@ -957,6 +973,10 @@ function GameSession({
       // certainly intends to be a "do-over"; counting a streak across a
       // restart would feel like the chip is gaming the rules. Zero it.
       pbStreak: 0,
+      // Ghost gap clears so the chip slot collapses cleanly during the
+      // post-teleport frame; RaceCanvas will repopulate it on the next HUD
+      // tick once the player crosses the start again.
+      ghostGapMs: null,
     }))
   }, [])
 
@@ -2039,6 +2059,7 @@ function GameSession({
         activeGhostMetaRef={activeGhostMetaRef}
         ghostSourceRef={ghostSourceRef}
         showGhostNameplateRef={showGhostNameplateRef}
+        showGhostGapRef={showGhostGapRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
         racingNumberRef={racingNumberRef}
@@ -2127,6 +2148,11 @@ function GameSession({
         rivalLabel={
           rival && phase === 'racing' && !paused
             ? formatRivalBannerLabel(rival)
+            : null
+        }
+        ghostGapMs={
+          phase === 'racing' && !paused && settings.showGhost && settings.showGhostGap
+            ? hud.ghostGapMs
             : null
         }
       />
