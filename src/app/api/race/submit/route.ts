@@ -97,6 +97,31 @@ export async function POST(req: NextRequest) {
     member,
   })
 
+  // Resolve the just-submitted lap's leaderboard position so the client can
+  // surface "#R / B" inside the existing lap-saved toast. Ascending zrank
+  // returns a 0-indexed position; we expose it 1-indexed to match how rank
+  // reads to a player. zcard returns the total board size after this insert.
+  // Both reads are best-effort: if KV is flaky we still return ok=true so the
+  // local PB tracking stays unaffected.
+  let submittedRank: number | null = null
+  let boardSize: number | null = null
+  try {
+    const lbKey = kvKeys.leaderboard(slug.data, versionHash.data)
+    const [zrankRaw, zcardRaw] = await Promise.all([
+      kv.zrank(lbKey, member),
+      kv.zcard(lbKey),
+    ])
+    if (typeof zrankRaw === 'number' && Number.isFinite(zrankRaw)) {
+      submittedRank = zrankRaw + 1
+    }
+    if (typeof zcardRaw === 'number' && Number.isFinite(zcardRaw)) {
+      boardSize = zcardRaw
+    }
+  } catch {
+    submittedRank = null
+    boardSize = null
+  }
+
   // Per-lap metadata is tracked in a side-key keyed by nonce so the leaderboard
   // can show what setup the time was set with, and which input device was used.
   // Optional in the payload to keep old clients submitting (we backfill below).
@@ -170,5 +195,12 @@ export async function POST(req: NextRequest) {
     // when a replay was uploaded. Used by the client to build a friend
     // challenge link that races recipients against this exact lap's ghost.
     submittedNonce: payload.nonce,
+    // Leaderboard placement for the lap that was just stored. 1-indexed rank
+    // alongside the post-insert board size so the HUD's lap-saved toast can
+    // surface "#R / B". Both default to null on a KV outage so the client
+    // still gets a clean 200 ok response and the lap-saved toast keeps its
+    // legacy phrasing.
+    submittedRank,
+    boardSize,
   })
 }

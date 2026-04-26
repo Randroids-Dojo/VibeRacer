@@ -94,6 +94,8 @@ describe('POST /api/race/submit', () => {
       nextToken: string
       nextNonce: string
       submittedNonce: string
+      submittedRank: number | null
+      boardSize: number | null
     }
     expect(out.ok).toBe(true)
     expect(out.nextNonce).toMatch(/^[a-f0-9]{32}$/)
@@ -101,6 +103,9 @@ describe('POST /api/race/submit', () => {
     // The just-submitted nonce should match the one we issued so the client
     // can build a friend-challenge URL pinned to this lap's recorded ghost.
     expect(out.submittedNonce).toBe(payload.nonce)
+    // Lone submission: it owns the board and sits at #1 of 1.
+    expect(out.submittedRank).toBe(1)
+    expect(out.boardSize).toBe(1)
 
     const score = await fake.zscore(
       `lb:track:${'a'.repeat(64)}`,
@@ -298,6 +303,60 @@ describe('POST /api/race/submit', () => {
       `track:track:${'a'.repeat(64)}:topReplay`,
     )
     expect(pointer).toBe(slower.payload.nonce)
+  })
+
+  it('returns submittedRank reflecting the lap time vs prior board entries', async () => {
+    // Pre-seed a slow legacy entry the test submissions will compete with.
+    await fake.zadd(`lb:track:${'a'.repeat(64)}`, {
+      score: 5000,
+      member: `xyz:${racerId}:0:legacynonce`,
+    })
+
+    const { POST } = await import('@/app/api/race/submit/route')
+
+    // Submit a slower-than-legacy lap: ranks #2 of 2.
+    const slow = issueToken({ nonce: 'b1'.repeat(16) })
+    await seedNonce(slow.payload.nonce)
+    const slowRes = await POST(
+      buildReq({
+        token: slow.token,
+        checkpoints: [
+          { cpId: 0, tMs: 4000 },
+          { cpId: 1, tMs: 8000 },
+        ],
+        lapTimeMs: 8000,
+        initials: 'abc',
+      }),
+    )
+    expect(slowRes.status).toBe(200)
+    const slowBody = (await slowRes.json()) as {
+      submittedRank: number
+      boardSize: number
+    }
+    expect(slowBody.submittedRank).toBe(2)
+    expect(slowBody.boardSize).toBe(2)
+
+    // Submit a faster-than-legacy lap: ranks #1 of 3.
+    const fast = issueToken({ nonce: 'b2'.repeat(16) })
+    await seedNonce(fast.payload.nonce)
+    const fastRes = await POST(
+      buildReq({
+        token: fast.token,
+        checkpoints: [
+          { cpId: 0, tMs: 1000 },
+          { cpId: 1, tMs: 2000 },
+        ],
+        lapTimeMs: 2000,
+        initials: 'abc',
+      }),
+    )
+    expect(fastRes.status).toBe(200)
+    const fastBody = (await fastRes.json()) as {
+      submittedRank: number
+      boardSize: number
+    }
+    expect(fastBody.submittedRank).toBe(1)
+    expect(fastBody.boardSize).toBe(3)
   })
 
   it('silently drops with no racerId cookie', async () => {

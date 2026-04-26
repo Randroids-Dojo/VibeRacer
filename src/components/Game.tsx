@@ -136,6 +136,7 @@ import {
 } from '@/game/audio'
 import { TitleMusic } from './TitleMusic'
 import { buildSharePayload, shareOrCopy } from '@/lib/share'
+import { buildToastWithRank, isLapRankInfo } from '@/lib/lapToast'
 
 export type ToastKind = 'lap' | 'pb' | 'record'
 
@@ -1575,6 +1576,8 @@ function GameSession({
         ok?: boolean
         nextToken?: string
         submittedNonce?: string
+        submittedRank?: number | null
+        boardSize?: number | null
       }
       if (body.ok && body.nextToken) tokenRef.current = body.nextToken
       // Persist the just-submitted nonce when this lap was both a local PB
@@ -1592,6 +1595,30 @@ function GameSession({
           nonce: body.submittedNonce,
           lapTimeMs: pbFlag.lapTimeMs,
         })
+      }
+      // Surface the just-submitted lap's leaderboard placement inside the
+      // existing lap-saved toast. The rank + boardSize round-trip is
+      // best-effort: when the server omits or zeros them (KV outage, older
+      // client) the toast keeps its legacy "lap N saved" / "NEW PB!"
+      // phrasing. We only update if the toast is still showing (toastKind
+      // not yet cleared by the auto-clear timer) so a slow round-trip never
+      // races the timer to revive a cleared lane.
+      if (body.ok) {
+        const rankInfo = isLapRankInfo(
+          body.submittedRank !== undefined && body.boardSize !== undefined
+            ? { rank: body.submittedRank, boardSize: body.boardSize }
+            : null,
+        )
+          ? { rank: body.submittedRank as number, boardSize: body.boardSize as number }
+          : null
+        if (rankInfo) {
+          setHud((prev) => {
+            if (prev.toast === null || prev.toastKind === null) return prev
+            const next = buildToastWithRank(prev.toast, prev.toastKind, rankInfo)
+            if (next === prev.toast) return prev
+            return { ...prev, toast: next }
+          })
+        }
       }
     } catch {
       // Local PB tracking already handled the lap.

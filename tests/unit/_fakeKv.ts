@@ -119,6 +119,17 @@ export class FakeKv {
     return entry ? entry.score : null
   }
 
+  async zrank(key: string, member: string): Promise<number | null> {
+    const list = this.zsets.get(key) ?? []
+    const idx = list.findIndex((e) => e.member === member)
+    return idx === -1 ? null : idx
+  }
+
+  async zcard(key: string): Promise<number> {
+    const list = this.zsets.get(key) ?? []
+    return list.length
+  }
+
   async lpush(key: string, ...values: string[]): Promise<number> {
     const list = this.lists.get(key) ?? []
     list.unshift(...values)
