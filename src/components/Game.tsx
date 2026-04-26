@@ -30,7 +30,14 @@ import {
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
 } from '@/game/music'
+import {
+  playLapStinger,
+  playPbFanfare,
+  silenceAllSfx,
+} from '@/game/audio'
 import { TitleMusic } from './TitleMusic'
+
+export type ToastKind = 'lap' | 'pb' | 'record'
 
 export interface OverallRecord {
   initials: string
@@ -77,6 +84,7 @@ interface HudState {
   lapCount: number
   onTrack: boolean
   toast: string | null
+  toastKind: ToastKind | null
 }
 
 type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning'
@@ -137,6 +145,7 @@ function GameSession({
     lapCount: 0,
     onTrack: true,
     toast: null,
+    toastKind: null,
   }))
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
@@ -191,6 +200,7 @@ function GameSession({
       toastTimerRef.current = null
     }
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
+    silenceAllSfx(0.05)
     setPaused(false)
     setHud((prev) => ({
       ...prev,
@@ -200,6 +210,7 @@ function GameSession({
       lapCount: 0,
       onTrack: true,
       toast: null,
+      toastKind: null,
     }))
     setPhase('countdown')
   }, [])
@@ -274,6 +285,7 @@ function GameSession({
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      silenceAllSfx(0.05)
     }
   }, [])
 
@@ -286,6 +298,7 @@ function GameSession({
 
   function handleLapComplete(event: LapCompleteEvent) {
     const lapMs = event.lapTimeMs
+    const outcomeRef: { current: ToastKind } = { current: 'lap' }
     setHud((prev) => {
       const isSessionPb = prev.bestSessionMs === null || lapMs < prev.bestSessionMs
       const isAllTimePb = prev.bestAllTimeMs === null || lapMs < prev.bestAllTimeMs
@@ -299,11 +312,18 @@ function GameSession({
           activeGhostRef.current = pending
         }
       }
-      const toast = isNewRecord
-        ? 'NEW RECORD!'
+      const toastKind: ToastKind = isNewRecord
+        ? 'record'
         : isAllTimePb
-          ? 'NEW PB!'
-          : `lap ${event.lapNumber} saved`
+          ? 'pb'
+          : 'lap'
+      outcomeRef.current = toastKind
+      const toast =
+        toastKind === 'record'
+          ? 'NEW RECORD!'
+          : toastKind === 'pb'
+            ? 'NEW PB!'
+            : `lap ${event.lapNumber} saved`
       return {
         ...prev,
         bestSessionMs: isSessionPb ? lapMs : prev.bestSessionMs,
@@ -312,11 +332,16 @@ function GameSession({
           ? { initials, lapTimeMs: lapMs }
           : prev.overallRecord,
         toast,
+        toastKind,
       }
     })
+    const outcome = outcomeRef.current
+    if (outcome === 'record') playPbFanfare('record')
+    else if (outcome === 'pb') playPbFanfare('pb')
+    else playLapStinger()
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     toastTimerRef.current = setTimeout(() => {
-      setHud((prev) => ({ ...prev, toast: null }))
+      setHud((prev) => ({ ...prev, toast: null, toastKind: null }))
       toastTimerRef.current = null
     }, 1800)
 
@@ -407,6 +432,7 @@ function GameSession({
         lapCount={hud.lapCount}
         onTrack={hud.onTrack}
         toast={hud.toast}
+        toastKind={hud.toastKind}
         initials={initials}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}

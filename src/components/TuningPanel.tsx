@@ -7,6 +7,7 @@ import {
   clampParams,
   isStockParams,
 } from '@/lib/tuningSettings'
+import { useClickSfx } from '@/hooks/useClickSfx'
 
 interface TuningPanelProps {
   params: CarParams
@@ -22,6 +23,9 @@ export function TuningPanel({
   onClose,
 }: TuningPanelProps) {
   const stock = useMemo(() => isStockParams(params), [params])
+  const clickConfirm = useClickSfx('confirm')
+  const clickBack = useClickSfx('back')
+  const clickSoft = useClickSfx('soft')
 
   function update(key: keyof CarParams, value: number) {
     onChange(clampParams({ ...params, [key]: value }))
@@ -32,7 +36,14 @@ export function TuningPanel({
       <div style={panel}>
         <div style={header}>
           <div style={title}>SETUP</div>
-          <button onClick={onClose} style={closeBtn} aria-label="Close tuning">
+          <button
+            onClick={() => {
+              clickBack()
+              onClose()
+            }}
+            style={closeBtn}
+            aria-label="Close tuning"
+          >
             CLOSE
           </button>
         </div>
@@ -83,10 +94,22 @@ export function TuningPanel({
         </div>
 
         <div style={footer}>
-          <button onClick={onReset} style={resetAllBtn}>
+          <button
+            onClick={() => {
+              clickSoft()
+              onReset()
+            }}
+            style={resetAllBtn}
+          >
             Reset to defaults
           </button>
-          <button onClick={onClose} style={doneBtn}>
+          <button
+            onClick={() => {
+              clickConfirm()
+              onClose()
+            }}
+            style={doneBtn}
+          >
             Done
           </button>
         </div>

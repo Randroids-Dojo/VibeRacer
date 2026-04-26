@@ -10,7 +10,7 @@
 
 | § | Section | Status |
 | - | - | - |
-| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt all work; edit pending) |
+| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt, PB fanfare with centered HUD burst all work) |
 | 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
@@ -19,12 +19,12 @@
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, checkpoints, lap detection, invalid-lap reset, HUD all live; per-track configurable checkpoint count pending) |
 | 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings ship; Settings pane is now live for keyboard remap and dual / single touch mode) |
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
-| 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD all live; PB fanfare pending) |
+| 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version, overall record in HUD, PB fanfare and record fanfare with a centered HUD burst all live; admin tooling and pagination beyond top 100 pending) |
 | 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
-| 13 | Audio | partial (title, game, and pause music tracks share one Web Audio scheduler with crossfade and speed-driven tempo/intensity; countdown beep SFX ship, other SFX pending) |
+| 13 | Audio | partial (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, UI click variants, and a centered HUD burst on PB / record all ship; deeper SFX polish and SFX volume slider pending) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls landed; SFX pending) |
+| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls + SFX layer landed; minor module follow-ups still open) |
 | 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
@@ -609,13 +609,15 @@ Three named tracks live in one engine (`src/game/music.ts`) and share the schedu
 ### SFX
 
 - Countdown beeps: shipped. `playCountdownBeep(isGo)` in `src/game/music.ts` plays a one-shot tone through the shared master gain. A4 square for 3/2/1, A5 triangle for GO.
-- Engine drone, pitch-shifted by speed: pending.
-- Tire skid (noise burst with low-pass filter) when lateral grip saturates: pending.
-- Finish-line fanfare on lap completion: pending.
-- PB celebration jingle on new personal best: pending.
-- UI click beeps: pending.
+- Engine drone, pitch-shifted by speed: shipped. `startEngineDrone` / `updateEngine` / `stopEngineDrone` in `src/game/audio.ts`. One persistent sawtooth oscillator into a lowpass biquad and a per-voice GainNode. `RaceCanvas` calls `updateDriveSfx` every rAF frame, which feeds drone frequency, cutoff, and volume from `|speed| / maxSpeed`. `setTargetAtTime` smoothing keeps per-frame writes click-free. Volume ducks to 0 when paused or pre-race; off-track applies an additional small duck so going off the road sounds drier.
+- Tire skid: shipped. `startSkid` / `updateSkid` / `stopSkid` in `src/game/audio.ts`. One looping noise buffer through a lowpass biquad and a GainNode. The pure helper `skidIntensity(speed, maxSpeed, steerAbs, onTrack)` proxies a slip-angle-style cue from `steerAbs * speedRatio + (offTrack ? 0.4 : 0)`. Justification: scalar physics has no real slip angle, so we surface the visible cues a player associates with skid (sharp steering at speed, leaving the road).
+- Finish-line stinger: shipped. `playLapStinger()` plays a three-note triangle arpeggio (E5, G5, C6) on every completed lap that is not already a PB.
+- PB celebration jingle: shipped. `playPbFanfare('pb')` plays a 5-note major arpeggio with a sub-octave triangle layer; `playPbFanfare('record')` adds octave-up doublings on the final two notes plus a kick on beat one. Wired in `Game.tsx::handleLapComplete`: `record` outcome plays the bigger fanfare, `pb` plays the smaller one, otherwise the lap stinger. The visual side lives in `HUD.tsx`: a centered radial-gradient burst plus an inset edge-flash, gold for `record`, green for `pb`. Total animation under 1.2s.
+- UI click beeps: shipped. `playUiClick(variant)` schedules a one-shot oscillator (`'soft'` / `'confirm'` / `'back'` variants). The shared hook `useClickSfx(variant)` in `src/hooks/useClickSfx.ts` returns a stable callback. Wired into PauseMenu (every menu button), SettingsPane (close, done, reset, open Tuning Lab), TuningPanel (close, done, reset), Leaderboard (back, race-this-version), and InitialsPrompt (save).
+- Off-track rumble: shipped. `playOffTrackRumble()` plays a short low-passed noise burst on the transition from on-track to off-track. Triggered inside `updateDriveSfx` from the `prevOnTrack && !onTrack` edge.
+- Pause / restart / exit safety: `silenceAllSfx(0.05)` in `Game.tsx::restart` and the unmount cleanup ramps the continuous voices to 0; one-shots ride out their own sub-second tails. `RaceCanvas` cleanup calls `stopEngineDrone(0.1)` and `stopSkid(0.1)` on unmount.
 
-All SFX reuse the same `AudioContext` and `schedNote` / `schedNoise` helpers. The pending items will migrate to `game/audio.ts` (Section 16) if the surface grows enough to warrant a split.
+All SFX share one `AudioContext` and master `GainNode` with the music scheduler via `src/game/audioEngine.ts`. The shared module owns the singleton, the autoplay first-gesture handler, and the keyed noise-buffer cache (`'snare'`, `'hat'`, `'skid'`, `'rumble'`). Pure helpers (`droneFreqHz`, `droneFilterHz`, `droneVolume`, `skidIntensity`, `uiClickEnvelope`) live in `audio.ts` and are unit-tested in `tests/unit/audio.test.ts` against a minimal AudioContext stub.
 
 ### Stretch: personalization (later)
 
@@ -690,7 +692,7 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`, `game/virtual-joystick.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`, `TouchControls`) are all in. Still pending: `TitleScreen`, `game/audio.ts` for SFX.
+**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`, `game/audioEngine.ts`, `game/audio.ts`, `game/virtual-joystick.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`, `TouchControls`) plus the `useClickSfx` hook are all in.
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
@@ -741,15 +743,15 @@ src/
 - Files currently under `src/`:
   - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
   - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`, `components/TitleMusic.tsx`.
-  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds), `game/music.ts` (Web Audio scheduler + title/game/pause tracks).
-  - `hooks/useKeyboard.ts`, `hooks/useTouchControls.ts`.
+  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds), `game/music.ts` (Web Audio scheduler + title/game/pause tracks), `game/audioEngine.ts` (shared AudioContext + master gain + autoplay-gesture handler + noise-buffer cache), `game/audio.ts` (engine drone, tire skid, lap stinger, PB / record fanfare, UI clicks, off-track rumble + per-frame `updateDriveSfx`).
+  - `hooks/useKeyboard.ts`, `hooks/useTouchControls.ts`, `hooks/useClickSfx.ts`.
   - `game/virtual-joystick.ts`.
   - `components/TouchControls.tsx`.
   - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TitleScreen.tsx`, `game/audio.ts` (SFX), additional `hooks/*` (useGameState).
+- **Not yet landed.** `components/TitleScreen.tsx`, additional `hooks/*` (useGameState).
 
 ---
 

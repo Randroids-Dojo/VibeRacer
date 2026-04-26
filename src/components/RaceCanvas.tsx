@@ -25,6 +25,13 @@ import {
   interpolateGhostPose,
   type Replay,
 } from '@/lib/replay'
+import {
+  startEngineDrone,
+  startSkid,
+  stopEngineDrone,
+  stopSkid,
+  updateDriveSfx,
+} from '@/game/audio'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -146,6 +153,8 @@ export function RaceCanvas({
     let lastHudTs = 0
     let running = true
     let prevHud: RaceCanvasHud | null = null
+    let prevOnTrack = true
+    let droneStarted = false
 
     function loop(ts: number) {
       if (!running) return
@@ -164,11 +173,26 @@ export function RaceCanvas({
         pendingRaceStartRef.current = null
         lastTs = ts
         prevHud = null
+        prevOnTrack = true
         raf = requestAnimationFrame(loop)
         return
       }
 
       if (pausedRef.current) {
+        // Duck the continuous voices while paused so they don't bleed under
+        // the pause music. One call per frame is cheap; setTargetAtTime keeps
+        // the ramp smooth.
+        if (!disableMusicRef.current) {
+          updateDriveSfx({
+            speedAbs: 0,
+            maxSpeed: paramsRef.current.maxSpeed,
+            throttle: 0,
+            steerAbs: 0,
+            onTrack: true,
+            prevOnTrack: true,
+            racing: false,
+          })
+        }
         lastTs = ts
         raf = requestAnimationFrame(loop)
         return
@@ -253,6 +277,24 @@ export function RaceCanvas({
 
       if (!disableMusicRef.current) {
         setGameIntensity(Math.abs(state.speed) / paramsRef.current.maxSpeed)
+        const racing = state.raceStartMs !== null
+        if (racing && !droneStarted) {
+          startEngineDrone()
+          startSkid()
+          droneStarted = true
+        }
+        const steerAbs = Math.abs((k.left ? 1 : 0) - (k.right ? 1 : 0))
+        const throttle = (k.forward ? 1 : 0) - (k.backward ? 1 : 0)
+        updateDriveSfx({
+          speedAbs: Math.abs(state.speed),
+          maxSpeed: paramsRef.current.maxSpeed,
+          throttle,
+          steerAbs,
+          onTrack: state.onTrack,
+          prevOnTrack,
+          racing,
+        })
+        prevOnTrack = state.onTrack
       }
 
       if (result.lapComplete) {
@@ -306,6 +348,10 @@ export function RaceCanvas({
       running = false
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
+      if (!disableMusicRef.current) {
+        stopEngineDrone(0.1)
+        stopSkid(0.1)
+      }
       ghostBuild.dispose()
       bundle.scene.remove(ghostMesh)
       bundle.dispose()
