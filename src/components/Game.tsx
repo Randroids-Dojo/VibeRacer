@@ -183,6 +183,11 @@ function GameSession({
   // showGhostRef: RaceCanvas polls this each frame and reapplies on change.
   const carPaintRef = useRef<string | null>(settings.carPaint)
   carPaintRef.current = settings.carPaint
+  // Mirrors settings.showSkidMarks into the rAF loop without remounting the
+  // canvas. Existing marks keep fading even after a flip-off so the toggle
+  // does not snap a visible streak away mid-corner.
+  const showSkidMarksRef = useRef<boolean>(settings.showSkidMarks)
+  showSkidMarksRef.current = settings.showSkidMarks
   // Live pose channel for the minimap. RaceCanvas writes to these refs every
   // frame; the Minimap component reads them in its own rAF loop without going
   // through React state. Keeping the refs alive here means a Settings toggle
@@ -541,6 +546,7 @@ function GameSession({
         showGhostRef={showGhostRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
+        showSkidMarksRef={showSkidMarksRef}
         carPoseOutRef={minimapCarPoseRef}
         ghostPoseOutRef={minimapGhostPoseRef}
         onLapReplay={handleLapReplay}

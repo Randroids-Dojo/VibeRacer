@@ -291,7 +291,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD, top-down minimap card, pause button, and invalid-lap handling are all live.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD, top-down minimap card, pause button, skid mark trail, and invalid-lap handling are all live.
 
 ### Build log
 
@@ -333,6 +333,16 @@ A small top-down minimap card sits in the bottom-right corner of the screen duri
 Geometry helpers live in `src/game/minimap.ts` (`buildMinimapGeometry(path, viewSize?, padding?)`, `computeBounds`). The helper walks every `OrderedPiece`, extracts the centerline (entry/exit segment for straights, a 12-segment polyline for corners, the precomputed S-curve samples for sampled pieces), pads the bounds by half the track width, and returns one SVG path string per piece plus a `worldToView(x, z)` projector that preserves aspect ratio. SVG +Y goes downward and world +Z is south, so the projector maps Z directly onto Y without a flip and north (smaller Z) renders above south (larger Z).
 
 `src/components/Minimap.tsx` renders the static SVG once per `pieces` change. The car and ghost markers update via direct DOM mutation in a small rAF loop driven by two pose refs (`carPoseRef`, `ghostPoseRef`) so a 60 Hz position update never triggers a React re-render. `RaceCanvas.tsx` writes the live pose into `carPoseOutRef` and `ghostPoseOutRef` every frame; `Game.tsx` owns the refs and only mounts `<Minimap />` when `settings.showMinimap` is true. Tests live in `tests/unit/minimap.test.ts` (per-piece path strings, in-bounds projection, north-vs-south orientation, view-size respect, aspect ratio centering, empty-path rejection) and `tests/unit/controlSettings.test.ts` (default value, round-trip, legacy backfill).
+
+### Skid marks
+
+Dark tire stripes appear on the road behind the rear wheels whenever the player slides hard or drives off-track. Marks fade to nothing over a few seconds so a long race never accumulates an unbounded streak. Toggleable from Settings (`showSkidMarks: boolean` in `ControlSettings`, default on, persisted via the existing `viberacer.controls` localStorage key); turning the toggle off lets any marks already on the ground finish their fade rather than snapping them away mid-corner.
+
+Pure helpers live in `src/game/skidMarks.ts`. `shouldSpawnSkidMark(intensity, speedAbs, msSinceLastSpawn)` gates spawns on a minimum slide intensity (`SKID_SPAWN_MIN_INTENSITY = 0.35`), a minimum speed (`SKID_SPAWN_MIN_SPEED = 4`), and a fixed cadence (`SKID_SPAWN_INTERVAL_MS = 100`). `skidMarkAlpha(ageMs, peak)` linearly fades each mark from its peak alpha at age 0 to 0 at `SKID_MARK_FADE_MS = 4500`. `skidMarkPeakAlpha(intensity)` scales the peak by the slide's intensity up to `SKID_MARK_BASE_ALPHA = 0.85`, so weak slides leave fainter marks. `nextSkidMarkIndex` advances the ring-buffer write pointer.
+
+`buildSkidMarkLayer(poolSize)` in `src/game/sceneBuilder.ts` owns the renderer side: a `Group` of `SKID_MARK_POOL_SIZE = 220` pre-allocated `MeshBasicMaterial` quads sharing one `PlaneGeometry`. Each spawn places two stripes (one per rear wheel) offset perpendicular to the heading by `SKID_MARK_REAR_OFFSET = 1.05` and back along `SKID_MARK_REAR_BACK = 1.4`. `tick(nowMs)` updates per-mark opacity each frame; `clear()` resets the pool on a Restart so a new lap starts on a clean track. The layer's materials and geometry are released through the bundle's existing scene-traversal `dispose` so there is no double-dispose path.
+
+`RaceCanvas.tsx` reads the existing `skidIntensity` heuristic from `audio.ts` to feed the spawn decision and polls `showSkidMarksRef` each frame so a Settings flip lands without rebuilding the renderer. Tests: `tests/unit/skidMarks.test.ts` covers spawn gating (intensity floor, speed floor, interval debounce, custom interval), alpha ramp (peak at age 0, zero at fade end, midpoint linearity, peak clamping, custom fade), peak alpha scaling, and ring-buffer wrap including a custom pool size and the defensive zero-pool case. Toggle coverage in `tests/unit/controlSettings.test.ts` (default, round-trip, legacy backfill).
 
 ### Endless loop
 

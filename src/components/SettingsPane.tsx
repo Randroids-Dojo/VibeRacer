@@ -224,6 +224,10 @@ export function SettingsPane({
     onChange({ ...settings, showMinimap: value })
   }
 
+  function setShowSkidMarks(value: boolean) {
+    onChange({ ...settings, showSkidMarks: value })
+  }
+
   function setCarPaint(value: string | null) {
     clickSoft()
     onChange({ ...settings, carPaint: value })
@@ -451,6 +455,22 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showMinimap}
                 onChange={setShowMinimap}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Skid marks</div>
+            <MenuHint>
+              Dark tire trail laid behind the rear wheels during slides and
+              off-track moments. Marks fade after a few seconds. Turn off for
+              a fully clean track surface.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show skid marks</div>
+              <MenuToggle
+                value={settings.showSkidMarks}
+                onChange={setShowSkidMarks}
               />
             </div>
           </div>

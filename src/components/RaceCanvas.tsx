@@ -27,12 +27,17 @@ import {
   type Replay,
 } from '@/lib/replay'
 import {
+  skidIntensity,
   startEngineDrone,
   startSkid,
   stopEngineDrone,
   stopSkid,
   updateDriveSfx,
 } from '@/game/audio'
+import {
+  shouldSpawnSkidMark,
+  skidMarkPeakAlpha,
+} from '@/game/skidMarks'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -69,6 +74,10 @@ export interface RaceCanvasProps {
   // changes so a swatch click in the pause menu repaints the car on the
   // next frame.
   carPaintRef?: MutableRefObject<string | null>
+  // Toggle the dark skid-mark trail laid behind the rear wheels during
+  // slides. Polled each frame so a Settings flip takes effect without
+  // rebuilding the renderer. Default behavior when omitted: enabled.
+  showSkidMarksRef?: MutableRefObject<boolean>
   // Pose targets the rAF loop writes the player's current world pose into
   // every frame so peripheral overlays (the minimap, future telemetry) can
   // read it without re-rendering React 60 times per second. Optional so the
@@ -102,6 +111,7 @@ export function RaceCanvas({
   showGhostRef,
   cameraRigRef,
   carPaintRef,
+  showSkidMarksRef,
   carPoseOutRef,
   ghostPoseOutRef,
   onLapReplay,
@@ -184,6 +194,7 @@ export function RaceCanvas({
     let raf = 0
     let lastTs = performance.now()
     let lastHudTs = 0
+    let lastSkidSpawnTs = -Infinity
     let running = true
     let prevHud: RaceCanvasHud | null = null
     let prevOnTrack = true
@@ -209,6 +220,8 @@ export function RaceCanvas({
         }
         if (ghostPoseOutRef) ghostPoseOutRef.current = null
         resetRecording()
+        bundle.skidMarks.clear()
+        lastSkidSpawnTs = -Infinity
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
         pendingRaceStartRef.current = null
@@ -343,6 +356,40 @@ export function RaceCanvas({
         ghostMesh.visible = false
         if (ghostPoseOutRef) ghostPoseOutRef.current = null
       }
+
+      // Skid marks: lay a paired stripe behind the rear wheels when the
+      // player is sliding hard or off-track. The pure helper handles the
+      // gating (interval + thresholds); the layer's `tick` fades existing
+      // marks every frame so they ramp to zero independently. Disabled when
+      // the Settings toggle is off, but the fade still ticks so any marks
+      // already on the ground finish their fade rather than freezing.
+      const showSkidMarks = showSkidMarksRef?.current ?? true
+      if (state.raceStartMs !== null) {
+        const skidSpeedAbs = Math.abs(state.speed)
+        const skidSteerAbs = Math.abs(steerInput)
+        const intensity = skidIntensity(
+          skidSpeedAbs,
+          paramsRef.current.maxSpeed,
+          skidSteerAbs,
+          state.onTrack,
+        )
+        const decision = shouldSpawnSkidMark(
+          intensity,
+          skidSpeedAbs,
+          ts - lastSkidSpawnTs,
+        )
+        if (decision.spawn && showSkidMarks) {
+          bundle.skidMarks.spawn(
+            state.x,
+            state.z,
+            state.heading,
+            skidMarkPeakAlpha(intensity),
+            ts,
+          )
+          lastSkidSpawnTs = ts
+        }
+      }
+      bundle.skidMarks.tick(ts)
 
       renderer.render(bundle.scene, bundle.camera)
 

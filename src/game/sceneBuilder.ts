@@ -7,6 +7,7 @@ import {
   Group,
   type Material,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
   type Object3D,
   PerspectiveCamera,
@@ -21,6 +22,13 @@ import {
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+import {
+  SKID_MARK_LENGTH,
+  SKID_MARK_POOL_SIZE,
+  nextSkidMarkIndex,
+  skidMarkAlpha,
+  skidMarkPeakAlpha,
+} from './skidMarks'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -45,6 +53,10 @@ export interface SceneBundle {
   // loading: the requested paint is buffered and applied as soon as the
   // mesh appears.
   setCarPaint: (paintHex: string | null) => void
+  // Skid mark pool. Exposed on the bundle so the rAF loop can spawn into it
+  // each frame and clear it on a full reset, without needing to reach into
+  // the scene graph.
+  skidMarks: SkidMarkLayer
   dispose: () => void
 }
 
@@ -251,6 +263,169 @@ function buildCar(): {
   }
 }
 
+// Skid mark layer: a fixed-size pool of dark quads laid flat on the road
+// that the rAF loop spawns into when the car is sliding. The pool is a ring
+// buffer; the oldest mark is overwritten when capacity is hit so the GPU
+// footprint stays bounded regardless of race length. Each quad owns its own
+// material so per-mark alpha can fade independently without touching shaders.
+//
+// Spawn poses are passed in as world `(x, z, heading)` plus the slide's peak
+// intensity. The renderer offsets each mark to the rear-axle stripes (left
+// and right of the chassis) so the trail reads as two distinct tire marks.
+export interface SkidMarkLayer {
+  group: Group
+  spawn: (x: number, z: number, heading: number, peakAlpha: number, nowMs: number) => void
+  tick: (nowMs: number) => void
+  clear: () => void
+  dispose: () => void
+}
+
+interface SkidMarkSlot {
+  mesh: Mesh
+  mat: MeshBasicMaterial
+  spawnedAt: number
+  peak: number
+  active: boolean
+}
+
+// Half the rear-axle width in world units. TRACK_WIDTH is 8; the car's
+// rendered footprint is roughly 2 wide after the GLB scale, so 1.0 places
+// the two stripes about a tire's width apart. Tuned visually so the marks
+// read as paired stripes rather than a single smeared blob.
+const SKID_MARK_REAR_OFFSET = 1.05
+// How far behind the chassis center the rear axle sits. The car GLB pivots
+// near its midpoint, so this is the back-half of the visible footprint.
+const SKID_MARK_REAR_BACK = 1.4
+// Sit slightly above the road plane (which itself sits at y=0.01) so the
+// marks render on top without z-fighting the road material.
+const SKID_MARK_Y = 0.02
+
+export function buildSkidMarkLayer(
+  poolSize = SKID_MARK_POOL_SIZE,
+): SkidMarkLayer {
+  const group = new Group()
+  // One geometry shared across every quad in the pool. Each slot owns its
+  // own material so per-mark alpha animates independently.
+  const geom = new PlaneGeometry(TRACK_WIDTH * 0.08, SKID_MARK_LENGTH)
+  const slots: SkidMarkSlot[] = []
+  for (let i = 0; i < poolSize; i++) {
+    const mat = new MeshBasicMaterial({
+      color: 0x1a1a1a,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+    })
+    const mesh = new Mesh(geom, mat)
+    mesh.rotation.x = -Math.PI / 2
+    mesh.visible = false
+    group.add(mesh)
+    slots.push({ mesh, mat, spawnedAt: 0, peak: 0, active: false })
+  }
+
+  // Two slots per spawn (one stripe per rear wheel). Track them via a
+  // single ring index that advances by 2 each spawn.
+  let writeIdx = 0
+
+  function placeSlot(
+    slot: SkidMarkSlot,
+    cx: number,
+    cz: number,
+    headingY: number,
+    peak: number,
+    nowMs: number,
+  ) {
+    slot.mesh.position.set(cx, SKID_MARK_Y, cz)
+    // The plane started in the XY plane (width on X, length on Y). After
+    // `rotation.x = -PI/2` the local +Y direction maps to world -Z, so a
+    // mark with `rotation.y = 0` lays its length along world -Z. To align
+    // the length with the car's heading we rotate about world Y by
+    // `heading - PI/2`: at heading 0 (car facing +X) this is -PI/2, which
+    // takes -Z back around to +X.
+    slot.mesh.rotation.y = headingY - Math.PI / 2
+    slot.spawnedAt = nowMs
+    slot.peak = peak
+    slot.active = true
+    slot.mat.opacity = peak
+    slot.mesh.visible = peak > 0
+  }
+
+  return {
+    group,
+    spawn(x, z, heading, peakAlpha, nowMs) {
+      if (peakAlpha <= 0) return
+      // Rear axle is back along the car's local -X (heading 0 looks +X).
+      const cosH = Math.cos(heading)
+      const sinH = -Math.sin(heading) // world Z = -sin(heading) for our coord system
+      // The "back" vector is opposite of the heading.
+      const backX = -cosH * SKID_MARK_REAR_BACK
+      const backZ = -sinH * SKID_MARK_REAR_BACK
+      // The "right" vector is perpendicular to heading in the XZ plane.
+      // For heading 0 (+X), right is +Z. So right = (-sinH, cosH) but our
+      // sinH already encodes the negation, so:
+      const rightX = -sinH
+      const rightZ = cosH
+      const baseX = x + backX
+      const baseZ = z + backZ
+      const leftSlot = slots[writeIdx]
+      const rightSlot = slots[(writeIdx + 1) % poolSize]
+      placeSlot(
+        leftSlot,
+        baseX + rightX * -SKID_MARK_REAR_OFFSET,
+        baseZ + rightZ * -SKID_MARK_REAR_OFFSET,
+        heading,
+        peakAlpha,
+        nowMs,
+      )
+      placeSlot(
+        rightSlot,
+        baseX + rightX * SKID_MARK_REAR_OFFSET,
+        baseZ + rightZ * SKID_MARK_REAR_OFFSET,
+        heading,
+        peakAlpha,
+        nowMs,
+      )
+      writeIdx = nextSkidMarkIndex(
+        nextSkidMarkIndex(writeIdx, poolSize),
+        poolSize,
+      )
+    },
+    tick(nowMs) {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i]
+        if (!s.active) continue
+        const age = nowMs - s.spawnedAt
+        const a = skidMarkAlpha(age, s.peak)
+        if (a <= 0) {
+          s.active = false
+          s.mesh.visible = false
+          s.mat.opacity = 0
+        } else {
+          s.mat.opacity = a
+        }
+      }
+    },
+    clear() {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i]
+        s.active = false
+        s.mesh.visible = false
+        s.mat.opacity = 0
+      }
+      writeIdx = 0
+    },
+    dispose() {
+      for (let i = 0; i < slots.length; i++) {
+        slots[i].mat.dispose()
+      }
+      geom.dispose()
+    },
+  }
+}
+
+// Re-export the pool helpers so RaceCanvas can reference the constants
+// without reaching across modules.
+export { skidMarkPeakAlpha }
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -314,23 +489,32 @@ export function buildScene(path: TrackPath): SceneBundle {
   const { car, setPaint: setCarPaint, cancel: cancelCar } = buildCar()
   scene.add(car)
 
+  const skidMarks = buildSkidMarkLayer()
+  scene.add(skidMarks.group)
+
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
   const dispose = () => {
     cancelCar()
+    // The skid mark layer's materials and shared geometry are picked up by
+    // the traversal below (the group sits inside `scene` and dedupes the
+    // shared geometry through `Set` semantics on dispose). Calling
+    // `skidMarks.dispose()` here would double-dispose the same resources.
     const mats = new Set<Material>()
+    const geoms = new Set<BufferGeometry>()
     scene.traverse((obj) => {
       const mesh = obj as Mesh
-      if (mesh.geometry) mesh.geometry.dispose()
+      if (mesh.geometry) geoms.add(mesh.geometry)
       const mat = mesh.material
       if (Array.isArray(mat)) mat.forEach((m) => mats.add(m))
       else if (mat) mats.add(mat)
     })
+    geoms.forEach((g) => g.dispose())
     mats.forEach((m) => m.dispose())
   }
 
-  return { scene, camera, car, setCarPaint, dispose }
+  return { scene, camera, car, setCarPaint, skidMarks, dispose }
 }
 
 export interface CameraRigParams {

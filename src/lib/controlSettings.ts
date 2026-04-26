@@ -62,6 +62,10 @@ export interface ControlSettings {
   // (cheap render, useful on unfamiliar tracks); turning it off hides the
   // card entirely with no other side effects.
   showMinimap: boolean
+  // Toggle the dark tire trail laid behind the rear wheels during slides.
+  // Cheap to render (a fixed-size pool of fading quads) so default on; the
+  // toggle is here for users who want a fully clean track surface.
+  showSkidMarks: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -82,6 +86,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   touchMode: 'single',
   showGhost: true,
   showMinimap: true,
+  showSkidMarks: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
 }
@@ -117,6 +122,9 @@ const ControlSettingsSchema = z.object({
   // Minimap toggle landed after the original settings shape. Default on for
   // legacy stored payloads so the upgrade is opt-out, not opt-in.
   showMinimap: z.boolean().default(true),
+  // Skid marks toggle landed later still; default on so legacy payloads
+  // start showing them automatically without losing any other choices.
+  showSkidMarks: z.boolean().default(true),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
   // not see a broken Settings pane.
@@ -135,6 +143,7 @@ export function cloneDefaultSettings(): ControlSettings {
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
+    showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
   }

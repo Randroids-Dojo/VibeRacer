@@ -189,6 +189,28 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showMinimap).toBe(true)
   })
 
+  it('defaults showSkidMarks to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showSkidMarks).toBe(true)
+    expect(cloneDefaultSettings().showSkidMarks).toBe(true)
+  })
+
+  it('round-trips a disabled showSkidMarks flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showSkidMarks = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showSkidMarks when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+    })
+    expect(readStoredControlSettings().showSkidMarks).toBe(true)
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,
