@@ -108,7 +108,47 @@ function cornerGeometry(op: OrderedPiece, segments = 20): BufferGeometry {
   return buildFlatGeometry(verts, idx)
 }
 
+function polylineGeometry(op: OrderedPiece): BufferGeometry {
+  const samples = op.samples!
+  const half = TRACK_WIDTH / 2
+  const verts: number[] = []
+  for (let i = 0; i < samples.length; i++) {
+    const s = samples[i]
+    // Build a tangent from neighboring samples (central difference at the
+    // interior, forward / backward at the ends). The perpendicular in the
+    // y=0 plane is (tz, -tx) rotated 90 CW, which yields the right-hand side
+    // when standing at the sample looking along travel.
+    let tx: number
+    let tz: number
+    if (i === 0) {
+      tx = samples[i + 1].x - s.x
+      tz = samples[i + 1].z - s.z
+    } else if (i === samples.length - 1) {
+      tx = s.x - samples[i - 1].x
+      tz = s.z - samples[i - 1].z
+    } else {
+      tx = samples[i + 1].x - samples[i - 1].x
+      tz = samples[i + 1].z - samples[i - 1].z
+    }
+    const tlen = Math.hypot(tx, tz) || 1
+    tx /= tlen
+    tz /= tlen
+    // Right-hand perpendicular in the +Y up frame.
+    const px = -tz
+    const pz = tx
+    verts.push(s.x + px * half, 0, s.z + pz * half)
+    verts.push(s.x - px * half, 0, s.z - pz * half)
+  }
+  const idx: number[] = []
+  for (let i = 0; i < samples.length - 1; i++) {
+    const base = i * 2
+    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2)
+  }
+  return buildFlatGeometry(verts, idx)
+}
+
 function pieceGeometry(op: OrderedPiece): BufferGeometry {
+  if (op.samples !== null) return polylineGeometry(op)
   return op.piece.type === 'straight' ? straightGeometry(op) : cornerGeometry(op)
 }
 

@@ -187,13 +187,14 @@ Custom tick-based integrator. No Rapier or Cannon. Matches FrackingAsteroids' "c
 
 **Status.** Partial. Validation, canonical hashing, default 3D track geometry, path ordering, and cell-based checkpoint generation now ship. Editor UI, save flow wired to `PUT /api/track/[slug]`, and additional piece types are still pending.
 
-### Pieces (starting set)
+### Pieces
 
 - Straight
 - Left 90
 - Right 90
+- S-curve (single-cell chicane that bumps off the centerline and returns)
 
-Each piece occupies one cell on an infinite grid. Pieces have entry and exit connectors on cell edges. Later additions: S-curve, wider turn, elevation ramp, chicane.
+Each piece occupies one cell on an infinite grid. Pieces have entry and exit connectors on cell edges. The S-curve uses the same connector pair as a straight (S-N at rotation 0) so it slots in wherever a straight does. Later additions: wider turn, elevation ramp, true two-sided S.
 
 ### Editor
 
@@ -234,7 +235,8 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 - Helper + tests: `src/game/editor.ts` exports `cycleCell`, `withCellCycled`, and `getBounds`. `tests/unit/editor.test.ts` covers the full cycle order, rotation and type advancement, piece removal on final-state cycle, and bounds across negative and positive coordinates. `tests/unit/trackPath.test.ts` covers corner-start spawn staying on the arc.
 - Configurable checkpoint count: `TrackSchema` and `TrackVersionSchema` now carry an optional `checkpointCount` (`MIN_CHECKPOINT_COUNT = 3`, capped at `pieces.length`). `hashTrack(pieces, checkpointCount)` only emits the field in canonical JSON when it differs from `pieces.length`, so legacy tracks without the field keep their existing version hash and leaderboards. `buildTrackPath(pieces, checkpointCount)` precomputes `cpTriggerPieceIdx[k] = round((k+1) * M / K) % M`, and `tick.ts` reads from that array instead of assuming one CP per piece. The editor hides this behind an Advanced toggle in the footer (with an amber dot when an override is active). Opening the panel surfaces a labeled numeric input alongside an explanation of what checkpoints do and when an author would change the count; the default ("one per piece, strictest") is what every legacy track ships with.
 - Historical version forking from the editor: `src/app/[slug]/edit/page.tsx` now reads `searchParams.v`, validates with `VersionHashSchema`, and threads the result into `loadTrack(slug, requestedHash)`. An invalid or unknown hash calls `notFound()`. When a hash is supplied, `TrackEditor` renders a small amber "FORKING v<short>" banner explaining that saving creates a new version on the same slug rather than overwriting the original, plus a "Switch to latest" shortcut. The leaderboard pause overlay (`src/components/Leaderboard.tsx`) gained a "Fork this version" / "Edit latest" button next to the existing "Race this version" button so players can jump straight from any version's leaderboard into editing a copy.
-- **Not yet landed.** Per-slug create-or-load prompt when visiting an empty slug (editor is reachable from the pause menu today but not from a fresh URL), pan/zoom on very large tracks, S-curve and other new piece types.
+- S-curve piece: live. New `'scurve'` value in `PieceTypeSchema` shares the straight's `[S, N]` connectors at rotation 0 so it slots in wherever a straight does. Geometry is built from four 90-degree arcs of radius 3 plus 4-unit straight bridges at entry and exit; the centerline bumps off-axis by `2 * SCURVE_ARC_RADIUS = 6` at the cell midpoint, which lands the road's outer edge exactly at the cell boundary. `OrderedPiece` gained an optional `samples: SampledPoint[] | null` field; for S-curve pieces `buildTrackPath` precomputes 49 evenly-spaced samples (rotated and translated to match the piece's placement, with the order reversed when the loop traverses the piece against its base direction). `samplePieceAt` and `distanceToCenterline` walk the polyline for sampled pieces; analytic straights and arcs are unchanged. The track editor palette (`TrackEditor.tsx`) gained an S-curve tool with its own SVG glyph alongside Straight / Left turn / Right turn. The render path in `sceneBuilder.ts` builds a triangle strip with `TRACK_WIDTH/2` perpendicular offset for any piece with `samples`. Existing tracks keep their hash because the canonical hash is keyed on piece type strings, not enum index.
+- **Not yet landed.** Per-slug create-or-load prompt when visiting an empty slug (editor is reachable from the pause menu today but not from a fresh URL), pan/zoom on very large tracks, true two-sided S-curve and other new piece types.
 
 ---
 

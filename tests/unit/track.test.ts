@@ -15,6 +15,12 @@ describe('connectorsOf', () => {
     expect(connectorsOf({ type: 'right90', row: 0, col: 0, rotation: 0 }))
       .toEqual([2, 1])
   })
+  it('scurve shares a straight\'s connectors so it slots into a straight\'s spot', () => {
+    expect(connectorsOf({ type: 'scurve', row: 0, col: 0, rotation: 0 }))
+      .toEqual([2, 0])
+    expect(connectorsOf({ type: 'scurve', row: 0, col: 0, rotation: 90 }))
+      .toEqual([3, 1])
+  })
 })
 
 describe('validateClosedLoop', () => {

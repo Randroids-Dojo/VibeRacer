@@ -17,13 +17,14 @@ import {
 } from '@/game/editor'
 
 type Tool = 'erase' | PieceType | 'start'
-const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90']
+const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90', 'scurve']
 const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
   left90: 'Left turn',
   right90: 'Right turn',
+  scurve: 'S-curve',
   start: 'Set start',
 }
 
@@ -591,6 +592,41 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
           <path
             d={`M ${cx} ${CELL} A ${cx} ${cx} 0 0 1 0 ${cx}`}
+            stroke={stroke}
+            strokeWidth={2}
+            strokeDasharray="4 4"
+            fill="none"
+          />
+        </>
+      ) : null}
+      {piece.type === 'scurve' ? (
+        <>
+          {/*
+            Top-down SVG: y grows downward, so a piece that travels south->north
+            in world coords (rotation 0) goes from y=CELL (bottom of glyph) to
+            y=0 (top of glyph). The snake bends right (+x) first, matching the
+            game world.
+          */}
+          <path
+            d={`M ${cx - roadWidth / 2} ${CELL}
+                L ${cx - roadWidth / 2} ${CELL * 0.78}
+                C ${cx - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.42}
+                C ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.06}
+                L ${cx - roadWidth / 2} 0
+                L ${cx + roadWidth / 2} 0
+                L ${cx + roadWidth / 2} ${CELL * 0.06}
+                C ${cx + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.42}
+                C ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.78}
+                L ${cx + roadWidth / 2} ${CELL}
+                Z`}
+            fill={road}
+          />
+          <path
+            d={`M ${cx} ${CELL}
+                L ${cx} ${CELL * 0.78}
+                C ${cx} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.42}
+                C ${cx + CELL * 0.32} ${CELL * 0.24} ${cx} ${CELL * 0.24} ${cx} ${CELL * 0.06}
+                L ${cx} 0`}
             stroke={stroke}
             strokeWidth={2}
             strokeDasharray="4 4"

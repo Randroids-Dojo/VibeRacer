@@ -30,6 +30,12 @@ describe('PieceSchema', () => {
         .success,
     ).toBe(false)
   })
+
+  it('accepts the scurve piece type', () => {
+    expect(
+      PieceSchema.parse({ type: 'scurve', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'scurve', row: 0, col: 0, rotation: 0 })
+  })
 })
 
 describe('TrackSchema', () => {
