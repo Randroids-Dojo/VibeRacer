@@ -1,5 +1,6 @@
 import type { LapHistoryEntry } from './lapHistory'
 import { summarizeHistory } from './lapHistory'
+import { computeLapConsistency, type LapConsistencyInfo } from './lapConsistency'
 import type { SectorDuration } from './optimalLap'
 
 /**
@@ -65,6 +66,9 @@ export interface SessionSummaryStats {
    * The "headline" the breakdown card uses to read "you left ~X seconds on
    * the table this session". Null when no breakdown was produced. */
   totalTimeLostMs: number | null
+  /** Recent-lap consistency over the same session history. Null until the
+   * player has enough valid laps for a stable readout. */
+  consistency: LapConsistencyInfo | null
 }
 
 /** One row of the sector breakdown card. */
@@ -137,6 +141,7 @@ export function summarizeSession(inputs: SessionSummaryInputs): SessionSummarySt
     sessionDurationMs: safeDuration,
     sectorBreakdown,
     totalTimeLostMs,
+    consistency: computeLapConsistency(history),
   }
 }
 

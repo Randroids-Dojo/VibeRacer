@@ -145,6 +145,7 @@ import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
 import { SessionSummary } from './SessionSummary'
 import { summarizeSession } from '@/game/sessionSummary'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
+import { computeLapConsistency } from '@/game/lapConsistency'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
 import { ReplaySchema, type Replay } from '@/lib/replay'
@@ -2480,6 +2481,7 @@ function GameSession({
         }
         speedUnit={settings.speedUnit}
         carMaxSpeed={tuning.maxSpeed}
+        lapConsistency={computeLapConsistency(lapHistory)}
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">

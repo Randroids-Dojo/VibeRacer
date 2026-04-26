@@ -7,6 +7,12 @@ import {
   type SectorBreakdownRow,
   type SessionSummaryStats,
 } from '@/game/sessionSummary'
+import {
+  colorForConsistencyTier,
+  formatConsistencyRatio,
+  formatConsistencyStdDev,
+  labelForConsistencyTier,
+} from '@/game/lapConsistency'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
 
 interface SessionSummaryProps {
@@ -129,6 +135,14 @@ export function SessionSummary({
                 label="Drift best"
                 value={String(Math.round(stats.driftBest))}
                 sub="this session"
+              />
+            ) : null}
+            {stats.consistency ? (
+              <StatTile
+                label="Consistency"
+                value={labelForConsistencyTier(stats.consistency.tier)}
+                sub={`${formatConsistencyStdDev(stats.consistency.stdDevMs)} spread (${formatConsistencyRatio(stats.consistency.stdDevRatio)})`}
+                valueColorOverride={colorForConsistencyTier(stats.consistency.tier)}
               />
             ) : null}
           </div>

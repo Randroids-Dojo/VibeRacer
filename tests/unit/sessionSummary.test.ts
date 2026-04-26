@@ -42,6 +42,7 @@ describe('summarizeSession', () => {
     expect(stats.priorAllTimeMs).toBeNull()
     expect(stats.sectorBreakdown).toEqual([])
     expect(stats.totalTimeLostMs).toBeNull()
+    expect(stats.consistency).toBeNull()
   })
 
   it('aggregates lap stats over the history', () => {
@@ -55,6 +56,18 @@ describe('summarizeSession', () => {
     expect(stats.bestLapMs).toBe(17_500)
     expect(stats.totalLapMs).toBe(53_400)
     expect(stats.averageLapMs).toBe(53_400 / 3)
+    expect(stats.consistency?.sampleCount).toBe(3)
+  })
+
+  it('includes recent-lap consistency when enough laps are present', () => {
+    const stats = summarizeSession({
+      history: [lap(1, 18_000), lap(2, 18_050), lap(3, 18_100)],
+      priorAllTimeMs: null,
+      driftBest: null,
+      sessionDurationMs: 60_000,
+    })
+    expect(stats.consistency).not.toBeNull()
+    expect(stats.consistency?.tier).toBe('locked-in')
   })
 
   it('reports a negative delta and beatsAllTime=true when the session set a new PB', () => {

@@ -33,6 +33,13 @@ import {
   formatTopSpeed,
   formatTopSpeedDelta,
 } from '@/game/topSpeedPb'
+import {
+  colorForConsistencyTier,
+  formatConsistencyRatio,
+  formatConsistencyStdDev,
+  labelForConsistencyTier,
+  type LapConsistencyInfo,
+} from '@/game/lapConsistency'
 import { type SpeedUnit } from '@/lib/speedometer'
 
 function formatLapTime(ms: number): string {
@@ -152,6 +159,9 @@ interface HudProps {
   // The player's current `maxSpeed` tuning. Used to classify the top-speed
   // PB into a tier accent. Defaults conservatively when omitted.
   carMaxSpeed?: number
+  // Recent completed-lap consistency. Null until the player has enough laps
+  // for the standard deviation to mean something.
+  lapConsistency?: LapConsistencyInfo | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -371,6 +381,34 @@ function StreakBadge({ label }: { label: string }) {
         {'>>'}
       </span>
       <span style={streakLabelStyle}>{label}</span>
+    </span>
+  )
+}
+
+// Recent-lap consistency chip. Pinned to the BEST (SESSION) lane because it
+// describes the shape of this run, not the all-time record. The value shows
+// the tier, with spread and percent in the title for players who want the
+// exact number without crowding the top row.
+function ConsistencyBadge({ info }: { info: LapConsistencyInfo }) {
+  const accent = colorForConsistencyTier(info.tier)
+  const label = labelForConsistencyTier(info.tier)
+  const stdDev = formatConsistencyStdDev(info.stdDevMs)
+  const ratio = formatConsistencyRatio(info.stdDevRatio)
+  return (
+    <span
+      style={{
+        ...consistencyBadgeStyle,
+        color: accent,
+        borderColor: hexWithAlpha(accent, 0.55),
+        boxShadow: `0 0 8px ${hexWithAlpha(accent, 0.3)}`,
+      }}
+      title={`${label}: ${stdDev} spread across last ${info.sampleCount} laps (${ratio})`}
+      aria-label={`Lap consistency ${label}, ${stdDev} spread`}
+    >
+      <span style={consistencyGlyphStyle} aria-hidden>
+        {'~'}
+      </span>
+      <span style={consistencyLabelStyle}>{label.toUpperCase()}</span>
     </span>
   )
 }
@@ -609,7 +647,12 @@ export function HUD(props: HudProps) {
         <StatBlock label="CURRENT" value={formatLapTime(props.currentMs)} big />
         {props.prediction ? <PredictionBlock prediction={props.prediction} /> : null}
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
-        <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
+        <div style={bestBlockGroup}>
+          <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
+          {props.lapConsistency ? (
+            <ConsistencyBadge info={props.lapConsistency} />
+          ) : null}
+        </div>
         <div style={bestBlockGroup}>
           <StatBlock
             label="BEST (ALL TIME)"
@@ -1455,6 +1498,34 @@ const streakFlameStyle: React.CSSProperties = {
   textShadow: '0 0 5px currentColor',
 }
 const streakLabelStyle: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
+}
+
+// Consistency badge styles. Same compact shape as the PB-streak badge, but
+// the accent is supplied per tier so "Locked in" reads green and loose runs
+// read amber / red without adding another large stat tile to the HUD.
+const consistencyBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background:
+    'linear-gradient(180deg, rgba(20, 24, 32, 0.8), rgba(8, 10, 16, 0.8))',
+  border: '1px solid rgba(255, 255, 255, 0.3)',
+  fontWeight: 800,
+  fontSize: 10,
+  letterSpacing: 1.2,
+  lineHeight: 1.2,
+}
+const consistencyGlyphStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 12,
+  lineHeight: 1,
+  color: 'currentColor',
+  textShadow: '0 0 5px currentColor',
+}
+const consistencyLabelStyle: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
 }
 
