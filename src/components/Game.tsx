@@ -127,6 +127,10 @@ interface HudState {
   overallRecord: OverallRecord | null
   lapCount: number
   onTrack: boolean
+  // Mirrored from RaceCanvas's debounced wrong-way detector. Renders a
+  // distinct HUD warning so a player who turned around or drove through
+  // the start line in reverse knows why the lap is not progressing.
+  wrongWay: boolean
   toast: string | null
   toastKind: ToastKind | null
   splitDelta: SplitDelta | null
@@ -248,6 +252,7 @@ function GameSession({
     overallRecord: initialRecord,
     lapCount: 0,
     onTrack: true,
+    wrongWay: false,
     toast: null,
     toastKind: null,
     splitDelta: null,
@@ -266,6 +271,7 @@ function GameSession({
       currentMs: next.currentMs,
       lapCount: next.lapCount,
       onTrack: next.onTrack,
+      wrongWay: next.wrongWay,
       lastLapMs: next.lastLapMs ?? prev.lastLapMs,
     }))
   }, [])
@@ -328,6 +334,7 @@ function GameSession({
       bestSessionMs: null,
       lapCount: 0,
       onTrack: true,
+      wrongWay: false,
       toast: null,
       toastKind: null,
       splitDelta: null,
@@ -351,6 +358,7 @@ function GameSession({
       ...prev,
       currentMs: 0,
       onTrack: true,
+      wrongWay: false,
       splitDelta: null,
     }))
   }, [])
@@ -747,6 +755,7 @@ function GameSession({
         overallRecord={hud.overallRecord}
         lapCount={hud.lapCount}
         onTrack={hud.onTrack}
+        wrongWay={hud.wrongWay && phase === 'racing' && !paused}
         toast={hud.toast}
         toastKind={hud.toastKind}
         initials={initials}

@@ -102,6 +102,7 @@ export function TuningSession({
     lapCount: 0,
     onTrack: true,
     lastLapMs: null,
+    wrongWay: false,
   })
   const [saveName, setSaveName] = useState('')
 
@@ -146,7 +147,7 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null })
+    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null, wrongWay: false })
     setPhase('countdown')
   }
 
@@ -244,7 +245,7 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null })
+    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null, wrongWay: false })
     setPhase('countdown')
   }
 
@@ -450,7 +451,9 @@ function DriveHud({ hud }: { hud: RaceCanvasHud }) {
           <span style={driveHudVal}>{last}s</span>
         </div>
       ) : null}
-      {!hud.onTrack ? (
+      {hud.wrongWay ? (
+        <div style={wrongWayBadge}>WRONG WAY</div>
+      ) : !hud.onTrack ? (
         <div style={offTrackBadge}>OFF TRACK</div>
       ) : null}
     </div>
@@ -669,6 +672,17 @@ const offTrackBadge: CSSProperties = {
   borderRadius: 6,
   textAlign: 'center',
   letterSpacing: 1,
+}
+const wrongWayBadge: CSSProperties = {
+  background: '#d32f2f',
+  color: '#fff5d6',
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '4px 8px',
+  borderRadius: 6,
+  textAlign: 'center',
+  letterSpacing: 1,
+  border: '1px solid rgba(255, 240, 180, 0.85)',
 }
 const driveActions: CSSProperties = {
   position: 'fixed',

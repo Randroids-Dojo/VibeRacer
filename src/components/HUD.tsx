@@ -21,6 +21,10 @@ interface HudProps {
   overallRecord: { initials: string; lapTimeMs: number } | null
   lapCount: number
   onTrack: boolean
+  // True when the debounced wrong-way detector is engaged. Renders a bold
+  // flashing warning banner so the player understands why the lap timer
+  // keeps resetting instead of completing.
+  wrongWay: boolean
   toast: string | null
   toastKind: 'lap' | 'pb' | 'record' | null
   initials: string | null
@@ -50,6 +54,14 @@ const HUD_ANIMATIONS_CSS = `
   15% { transform: translate(-50%, 0) scale(1.05); opacity: 1 }
   80% { transform: translate(-50%, 0) scale(1); opacity: 1 }
   100% { transform: translate(-50%, 0) scale(1); opacity: 0 }
+}
+@keyframes viberacer-wrongway-pulse {
+  0%, 100% { transform: translateX(-50%) scale(1); opacity: 1 }
+  50% { transform: translateX(-50%) scale(1.04); opacity: 0.85 }
+}
+@keyframes viberacer-wrongway-arrow {
+  0%, 100% { transform: translateX(0) }
+  50% { transform: translateX(-8px) }
 }
 `
 
@@ -96,7 +108,20 @@ export function HUD(props: HudProps) {
         <StatBlock label="LAP" value={props.lapCount} />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>
-      {!props.onTrack ? <div style={offTrack}>OFF TRACK</div> : null}
+      {props.wrongWay ? (
+        <div style={wrongWayBanner} role="alert" aria-live="assertive">
+          <span style={wrongWayArrow} aria-hidden>
+            {'<<'}
+          </span>
+          <span>WRONG WAY</span>
+          <span style={wrongWayArrow} aria-hidden>
+            {'<<'}
+          </span>
+        </div>
+      ) : null}
+      {!props.onTrack && !props.wrongWay ? (
+        <div style={offTrack}>OFF TRACK</div>
+      ) : null}
       {celebrate ? (
         <>
           <div
@@ -180,6 +205,37 @@ const offTrack: React.CSSProperties = {
   fontSize: 32,
   fontWeight: 800,
   color: '#ffb34d',
+}
+// WRONG WAY warning. Sits at the same vertical band as OFF TRACK so the two
+// alerts never visually compete (the JSX picks one or the other). Brighter
+// red plus a gentle pulse animation pulls the eye away from the cars and
+// onto the "you need to U-turn" signal.
+const wrongWayBanner: React.CSSProperties = {
+  position: 'absolute',
+  top: '18%',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  padding: '6px 18px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 14,
+  borderRadius: 10,
+  background: 'rgba(180, 30, 30, 0.85)',
+  border: '2px solid rgba(255, 240, 180, 0.85)',
+  boxShadow: '0 6px 16px rgba(0, 0, 0, 0.4), 0 0 24px rgba(255, 80, 60, 0.45)',
+  color: '#fff5d6',
+  fontSize: 30,
+  fontWeight: 900,
+  letterSpacing: 2,
+  pointerEvents: 'none',
+  animation: 'viberacer-wrongway-pulse 0.6s ease-in-out infinite',
+}
+const wrongWayArrow: React.CSSProperties = {
+  display: 'inline-block',
+  fontFamily: 'monospace',
+  fontSize: 28,
+  color: '#ffe892',
+  animation: 'viberacer-wrongway-arrow 0.6s ease-in-out infinite',
 }
 const toastStyle: React.CSSProperties = {
   position: 'absolute',

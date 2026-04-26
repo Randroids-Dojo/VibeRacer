@@ -2,7 +2,14 @@
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
 import { WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
-import { buildTrackPath } from '@/game/trackPath'
+import { buildTrackPath, worldToCell } from '@/game/trackPath'
+import { cellKey } from '@/game/track'
+import {
+  expectedTangent,
+  initWrongWayDetector,
+  isWrongWayInstant,
+  updateWrongWayDetector,
+} from '@/game/wrongWay'
 import {
   buildGhostCar,
   buildScene,
@@ -45,6 +52,9 @@ export interface RaceCanvasHud {
   lapCount: number
   onTrack: boolean
   lastLapMs: number | null
+  // True when the car has been driving against the lap direction long enough
+  // for the warning to engage (debounced by the pure helper).
+  wrongWay: boolean
 }
 
 const HUD_UPDATE_MS = 50
@@ -220,6 +230,7 @@ export function RaceCanvas({
     let prevOnTrack = true
     let droneStarted = false
     let prevHitsLen = 0
+    let wrongWayState = initWrongWayDetector()
 
     function loop(ts: number) {
       if (!running) return
@@ -251,6 +262,7 @@ export function RaceCanvas({
         prevHud = null
         prevOnTrack = true
         prevHitsLen = 0
+        wrongWayState = initWrongWayDetector()
         raf = requestAnimationFrame(loop)
         return
       }
@@ -295,6 +307,7 @@ export function RaceCanvas({
         lastTs = ts
         prevOnTrack = true
         prevHitsLen = 0
+        wrongWayState = initWrongWayDetector()
         raf = requestAnimationFrame(loop)
         return
       }
@@ -377,6 +390,24 @@ export function RaceCanvas({
         }
       }
       prevHitsLen = state.hits.length
+
+      // Wrong-way detection. Project the car onto the centerline of its
+      // current piece, compare the velocity direction (heading * sign(speed))
+      // to the expected travel tangent, and run the result through the
+      // debounced detector so brief sideways slides do not flash the warning.
+      if (state.raceStartMs !== null) {
+        const cellNow = worldToCell(state.x, state.z)
+        const orderIdx = path.cellToOrderIdx.get(cellKey(cellNow.row, cellNow.col))
+        let instantWrong = false
+        if (orderIdx !== undefined) {
+          const op = path.order[orderIdx]
+          const expected = expectedTangent(op, state.x, state.z)
+          instantWrong = isWrongWayInstant(state.heading, state.speed, expected)
+        }
+        wrongWayState = updateWrongWayDetector(wrongWayState, instantWrong)
+      } else if (wrongWayState.active || wrongWayState.enterStreak > 0) {
+        wrongWayState = initWrongWayDetector()
+      }
 
       bundle.car.position.set(state.x, 0, state.z)
       bundle.car.rotation.y = state.heading
@@ -531,13 +562,15 @@ export function RaceCanvas({
           lapCount: state.lapCount,
           onTrack: state.onTrack,
           lastLapMs: state.lastLapTimeMs,
+          wrongWay: wrongWayState.active,
         }
         if (
           prevHud === null ||
           prevHud.currentMs !== next.currentMs ||
           prevHud.lapCount !== next.lapCount ||
           prevHud.onTrack !== next.onTrack ||
-          prevHud.lastLapMs !== next.lastLapMs
+          prevHud.lastLapMs !== next.lastLapMs ||
+          prevHud.wrongWay !== next.wrongWay
         ) {
           prevHud = next
           onHudUpdateRef.current(next)
