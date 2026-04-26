@@ -108,6 +108,19 @@ describe('getWeatherPreset', () => {
     expect(foggy.skyTintMix).toBeGreaterThan(cloudy.skyTintMix)
   })
 
+  it("'rainy' is denser than 'cloudy' and dims the sun", () => {
+    const cloudy = getWeatherPreset('cloudy')
+    const rainy = getWeatherPreset('rainy')
+    expect(rainy.fogDensity).toBeGreaterThan(cloudy.fogDensity)
+    expect(rainy.sunMultiplier).toBeLessThan(cloudy.sunMultiplier)
+  })
+
+  it("'rainy' tints the sky toward grey", () => {
+    const clear = getWeatherPreset('clear')
+    const rainy = getWeatherPreset('rainy')
+    expect(rainy.skyTintMix).toBeGreaterThan(clear.skyTintMix)
+  })
+
   it('overcast presets dim the sun versus clear', () => {
     const clear = getWeatherPreset('clear')
     const cloudy = getWeatherPreset('cloudy')

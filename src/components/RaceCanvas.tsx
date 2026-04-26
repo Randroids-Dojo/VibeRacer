@@ -490,6 +490,7 @@ export function RaceCanvas({
         if (speedOutRef) speedOutRef.current = 0
         resetRecording()
         bundle.skidMarks.clear()
+        bundle.rain.reset()
         lastSkidSpawnTs = -Infinity
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
@@ -779,6 +780,19 @@ export function RaceCanvas({
         driftSession = initDriftSession()
       }
       bundle.skidMarks.tick(ts)
+
+      // Rain particles. The layer's `tick` short-circuits when hidden so dry
+      // weather costs nothing. The camera position is the follow point so the
+      // rain box drifts with the player and never feels like it lags behind
+      // the road. Capped to 50 ms / second steps via the same dt clamp the
+      // physics tick uses, so a tab pause does not telport every drop to the
+      // floor on resume.
+      bundle.rain.tick(
+        dtMs / 1000,
+        bundle.camera.position.x,
+        bundle.camera.position.y,
+        bundle.camera.position.z,
+      )
 
       renderer.render(bundle.scene, bundle.camera)
 

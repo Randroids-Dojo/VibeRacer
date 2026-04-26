@@ -14,7 +14,7 @@ import { z } from 'zod'
 // sky color, ambient color, and sun direction, then the weather preset mixes a
 // fog tint into the sky and applies the multipliers below.
 
-export const WEATHER_NAMES = ['clear', 'cloudy', 'foggy'] as const
+export const WEATHER_NAMES = ['clear', 'cloudy', 'foggy', 'rainy'] as const
 export type Weather = (typeof WEATHER_NAMES)[number]
 
 export const DEFAULT_WEATHER: Weather = 'clear'
@@ -28,6 +28,7 @@ export const WEATHER_LABELS: Record<Weather, string> = {
   clear: 'Clear',
   cloudy: 'Cloudy',
   foggy: 'Foggy',
+  rainy: 'Rainy',
 }
 
 // A short blurb shown beneath the swatch so the player knows what they are
@@ -36,6 +37,7 @@ export const WEATHER_DESCRIPTIONS: Record<Weather, string> = {
   clear: 'No haze. Distant scenery stays crisp.',
   cloudy: 'Light overcast. Far props soften into a thin haze.',
   foggy: 'Thick fog rolls in. Vision drops to the next corner.',
+  rainy: 'Steady downpour with falling streaks and a grey overcast.',
 }
 
 export interface WeatherPreset {
@@ -87,6 +89,17 @@ const RAW_PRESETS: Record<Weather, WeatherPreset> = {
     skyTintMix: 0.7,
     ambientMultiplier: 1.15,
     sunMultiplier: 0.6,
+  },
+  rainy: {
+    // Moderate haze plus a darker grey overcast. The rain particles (rendered
+    // separately by the scene's rain layer) are what sell the weather; fog
+    // density stays between cloudy and foggy so distant track features still
+    // read but the sky looks heavy.
+    fogDensity: 0.018,
+    fogColor: 0x8a909a,
+    skyTintMix: 0.6,
+    ambientMultiplier: 1.1,
+    sunMultiplier: 0.55,
   },
 }
 

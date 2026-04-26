@@ -10,8 +10,10 @@ import {
   DirectionalLight,
   FogExp2,
   Group,
+  DynamicDrawUsage,
   Line,
   LineBasicMaterial,
+  LineSegments,
   type Material,
   Mesh,
   MeshBasicMaterial,
@@ -73,6 +75,17 @@ import {
   RACING_LINE_WIDTH_PX,
   samplesToPolyline,
 } from './racingLine'
+import {
+  DEFAULT_RAIN_CONFIG,
+  DEFAULT_RAIN_PARTICLES,
+  RAIN_COLOR_HEX,
+  RAIN_OPACITY,
+  initRainParticles,
+  makeRainRng,
+  tickRainParticles,
+  writeRainGeometry,
+  type RainParticle,
+} from './rain'
 import type { Replay } from '@/lib/replay'
 import {
   SCENERY_BARRIER_HEX_RED,
@@ -134,6 +147,11 @@ export interface SceneBundle {
   // into `setReplay` whenever the source changes. Designed as a coaching aid
   // for players who want to see where the leaderboard top time drives.
   racingLine: RacingLineLayer
+  // Falling rain particle layer. Hidden unless the active weather preset is
+  // 'rainy'. Visibility is flipped inside `setWeather`; the rAF loop ticks
+  // the layer with the camera position each frame so the streaks wrap into
+  // a fresh box after the player drives a long distance.
+  rain: RainLayer
   dispose: () => void
 }
 
@@ -811,6 +829,127 @@ export function buildRacingLineLayer(): RacingLineLayer {
   }
 }
 
+// Rain particle layer. A pool of short line segments raining down inside a
+// box that follows the player car each frame, so the player always sees a
+// steady downpour regardless of where they are on the track. The layer is
+// hidden by default; the rAF loop flips visibility when the active weather
+// preset is 'rainy' and feeds the per-frame tick (dt + follow point) so the
+// streaks fall and wrap.
+//
+// Implementation notes:
+//
+//  - One `LineSegments` mesh with two vertices per particle (start at the
+//    particle's position, end one streak-length above). LineBasicMaterial's
+//    `linewidth` is ignored by most WebGL backends so streaks are 1px; this
+//    is fine because there are hundreds of them and the eye reads density.
+//  - The follow point is the camera (computed by the rAF loop). Using the
+//    camera (not the car) means the player always sees a full box even when
+//    looking sideways.
+//  - Vertex positions are written in world space so the underlying `Group`
+//    stays at the origin; the per-frame cost is one Float32Array fill plus
+//    one `needsUpdate = true` flip.
+export interface RainLayer {
+  group: Group
+  // Advance every particle by `dtSec` seconds and write the resulting world
+  // positions into the shared geometry buffer using the supplied follow
+  // point. Cheap per frame: no allocations, no branch misses on the common
+  // visible path.
+  tick: (dtSec: number, followX: number, followY: number, followZ: number) => void
+  // Toggle the layer on or off. When off the per-frame `tick` calls are
+  // skipped entirely by the caller (via a poll-and-set in the rAF loop) so
+  // the cost is exactly the cost of having no rain at all.
+  setVisible: (value: boolean) => void
+  // Reset particle positions back to the spawn distribution. Called when
+  // the player restarts a race so the rain volume does not carry over an
+  // unwrapped tail of streaks from the previous lap. Pure: no allocations.
+  reset: () => void
+  dispose: () => void
+}
+
+export function buildRainLayer(
+  particleCount: number = DEFAULT_RAIN_PARTICLES,
+): RainLayer {
+  const group = new Group()
+  group.visible = false
+
+  // Stable RNG so two players who happen to run the same seed see the same
+  // initial spawn pattern. The seed is arbitrary; the visible variety comes
+  // from the wrap-on-floor-impact branch using `Math.random` at runtime.
+  const rng = makeRainRng(0xc0ffee)
+  const particles: RainParticle[] = initRainParticles(
+    particleCount,
+    rng,
+    DEFAULT_RAIN_CONFIG,
+  )
+
+  const positions = new Float32Array(particleCount * 6)
+  const geom = new BufferGeometry()
+  const posAttr = new BufferAttribute(positions, 3)
+  // Mark dynamic so Three.js uses the streaming path on each frame's
+  // `needsUpdate = true` flip (gl.bufferSubData under the hood).
+  posAttr.setUsage(DynamicDrawUsage)
+  geom.setAttribute('position', posAttr)
+
+  const mat = new LineBasicMaterial({
+    color: RAIN_COLOR_HEX,
+    transparent: true,
+    opacity: RAIN_OPACITY,
+    depthWrite: false,
+  })
+  const lines = new LineSegments(geom, mat)
+  group.add(lines)
+
+  // Re-use the same RNG for both spawn and wrap-on-impact so unit tests can
+  // pin behavior without monkey-patching Math.random. The seed above has
+  // already been advanced by `initRainParticles` above; subsequent reads
+  // give a different sequence to keep the wraps from looking aligned.
+
+  function tick(
+    dtSec: number,
+    followX: number,
+    followY: number,
+    followZ: number,
+  ) {
+    if (!group.visible) return
+    tickRainParticles(particles, dtSec, rng, DEFAULT_RAIN_CONFIG)
+    writeRainGeometry(
+      particles,
+      followX,
+      followY,
+      followZ,
+      DEFAULT_RAIN_CONFIG.streakLength,
+      positions,
+    )
+    posAttr.needsUpdate = true
+  }
+
+  function reset() {
+    const fresh = initRainParticles(
+      particles.length,
+      makeRainRng(0xc0ffee),
+      DEFAULT_RAIN_CONFIG,
+    )
+    for (let i = 0; i < particles.length; i++) {
+      particles[i].ox = fresh[i].ox
+      particles[i].oy = fresh[i].oy
+      particles[i].oz = fresh[i].oz
+    }
+  }
+
+  return {
+    group,
+    tick,
+    setVisible(value) {
+      group.visible = value
+    },
+    reset,
+    dispose() {
+      geom.dispose()
+      mat.dispose()
+    },
+  }
+}
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -907,7 +1046,19 @@ export function buildScene(path: TrackPath): SceneBundle {
     // so 'clear' costs nothing per frame.
     fog.density = weather.fogDensity
     fog.color.setHex(weather.fogColor)
+    // Rain layer: only visible under the 'rainy' preset. Built later in this
+    // function so the closure resolves it via a holder ref. Flipping the
+    // group's `visible` flag is O(1); the rAF loop short-circuits the per-
+    // frame tick when the layer is hidden so dry weather costs nothing.
+    if (rainLayerHolder.layer) {
+      rainLayerHolder.layer.setVisible(activeWeather === 'rainy')
+    }
   }
+
+  // Holder so `applyTimeAndWeather` can flip the rain layer's visibility
+  // even though the layer is constructed after this function is defined.
+  // Populated below once `buildRainLayer` returns.
+  const rainLayerHolder: { layer: RainLayer | null } = { layer: null }
 
   function setTimeOfDay(name: TimeOfDay) {
     activeTimeOfDay = name
@@ -1020,6 +1171,14 @@ export function buildScene(path: TrackPath): SceneBundle {
   const racingLine = buildRacingLineLayer()
   scene.add(racingLine.group)
 
+  const rain = buildRainLayer()
+  rainLayerHolder.layer = rain
+  scene.add(rain.group)
+  // Re-apply so the rain visibility reflects whatever weather was seeded
+  // before the layer existed. Cheap; just one boolean flip + the existing
+  // weather/sky math.
+  applyTimeAndWeather()
+
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
@@ -1057,6 +1216,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     kerbs,
     scenery,
     racingLine,
+    rain,
     dispose,
   }
 }
