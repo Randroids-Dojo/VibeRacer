@@ -57,9 +57,13 @@ export class FakeKv {
   async del(...keys: string[]): Promise<number> {
     let n = 0
     for (const k of keys) {
-      if (this.store.delete(k)) n++
+      const had =
+        this.store.delete(k) ||
+        this.counters.delete(k) ||
+        this.zsets.delete(k) ||
+        this.lists.delete(k)
+      if (had) n++
       this.expirations.delete(k)
-      this.zsets.delete(k)
       this.zsetMembers.delete(k)
     }
     return n

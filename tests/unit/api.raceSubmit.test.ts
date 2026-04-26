@@ -14,11 +14,13 @@ beforeAll(() => {
 })
 
 beforeEach(async () => {
-  // Clear fake state between tests to avoid rate-limit carryover.
+  // Clear fake state between tests to avoid rate-limit + leaderboard carryover.
   await fake.del(
     `ratelimit:submit:ip:1.2.3.4`,
     `ratelimit:submit:racer:${racerId}`,
     `ratelimit:submit:daily:1.2.3.4`,
+    `lb:track:${'a'.repeat(64)}`,
+    `track:track:${'a'.repeat(64)}:topReplay`,
   )
 })
 
@@ -207,6 +209,91 @@ describe('POST /api/race/submit', () => {
       }),
     )
     expect(res.status).toBe(202)
+  })
+
+  it('stores the replay and points topReplay at the rank-1 lap', async () => {
+    const { token, payload } = issueToken({ nonce: 'ff'.repeat(16) })
+    await seedNonce(payload.nonce)
+    const samples: Array<[number, number, number]> = [
+      [0, 0, 0],
+      [1.5, 0.5, 0.1],
+      [3.0, 1.0, 0.2],
+    ]
+    const { POST } = await import('@/app/api/race/submit/route')
+    const res = await POST(
+      buildReq({
+        token,
+        checkpoints: [
+          { cpId: 0, tMs: 1000 },
+          { cpId: 1, tMs: 2000 },
+        ],
+        lapTimeMs: 2000,
+        initials: 'abc',
+        replay: { lapTimeMs: 2000, samples },
+      }),
+    )
+    expect(res.status).toBe(200)
+    const stored = (await fake.get(`lap:replay:${payload.nonce}`)) as {
+      lapTimeMs: number
+      samples: Array<[number, number, number]>
+    }
+    expect(stored.lapTimeMs).toBe(2000)
+    expect(stored.samples).toEqual(samples)
+    const pointer = await fake.get<string>(
+      `track:track:${'a'.repeat(64)}:topReplay`,
+    )
+    expect(pointer).toBe(payload.nonce)
+  })
+
+  it('promotes the first replay even when not rank-1, then keeps it until beaten', async () => {
+    // Seed a faster legacy entry that has no replay (predates the feature).
+    await fake.zadd(`lb:track:${'a'.repeat(64)}`, {
+      score: 1000,
+      member: `xyz:${racerId}:0:legacynonce`,
+    })
+
+    const slower = issueToken({ nonce: 'a1'.repeat(16) })
+    await seedNonce(slower.payload.nonce)
+    const { POST } = await import('@/app/api/race/submit/route')
+    const slowerRes = await POST(
+      buildReq({
+        token: slower.token,
+        checkpoints: [
+          { cpId: 0, tMs: 1500 },
+          { cpId: 1, tMs: 3000 },
+        ],
+        lapTimeMs: 3000,
+        initials: 'abc',
+        replay: { lapTimeMs: 3000, samples: [[0, 0, 0]] },
+      }),
+    )
+    expect(slowerRes.status).toBe(200)
+    // The legacy #1 has no replay, so the promotion fallback elevates the
+    // first submission with one even though it is rank 2.
+    let pointer = await fake.get<string>(
+      `track:track:${'a'.repeat(64)}:topReplay`,
+    )
+    expect(pointer).toBe(slower.payload.nonce)
+
+    // A still-slower follow-up should NOT replace the pointer.
+    const slowest = issueToken({ nonce: 'a2'.repeat(16) })
+    await seedNonce(slowest.payload.nonce)
+    await POST(
+      buildReq({
+        token: slowest.token,
+        checkpoints: [
+          { cpId: 0, tMs: 2000 },
+          { cpId: 1, tMs: 4000 },
+        ],
+        lapTimeMs: 4000,
+        initials: 'abc',
+        replay: { lapTimeMs: 4000, samples: [[0, 0, 0]] },
+      }),
+    )
+    pointer = await fake.get<string>(
+      `track:track:${'a'.repeat(64)}:topReplay`,
+    )
+    expect(pointer).toBe(slower.payload.nonce)
   })
 
   it('silently drops with no racerId cookie', async () => {

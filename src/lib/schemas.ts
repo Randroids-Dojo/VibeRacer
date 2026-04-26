@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import { CarParamsSchema, InputModeSchema } from './tuningSettings'
+import { ReplaySchema } from './replay'
 
 export const PieceTypeSchema = z.enum(['straight', 'left90', 'right90'])
 export type PieceType = z.infer<typeof PieceTypeSchema>
@@ -85,5 +86,9 @@ export const SubmissionSchema = z.object({
   // backfills missing values from defaults / 'keyboard'.
   tuning: CarParamsSchema.optional(),
   inputMode: InputModeSchema.optional(),
+  // Optional ghost-car replay path for the lap. Old clients omit it; the
+  // server stores it when present so future races can show this lap as a
+  // ghost.
+  replay: ReplaySchema.optional(),
 })
 export type Submission = z.infer<typeof SubmissionSchema>

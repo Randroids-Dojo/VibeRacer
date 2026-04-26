@@ -106,6 +106,38 @@ export async function POST(req: NextRequest) {
   }
   await kv.set(kvKeys.lapMeta(payload.nonce), JSON.stringify(lapMeta))
 
+  if (submission.data.replay) {
+    const replay = submission.data.replay
+    await kv.set(kvKeys.lapReplay(payload.nonce), JSON.stringify(replay))
+
+    // Decide whether this submission becomes the active ghost for the track.
+    // Two conditions promote it: (a) it took rank 1 just now, or (b) the
+    // pointer is empty because the existing top time predates this feature
+    // and has no recorded replay. (b) lets a ghost appear immediately rather
+    // than wait for someone to beat the legacy #1.
+    const top = (await kv.zrange(
+      kvKeys.leaderboard(slug.data, versionHash.data),
+      0,
+      0,
+      { withScores: true },
+    )) as (string | number)[]
+    const topMember = typeof top[0] === 'string' ? top[0] : null
+    const tookRankOne = topMember === member
+    let promote = tookRankOne
+    if (!promote) {
+      const currentPointer = await kv.get<string>(
+        kvKeys.topReplayPointer(slug.data, versionHash.data),
+      )
+      if (!currentPointer) promote = true
+    }
+    if (promote) {
+      await kv.set(
+        kvKeys.topReplayPointer(slug.data, versionHash.data),
+        payload.nonce,
+      )
+    }
+  }
+
   await kv.set(kvKeys.racerLastSubmit(racerId), new Date(ts).toISOString())
 
   // Rotate nonce for the next lap. Same slug/version/racerId, new nonce + issuedAt.

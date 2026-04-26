@@ -20,6 +20,7 @@ export type KeyBindings = Record<ControlAction, string[]>
 export interface ControlSettings {
   keyBindings: KeyBindings
   touchMode: TouchMode
+  showGhost: boolean
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -33,6 +34,7 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
   touchMode: 'single',
+  showGhost: true,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -50,12 +52,16 @@ const KeyBindingsSchema = z.object({
 const ControlSettingsSchema = z.object({
   keyBindings: KeyBindingsSchema,
   touchMode: z.enum(TOUCH_MODES),
+  // Older stored settings predate this flag; default it on so existing users
+  // see the ghost on their next race without having to dig into Settings.
+  showGhost: z.boolean().default(true),
 })
 
 export function cloneDefaultSettings(): ControlSettings {
   return {
     keyBindings: cloneDefaultBindings(),
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
+    showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
   }
 }
 

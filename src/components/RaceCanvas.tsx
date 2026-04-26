@@ -4,6 +4,7 @@ import { WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
 import { buildTrackPath } from '@/game/trackPath'
 import {
+  buildGhostCar,
   buildScene,
   initCameraRig,
   updateCameraRig,
@@ -18,6 +19,12 @@ import {
 import type { CarParams } from '@/game/physics'
 import type { useKeyboard } from '@/hooks/useKeyboard'
 import { setGameIntensity } from '@/game/music'
+import {
+  MAX_REPLAY_SAMPLES,
+  REPLAY_SAMPLE_MS,
+  interpolateGhostPose,
+  type Replay,
+} from '@/lib/replay'
 import {
   startEngineDrone,
   startSkid,
@@ -45,6 +52,15 @@ export interface RaceCanvasProps {
   pendingRaceStartRef: MutableRefObject<number | null>
   onLapComplete: (event: LapCompleteEvent) => void
   onHudUpdate: (hud: RaceCanvasHud) => void
+  // Active ghost replay to render alongside the player. Reading via a ref so
+  // Game.tsx can swap it after a personal-best lap without re-mounting the
+  // canvas. null disables the ghost.
+  activeGhostRef?: MutableRefObject<Replay | null>
+  // Toggle visibility from Settings without tearing down the renderer.
+  showGhostRef?: MutableRefObject<boolean>
+  // Fired when the recorder finishes a lap. Game.tsx decides whether to
+  // persist the path locally and bundle it into the next /race/submit.
+  onLapReplay?: (replay: Replay) => void
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -64,6 +80,9 @@ export function RaceCanvas({
   pendingRaceStartRef,
   onLapComplete,
   onHudUpdate,
+  activeGhostRef,
+  showGhostRef,
+  onLapReplay,
   disableMusicIntensity,
   className,
   style,
@@ -71,9 +90,11 @@ export function RaceCanvas({
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
   const onLapCompleteRef = useRef(onLapComplete)
   const onHudUpdateRef = useRef(onHudUpdate)
+  const onLapReplayRef = useRef(onLapReplay)
   const disableMusicRef = useRef(!!disableMusicIntensity)
   onLapCompleteRef.current = onLapComplete
   onHudUpdateRef.current = onHudUpdate
+  onLapReplayRef.current = onLapReplay
   disableMusicRef.current = !!disableMusicIntensity
 
   useEffect(() => {
@@ -108,6 +129,25 @@ export function RaceCanvas({
     bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
     renderer.render(bundle.scene, bundle.camera)
 
+    const ghostBuild = buildGhostCar()
+    const ghostMesh = ghostBuild.ghost
+    ghostMesh.visible = false
+    ghostMesh.position.set(state.x, 0, state.z)
+    ghostMesh.rotation.y = state.heading
+    bundle.scene.add(ghostMesh)
+
+    // Per-lap recording. The buffer is interleaved [x, z, heading] triples and
+    // is sampled at REPLAY_SAMPLE_MS offsets from raceStartMs so playback is a
+    // constant-time array lookup. Buffer resets every time a lap completes
+    // (tick.ts also resets raceStartMs at the same instant) and on full reset.
+    let recordingBuffer: number[] = []
+    let nextSampleAt = 0
+
+    function resetRecording() {
+      recordingBuffer = []
+      nextSampleAt = 0
+    }
+
     let raf = 0
     let lastTs = performance.now()
     let lastHudTs = 0
@@ -126,6 +166,8 @@ export function RaceCanvas({
         bundle.car.rotation.y = state.heading
         bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
         bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+        ghostMesh.visible = false
+        resetRecording()
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
         pendingRaceStartRef.current = null
@@ -195,6 +237,42 @@ export function RaceCanvas({
       updateCameraRig(rig, state.x, state.z, state.heading)
       bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
       bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+
+      // Sample the player's pose into the recording buffer at fixed cadence.
+      // Push every sample slot we crossed this frame so a long dt does not
+      // create gaps. The pre-lap-complete state's raceStartMs is what we want
+      // here: tick() resets raceStartMs to nowMs the moment a lap completes,
+      // and we reset the buffer in the lap-complete branch below.
+      if (state.raceStartMs !== null && recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES) {
+        const tLap = ts - state.raceStartMs
+        while (
+          tLap >= nextSampleAt &&
+          recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES
+        ) {
+          recordingBuffer.push(state.x, state.z, state.heading)
+          nextSampleAt += REPLAY_SAMPLE_MS
+        }
+      }
+
+      // Render the active ghost. Its time origin is the same raceStartMs the
+      // player uses, so when tick resets raceStartMs on a finish-line crossing
+      // the ghost automatically restarts from t=0 with the player.
+      const replay = activeGhostRef?.current ?? null
+      const showGhost = showGhostRef?.current ?? true
+      if (replay && showGhost && state.raceStartMs !== null) {
+        const tLap = ts - state.raceStartMs
+        const pose = interpolateGhostPose(replay, tLap)
+        if (pose) {
+          ghostMesh.position.set(pose.x, 0, pose.z)
+          ghostMesh.rotation.y = pose.heading
+          ghostMesh.visible = true
+        } else {
+          ghostMesh.visible = false
+        }
+      } else {
+        ghostMesh.visible = false
+      }
+
       renderer.render(bundle.scene, bundle.camera)
 
       if (!disableMusicRef.current) {
@@ -219,7 +297,26 @@ export function RaceCanvas({
         prevOnTrack = state.onTrack
       }
 
-      if (result.lapComplete) onLapCompleteRef.current(result.lapComplete)
+      if (result.lapComplete) {
+        if (onLapReplayRef.current && recordingBuffer.length >= 3) {
+          const sampleCount = recordingBuffer.length / 3
+          const samples: Array<[number, number, number]> = new Array(sampleCount)
+          for (let i = 0; i < sampleCount; i++) {
+            const o = i * 3
+            samples[i] = [
+              recordingBuffer[o],
+              recordingBuffer[o + 1],
+              recordingBuffer[o + 2],
+            ]
+          }
+          onLapReplayRef.current({
+            samples,
+            lapTimeMs: result.lapComplete.lapTimeMs,
+          })
+        }
+        resetRecording()
+        onLapCompleteRef.current(result.lapComplete)
+      }
 
       if (ts - lastHudTs >= HUD_UPDATE_MS) {
         lastHudTs = ts
@@ -255,6 +352,8 @@ export function RaceCanvas({
         stopEngineDrone(0.1)
         stopSkid(0.1)
       }
+      ghostBuild.dispose()
+      bundle.scene.remove(ghostMesh)
       bundle.dispose()
       renderer.dispose()
     }

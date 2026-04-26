@@ -120,6 +120,10 @@ export function SettingsPane({
     onChange({ ...settings, touchMode: mode })
   }
 
+  function setShowGhost(value: boolean) {
+    onChange({ ...settings, showGhost: value })
+  }
+
   function clearSlot(action: ControlAction, slot: number) {
     onChange({
       ...settings,
@@ -232,6 +236,21 @@ export function SettingsPane({
               </div>
             </div>
           ) : null}
+
+          <div style={subSection}>
+            <div style={subTitle}>Ghost car</div>
+            <MenuHint>
+              Race a translucent car that drives the fastest known lap on this
+              track. Switches to your own path once you set a personal best.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show ghost</div>
+              <MenuToggle
+                value={settings.showGhost}
+                onChange={setShowGhost}
+              />
+            </div>
+          </div>
         </MenuSection>
 
         <MenuSection title="Tuning">

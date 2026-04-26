@@ -138,4 +138,24 @@ describe('localStorage round-trip', () => {
     writeStoredControlSettings(custom)
     expect(readStoredControlSettings()).toEqual(custom)
   })
+
+  it('defaults showGhost to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showGhost).toBe(true)
+    expect(cloneDefaultSettings().showGhost).toBe(true)
+  })
+
+  it('round-trips a disabled showGhost flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showGhost = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showGhost when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+    })
+    expect(readStoredControlSettings().showGhost).toBe(true)
+  })
 })
