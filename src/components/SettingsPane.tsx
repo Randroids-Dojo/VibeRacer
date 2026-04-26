@@ -386,6 +386,10 @@ export function SettingsPane({
     onChange({ ...settings, showSpeedometer: value })
   }
 
+  function setShowTopSpeedMarker(value: boolean) {
+    onChange({ ...settings, showTopSpeedMarker: value })
+  }
+
   function setShowRearview(value: boolean) {
     onChange({ ...settings, showRearview: value })
   }
@@ -933,6 +937,18 @@ export function SettingsPane({
                 </MenuButton>
               ))}
             </div>
+            <div style={audioRow}>
+              <div style={audioLabel}>Top-speed marker</div>
+              <MenuToggle
+                value={settings.showTopSpeedMarker}
+                onChange={setShowTopSpeedMarker}
+                disabled={!settings.showSpeedometer}
+              />
+            </div>
+            <MenuHint>
+              Adds a green tick on the dial at your session-best speed plus a
+              PEAK readout below the live number. Resets on Restart.
+            </MenuHint>
           </div>
 
           <div style={subSection}>

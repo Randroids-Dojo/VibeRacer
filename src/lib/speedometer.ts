@@ -74,3 +74,41 @@ export function speedFraction(rawUs: number, maxSpeed: number): number {
   if (f >= 1) return 1
   return f
 }
+
+// Update the running session-best top speed (always a non-negative magnitude).
+// Returns the new top plus a `becameTop` flag the caller can use to fire a
+// celebration cue (a pulse, a toast, etc.) on the exact frame the player
+// crossed their own bar. Reverse driving collapses to its absolute value so a
+// hard reversal does not silently set a high "top" the gauge cannot show.
+//
+// The bar advances strictly: a tie does NOT count as "new top" because that
+// would retrigger the celebration on every frame at the same peak. Defensive
+// against non-finite inputs so a one-frame physics glitch can never poison the
+// stored peak with NaN.
+export function updateTopSpeed(
+  prevTopUs: number,
+  currentRawUs: number,
+): { topUs: number; becameTop: boolean } {
+  const safePrev = Number.isFinite(prevTopUs) && prevTopUs > 0 ? prevTopUs : 0
+  if (!Number.isFinite(currentRawUs)) {
+    return { topUs: safePrev, becameTop: false }
+  }
+  const abs = Math.abs(currentRawUs)
+  if (abs > safePrev) {
+    return { topUs: abs, becameTop: true }
+  }
+  return { topUs: safePrev, becameTop: false }
+}
+
+// Map a session-best speed magnitude to the same 0..1 fraction `speedFraction`
+// uses for the live needle, so the marker tick sits on the same arc. Always
+// non-negative input by construction (the tracker collapses reverse to its
+// magnitude). Defensive against zero / negative maxSpeed and non-finite peak.
+export function topSpeedFraction(topUs: number, maxSpeed: number): number {
+  if (!Number.isFinite(topUs) || topUs <= 0) return 0
+  if (!Number.isFinite(maxSpeed) || maxSpeed <= 0) return 0
+  const f = topUs / maxSpeed
+  if (f <= 0) return 0
+  if (f >= 1) return 1
+  return f
+}

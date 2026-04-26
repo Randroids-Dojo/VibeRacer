@@ -517,6 +517,11 @@ function GameSession({
   // immediately.
   const maxSpeedRef = useRef<number>(tuning.maxSpeed)
   maxSpeedRef.current = tuning.maxSpeed
+  // Session top-speed (always >= 0). The Speedometer overlay updates this
+  // inside its own rAF loop using `updateTopSpeed`; owning the ref here means
+  // the peak survives the component's mount / unmount cycle on pause / resume,
+  // and a full Restart can zero it without touching the renderer.
+  const topSpeedRef = useRef<number>(0)
   // PB checkpoint splits. Loaded once on mount and overwritten each time the
   // player posts a new all-time PB so the live "delta vs PB" tile always
   // compares against the freshest reference. A ref (not state) so updates do
@@ -775,6 +780,10 @@ function GameSession({
     pendingResetRef.current = true
     tokenRef.current = null
     prevHitTMsRef.current = 0
+    // A full Restart zeroes the session peak so the new run starts on a clean
+    // dial. Restart Lap (mid-race lap reset) intentionally keeps the running
+    // peak: the player chasing a hot lap should not lose their best straight.
+    topSpeedRef.current = 0
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
@@ -1678,6 +1687,8 @@ function GameSession({
           speedRef={speedRef}
           maxSpeedRef={maxSpeedRef}
           unit={settings.speedUnit}
+          topSpeedRef={topSpeedRef}
+          showTopSpeedMarker={settings.showTopSpeedMarker}
         />
       ) : null}
       <ConfettiOverlay kind={confettiKind} triggerKey={confettiKey} />

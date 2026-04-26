@@ -185,6 +185,12 @@ export interface ControlSettings {
   // unit choice for whenever the player turns it back on.
   showSpeedometer: boolean
   speedUnit: SpeedUnit
+  // Toggle the session top-speed marker drawn as a small tick on the
+  // speedometer dial plus a `PEAK <value>` sub-readout below the live number.
+  // Default on so existing players see the new marker on their next race; the
+  // toggle is here for users who want a clean dial. The peak resets on a full
+  // Restart and on Exit-to-title; Restart Lap and pause keep the running peak.
+  showTopSpeedMarker: boolean
   // Toggle the top-center rear-view mirror. Renders the same scene from a
   // backward-facing camera in a small inset so the player can see the ghost
   // (or anything else behind them) while racing. Default on.
@@ -279,6 +285,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showTireSmoke: true,
   showSpeedometer: true,
   speedUnit: DEFAULT_SPEED_UNIT,
+  showTopSpeedMarker: true,
   showRearview: true,
   showKerbs: true,
   showScenery: true,
@@ -379,6 +386,10 @@ const ControlSettingsSchema = z.object({
   // players who want the line have to flip it on once in Settings.
   showRacingLine: z.boolean().default(false),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
+  // Top-speed marker landed after the speedometer toggle. Default on so legacy
+  // stored payloads start showing the peak tick on their next race; players
+  // who want a clean dial can flip it off in Settings.
+  showTopSpeedMarker: z.boolean().default(true),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
   // not see a broken Settings pane.
@@ -431,6 +442,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showTireSmoke: DEFAULT_CONTROL_SETTINGS.showTireSmoke,
     showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
+    showTopSpeedMarker: DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker,
     showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,
     showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
     showScenery: DEFAULT_CONTROL_SETTINGS.showScenery,

@@ -3,7 +3,9 @@ import { useEffect, useRef, type MutableRefObject } from 'react'
 import {
   formatSpeed,
   speedFraction,
+  topSpeedFraction,
   unitLabel,
+  updateTopSpeed,
   type SpeedUnit,
 } from '@/lib/speedometer'
 
@@ -15,22 +17,43 @@ interface SpeedometerProps {
   // the player's current setup (a higher max stretches the dial range).
   maxSpeedRef: MutableRefObject<number>
   unit: SpeedUnit
+  // Live session top-speed magnitude (always >= 0). Writes from the rAF loop in
+  // `RaceCanvas`; the Speedometer reads it in its own loop so the peak marker
+  // and PEAK sub-readout update at 60 Hz without re-rendering React.
+  topSpeedRef?: MutableRefObject<number>
+  // When false the marker tick and the PEAK readout stay hidden. The underlying
+  // tracker keeps running so a flip back mid-session immediately surfaces the
+  // current peak instead of silently zeroing it.
+  showTopSpeedMarker?: boolean
 }
 
 // Bottom-center HUD overlay. A slim semicircular arc with a needle plus a
 // large numeric readout. Updates run inside a self-owned rAF loop so the
 // readout can refresh at 60 Hz without sending React re-renders into the
 // rest of the HUD tree.
-export function Speedometer({ speedRef, maxSpeedRef, unit }: SpeedometerProps) {
+export function Speedometer({
+  speedRef,
+  maxSpeedRef,
+  unit,
+  topSpeedRef,
+  showTopSpeedMarker = false,
+}: SpeedometerProps) {
   const numberRef = useRef<HTMLDivElement | null>(null)
   const needleRef = useRef<SVGLineElement | null>(null)
   const reverseRef = useRef<HTMLDivElement | null>(null)
+  const peakTickRef = useRef<SVGLineElement | null>(null)
+  const peakTextRef = useRef<HTMLDivElement | null>(null)
+  const peakRowRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     let raf = 0
     let prevText = ''
     let prevAngle = NaN
     let prevReverse = false
+    let prevPeakAngle = NaN
+    let prevPeakText = ''
+    let prevPeakVisible: boolean | null = null
+    let prevTickVisible: boolean | null = null
 
     function tick() {
       const raw = speedRef.current
@@ -55,11 +78,53 @@ export function Speedometer({ speedRef, maxSpeedRef, unit }: SpeedometerProps) {
         reverseRef.current.style.opacity = reversing ? '1' : '0'
         prevReverse = reversing
       }
+      // Top-speed marker. The tick and the PEAK row are both hidden until a
+      // positive peak has been recorded so a brand-new race never shows a 0
+      // marker glued to the left edge of the dial.
+      //
+      // The tracker lives on a parent-owned ref so the peak survives this
+      // component's mount / unmount cycle on pause and resume; only a full
+      // Restart (which Game.tsx zeroes the ref on) wipes it.
+      let topUs = topSpeedRef ? topSpeedRef.current : 0
+      if (topSpeedRef) {
+        const next = updateTopSpeed(topUs, raw)
+        if (next.becameTop) topSpeedRef.current = next.topUs
+        topUs = next.topUs
+      }
+      const peakF = topSpeedFraction(topUs, max)
+      const peakAngle = -180 + peakF * 180
+      const peakText = formatSpeed(topUs, unit)
+      const peakActive = showTopSpeedMarker && topUs > 0
+      if (peakActive !== prevTickVisible && peakTickRef.current) {
+        peakTickRef.current.setAttribute(
+          'opacity',
+          peakActive ? '1' : '0',
+        )
+        prevTickVisible = peakActive
+      }
+      if (peakActive && peakAngle !== prevPeakAngle && peakTickRef.current) {
+        // Place the tick on the dial arc by rotating the radial spoke around
+        // the same hub the needle uses. Drawing a vertical spoke so the SVG
+        // rotation transform reuses the needle math without per-frame trig.
+        peakTickRef.current.setAttribute(
+          'transform',
+          `rotate(${(peakAngle + 90).toFixed(2)} 60 56)`,
+        )
+        prevPeakAngle = peakAngle
+      }
+      if (peakActive !== prevPeakVisible && peakRowRef.current) {
+        peakRowRef.current.style.opacity = peakActive ? '1' : '0'
+        prevPeakVisible = peakActive
+      }
+      if (peakActive && peakText !== prevPeakText && peakTextRef.current) {
+        peakTextRef.current.textContent = peakText
+        prevPeakText = peakText
+      }
       raf = requestAnimationFrame(tick)
     }
     raf = requestAnimationFrame(tick)
     return () => cancelAnimationFrame(raf)
-  }, [speedRef, maxSpeedRef, unit])
+  }, [speedRef, maxSpeedRef, unit, topSpeedRef, showTopSpeedMarker])
 
   return (
     <div style={wrap} aria-hidden>
@@ -105,6 +170,21 @@ export function Speedometer({ speedRef, maxSpeedRef, unit }: SpeedometerProps) {
             strokeWidth="6"
             strokeLinecap="round"
           />
+          {/* Top-speed marker. A short green spoke pinned on the dial arc
+              at the player's session-best speed. Hidden until the tracker has
+              recorded a positive peak (controlled in the rAF loop above). */}
+          <line
+            ref={peakTickRef}
+            x1="60"
+            y1="8"
+            x2="60"
+            y2="20"
+            stroke="#7df09c"
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            opacity="0"
+            transform="rotate(-90 60 56)"
+          />
           {/* Needle. Rotated each frame around the hub at (60, 56). */}
           <line
             ref={needleRef}
@@ -125,6 +205,13 @@ export function Speedometer({ speedRef, maxSpeedRef, unit }: SpeedometerProps) {
             0
           </div>
           <div style={unitStyle}>{unitLabel(unit)}</div>
+        </div>
+        <div ref={peakRowRef} style={peakRow}>
+          <span style={peakLabel}>PEAK</span>
+          <span ref={peakTextRef} style={peakValue}>
+            0
+          </span>
+          <span style={peakUnit}>{unitLabel(unit)}</span>
         </div>
         <div ref={reverseRef} style={reverseBadge}>
           REV
@@ -195,4 +282,33 @@ const reverseBadge: React.CSSProperties = {
   color: '#ff7b6e',
   opacity: 0,
   transition: 'opacity 0.15s linear',
+}
+const peakRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 4,
+  marginTop: 2,
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 10,
+  letterSpacing: 1.4,
+  fontWeight: 700,
+  opacity: 0,
+  transition: 'opacity 0.2s linear',
+  color: '#7df09c',
+}
+const peakLabel: React.CSSProperties = {
+  opacity: 0.9,
+}
+const peakValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 0.4,
+  minWidth: '2ch',
+  textAlign: 'right',
+}
+const peakUnit: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.2,
+  opacity: 0.8,
 }

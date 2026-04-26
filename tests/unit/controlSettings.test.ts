@@ -754,6 +754,31 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
 
+  it('defaults showTopSpeedMarker to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker).toBe(true)
+    expect(cloneDefaultSettings().showTopSpeedMarker).toBe(true)
+  })
+
+  it('round-trips a disabled top-speed marker', () => {
+    const custom = cloneDefaultSettings()
+    custom.showTopSpeedMarker = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().showTopSpeedMarker).toBe(false)
+  })
+
+  it('backfills showTopSpeedMarker when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    expect(readStoredControlSettings().showTopSpeedMarker).toBe(true)
+  })
+
   it("defaults timeOfDay to 'noon' (the legacy hardcoded scene)", () => {
     expect(DEFAULT_CONTROL_SETTINGS.timeOfDay).toBe('noon')
     expect(cloneDefaultSettings().timeOfDay).toBe('noon')
