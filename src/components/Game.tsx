@@ -86,6 +86,7 @@ import {
   writeAchievements,
 } from '@/lib/achievements'
 import { medalForTime } from '@/game/medals'
+import { writeMedalForTrack } from '@/lib/medalCabinet'
 import type { CheckpointHit } from '@/lib/schemas'
 import {
   SPLIT_DISPLAY_MS,
@@ -1724,6 +1725,12 @@ function GameSession({
       lapDerived.lapBestAllTimeMs,
       recordTimeForMedal,
     )
+    // Persist the medal into the lifetime cabinet. The writer is monotonic so
+    // a slower lap that no longer qualifies for the previously-earned tier
+    // never demotes the stored value, and the call is a no-op when the lap
+    // does not earn an upgrade. Lets the home page surface a "medal cabinet"
+    // counts strip without re-deriving from KV on every page load.
+    writeMedalForTrack(slug, versionHash, medalTier)
     const earned = evaluateAchievements({
       lapTimeMs: lapMs,
       isPb: lapDerived.isAllTimePb,

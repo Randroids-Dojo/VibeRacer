@@ -15,6 +15,7 @@ import { MyPbs } from '@/components/MyPbs'
 import { MyTracks } from '@/components/MyTracks'
 import { FavoriteTracks } from '@/components/FavoriteTracks'
 import { LifetimeStats } from '@/components/LifetimeStats'
+import { MedalCabinet } from '@/components/MedalCabinet'
 import { DailyChallenge } from '@/components/DailyChallenge'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
@@ -69,6 +70,8 @@ export default async function HomePage() {
           <MyPbs />
 
           <LifetimeStats />
+
+          <MedalCabinet />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
