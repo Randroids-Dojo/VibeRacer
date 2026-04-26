@@ -24,10 +24,14 @@ const NEW_PB: Replay = {
   lapTimeMs: 10000,
   samples: [[2, 2, 0]],
 }
+const LAST_LAP: Replay = {
+  lapTimeMs: 13500,
+  samples: [[3, 3, 0]],
+}
 
 describe('GHOST_SOURCES enumeration', () => {
-  it('lists exactly auto, top, pb', () => {
-    expect(GHOST_SOURCES).toEqual(['auto', 'top', 'pb'])
+  it('lists exactly auto, top, pb, lastLap', () => {
+    expect(GHOST_SOURCES).toEqual(['auto', 'top', 'pb', 'lastLap'])
   })
 
   it('default source is auto so legacy behavior is preserved', () => {
@@ -110,6 +114,21 @@ describe('pickGhostReplay', () => {
     expect(pickGhostReplay('pb', PB, TOP)).toBe(PB)
     expect(pickGhostReplay('pb', null, TOP)).toBe(null)
   })
+
+  it('lastLap: returns the lastLap replay when present', () => {
+    expect(pickGhostReplay('lastLap', PB, TOP, LAST_LAP)).toBe(LAST_LAP)
+  })
+
+  it('lastLap: returns null when no lap has completed yet this session', () => {
+    expect(pickGhostReplay('lastLap', PB, TOP, null)).toBe(null)
+    expect(pickGhostReplay('lastLap', null, null)).toBe(null)
+  })
+
+  it('lastLap: never falls back to PB or top even when both are available', () => {
+    // Whole point of the source is to chase the freshest attempt, not a stale
+    // PB or leaderboard recording.
+    expect(pickGhostReplay('lastLap', PB, TOP, null)).toBe(null)
+  })
 })
 
 describe('pickGhostAfterPb', () => {
@@ -128,6 +147,14 @@ describe('pickGhostAfterPb', () => {
   it('top: returns the prior active even when it was null', () => {
     expect(pickGhostAfterPb('top', NEW_PB, null)).toBe(null)
   })
+
+  it('lastLap: keeps the existing active ghost so the per-lap update path does not double-write', () => {
+    // The post-PB swap is a no-op for lastLap since handleLapReplay (which
+    // fires before handleLapComplete) already wrote the new lap into
+    // activeGhostRef. Returning prevActive here keeps the two writers in sync.
+    expect(pickGhostAfterPb('lastLap', NEW_PB, LAST_LAP)).toBe(LAST_LAP)
+    expect(pickGhostAfterPb('lastLap', NEW_PB, null)).toBe(null)
+  })
 })
 
 describe('ghostSourceNeedsTopFetch', () => {
@@ -138,5 +165,11 @@ describe('ghostSourceNeedsTopFetch', () => {
 
   it('pb skips the leaderboard top fetch entirely', () => {
     expect(ghostSourceNeedsTopFetch('pb')).toBe(false)
+  })
+
+  it('lastLap skips the leaderboard top fetch entirely', () => {
+    // The lastLap source never falls back to the leaderboard top, so a
+    // network round-trip on race load is wasted work.
+    expect(ghostSourceNeedsTopFetch('lastLap')).toBe(false)
   })
 })

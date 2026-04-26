@@ -374,6 +374,13 @@ function GameSession({
   // Replay buffer captured by RaceCanvas for the most recent lap, queued for
   // bundling into the next /api/race/submit POST.
   const pendingReplayForSubmitRef = useRef<Replay | null>(null)
+  // Most recent COMPLETED lap's replay (regardless of PB status). Used by the
+  // 'lastLap' ghost source so the player can chase their previous attempt
+  // even when slowly slipping off pace. Updated by handleLapReplay on every
+  // completed lap, including PB laps. Null until the first lap of the
+  // session completes; cleared on Restart so a fresh race starts ghost-less
+  // when the lastLap source is selected.
+  const lastLapReplayRef = useRef<Replay | null>(null)
   // Whether the just-completed lap was a new local PB. Set inside the lap
   // complete handler before submitLap fires so the submit response handler
   // knows whether to promote the returned `submittedNonce` into the
@@ -822,6 +829,11 @@ function GameSession({
     // dial. Restart Lap (mid-race lap reset) intentionally keeps the running
     // peak: the player chasing a hot lap should not lose their best straight.
     topSpeedRef.current = 0
+    // The lastLap ghost source tracks within-session laps only, so a full
+    // Restart zeroes the captured replay. The ghost-source effect re-runs on
+    // restart and re-resolves activeGhostRef from the player's source pick;
+    // for 'lastLap' that resolves to null until a fresh lap completes.
+    lastLapReplayRef.current = null
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
@@ -1049,14 +1061,24 @@ function GameSession({
     //   auto: prefer the local PB replay; fall back to leaderboard top.
     //   top:  always show the leaderboard top recording.
     //   pb:   only show the local PB; do not fall back to top.
+    //   lastLap: show the most recent completed lap of THIS session; null
+    //            until the first lap finishes (handleLapReplay swaps the
+    //            ref live as new laps complete).
     // Once set, this ref is updated only on personal-best laps (see
     // handleLapComplete) so a swap mid-race waits for a clean lap boundary.
     let cancelled = false
     const local = readLocalBestReplay(slug, versionHash)
     const source = settings.ghostSource
     // Apply the local-only resolution immediately so the player sees a ghost
-    // (or nothing) on the first frame without waiting on the network.
-    activeGhostRef.current = pickGhostReplay(source, local, null)
+    // (or nothing) on the first frame without waiting on the network. Pass
+    // the live lastLap ref so re-running this effect after a source switch
+    // mid-session immediately picks up the existing recorded lap.
+    activeGhostRef.current = pickGhostReplay(
+      source,
+      local,
+      null,
+      lastLapReplayRef.current,
+    )
     if (!ghostSourceNeedsTopFetch(source)) {
       return () => {
         cancelled = true
@@ -1073,7 +1095,12 @@ function GameSession({
         // Recompute against the freshly fetched top in case a PB lap landed
         // between the initial paint and the network resolve.
         const fresh = readLocalBestReplay(slug, versionHash)
-        activeGhostRef.current = pickGhostReplay(source, fresh, parsed.data)
+        activeGhostRef.current = pickGhostReplay(
+          source,
+          fresh,
+          parsed.data,
+          lastLapReplayRef.current,
+        )
       })
       .catch(() => {
         // Best-effort; absent ghost is a non-fatal degradation.
@@ -1257,6 +1284,17 @@ function GameSession({
     // store it. The PB swap happens in handleLapComplete where we know the
     // previous best from React state.
     pendingReplayForSubmitRef.current = replay
+    // Capture the just-completed lap as the canonical "last lap" replay so
+    // the lastLap ghost source can swap to it on the next finish-line cross.
+    // Runs for every completed lap, even non-PB ones, so the player can
+    // chase their most recent attempt even when slowly slipping off pace.
+    lastLapReplayRef.current = replay
+    // When the player picked the lastLap ghost source, swap the active ghost
+    // immediately so the next lap races against this latest attempt. Skip the
+    // swap in friend-challenge mode where the friend's ghost takes priority.
+    if (challenge === null && ghostSourceRef.current === 'lastLap') {
+      activeGhostRef.current = replay
+    }
   }
 
   // Drift score for the just-completed lap. Compares against the all-time

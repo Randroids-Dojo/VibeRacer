@@ -219,6 +219,13 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().ghostSource).toBe('pb')
   })
 
+  it('round-trips ghostSource = lastLap', () => {
+    const custom = cloneDefaultSettings()
+    custom.ghostSource = 'lastLap'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().ghostSource).toBe('lastLap')
+  })
+
   it('backfills ghostSource when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,
