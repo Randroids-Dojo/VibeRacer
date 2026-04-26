@@ -7,6 +7,8 @@ import {
   CAMERA_DISTANCE_MIN,
   CAMERA_FOLLOW_SPEED_MAX,
   CAMERA_FOLLOW_SPEED_MIN,
+  CAMERA_FOV_MAX,
+  CAMERA_FOV_MIN,
   CAMERA_HEIGHT_MAX,
   CAMERA_HEIGHT_MIN,
   CAMERA_LOOK_AHEAD_MAX,
@@ -349,7 +351,8 @@ export function SettingsPane({
     settings.camera.height === DEFAULT_CAMERA_SETTINGS.height &&
     settings.camera.distance === DEFAULT_CAMERA_SETTINGS.distance &&
     settings.camera.lookAhead === DEFAULT_CAMERA_SETTINGS.lookAhead &&
-    settings.camera.followSpeed === DEFAULT_CAMERA_SETTINGS.followSpeed
+    settings.camera.followSpeed === DEFAULT_CAMERA_SETTINGS.followSpeed &&
+    settings.camera.fov === DEFAULT_CAMERA_SETTINGS.fov
 
   function clearSlot(action: ControlAction, slot: number) {
     onChange({
@@ -724,6 +727,15 @@ export function SettingsPane({
             step={0.05}
             format={(v) => `${v.toFixed(2)}x`}
             onChange={(v) => setCamera({ ...settings.camera, followSpeed: v })}
+          />
+          <MenuSlider
+            label="Field of view"
+            value={settings.camera.fov}
+            min={CAMERA_FOV_MIN}
+            max={CAMERA_FOV_MAX}
+            step={1}
+            format={(v) => `${Math.round(v)} deg`}
+            onChange={(v) => setCamera({ ...settings.camera, fov: v })}
           />
           <div style={cameraResetRow}>
             <MenuButton

@@ -4,6 +4,8 @@ import {
   CAMERA_DEFAULT_TARGET_LERP,
   CAMERA_FOLLOW_SPEED_MAX,
   CAMERA_FOLLOW_SPEED_MIN,
+  CAMERA_FOV_MAX,
+  CAMERA_FOV_MIN,
   CAMERA_HEIGHT_MAX,
   CAMERA_HEIGHT_MIN,
   CONTROL_SETTINGS_STORAGE_KEY,
@@ -257,6 +259,7 @@ describe('localStorage round-trip', () => {
       distance: 18,
       lookAhead: 8,
       followSpeed: 1.3,
+      fov: 85,
     }
     writeStoredControlSettings(custom)
     expect(readStoredControlSettings().camera).toEqual(custom.camera)
@@ -272,9 +275,57 @@ describe('localStorage round-trip', () => {
         distance: 9999,
         lookAhead: -3,
         followSpeed: 12,
+        fov: 5,
       },
     })
     expect(readStoredControlSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+
+  it('backfills fov when reading a legacy camera payload that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      camera: {
+        // Legacy payload predates the FOV field. Expect the rest of the rig
+        // to ride through and FOV to backfill from the default rather than
+        // falling all the way back to the full default rig (which would lose
+        // the player's tweaks).
+        height: 5,
+        distance: 16,
+        lookAhead: 7,
+        followSpeed: 1.1,
+      },
+    })
+    const out = readStoredControlSettings().camera
+    expect(out.fov).toBe(DEFAULT_CAMERA_SETTINGS.fov)
+    expect(out.height).toBe(5)
+    expect(out.distance).toBe(16)
+    expect(out.lookAhead).toBe(7)
+    expect(out.followSpeed).toBeCloseTo(1.1, 6)
+  })
+
+  it('rejects an out-of-range FOV but keeps the rest of the payload via defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      camera: {
+        height: DEFAULT_CAMERA_SETTINGS.height,
+        distance: DEFAULT_CAMERA_SETTINGS.distance,
+        lookAhead: DEFAULT_CAMERA_SETTINGS.lookAhead,
+        followSpeed: DEFAULT_CAMERA_SETTINGS.followSpeed,
+        // 200 is well outside the slider range; the safeParse should reject
+        // the camera payload and fall back to the defaults.
+        fov: 200,
+      },
+    })
+    expect(readStoredControlSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+
+  it('round-trips an FOV at the slider extremes', () => {
+    for (const fov of [50, 70, 90, 110]) {
+      const custom = cloneDefaultSettings()
+      custom.camera = { ...custom.camera, fov }
+      writeStoredControlSettings(custom)
+      expect(readStoredControlSettings().camera.fov).toBe(fov)
+    }
   })
 
   it('defaults carPaint to null (stock colormap)', () => {
@@ -370,6 +421,8 @@ describe('camera defaults', () => {
       CAMERA_HEIGHT_MIN,
     )
     expect(DEFAULT_CAMERA_SETTINGS.height).toBeLessThanOrEqual(CAMERA_HEIGHT_MAX)
+    expect(DEFAULT_CAMERA_SETTINGS.fov).toBeGreaterThanOrEqual(CAMERA_FOV_MIN)
+    expect(DEFAULT_CAMERA_SETTINGS.fov).toBeLessThanOrEqual(CAMERA_FOV_MAX)
   })
 })
 

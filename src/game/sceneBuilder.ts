@@ -523,6 +523,10 @@ export interface CameraRigParams {
   lookAhead: number
   positionLerp: number
   targetLerp: number
+  // Vertical field of view in degrees. Optional so legacy callers that build
+  // CameraRigParams ad-hoc keep working; the renderer reads it through the
+  // ref each frame and only reapplies on change.
+  fov?: number
 }
 
 export const DEFAULT_CAMERA_RIG: CameraRigParams = {
@@ -531,6 +535,7 @@ export const DEFAULT_CAMERA_RIG: CameraRigParams = {
   lookAhead: 6,
   positionLerp: 0.12,
   targetLerp: 0.2,
+  fov: 70,
 }
 
 export interface CameraRigState {

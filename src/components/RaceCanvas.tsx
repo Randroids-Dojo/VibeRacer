@@ -189,6 +189,19 @@ export function RaceCanvas({
     resize()
     window.addEventListener('resize', resize)
 
+    // Apply FOV from the camera rig ref each frame, but only call
+    // updateProjectionMatrix when the value actually changes. The PerspectiveCamera
+    // ships at 70 degrees so a no-op tweak is the common case.
+    let lastFov: number | undefined = bundle.camera.fov
+    function syncFov() {
+      const next = cameraRigRef?.current?.fov
+      if (next === undefined || next === lastFov) return
+      lastFov = next
+      bundle.camera.fov = next
+      bundle.camera.updateProjectionMatrix()
+    }
+    syncFov()
+
     let state = initGameState(path)
     const rig: CameraRigState = initCameraRig(state.x, state.z, state.heading)
 
@@ -238,6 +251,9 @@ export function RaceCanvas({
       // Reapply paint when the user picks a new swatch in Settings. Cheap:
       // the setter compares string equality and short-circuits on a no-op.
       syncPaint()
+      // Same idea for FOV: poll the camera rig ref and call
+      // updateProjectionMatrix only when the value changes.
+      syncFov()
 
       if (pendingResetRef.current) {
         state = initGameState(path)

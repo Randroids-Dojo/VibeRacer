@@ -79,16 +79,21 @@ export type TouchMode = (typeof TOUCH_MODES)[number]
 export type KeyBindings = Record<ControlAction, string[]>
 
 // Player-tunable camera rig. Mirrors the runtime CameraRigParams in
-// src/game/sceneBuilder.ts, but only the four parameters worth surfacing in
+// src/game/sceneBuilder.ts, but only the parameters worth surfacing in
 // Settings: how high the camera sits, how far it trails, how far ahead the
-// look-target leans into turns, and how snappy the follow is. The two lerp
-// rates are tied together behind a single `followSpeed` so the UI stays a
-// single intuitive slider rather than two fiddly knobs.
+// look-target leans into turns, how snappy the follow is, and the perspective
+// camera's vertical field of view. The two lerp rates are tied together behind
+// a single `followSpeed` so the UI stays a single intuitive slider rather than
+// two fiddly knobs.
 export interface CameraRigSettings {
   height: number
   distance: number
   lookAhead: number
   followSpeed: number
+  // Vertical field of view in degrees. Lower values zoom in and feel calmer;
+  // higher values widen the view (peripheral vision) and feel faster, at the
+  // cost of more lens distortion at the edges.
+  fov: number
 }
 
 // Slider ranges. Picked so the extremes still produce a usable view: the
@@ -106,12 +111,18 @@ export const CAMERA_LOOK_AHEAD_MIN = 0
 export const CAMERA_LOOK_AHEAD_MAX = 12
 export const CAMERA_FOLLOW_SPEED_MIN = 0.4
 export const CAMERA_FOLLOW_SPEED_MAX = 1.6
+// FOV bounds: 50 is a fairly tight cinematic view, 110 is a fish-eye-leaning
+// wide view that still keeps the chase camera readable. The legacy hardcoded
+// camera shipped with 70 degrees so that stays the default.
+export const CAMERA_FOV_MIN = 50
+export const CAMERA_FOV_MAX = 110
 
 export const DEFAULT_CAMERA_SETTINGS: CameraRigSettings = {
   height: 6,
   distance: 14,
   lookAhead: 6,
   followSpeed: 1,
+  fov: 70,
 }
 
 export interface ControlSettings {
@@ -204,6 +215,10 @@ const CameraRigSettingsSchema = z.object({
     .number()
     .min(CAMERA_FOLLOW_SPEED_MIN)
     .max(CAMERA_FOLLOW_SPEED_MAX),
+  // FOV landed after the original camera shape; backfill from the default so
+  // legacy stored payloads (with the rest of the rig already saved) keep their
+  // tweaks instead of getting reset back to the full default rig.
+  fov: z.number().min(CAMERA_FOV_MIN).max(CAMERA_FOV_MAX).default(70),
 })
 
 const ControlSettingsSchema = z.object({

@@ -123,6 +123,7 @@ export function TuningSession({
       lookAhead: settings.camera.lookAhead,
       positionLerp: lerps.positionLerp,
       targetLerp: lerps.targetLerp,
+      fov: settings.camera.fov,
     }
   }
   // Same idea for car paint: the lab car wears the player's chosen color.

@@ -206,6 +206,7 @@ function GameSession({
       lookAhead: settings.camera.lookAhead,
       positionLerp: lerps.positionLerp,
       targetLerp: lerps.targetLerp,
+      fov: settings.camera.fov,
     }
   }
   // Mirrors the player's chosen paint into the rAF loop. Same pattern as
