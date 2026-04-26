@@ -413,6 +413,51 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showRacingLine).toBe(false)
   })
 
+  it("defaults headlights to 'auto'", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.headlights).toBe('auto')
+    expect(cloneDefaultSettings().headlights).toBe('auto')
+  })
+
+  it("round-trips a headlights pick of 'on'", () => {
+    const custom = cloneDefaultSettings()
+    custom.headlights = 'on'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("round-trips a headlights pick of 'off'", () => {
+    const custom = cloneDefaultSettings()
+    custom.headlights = 'off'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("backfills headlights to 'auto' when reading legacy storage that omits it", () => {
+    // Legacy payloads that predate the headlights setting should pick up the
+    // sensible default so the upgrade is opt-out, not opt-in.
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().headlights).toBe('auto')
+  })
+
+  it('rejects an unknown stored headlights value and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      headlights: 'flicker',
+    })
+    expect(readStoredControlSettings().headlights).toBe('auto')
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

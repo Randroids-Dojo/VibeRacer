@@ -28,6 +28,7 @@ import {
   PointsMaterial,
   RGBAFormat,
   Scene,
+  SphereGeometry,
   type Texture,
   UnsignedByteType,
 } from 'three'
@@ -114,6 +115,17 @@ import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
 } from '@/lib/racingNumber'
+import {
+  HEADLIGHT_BEAM_COLOR_HEX,
+  HEADLIGHT_BEAM_LENGTH,
+  HEADLIGHT_BEAM_OPACITY,
+  HEADLIGHT_BEAM_RADIUS,
+  HEADLIGHT_LAMP_COLOR_HEX,
+  HEADLIGHT_LAMP_OFFSET_X,
+  HEADLIGHT_LAMP_OFFSET_Y,
+  HEADLIGHT_LAMP_OFFSET_Z,
+  HEADLIGHT_LAMP_RADIUS,
+} from '@/lib/headlights'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -144,6 +156,12 @@ export interface SceneBundle {
   // plate. Cheap on no-op (single string compare); the rAF loop can poll-
   // and-set every frame without churning the GPU.
   setRacingNumber: (setting: RacingNumberSetting) => void
+  // Toggle the cosmetic headlight assembly (front lamps + glowing beam cones)
+  // on the player car. `true` shows the lamps + beams, `false` hides them.
+  // Pure cosmetic; the assembly does not actually illuminate the road. Cheap;
+  // the rAF loop can poll-and-set every frame (single boolean compare on the
+  // cached value before flipping the parent group's visibility flag).
+  setHeadlights: (on: boolean) => void
   // Apply a time-of-day lighting preset by name. Updates the sky color, the
   // ground material color, the ambient light, and the sun's color, intensity,
   // and direction in place. Cheap; no allocation per call so the rAF loop can
@@ -441,10 +459,97 @@ function buildRacingNumberPlate(): {
   return { group, apply, dispose }
 }
 
+// Cosmetic headlight assembly attached to the car's outer group. Two glowing
+// "lamp" spheres at the front of the chassis and two long translucent beam
+// cones projecting forward read as classic arcade headlights without paying
+// for a real Three.js SpotLight (no shadow map, no per-fragment lighting cost).
+//
+// The geometry is built once and lives behind a single visibility flag so a
+// settings flip is O(1). The beam cones use additive blending so they look
+// brighter against a dark night scene without needing a tonemapping pass.
+function buildHeadlights(): {
+  group: Group
+  setVisible: (value: boolean) => void
+  dispose: () => void
+} {
+  const group = new Group()
+  // Default hidden so a fresh load with the toggle off costs nothing per
+  // frame (the parent's `setVisible(false)` skips the entire subtree during
+  // render-list traversal).
+  group.visible = false
+
+  // Shared resources so two lamps + two beams collapse to one geometry per
+  // shape and one material per role.
+  const lampGeom = new SphereGeometry(HEADLIGHT_LAMP_RADIUS, 16, 12)
+  const lampMat = new MeshBasicMaterial({
+    color: HEADLIGHT_LAMP_COLOR_HEX,
+    transparent: false,
+  })
+  // Beam cone: built with the apex at the local origin and the tip pointing
+  // along +Y by default in Three.js's ConeGeometry. We rotate it so the cone
+  // lies flat along the car's +X (forward) axis with the apex at the lamp
+  // and the wide end out in front.
+  const beamGeom = new ConeGeometry(
+    HEADLIGHT_BEAM_RADIUS,
+    HEADLIGHT_BEAM_LENGTH,
+    16,
+    1,
+    true,
+  )
+  const beamMat = new MeshBasicMaterial({
+    color: HEADLIGHT_BEAM_COLOR_HEX,
+    transparent: true,
+    opacity: HEADLIGHT_BEAM_OPACITY,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  })
+
+  function addAssembly(zSign: 1 | -1) {
+    const lamp = new Mesh(lampGeom, lampMat)
+    lamp.position.set(
+      HEADLIGHT_LAMP_OFFSET_X,
+      HEADLIGHT_LAMP_OFFSET_Y,
+      HEADLIGHT_LAMP_OFFSET_Z * zSign,
+    )
+    group.add(lamp)
+
+    const beam = new Mesh(beamGeom, beamMat)
+    // Rotate so the cone axis aligns with +X (forward). Default cone axis is
+    // +Y; rotating -PI/2 around Z swings +Y to +X. The apex sits at the
+    // mesh's local origin, so position the mesh half-length forward of the
+    // lamp so the apex lands just in front of the lamp and the wide end sits
+    // HEADLIGHT_BEAM_LENGTH units further along.
+    beam.rotation.z = -Math.PI / 2
+    beam.position.set(
+      HEADLIGHT_LAMP_OFFSET_X + HEADLIGHT_BEAM_LENGTH / 2,
+      HEADLIGHT_LAMP_OFFSET_Y,
+      HEADLIGHT_LAMP_OFFSET_Z * zSign,
+    )
+    group.add(beam)
+  }
+
+  addAssembly(1)
+  addAssembly(-1)
+
+  return {
+    group,
+    setVisible(value) {
+      group.visible = value
+    },
+    dispose() {
+      lampGeom.dispose()
+      lampMat.dispose()
+      beamGeom.dispose()
+      beamMat.dispose()
+    },
+  }
+}
+
 function buildCar(): {
   car: Group
   setPaint: (hex: string | null) => void
   setRacingNumber: (setting: RacingNumberSetting) => void
+  setHeadlights: (on: boolean) => void
   cancel: () => void
 } {
   let bodyMesh: Mesh | null = null
@@ -474,6 +579,7 @@ function buildCar(): {
   }
 
   const plate = buildRacingNumberPlate()
+  const headlights = buildHeadlights()
 
   const { car, cancel: cancelLoad } = buildCarFrame((clone) => {
     clone.traverse((obj) => {
@@ -493,6 +599,10 @@ function buildCar(): {
   // Attach the plate to the OUTER car group so it inherits the heading
   // rotation but not the inner GLB's yaw / scale tweaks.
   car.add(plate.group)
+  // Same for the headlights: the offsets are expressed in the car's local
+  // frame (forward = +X at heading 0) so they only need to inherit the
+  // heading rotation, not the inner-group's GLB-orientation yaw / scale.
+  car.add(headlights.group)
 
   return {
     car,
@@ -501,11 +611,13 @@ function buildCar(): {
       applyPaint(hex)
     },
     setRacingNumber: plate.apply,
+    setHeadlights: headlights.setVisible,
     cancel: () => {
       cancelLoad()
       paintMaterial?.dispose()
       paintMaterial = null
       plate.dispose()
+      headlights.dispose()
     },
   }
 }
@@ -1472,6 +1584,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     car,
     setPaint: setCarPaint,
     setRacingNumber,
+    setHeadlights,
     cancel: cancelCar,
   } = buildCar()
   scene.add(car)
@@ -1531,6 +1644,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     car,
     setCarPaint,
     setRacingNumber,
+    setHeadlights,
     setTimeOfDay,
     setWeather,
     skidMarks,

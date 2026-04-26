@@ -12,6 +12,7 @@ import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import { WEATHER_LABELS } from '@/lib/weather'
+import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -460,6 +461,18 @@ function GameSession({
   timeOfDayRef.current = activeMood.timeOfDay
   const weatherRef = useRef<Weather | null>(activeMood.weather)
   weatherRef.current = activeMood.weather
+  // Resolve the headlight visibility from the player's HeadlightMode pick plus
+  // the active mood. Mirroring the boolean (not the mode) into the renderer ref
+  // keeps the renderer-side logic dumb (just flip a group's visibility) and
+  // means a track mood change automatically lights the lamps without any
+  // additional renderer work.
+  const headlightsOn = shouldHeadlightsBeOn(
+    settings.headlights,
+    activeMood.timeOfDay,
+    activeMood.weather,
+  )
+  const headlightsOnRef = useRef<boolean>(headlightsOn)
+  headlightsOnRef.current = headlightsOn
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -1608,6 +1621,7 @@ function GameSession({
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
         racingNumberRef={racingNumberRef}
+        headlightsOnRef={headlightsOnRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}

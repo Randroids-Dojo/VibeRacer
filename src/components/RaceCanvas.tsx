@@ -111,6 +111,11 @@ export interface RaceCanvasProps {
   // swatch click in the pause menu redraws the plate on the next frame
   // without rebuilding the renderer. Setter short-circuits on a no-op.
   racingNumberRef?: MutableRefObject<RacingNumberSetting | null>
+  // Live headlights toggle (already resolved from the player's HeadlightMode
+  // pick + the active timeOfDay / weather by the parent). Polled each frame so
+  // a Settings flip (or a time-of-day swap) lights or extinguishes the lamps
+  // on the next frame without rebuilding the renderer.
+  headlightsOnRef?: MutableRefObject<boolean>
   // Live time-of-day lighting override from Settings. Same poll-and-set
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
   // color, ambient, sun) without rebuilding the renderer.
@@ -205,6 +210,7 @@ export function RaceCanvas({
   cameraRigRef,
   carPaintRef,
   racingNumberRef,
+  headlightsOnRef,
   timeOfDayRef,
   weatherRef,
   showSkidMarksRef,
@@ -295,6 +301,19 @@ export function RaceCanvas({
       if (next !== null) bundle.setRacingNumber(next)
     }
     syncRacingNumber()
+
+    // Headlights toggle. The parent has already resolved the
+    // HeadlightMode + active timeOfDay / weather into a plain boolean, so
+    // the renderer just flips the parent group's visibility flag. Cheap
+    // O(1) on no-op (single boolean compare on the cached value).
+    let lastHeadlightsOn: boolean | undefined = undefined
+    function syncHeadlights() {
+      const next = headlightsOnRef?.current ?? false
+      if (next === lastHeadlightsOn) return
+      lastHeadlightsOn = next
+      bundle.setHeadlights(next)
+    }
+    syncHeadlights()
 
     // Same poll-and-set for the time-of-day lighting preset. The setter is
     // cheap (mutates existing colors / lights in place, no allocation) so
@@ -485,6 +504,8 @@ export function RaceCanvas({
       syncPaint()
       // Same idea for the racing-number plate (value + plate / text colors).
       syncRacingNumber()
+      // And the headlight assembly (visible / hidden from a single boolean).
+      syncHeadlights()
       // Same idea for FOV: poll the camera rig ref and call
       // updateProjectionMatrix only when the value changes.
       syncFov()

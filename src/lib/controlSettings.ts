@@ -25,6 +25,11 @@ import {
   GhostSourceSchema,
   type GhostSource,
 } from './ghostSource'
+import {
+  DEFAULT_HEADLIGHT_MODE,
+  HeadlightModeSchema,
+  type HeadlightMode,
+} from './headlights'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -223,6 +228,13 @@ export interface ControlSettings {
   // turning this off snaps the scene back to those personal picks. Track
   // authors set the mood from the editor's Advanced panel.
   respectTrackMood: boolean
+  // Cosmetic headlight lamps + glowing beam cones on the front of the player
+  // car. 'auto' lights them in dim scenes (sunset / night / foggy / snowy /
+  // rainy); 'on' always lights them; 'off' keeps them dark. Pure cosmetic;
+  // never illuminates the road or affects physics. Default 'auto' matches what
+  // a player would expect ("the car turns its lights on at night") so the
+  // upgrade is opt-out, not opt-in.
+  headlights: HeadlightMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -259,6 +271,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   timeOfDay: DEFAULT_TIME_OF_DAY,
   weather: DEFAULT_WEATHER,
   respectTrackMood: true,
+  headlights: DEFAULT_HEADLIGHT_MODE,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -367,6 +380,11 @@ const ControlSettingsSchema = z.object({
   // players see the look the track author intended; legacy stored payloads
   // pick up the same default so the upgrade is opt-out, not opt-in.
   respectTrackMood: z.boolean().default(true),
+  // Headlights landed after track-mood respect. Default 'auto' so legacy stored
+  // payloads light up the lamps the next time they race a sunset / night /
+  // foggy / snowy / rainy scene without having to dig into Settings; players
+  // who want them off can flip to 'off' once.
+  headlights: HeadlightModeSchema.default(DEFAULT_HEADLIGHT_MODE),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -395,6 +413,7 @@ export function cloneDefaultSettings(): ControlSettings {
     timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
     weather: DEFAULT_CONTROL_SETTINGS.weather,
     respectTrackMood: DEFAULT_CONTROL_SETTINGS.respectTrackMood,
+    headlights: DEFAULT_CONTROL_SETTINGS.headlights,
   }
 }
 

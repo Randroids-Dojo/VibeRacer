@@ -74,6 +74,12 @@ import {
   type GhostSource,
 } from '@/lib/ghostSource'
 import {
+  HEADLIGHT_MODES,
+  HEADLIGHT_MODE_DESCRIPTIONS,
+  HEADLIGHT_MODE_LABELS,
+  type HeadlightMode,
+} from '@/lib/headlights'
+import {
   MenuButton,
   MenuHeader,
   MenuHint,
@@ -444,6 +450,11 @@ export function SettingsPane({
   function setWeather(value: Weather) {
     clickSoft()
     onChange({ ...settings, weather: value })
+  }
+
+  function setHeadlights(value: HeadlightMode) {
+    clickSoft()
+    onChange({ ...settings, headlights: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -998,6 +1009,29 @@ export function SettingsPane({
               </div>
             </>
           ) : null}
+        </MenuSection>
+
+        <MenuSection title="Headlights">
+          <MenuHint>
+            Glowing front lamps and beam cones on your car. Pure cosmetic. Auto
+            turns them on at sunset, at night, and in foggy or snowy weather.
+          </MenuHint>
+          <div style={touchToggleRow}>
+            {HEADLIGHT_MODES.map((mode) => {
+              const active = settings.headlights === mode
+              return (
+                <MenuButton
+                  key={mode}
+                  variant={active ? 'primary' : 'secondary'}
+                  onClick={() => setHeadlights(mode)}
+                  title={HEADLIGHT_MODE_DESCRIPTIONS[mode]}
+                >
+                  {HEADLIGHT_MODE_LABELS[mode]}
+                </MenuButton>
+              )
+            })}
+          </div>
+          <MenuHint>{HEADLIGHT_MODE_DESCRIPTIONS[settings.headlights]}</MenuHint>
         </MenuSection>
 
         <MenuSection title="Time of day">

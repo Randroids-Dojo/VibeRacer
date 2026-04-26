@@ -33,6 +33,7 @@ import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
+import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
@@ -146,6 +147,18 @@ export function TuningSession({
   // race scene.
   const weatherRef = useRef<Weather | null>(settings.weather)
   weatherRef.current = settings.weather
+  // Headlights: resolve from the player's HeadlightMode pick + the lab's
+  // active scene (no track mood in the lab, so it reads the player's own
+  // timeOfDay / weather directly). Keeps the lab car visually consistent with
+  // the race car so a player who flips the lamps on at night sees them in
+  // both contexts.
+  const headlightsOn = shouldHeadlightsBeOn(
+    settings.headlights,
+    settings.timeOfDay,
+    settings.weather,
+  )
+  const headlightsOnRef = useRef<boolean>(headlightsOn)
+  headlightsOnRef.current = headlightsOn
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -325,6 +338,7 @@ export function TuningSession({
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
             racingNumberRef={racingNumberRef}
+            headlightsOnRef={headlightsOnRef}
             timeOfDayRef={timeOfDayRef}
             weatherRef={weatherRef}
             disableMusicIntensity
