@@ -434,6 +434,10 @@ export function SettingsPane({
     onChange({ ...settings, showSpeedLines: value })
   }
 
+  function setShowReactionTime(value: boolean) {
+    onChange({ ...settings, showReactionTime: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -1040,6 +1044,24 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showSpeedLines}
                 onChange={setShowSpeedLines}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Reaction time</div>
+            <MenuHint>
+              Pops a small chip the moment you press throttle for a fresh
+              race, showing how many milliseconds passed between the GO
+              light and your first tap. Tier badge grades the launch:
+              LIGHTNING (sub 200 ms), GREAT (sub 350 ms), GOOD (sub 600 ms),
+              or HUMAN. Auto-fades after a few seconds.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show reaction time</div>
+              <MenuToggle
+                value={settings.showReactionTime}
+                onChange={setShowReactionTime}
               />
             </div>
           </div>

@@ -56,7 +56,16 @@ import {
   writeLocalBestPbStreak,
   readLastSubmit,
   writeLastSubmit,
+  readLocalBestReaction,
+  writeLocalBestReaction,
+  readLifetimeBestReaction,
+  writeLifetimeBestReaction,
 } from '@/lib/localBest'
+import {
+  REACTION_TIME_DISPLAY_MS,
+  isReactionPb,
+  sanitizeReactionTime,
+} from '@/game/reactionTime'
 import {
   incrementStreak,
   isStreakBest,
@@ -298,6 +307,14 @@ interface HudState {
   // (no ghost on screen, no replay loaded, player has drifted off the line,
   // or the Settings toggle is off).
   ghostGapMs: number | null
+  // Reaction time at the GO light. Populated the first frame the player
+  // presses throttle after a fresh race-start. The HUD chip auto-clears
+  // after REACTION_TIME_DISPLAY_MS so it does not crowd the mid-race HUD.
+  // `pbReactionMs` mirrors the player's all-time best on this (slug, hash)
+  // so the chip can flag a PB inline. Cleared on Restart so the next race
+  // starts on a clean slate.
+  reactionTime: { reactionMs: number; isPb: boolean; generatedAtMs: number } | null
+  pbReactionMs: number | null
 }
 
 type PauseView =
@@ -653,6 +670,12 @@ function GameSession({
   const sectorPbClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   )
+  // Auto-clear timer for the reaction-time HUD chip. Cleared on every fresh
+  // measurement (so a Restart-followed-by-new-race instantly cancels the
+  // stale fade) and on Restart so the chip never lingers across runs.
+  const reactionTimeClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   // Expected sector count for OPTIMAL completeness. Equals the track's
   // checkpoint count (one sector per checkpoint), which defaults to the
   // piece count when no override is set.
@@ -780,6 +803,8 @@ function GameSession({
       pbStreak: 0,
       pbStreakBest: readLocalBestPbStreak(slug, versionHash),
       ghostGapMs: null,
+      reactionTime: null,
+      pbReactionMs: readLocalBestReaction(slug, versionHash),
     }
   })
 
@@ -812,6 +837,11 @@ function GameSession({
       // player chases survives a navigation.
       pbStreak: 0,
       pbStreakBest: readLocalBestPbStreak(slug, versionHash),
+      // Reaction-time PB is per (slug, versionHash) too. Reload from disk so
+      // a navigation surfaces the right bar; the live chip clears since the
+      // player has not produced a fresh measurement for this layout yet.
+      reactionTime: null,
+      pbReactionMs: readLocalBestReaction(slug, versionHash),
     }))
     // Engagement stats are also (slug, version)-scoped: reload them so the
     // pause-menu Stats pane reflects what the player banked on this layout
@@ -912,6 +942,10 @@ function GameSession({
       clearTimeout(sectorPbClearTimerRef.current)
       sectorPbClearTimerRef.current = null
     }
+    if (reactionTimeClearTimerRef.current) {
+      clearTimeout(reactionTimeClearTimerRef.current)
+      reactionTimeClearTimerRef.current = null
+    }
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     silenceAllSfx(0.05)
     setPaused(false)
@@ -951,6 +985,10 @@ function GameSession({
       // post-restart countdown. RaceCanvas will repopulate it on the first
       // post-GO HUD tick.
       ghostGapMs: null,
+      // Reaction time clears so the chip slot collapses on the post-restart
+      // countdown. The pb baseline survives (it lives on disk) so the next
+      // measurement still grades against the player's all-time best.
+      reactionTime: null,
     }))
     setPhase('countdown')
   }, [])
@@ -1578,6 +1616,43 @@ function GameSession({
     })
   }
 
+  // Reaction-time chip handler. Fires once per race-start the very first frame
+  // the player presses throttle after the GO light. Persists a fresh PB to
+  // localStorage (per-slug AND lifetime), updates HudState so the chip pops
+  // with the right tier accent, and arms an auto-clear timer so the chip
+  // fades after REACTION_TIME_DISPLAY_MS without crowding the mid-race HUD.
+  function handleReactionTime(reactionMs: number) {
+    const sanitized = sanitizeReactionTime(reactionMs)
+    if (sanitized === null) return
+    const generatedAtMs = performance.now()
+    if (reactionTimeClearTimerRef.current) {
+      clearTimeout(reactionTimeClearTimerRef.current)
+      reactionTimeClearTimerRef.current = null
+    }
+    setHud((prev) => {
+      const wasPb = isReactionPb(prev.pbReactionMs, sanitized)
+      if (wasPb) {
+        writeLocalBestReaction(slug, versionHash, sanitized)
+      }
+      // Lifetime best: a single number across every (slug, version). Updated
+      // independently of the per-slug PB so a fresh layout that does not beat
+      // the per-slug PB can still set a new lifetime best.
+      const lifetimePrev = readLifetimeBestReaction()
+      if (isReactionPb(lifetimePrev, sanitized)) {
+        writeLifetimeBestReaction(sanitized)
+      }
+      return {
+        ...prev,
+        reactionTime: { reactionMs: sanitized, isPb: wasPb, generatedAtMs },
+        pbReactionMs: wasPb ? sanitized : prev.pbReactionMs,
+      }
+    })
+    reactionTimeClearTimerRef.current = setTimeout(() => {
+      reactionTimeClearTimerRef.current = null
+      setHud((prev) => ({ ...prev, reactionTime: null }))
+    }, REACTION_TIME_DISPLAY_MS)
+  }
+
   // Per-checkpoint live split tile. Re-computed each time the player crosses
   // an in-lap checkpoint by comparing their just-recorded hit against the PB
   // splits stored from their last all-time PB. The tile auto-clears after
@@ -2118,6 +2193,7 @@ function GameSession({
         onLapReplay={handleLapReplay}
         onCheckpointHit={handleCheckpointHit}
         onLapDriftBest={handleLapDriftBest}
+        onReactionTime={handleReactionTime}
         captureScreenshotRef={captureScreenshotRef}
         style={canvasStyle}
       />
@@ -2191,6 +2267,11 @@ function GameSession({
         ghostGapMs={
           phase === 'racing' && !paused && settings.showGhost && settings.showGhostGap
             ? hud.ghostGapMs
+            : null
+        }
+        reactionTime={
+          phase === 'racing' && !paused && settings.showReactionTime
+            ? hud.reactionTime
             : null
         }
       />
@@ -2294,6 +2375,8 @@ function GameSession({
               bestAllTimeMs={hud.bestAllTimeMs}
               pbStreakBestEver={hud.pbStreakBest}
               pbStreakLive={hud.pbStreak}
+              bestReactionMs={hud.pbReactionMs}
+              lifetimeBestReactionMs={readLifetimeBestReaction()}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'achievements' ? (

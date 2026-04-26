@@ -916,6 +916,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showSpeedLines).toBe(true)
   })
 
+  it('defaults showReactionTime to true (post-launch chip)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showReactionTime).toBe(true)
+    expect(cloneDefaultSettings().showReactionTime).toBe(true)
+  })
+
+  it('round-trips a disabled showReactionTime flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showReactionTime = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().showReactionTime).toBe(false)
+  })
+
+  it('backfills showReactionTime to true when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showReactionTime).toBe(true)
+  })
+
   it('defaults showTopSpeedMarker to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker).toBe(true)
     expect(cloneDefaultSettings().showTopSpeedMarker).toBe(true)

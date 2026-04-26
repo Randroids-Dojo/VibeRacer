@@ -69,6 +69,7 @@ import {
   type DriftSessionState,
 } from '@/game/drift'
 import { ghostGapMs } from '@/game/ghostGap'
+import { isReactionInputPressed } from '@/game/reactionTime'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -225,6 +226,13 @@ export interface RaceCanvasProps {
   // persist the score as a new local PB. Always emitted on lap complete
   // (even when the score is 0) so consumers can clear stale UI.
   onLapDriftBest?: (score: number) => void
+  // Fired the very first frame the player presses throttle after a fresh
+  // race-start (the GO light). The argument is the elapsed milliseconds
+  // between `state.raceStartMs` (seeded by `pendingRaceStartRef`) and the
+  // first throttle press. Fires exactly once per race-start; the detection
+  // resets on every full session restart and on the post-countdown pulse so
+  // the next race produces a new measurement.
+  onReactionTime?: (reactionMs: number) => void
   // Out-ref the parent can call to grab a synchronous screenshot of the
   // current scene. The function force-renders the latest scene + camera
   // before reading pixels so the buffer is always fresh, even when the
@@ -283,6 +291,7 @@ export function RaceCanvas({
   onLapReplay,
   onCheckpointHit,
   onLapDriftBest,
+  onReactionTime,
   captureScreenshotRef,
   disableMusicIntensity,
   className,
@@ -294,12 +303,14 @@ export function RaceCanvas({
   const onLapReplayRef = useRef(onLapReplay)
   const onCheckpointHitRef = useRef(onCheckpointHit)
   const onLapDriftBestRef = useRef(onLapDriftBest)
+  const onReactionTimeRef = useRef(onReactionTime)
   const disableMusicRef = useRef(!!disableMusicIntensity)
   onLapCompleteRef.current = onLapComplete
   onHudUpdateRef.current = onHudUpdate
   onLapReplayRef.current = onLapReplay
   onCheckpointHitRef.current = onCheckpointHit
   onLapDriftBestRef.current = onLapDriftBest
+  onReactionTimeRef.current = onReactionTime
   disableMusicRef.current = !!disableMusicIntensity
 
   useEffect(() => {
@@ -591,6 +602,16 @@ export function RaceCanvas({
     // stale hint into the new lap. The pure helper falls back to a wider
     // search when the hint is wrong, so even a stale value resolves cleanly.
     let ghostGapHintIdx = 0
+    // Reaction-time detection. `armedRaceStartMs` holds the timestamp the
+    // race actually started (set the same frame `pendingRaceStartRef` fires
+    // and `state.raceStartMs` is seeded). The first frame we see throttle
+    // input above the noise floor while armed, we fire `onReactionTime` with
+    // the elapsed milliseconds and disarm so the next throttle press in the
+    // same race does not re-fire. Reset on every full Restart so the next
+    // run produces a new measurement; intentionally NOT reset on a lap
+    // restart since reaction time is a per-RACE stat (the player did not
+    // sit through a fresh GO light).
+    let armedRaceStartMs: number | null = null
 
     function loop(ts: number) {
       if (!running) return
@@ -650,6 +671,10 @@ export function RaceCanvas({
         driftSession = initDriftSession()
         driftLapBest = 0
         ghostGapHintIdx = 0
+        // Disarm reaction-time detection; the next pendingRaceStartRef pulse
+        // (after the post-restart countdown) re-arms it so the player gets a
+        // fresh measurement on the new race.
+        armedRaceStartMs = null
         raf = requestAnimationFrame(loop)
         return
       }
@@ -740,6 +765,12 @@ export function RaceCanvas({
 
       if (pendingRaceStartRef.current !== null) {
         state = startRace(state, pendingRaceStartRef.current)
+        // Arm reaction-time detection at the same race-start instant so the
+        // next "first throttle press" frame can compute the elapsed ms. We
+        // intentionally use the seeded raceStartMs (not `ts`) so a frame
+        // straggler between countdown completion and the rAF tick does not
+        // skew the measurement.
+        armedRaceStartMs = state.raceStartMs
         pendingRaceStartRef.current = null
       }
 
@@ -753,6 +784,20 @@ export function RaceCanvas({
       const steerInput = k.axes
         ? k.axes.steer
         : (k.left ? 1 : 0) + (k.right ? -1 : 0)
+
+      // Reaction-time measurement at the GO light. Fires the first frame
+      // throttle clears the noise floor after `pendingRaceStartRef` armed
+      // the detector. Disarms immediately so the next throttle press in the
+      // same race does not re-fire (the chip stays pinned by React state).
+      if (
+        armedRaceStartMs !== null &&
+        onReactionTimeRef.current &&
+        isReactionInputPressed(throttleInput)
+      ) {
+        const reactionMs = Math.max(0, Math.round(ts - armedRaceStartMs))
+        armedRaceStartMs = null
+        onReactionTimeRef.current(reactionMs)
+      }
       const result = tick(
         state,
         {

@@ -6,10 +6,14 @@ import {
   readLocalBestPbStreak,
   readLocalBestSectors,
   readLocalBestSplits,
+  readLocalBestReaction,
+  readLifetimeBestReaction,
   readTrackStats,
   writeLastSubmit,
   writeLocalBestDrift,
   writeLocalBestPbStreak,
+  writeLocalBestReaction,
+  writeLifetimeBestReaction,
   writeLocalBestSectors,
   writeLocalBestSplits,
   writeTrackStats,
@@ -555,5 +559,187 @@ describe('last submit pointer storage (friend challenge)', () => {
     expect(() =>
       writeLastSubmit('oval', HASH, { nonce: NONCE, lapTimeMs: 1000 }),
     ).not.toThrow()
+  })
+})
+
+describe('local best reaction time storage (per-slug)', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no reaction is stored', () => {
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a stored reaction time', () => {
+    writeLocalBestReaction('oval', HASH, 245)
+    expect(readLocalBestReaction('oval', HASH)).toBe(245)
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeLocalBestReaction('oval', HASH, 245)
+    writeLocalBestReaction('oval', 'b'.repeat(64), 300)
+    writeLocalBestReaction('hairpin', HASH, 180)
+    expect(readLocalBestReaction('oval', HASH)).toBe(245)
+    expect(readLocalBestReaction('oval', 'b'.repeat(64))).toBe(300)
+    expect(readLocalBestReaction('hairpin', HASH)).toBe(180)
+    expect(readLocalBestReaction('sandbox', HASH)).toBeNull()
+  })
+
+  it('rounds fractional values on write', () => {
+    writeLocalBestReaction('oval', HASH, 245.7)
+    expect(readLocalBestReaction('oval', HASH)).toBe(246)
+  })
+
+  it('refuses to persist a non-finite value', () => {
+    writeLocalBestReaction('oval', HASH, Number.NaN)
+    writeLocalBestReaction('oval', HASH, Number.POSITIVE_INFINITY)
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('refuses to persist a non-positive value', () => {
+    writeLocalBestReaction('oval', HASH, 0)
+    writeLocalBestReaction('oval', HASH, -3)
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('refuses to persist absurdly large values', () => {
+    writeLocalBestReaction('oval', HASH, 60_000)
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited non-numeric payload', () => {
+    store['viberacer.bestReaction.oval.' + HASH] = 'not a number'
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited zero or negative payload', () => {
+    store['viberacer.bestReaction.oval.' + HASH] = '0'
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+    store['viberacer.bestReaction.oval.' + HASH] = '-5'
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited absurdly-large payload', () => {
+    store['viberacer.bestReaction.oval.' + HASH] = '60000'
+    expect(readLocalBestReaction('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeLocalBestReaction('oval', HASH, 245)).not.toThrow()
+  })
+})
+
+describe('lifetime best reaction time storage (single key, all tracks)', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no lifetime reaction is stored', () => {
+    expect(readLifetimeBestReaction()).toBeNull()
+  })
+
+  it('round-trips a stored lifetime best', () => {
+    writeLifetimeBestReaction(180)
+    expect(readLifetimeBestReaction()).toBe(180)
+  })
+
+  it('uses a single key (no slug namespace)', () => {
+    writeLifetimeBestReaction(180)
+    // Should still be the same value: lifetime is global.
+    expect(readLifetimeBestReaction()).toBe(180)
+    // Stored under the documented key.
+    expect(store['viberacer.bestReactionLifetime']).toBe('180')
+  })
+
+  it('rounds fractional values on write', () => {
+    writeLifetimeBestReaction(180.6)
+    expect(readLifetimeBestReaction()).toBe(181)
+  })
+
+  it('refuses to persist a non-finite or non-positive value', () => {
+    writeLifetimeBestReaction(Number.NaN)
+    writeLifetimeBestReaction(0)
+    writeLifetimeBestReaction(-1)
+    expect(readLifetimeBestReaction()).toBeNull()
+  })
+
+  it('refuses to persist absurdly large values', () => {
+    writeLifetimeBestReaction(60_000)
+    expect(readLifetimeBestReaction()).toBeNull()
+  })
+
+  it('returns null for a hand-edited corrupt payload', () => {
+    store['viberacer.bestReactionLifetime'] = 'oops'
+    expect(readLifetimeBestReaction()).toBeNull()
+    store['viberacer.bestReactionLifetime'] = '0'
+    expect(readLifetimeBestReaction()).toBeNull()
+    store['viberacer.bestReactionLifetime'] = '60001'
+    expect(readLifetimeBestReaction()).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeLifetimeBestReaction(245)).not.toThrow()
   })
 })

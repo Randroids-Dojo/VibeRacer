@@ -6,6 +6,11 @@ import {
   formatPlayedAt,
   type TrackStats,
 } from '@/game/trackStats'
+import {
+  REACTION_TIME_TIER_LABELS,
+  classifyReactionTime,
+  formatReactionTime,
+} from '@/game/reactionTime'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
 
 interface TrackStatsPaneProps {
@@ -27,6 +32,13 @@ interface TrackStatsPaneProps {
   // player can see how close they are to beating the all-time mark while
   // paused. Zero collapses the live pill cleanly.
   pbStreakLive: number
+  // All-time best reaction time (ms) at the GO light on this slug + version.
+  // Mirrors the per-track localStorage value the HUD chip writes. Null when
+  // no reaction has been recorded yet so the tile shows a friendly "--".
+  bestReactionMs: number | null
+  // Lifetime best reaction time (ms) across every (slug, version). Null when
+  // no reaction has been recorded yet across any track.
+  lifetimeBestReactionMs: number | null
   onBack: () => void
 }
 
@@ -36,6 +48,8 @@ export function TrackStatsPane({
   bestAllTimeMs,
   pbStreakBestEver,
   pbStreakLive,
+  bestReactionMs,
+  lifetimeBestReactionMs,
   onBack,
 }: TrackStatsPaneProps) {
   const safe = stats ?? {
@@ -111,6 +125,30 @@ export function TrackStatsPane({
                 ? `now: x${pbStreakLive}`
                 : 'consecutive PBs'
             }
+          />
+          <StatTile
+            label="Best reaction"
+            value={
+              bestReactionMs !== null && bestReactionMs > 0
+                ? formatReactionTime(bestReactionMs)
+                : '--'
+            }
+            sub={
+              bestReactionMs !== null && bestReactionMs > 0
+                ? REACTION_TIME_TIER_LABELS[
+                    classifyReactionTime(bestReactionMs)
+                  ].toLowerCase()
+                : 'first throttle after GO'
+            }
+          />
+          <StatTile
+            label="Best ever (any track)"
+            value={
+              lifetimeBestReactionMs !== null && lifetimeBestReactionMs > 0
+                ? formatReactionTime(lifetimeBestReactionMs)
+                : '--'
+            }
+            sub="reaction across all tracks"
           />
         </div>
 

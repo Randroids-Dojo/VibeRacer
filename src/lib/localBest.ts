@@ -36,6 +36,16 @@ function lastSubmitNonceKey(slug: string, versionHash: string): string {
   return `viberacer.lastSubmitNonce.${slug}.${versionHash}`
 }
 
+function reactionTimeBestKey(slug: string, versionHash: string): string {
+  return `viberacer.bestReaction.${slug}.${versionHash}`
+}
+
+// Lifetime best across every (slug, version). The per-track key tracks "best
+// reaction time on this layout" so a player can chase tier upgrades on a
+// familiar track; the lifetime key tracks "best reaction time anywhere" so a
+// player who hops between layouts has a single bar to beat.
+const REACTION_TIME_LIFETIME_KEY = 'viberacer.bestReactionLifetime'
+
 // The nonce of the player's most recent successful submission on this
 // (slug, version), tracked alongside the lap time it represents. Used by the
 // pause-menu Challenge a Friend flow to build a URL pinned to that exact
@@ -340,5 +350,73 @@ export function writeLastSubmit(
     )
   } catch {
     // Quota or storage disabled. Best-effort, never breaks gameplay.
+  }
+}
+
+// Per-(slug, versionHash) best reaction time at the GO light, in milliseconds.
+// The Stats pane and the HUD chip both read from here so a fresh page load
+// surfaces the player's true PB instead of resetting to "no PB on file" each
+// session. Defensive: a corrupt or non-finite stored value reads as null and
+// the writer refuses non-finite / non-positive / absurdly-large numbers so a
+// hand-edited blob can never poison the rest of the flow.
+export function readLocalBestReaction(
+  slug: string,
+  versionHash: string,
+): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(reactionTimeBestKey(slug, versionHash))
+  if (!raw) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  // Sanity cap: anything above 30s is almost certainly garbage. Mirrors the
+  // pure helper's MAX_REASONABLE_REACTION_MS so the storage layer agrees with
+  // the renderer on what counts as "a real reaction time".
+  if (n > 30_000) return null
+  return Math.round(n)
+}
+
+export function writeLocalBestReaction(
+  slug: string,
+  versionHash: string,
+  reactionMs: number,
+): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(reactionMs) || reactionMs <= 0) return
+  if (reactionMs > 30_000) return
+  try {
+    window.localStorage.setItem(
+      reactionTimeBestKey(slug, versionHash),
+      String(Math.round(reactionMs)),
+    )
+  } catch {
+    // Reaction-time persistence is a best-effort UX enhancement. A quota
+    // failure should never break the race-start flow.
+  }
+}
+
+// Lifetime best reaction time across every (slug, versionHash). One number,
+// one key, no slug namespace. Lets the home page and the in-race HUD chip
+// surface a single "overall best" that the player can chase on any track.
+export function readLifetimeBestReaction(): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(REACTION_TIME_LIFETIME_KEY)
+  if (!raw) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (n > 30_000) return null
+  return Math.round(n)
+}
+
+export function writeLifetimeBestReaction(reactionMs: number): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(reactionMs) || reactionMs <= 0) return
+  if (reactionMs > 30_000) return
+  try {
+    window.localStorage.setItem(
+      REACTION_TIME_LIFETIME_KEY,
+      String(Math.round(reactionMs)),
+    )
+  } catch {
+    // Best-effort, never breaks gameplay.
   }
 }

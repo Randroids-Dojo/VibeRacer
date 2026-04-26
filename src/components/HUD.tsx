@@ -12,6 +12,12 @@ import {
 } from '@/game/medals'
 import { formatStreakLabel } from '@/game/pbStreak'
 import { formatGhostGap } from '@/game/ghostGap'
+import {
+  REACTION_TIME_TIER_COLORS,
+  REACTION_TIME_TIER_LABELS,
+  classifyReactionTime,
+  formatReactionTime,
+} from '@/game/reactionTime'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -98,6 +104,11 @@ interface HudProps {
   // ahead. null hides the chip (no ghost on screen, no replay loaded, the
   // player has drifted off the recorded line, or the chip toggle is off).
   ghostGapMs?: number | null
+  // Reaction time at the GO light. Populated for REACTION_TIME_DISPLAY_MS
+  // immediately after the player presses throttle for a fresh race; null
+  // hides the chip. `isPb` flips the accent to gold so a fresh personal best
+  // pops alongside the tier color.
+  reactionTime?: { reactionMs: number; isPb: boolean; generatedAtMs: number } | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -318,6 +329,44 @@ function StreakBadge({ label }: { label: string }) {
       </span>
       <span style={streakLabelStyle}>{label}</span>
     </span>
+  )
+}
+
+// Reaction-time chip. Pops the moment the player presses throttle for a
+// fresh race and stays for REACTION_TIME_DISPLAY_MS before fading. The
+// border + value tint follow the tier color (lightning blue / gold / green
+// / neutral) so the player can read their grade at a glance. A small "PB"
+// pip joins the row when the measurement set a fresh personal best.
+function ReactionTimeChip({
+  reactionMs,
+  isPb,
+  generatedAtMs,
+}: {
+  reactionMs: number
+  isPb: boolean
+  generatedAtMs: number
+}) {
+  const tier = classifyReactionTime(reactionMs)
+  const accent = REACTION_TIME_TIER_COLORS[tier]
+  const tierLabel = REACTION_TIME_TIER_LABELS[tier].toUpperCase()
+  const valueText = formatReactionTime(reactionMs)
+  return (
+    <div
+      key={`reaction-${generatedAtMs}`}
+      style={{
+        ...reactionChipStyle,
+        borderColor: hexWithAlpha(accent, 0.6),
+        boxShadow: `0 0 12px ${hexWithAlpha(accent, 0.35)}, 0 4px 12px rgba(0,0,0,0.4)`,
+      }}
+      role="status"
+      aria-live="polite"
+      aria-label={`Reaction ${valueText} ${tierLabel}${isPb ? ' personal best' : ''}`}
+    >
+      <span style={reactionLabelStyle}>REACTION</span>
+      <span style={{ ...reactionValueStyle, color: accent }}>{valueText}</span>
+      <span style={{ ...reactionTierStyle, color: accent }}>{tierLabel}</span>
+      {isPb ? <span style={reactionPbStyle}>PB</span> : null}
+    </div>
   )
 }
 
@@ -543,6 +592,13 @@ export function HUD(props: HudProps) {
         </div>
       ) : null}
       {props.sectorPb ? <SectorPbBadge sectorPb={props.sectorPb} /> : null}
+      {props.reactionTime ? (
+        <ReactionTimeChip
+          reactionMs={props.reactionTime.reactionMs}
+          isPb={props.reactionTime.isPb}
+          generatedAtMs={props.reactionTime.generatedAtMs}
+        />
+      ) : null}
       {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
     </div>
   )
@@ -830,6 +886,60 @@ const ghostGapChipValueStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 700,
   lineHeight: 1,
+}
+// Reaction-time chip. Pinned just above the live "vs PB" / "vs GHOST" stack
+// so a fresh measurement reads as part of the same launch-status group; the
+// chip auto-clears via React state in Game.tsx after REACTION_TIME_DISPLAY_MS
+// so it never crowds the mid-race HUD past the first sector.
+const reactionChipStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 60,
+  left: '50%',
+  transform: 'translate(-50%, 0)',
+  padding: '5px 12px',
+  borderRadius: 999,
+  background: 'rgba(8, 16, 28, 0.82)',
+  border: '1.5px solid rgba(255, 255, 255, 0.4)',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 8,
+  pointerEvents: 'none',
+  fontFamily: 'system-ui, sans-serif',
+  // Same pop-in animation as the sector PB badge so the chip lands with a
+  // visible flourish that matches the rest of the celebration language. The
+  // unique `key` on the chip retriggers the animation on every fresh
+  // measurement (post-restart, fresh race) so it never feels glued on.
+  animation: 'viberacer-sector-pb-pop 1s ease-out',
+}
+const reactionLabelStyle: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.85,
+  fontWeight: 700,
+}
+const reactionValueStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 16,
+  fontWeight: 800,
+  lineHeight: 1,
+}
+const reactionTierStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 1.4,
+}
+const reactionPbStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: 1.4,
+  color: '#ffe082',
+  background: 'rgba(255, 224, 130, 0.18)',
+  border: '1px solid rgba(255, 224, 130, 0.6)',
+  borderRadius: 6,
+  padding: '1px 5px',
+  marginLeft: 4,
 }
 // Predicted lap-time block. Slots into the top stat row beside CURRENT so the
 // player can glance at "where this lap is heading" without taking eyes off
