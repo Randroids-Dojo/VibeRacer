@@ -123,3 +123,70 @@ export const MEDAL_COLORS: Record<MedalTier, string> = {
   silver: '#c8d3dd',
   bronze: '#d49866',
 }
+
+// The next-better tier above each medal. Used to surface a "how much faster
+// to upgrade" hint on the HUD so the player has a concrete next milestone in
+// view. The platinum tier is the top of the ladder so it has no upgrade.
+export const NEXT_MEDAL_TIER: Record<MedalTier, MedalTier | null> = {
+  bronze: 'silver',
+  silver: 'gold',
+  gold: 'platinum',
+  platinum: null,
+}
+
+// Snapshot of the player's path to the next medal tier. `tier` is the
+// upgrade-target tier and `gapMs` is the positive number of milliseconds the
+// player needs to shave off their PB to reach the threshold for that tier.
+export interface NextMedalGap {
+  tier: MedalTier
+  gapMs: number
+}
+
+// Compute the next medal tier the player can chase plus the time delta to
+// hit it. Returns null when:
+//
+// - No medal is currently earned (the player has no PB or no record on file
+//   to scale against). The HUD already collapses the medal slot in this
+//   case so a "first earn bronze" callout would be redundant noise.
+// - The player is already at platinum. There is no higher tier to chase, so
+//   the upgrade chip collapses too.
+// - Either input is missing / non-finite / non-positive (defensive against a
+//   corrupt storage read or a clock glitch).
+//
+// The returned `gapMs` is the strict positive distance to the next-tier
+// threshold (rounded to the nearest millisecond so the HUD does not have to).
+// A lap that is exactly at the next-tier threshold but has not been graded
+// up yet (e.g. a tie at 102% which `medalForTime` already calls gold) yields
+// `gapMs = 0` so the player sees they are right on the edge.
+export function nextMedalGap(
+  lapMs: number | null,
+  targetMs: number | null,
+): NextMedalGap | null {
+  const current = medalForTime(lapMs, targetMs)
+  if (current === null) return null
+  const next = NEXT_MEDAL_TIER[current]
+  if (next === null) return null
+  // medalForTime already guards lapMs / targetMs validity, so by the time we
+  // get here both are finite and positive. medalThresholdsFor mirrors the
+  // same guards for the same reason.
+  const thresholds = medalThresholdsFor(targetMs)
+  if (thresholds === null) return null
+  // `lapMs!` is safe because medalForTime would have returned null otherwise.
+  const gapMsRaw = (lapMs as number) - thresholds[next]
+  const gapMs = Math.max(0, Math.round(gapMsRaw))
+  return { tier: next, gapMs }
+}
+
+// Format the next-medal gap for HUD display. Returns a short label like
+// "GOLD in 0.421" so the player sees the target tier and the time to chase
+// in one chip. Sub-second gaps render as "S.mmm"; multi-second gaps still
+// render with three decimal places so the chip stays consistent. Returns
+// null when the input is null so the caller can collapse the chip slot.
+export function formatNextMedalLabel(gap: NextMedalGap | null): string | null {
+  if (gap === null) return null
+  const tierLabel = MEDAL_LABELS[gap.tier].toUpperCase()
+  const totalMs = Math.max(0, Math.round(gap.gapMs))
+  const seconds = Math.floor(totalMs / 1000)
+  const millis = totalMs % 1000
+  return `${tierLabel} in ${seconds}.${String(millis).padStart(3, '0')}`
+}

@@ -5,7 +5,9 @@ import {
   MEDAL_COLORS,
   MEDAL_GLYPH,
   MEDAL_LABELS,
+  formatNextMedalLabel,
   medalForTime,
+  nextMedalGap,
   type MedalTier,
 } from '@/game/medals'
 import { formatStreakLabel } from '@/game/pbStreak'
@@ -260,6 +262,39 @@ function MedalBadge({ tier }: { tier: MedalTier }) {
   )
 }
 
+// Next-medal upgrade chip. Pinned alongside the MedalBadge so the player
+// sees their current tier and the time gap to the next tier in one glance.
+// The chip uses the upgrade-target tier's accent color so the visual
+// language reads as "this is the metal you are chasing". Hidden when the
+// player is already at platinum (no higher tier) or the upgrade gap is
+// unavailable, so the slot collapses cleanly in those cases.
+function NextMedalChip({
+  tier,
+  label,
+}: {
+  tier: MedalTier
+  label: string
+}) {
+  const color = MEDAL_COLORS[tier]
+  return (
+    <span
+      style={{
+        ...nextMedalChipStyle,
+        color,
+        borderColor: hexWithAlpha(color, 0.5),
+        boxShadow: `0 0 8px ${hexWithAlpha(color, 0.3)}`,
+      }}
+      title={`Shave this much off your PB to upgrade to ${MEDAL_LABELS[tier]}.`}
+      aria-label={`Time to next medal: ${label}`}
+    >
+      <span style={nextMedalArrowStyle} aria-hidden>
+        {'▲'}
+      </span>
+      <span style={nextMedalLabelStyle}>{label}</span>
+    </span>
+  )
+}
+
 // PB streak chip. Pinned under the BEST (ALL TIME) tile alongside the medal
 // badge so the streak reads as another property OF the player's PB lane.
 // Gold palette mirrors the OPTIMAL block, the sector-PB badge, and the
@@ -370,10 +405,18 @@ export function HUD(props: HudProps) {
   // Medal tier earned by the player's all-time PB versus the leaderboard #1
   // for this version. Stays null when either is missing or the PB is slower
   // than the bronze cutoff so the badge slot collapses cleanly.
-  const medalTier = medalForTime(
-    props.bestAllTimeMs,
-    props.overallRecord ? props.overallRecord.lapTimeMs : null,
-  )
+  const recordTimeForMedal = props.overallRecord
+    ? props.overallRecord.lapTimeMs
+    : null
+  const medalTier = medalForTime(props.bestAllTimeMs, recordTimeForMedal)
+  // Distance to the next medal tier the player can chase. Returns null when
+  // no medal is currently earned (the slot collapses next to the missing
+  // medal badge), when the player is already at platinum (no upgrade), or
+  // when either input is missing / corrupt. The chip reuses the same accent
+  // color as the upgrade-target medal so the player sees the metal they are
+  // chasing in addition to the time gap.
+  const nextMedal = nextMedalGap(props.bestAllTimeMs, recordTimeForMedal)
+  const nextMedalLabel = formatNextMedalLabel(nextMedal)
   // PB streak chip. Returns null when the live count is below the HUD
   // threshold (formatStreakLabel handles the cutoff) so the slot collapses
   // cleanly and a single first-PB does not double up the existing toast.
@@ -392,6 +435,9 @@ export function HUD(props: HudProps) {
             value={timeOrDash(props.bestAllTimeMs)}
           />
           {medalTier ? <MedalBadge tier={medalTier} /> : null}
+          {nextMedal && nextMedalLabel ? (
+            <NextMedalChip tier={nextMedal.tier} label={nextMedalLabel} />
+          ) : null}
           {streakLabel ? <StreakBadge label={streakLabel} /> : null}
         </div>
         <OptimalBlock
@@ -921,6 +967,33 @@ const medalGlyphStyle: React.CSSProperties = {
   textShadow: '0 0 5px currentColor',
 }
 const medalLabelStyle: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
+}
+// Next-medal upgrade chip. Same compact pill shape as the medal badge so the
+// two read as siblings hanging off the BEST tile. The accent color is set
+// inline from the upgrade-target tier so the chip matches the metal the
+// player is chasing (silver / gold / platinum). The slight darker background
+// distinguishes the upgrade chip from the earned-medal badge so the player
+// reads them as "have" + "chasing" at a glance.
+const nextMedalChipStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background: 'rgba(0, 0, 0, 0.55)',
+  border: '1px solid rgba(255, 255, 255, 0.2)',
+  fontWeight: 700,
+  fontSize: 10,
+  letterSpacing: 1.1,
+  lineHeight: 1.2,
+}
+const nextMedalArrowStyle: React.CSSProperties = {
+  fontSize: 9,
+  lineHeight: 1,
+  textShadow: '0 0 5px currentColor',
+}
+const nextMedalLabelStyle: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
 }
 // PB streak chip. Same compact pill shape as the medal badge so the two read
