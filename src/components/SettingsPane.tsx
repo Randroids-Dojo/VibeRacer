@@ -43,6 +43,14 @@ import {
   getLightingPreset,
   type TimeOfDay,
 } from '@/lib/lighting'
+import {
+  CAMERA_PRESET_DESCRIPTIONS,
+  CAMERA_PRESET_LABELS,
+  CAMERA_PRESET_NAMES,
+  getCameraPreset,
+  matchCameraPreset,
+  type CameraPresetName,
+} from '@/lib/cameraPresets'
 import { SPEED_UNITS, unitLabel, type SpeedUnit } from '@/lib/speedometer'
 import {
   MenuButton,
@@ -367,12 +375,22 @@ export function SettingsPane({
     setCamera(cloneDefaultCameraSettings())
   }
 
+  function setCameraPreset(name: CameraPresetName) {
+    clickSoft()
+    setCamera(getCameraPreset(name))
+  }
+
   const cameraIsDefault =
     settings.camera.height === DEFAULT_CAMERA_SETTINGS.height &&
     settings.camera.distance === DEFAULT_CAMERA_SETTINGS.distance &&
     settings.camera.lookAhead === DEFAULT_CAMERA_SETTINGS.lookAhead &&
     settings.camera.followSpeed === DEFAULT_CAMERA_SETTINGS.followSpeed &&
     settings.camera.fov === DEFAULT_CAMERA_SETTINGS.fov
+
+  // Identify which preset (if any) the player is currently on so the picker
+  // can highlight it. Returns null when the camera has been tweaked off any
+  // preset, which the picker reads as "Custom" (no swatch highlighted).
+  const activeCameraPreset = matchCameraPreset(settings.camera)
 
   function clearSlot(action: ControlAction, slot: number) {
     onChange({
@@ -765,8 +783,26 @@ export function SettingsPane({
             Tune the trailing chase camera. Higher views see more of the track,
             lower views feel faster. Look-ahead leans the camera into corners.
             Follow speed is how snappy the camera tracks the car: lower is
-            looser and more cinematic, higher is locked-on.
+            looser and more cinematic, higher is locked-on. Pick a preset
+            below for a one-click starting point, then tune from there.
           </MenuHint>
+          <div style={paintGrid}>
+            {CAMERA_PRESET_NAMES.map((name) => (
+              <CameraPresetSwatch
+                key={name}
+                label={CAMERA_PRESET_LABELS[name]}
+                description={CAMERA_PRESET_DESCRIPTIONS[name]}
+                preset={getCameraPreset(name)}
+                selected={activeCameraPreset === name}
+                onClick={() => setCameraPreset(name)}
+              />
+            ))}
+          </div>
+          <div style={cameraPresetStatus}>
+            {activeCameraPreset
+              ? `Preset: ${CAMERA_PRESET_LABELS[activeCameraPreset]}`
+              : 'Preset: Custom'}
+          </div>
           <MenuSlider
             label="Height"
             value={settings.camera.height}
@@ -946,6 +982,125 @@ function TimeOfDaySwatch({
   )
 }
 
+function CameraPresetSwatch({
+  label,
+  description,
+  preset,
+  selected,
+  onClick,
+}: {
+  label: string
+  description: string
+  preset: CameraRigSettings
+  selected: boolean
+  onClick: () => void
+}) {
+  // Render a tiny side-on car + camera diagram so the swatch reads at a
+  // glance: a road line at the bottom, a car block on the road, and a small
+  // dot at the (height, distance) the preset places the camera. Dot moves
+  // up and back as the camera goes higher and further; FOV widens the
+  // dashed sight cone projected forward toward the car.
+  const chipW = 56
+  const chipH = 36
+  // Map height (1.5..14) and distance (6..28) onto the chip. Defensive clamps
+  // so an out-of-range preset still draws something sensible.
+  const heightFrac = clamp01((preset.height - 1.5) / (14 - 1.5))
+  const distanceFrac = clamp01((preset.distance - 6) / (28 - 6))
+  const carX = chipW * 0.7
+  const carY = chipH * 0.8
+  const camX = carX - distanceFrac * chipW * 0.55
+  const camY = carY - 4 - heightFrac * (chipH * 0.55)
+  // FOV cone half-angle. 50..110 degrees mapped onto a small visual spread.
+  const halfDeg = preset.fov / 2
+  const halfRad = (halfDeg * Math.PI) / 180
+  const coneLen = chipW * 0.4
+  const dirX = carX - camX
+  const dirY = carY - camY
+  const dirLen = Math.hypot(dirX, dirY) || 1
+  const ux = dirX / dirLen
+  const uy = dirY / dirLen
+  const px = -uy
+  const py = ux
+  const tipX = camX + ux * coneLen
+  const tipY = camY + uy * coneLen
+  const spread = Math.tan(halfRad) * coneLen * 0.6
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...swatchBtn,
+        borderColor: selected ? '#ffb74d' : '#3a3a3a',
+        boxShadow: selected ? '0 0 0 2px rgba(255,183,77,0.35)' : 'none',
+      }}
+      title={description}
+      aria-label={`Camera preset: ${label}. ${description}`}
+      aria-pressed={selected}
+    >
+      <span
+        style={{
+          ...swatchChip,
+          width: chipW,
+          height: chipH,
+          borderRadius: 6,
+          background:
+            'linear-gradient(180deg, #1d2433 0%, #1d2433 65%, #2c3a2a 65%, #2c3a2a 100%)',
+        }}
+      >
+        <svg
+          width={chipW}
+          height={chipH}
+          viewBox={`0 0 ${chipW} ${chipH}`}
+          style={{ display: 'block' }}
+          aria-hidden
+        >
+          <line
+            x1={2}
+            y1={chipH * 0.78}
+            x2={chipW - 2}
+            y2={chipH * 0.78}
+            stroke="rgba(255,255,255,0.35)"
+            strokeWidth={1}
+            strokeDasharray="3 2"
+          />
+          <rect
+            x={carX - 6}
+            y={carY - 6}
+            width={10}
+            height={6}
+            rx={1}
+            fill="#ffb74d"
+          />
+          <line
+            x1={camX}
+            y1={camY}
+            x2={tipX + px * spread}
+            y2={tipY + py * spread}
+            stroke="rgba(170,210,255,0.55)"
+            strokeWidth={0.75}
+          />
+          <line
+            x1={camX}
+            y1={camY}
+            x2={tipX - px * spread}
+            y2={tipY - py * spread}
+            stroke="rgba(170,210,255,0.55)"
+            strokeWidth={0.75}
+          />
+          <circle cx={camX} cy={camY} r={2.5} fill="#aad2ff" />
+        </svg>
+      </span>
+      <span style={swatchLabel}>{label}</span>
+    </button>
+  )
+}
+
+function clamp01(v: number): number {
+  if (!Number.isFinite(v)) return 0
+  if (v < 0) return 0
+  if (v > 1) return 1
+  return v
+}
+
 function KeySlot({
   label,
   highlighted,
@@ -1087,6 +1242,13 @@ const cameraResetRow: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'flex-end',
   marginTop: 4,
+}
+const cameraPresetStatus: React.CSSProperties = {
+  fontSize: 12,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
+  opacity: 0.65,
+  marginTop: 2,
 }
 const paintGrid: React.CSSProperties = {
   display: 'grid',
