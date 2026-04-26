@@ -20,6 +20,7 @@ import { MedalCabinet } from '@/components/MedalCabinet'
 import { TrophyCase } from '@/components/TrophyCase'
 import { DailyChallenge } from '@/components/DailyChallenge'
 import { DailyStreak } from '@/components/DailyStreak'
+import { RaceCalendar } from '@/components/RaceCalendar'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -55,6 +56,8 @@ export default async function HomePage() {
           <DailyChallenge />
 
           <DailyStreak />
+
+          <RaceCalendar />
 
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Go to any track</div>
