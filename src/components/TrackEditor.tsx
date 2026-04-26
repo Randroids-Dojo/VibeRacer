@@ -31,15 +31,24 @@ interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
   initialCheckpointCount?: number
+  // When set, the editor was opened against a historical version. Saving still
+  // creates a new version on the same slug. The editor surfaces a small banner
+  // so the player understands they are forking, not overwriting.
+  forkingFromHash?: string | null
 }
 
 const CELL = 56
 const PAD_CELLS = 2
 
+function shortHash(hash: string): string {
+  return hash.slice(0, 8)
+}
+
 export function TrackEditor({
   slug,
   initialPieces,
   initialCheckpointCount,
+  forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
   const [pieces, setPieces] = useState<Piece[]>(initialPieces)
@@ -241,6 +250,22 @@ export function TrackEditor({
           Right-click (or long-press on touch) is a shortcut for the Set
           start tool.
         </div>
+        {forkingFromHash ? (
+          <div style={forkBanner}>
+            <span style={forkBannerLabel}>FORKING</span>
+            <span style={forkBannerText}>
+              Editing a copy of v{shortHash(forkingFromHash)}. Saving creates a
+              new version on /{slug}; the original stays put.
+            </span>
+            <button
+              type="button"
+              onClick={() => router.push(`/${slug}/edit`)}
+              style={forkBannerBtn}
+            >
+              Switch to latest
+            </button>
+          </div>
+        ) : null}
       </div>
 
       <div style={paletteBar} role="toolbar" aria-label="Piece palette">
@@ -600,6 +625,43 @@ const hint: React.CSSProperties = {
   fontSize: 12,
   opacity: 0.65,
   marginTop: 4,
+}
+const forkBanner: React.CSSProperties = {
+  marginTop: 10,
+  padding: '8px 12px',
+  background: 'rgba(255, 179, 71, 0.12)',
+  border: '1px solid rgba(255, 179, 71, 0.45)',
+  borderRadius: 8,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  flexWrap: 'wrap',
+  fontSize: 12,
+}
+const forkBannerLabel: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 1.5,
+  color: '#ffb347',
+  background: 'rgba(255, 179, 71, 0.18)',
+  borderRadius: 4,
+  padding: '2px 6px',
+}
+const forkBannerText: React.CSSProperties = {
+  color: '#fde9c2',
+  flex: 1,
+  minWidth: 220,
+}
+const forkBannerBtn: React.CSSProperties = {
+  background: 'transparent',
+  color: '#ffb347',
+  border: '1px solid rgba(255, 179, 71, 0.5)',
+  borderRadius: 6,
+  padding: '4px 10px',
+  fontSize: 11,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  letterSpacing: 0.4,
 }
 const paletteBar: React.CSSProperties = {
   display: 'flex',

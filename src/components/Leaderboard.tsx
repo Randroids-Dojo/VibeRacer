@@ -171,10 +171,17 @@ export function Leaderboard({
   const latestHash =
     versionsState.kind === 'ready' ? versionsState.latestHash : null
   const isRacingSelected = selectedHash === versionHash
+  const isLatestSelected = latestHash !== null && selectedHash === latestHash
   const targetRaceHref =
     latestHash && selectedHash === latestHash
       ? `/${slug}`
       : `/${slug}?v=${selectedHash}`
+  // Forking the latest is identical to opening /<slug>/edit (which loads
+  // latest by default). Forking an older version explicitly threads ?v=hash so
+  // the editor seeds from that historical pieces array.
+  const targetForkHref = isLatestSelected
+    ? `/${slug}/edit`
+    : `/${slug}/edit?v=${selectedHash}`
 
   return (
     <div style={overlay}>
@@ -230,6 +237,21 @@ export function Leaderboard({
               Race this version
             </button>
           ) : null}
+          <button
+            type="button"
+            onClick={() => {
+              clickConfirm()
+              router.push(targetForkHref)
+            }}
+            style={forkBtn}
+            title={
+              isLatestSelected
+                ? 'Open the editor on the latest pieces'
+                : 'Open the editor seeded from this version. Saving creates a new version.'
+            }
+          >
+            {isLatestSelected ? 'Edit latest' : 'Fork this version'}
+          </button>
         </div>
 
         {board.kind === 'loading' ? (
@@ -502,6 +524,7 @@ const controlsRow: React.CSSProperties = {
   gap: 10,
   padding: '4px 2px 8px',
   borderBottom: '1px solid #2a2a2a',
+  flexWrap: 'wrap',
 }
 const dropdownLabel: React.CSSProperties = {
   display: 'flex',
@@ -529,6 +552,19 @@ const raceBtn: React.CSSProperties = {
   background: '#ff6b35',
   color: 'white',
   border: 'none',
+  borderRadius: 6,
+  padding: '8px 12px',
+  cursor: 'pointer',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  fontFamily: 'inherit',
+  whiteSpace: 'nowrap',
+}
+const forkBtn: React.CSSProperties = {
+  background: 'transparent',
+  color: '#ffd36b',
+  border: '1px solid rgba(255, 211, 107, 0.5)',
   borderRadius: 6,
   padding: '8px 12px',
   cursor: 'pointer',
