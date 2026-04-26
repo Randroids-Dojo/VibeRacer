@@ -220,6 +220,10 @@ export function SettingsPane({
     onChange({ ...settings, showGhost: value })
   }
 
+  function setShowMinimap(value: boolean) {
+    onChange({ ...settings, showMinimap: value })
+  }
+
   function setCarPaint(value: string | null) {
     clickSoft()
     onChange({ ...settings, carPaint: value })
@@ -431,6 +435,22 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showGhost}
                 onChange={setShowGhost}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Minimap</div>
+            <MenuHint>
+              Top-down overview tucked into the bottom-right of the screen.
+              Useful on unfamiliar tracks; turn it off to keep the screen
+              fully clean.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show minimap</div>
+              <MenuToggle
+                value={settings.showMinimap}
+                onChange={setShowMinimap}
               />
             </div>
           </div>

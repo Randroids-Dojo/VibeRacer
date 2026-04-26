@@ -291,7 +291,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD, pause button, and invalid-lap handling are all live.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD, top-down minimap card, pause button, and invalid-lap handling are all live.
 
 ### Build log
 
@@ -324,6 +324,15 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Best-ever for this track version (smaller, persistent; from KV).
 - Lap counter.
 - Pause button (always visible on touch devices).
+- Minimap (bottom-right, top-down, toggleable in Settings).
+
+### Minimap
+
+A small top-down minimap card sits in the bottom-right corner of the screen during the race. It shows the full track outline plus a yellow arrow for the player car (rotated to match heading) and, when the ghost is enabled, a teal dot for the ghost. The card is opt-out and toggleable from the Settings pane (`showMinimap: boolean` in `ControlSettings`, default on, persisted via the existing localStorage key `viberacer.controls`).
+
+Geometry helpers live in `src/game/minimap.ts` (`buildMinimapGeometry(path, viewSize?, padding?)`, `computeBounds`). The helper walks every `OrderedPiece`, extracts the centerline (entry/exit segment for straights, a 12-segment polyline for corners, the precomputed S-curve samples for sampled pieces), pads the bounds by half the track width, and returns one SVG path string per piece plus a `worldToView(x, z)` projector that preserves aspect ratio. SVG +Y goes downward and world +Z is south, so the projector maps Z directly onto Y without a flip and north (smaller Z) renders above south (larger Z).
+
+`src/components/Minimap.tsx` renders the static SVG once per `pieces` change. The car and ghost markers update via direct DOM mutation in a small rAF loop driven by two pose refs (`carPoseRef`, `ghostPoseRef`) so a 60 Hz position update never triggers a React re-render. `RaceCanvas.tsx` writes the live pose into `carPoseOutRef` and `ghostPoseOutRef` every frame; `Game.tsx` owns the refs and only mounts `<Minimap />` when `settings.showMinimap` is true. Tests live in `tests/unit/minimap.test.ts` (per-piece path strings, in-bounds projection, north-vs-south orientation, view-size respect, aspect ratio centering, empty-path rejection) and `tests/unit/controlSettings.test.ts` (default value, round-trip, legacy backfill).
 
 ### Endless loop
 

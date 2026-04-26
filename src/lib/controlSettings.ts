@@ -58,6 +58,10 @@ export interface ControlSettings {
   keyBindings: KeyBindings
   touchMode: TouchMode
   showGhost: boolean
+  // Toggle the bottom-right top-down minimap card. Default on for new users
+  // (cheap render, useful on unfamiliar tracks); turning it off hides the
+  // card entirely with no other side effects.
+  showMinimap: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -77,6 +81,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
   touchMode: 'single',
   showGhost: true,
+  showMinimap: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
 }
@@ -109,6 +114,9 @@ const ControlSettingsSchema = z.object({
   // Older stored settings predate this flag; default it on so existing users
   // see the ghost on their next race without having to dig into Settings.
   showGhost: z.boolean().default(true),
+  // Minimap toggle landed after the original settings shape. Default on for
+  // legacy stored payloads so the upgrade is opt-out, not opt-in.
+  showMinimap: z.boolean().default(true),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
   // not see a broken Settings pane.
@@ -126,6 +134,7 @@ export function cloneDefaultSettings(): ControlSettings {
     keyBindings: cloneDefaultBindings(),
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
+    showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
   }

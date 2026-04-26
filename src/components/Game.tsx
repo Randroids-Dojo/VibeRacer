@@ -22,6 +22,7 @@ import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
 import { TuningPanel } from './TuningPanel'
+import { Minimap, type MinimapPose } from './Minimap'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import {
   readLocalBest,
@@ -182,6 +183,12 @@ function GameSession({
   // showGhostRef: RaceCanvas polls this each frame and reapplies on change.
   const carPaintRef = useRef<string | null>(settings.carPaint)
   carPaintRef.current = settings.carPaint
+  // Live pose channel for the minimap. RaceCanvas writes to these refs every
+  // frame; the Minimap component reads them in its own rAF loop without going
+  // through React state. Keeping the refs alive here means a Settings toggle
+  // that mounts / unmounts the Minimap does not lose the live position.
+  const minimapCarPoseRef = useRef<MinimapPose | null>(null)
+  const minimapGhostPoseRef = useRef<MinimapPose | null>(null)
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -534,9 +541,19 @@ function GameSession({
         showGhostRef={showGhostRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
+        carPoseOutRef={minimapCarPoseRef}
+        ghostPoseOutRef={minimapGhostPoseRef}
         onLapReplay={handleLapReplay}
         style={canvasStyle}
       />
+      {settings.showMinimap ? (
+        <Minimap
+          pieces={pieces}
+          checkpointCount={checkpointCount}
+          carPoseRef={minimapCarPoseRef}
+          ghostPoseRef={settings.showGhost ? minimapGhostPoseRef : undefined}
+        />
+      ) : null}
       <HUD
         currentMs={hud.currentMs}
         lastLapMs={hud.lastLapMs}

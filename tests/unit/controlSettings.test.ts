@@ -168,6 +168,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showGhost).toBe(true)
   })
 
+  it('defaults showMinimap to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showMinimap).toBe(true)
+    expect(cloneDefaultSettings().showMinimap).toBe(true)
+  })
+
+  it('round-trips a disabled showMinimap flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showMinimap = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showMinimap when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showMinimap).toBe(true)
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

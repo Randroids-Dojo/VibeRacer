@@ -69,6 +69,12 @@ export interface RaceCanvasProps {
   // changes so a swatch click in the pause menu repaints the car on the
   // next frame.
   carPaintRef?: MutableRefObject<string | null>
+  // Pose targets the rAF loop writes the player's current world pose into
+  // every frame so peripheral overlays (the minimap, future telemetry) can
+  // read it without re-rendering React 60 times per second. Optional so the
+  // tuning lab can skip the wiring.
+  carPoseOutRef?: MutableRefObject<{ x: number; z: number; heading: number } | null>
+  ghostPoseOutRef?: MutableRefObject<{ x: number; z: number; heading: number } | null>
   // Fired when the recorder finishes a lap. Game.tsx decides whether to
   // persist the path locally and bundle it into the next /race/submit.
   onLapReplay?: (replay: Replay) => void
@@ -96,6 +102,8 @@ export function RaceCanvas({
   showGhostRef,
   cameraRigRef,
   carPaintRef,
+  carPoseOutRef,
+  ghostPoseOutRef,
   onLapReplay,
   disableMusicIntensity,
   className,
@@ -196,6 +204,10 @@ export function RaceCanvas({
         bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
         bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
         ghostMesh.visible = false
+        if (carPoseOutRef) {
+          carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
+        }
+        if (ghostPoseOutRef) ghostPoseOutRef.current = null
         resetRecording()
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
@@ -272,6 +284,12 @@ export function RaceCanvas({
 
       bundle.car.position.set(state.x, 0, state.z)
       bundle.car.rotation.y = state.heading
+      // Publish the live pose for any overlays subscribed via a ref. Cheap
+      // single-object write per frame; the consumer reads it from its own rAF
+      // loop so React state never has to fan out.
+      if (carPoseOutRef) {
+        carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
+      }
       updateCameraRig(
         rig,
         state.x,
@@ -310,11 +328,20 @@ export function RaceCanvas({
           ghostMesh.position.set(pose.x, 0, pose.z)
           ghostMesh.rotation.y = pose.heading
           ghostMesh.visible = true
+          if (ghostPoseOutRef) {
+            ghostPoseOutRef.current = {
+              x: pose.x,
+              z: pose.z,
+              heading: pose.heading,
+            }
+          }
         } else {
           ghostMesh.visible = false
+          if (ghostPoseOutRef) ghostPoseOutRef.current = null
         }
       } else {
         ghostMesh.visible = false
+        if (ghostPoseOutRef) ghostPoseOutRef.current = null
       }
 
       renderer.render(bundle.scene, bundle.camera)
