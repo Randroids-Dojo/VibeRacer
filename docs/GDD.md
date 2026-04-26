@@ -399,6 +399,7 @@ Ghost rendering reuses the player car's GLB through `buildGhostCar()` in `sceneB
 - Settings pane: `src/components/SettingsPane.tsx` ships keyboard remap (with a click-then-press capture flow per slot, modifier keys ignored, conflict transfer to the new action) plus a dual / single touch mode toggle. Reachable from both the title screen and the pause menu. See Section 4 build log for storage and detection details.
 - Share button: pause menu entry between Settings and Exit. `Game.tsx` builds a `SharePayload` from the current slug, version hash, local PB, and overall record (helpers in `src/lib/share.ts`), then calls `shareOrCopy` which prefers `navigator.share` (mobile share sheet) and falls back to `navigator.clipboard.writeText` on desktop. The shared URL is `${origin}/${slug}?v=${versionHash}` so recipients always race the exact version the sharer was on. The button label flips to "Link copied!" / "Shared!" / "Could not share" for 1.6s, then back to "Share track". Pure helpers (`buildShareUrl`, `buildShareText`, `buildSharePayload`, `shareOrCopy`) are unit-tested in `tests/unit/share.test.ts`.
 - Touch pause button sizing: live. `Game.tsx` now ships the always-visible pause button with a `<style>` block (`PAUSE_BUTTON_CSS`) instead of inline styles so a `(any-pointer: coarse)` media query can grow the hit target from 48x48 to 64x64, bump the SVG glyph from 22 to 30, thicken the ring, and add `env(safe-area-inset-bottom)` to the bottom offset so it clears the iOS home indicator. `touch-action: manipulation` removes the legacy 300ms tap delay and `-webkit-tap-highlight-color: transparent` hides the gray flash on tap. Fine pointers keep the original compact look.
+- Lap history pane: live. New pause-menu entry "Laps" (with a parenthesized count when at least one lap has been logged) opens an in-overlay panel listing every completed lap of the current session newest-first. Each row shows the lap number, the formatted time, an orange PB chip when the lap matched or beat the prior local PB at completion, and a signed delta vs the prior PB (green for ahead, red for behind, dim placeholder when no PB existed yet). The current local PB row gets a subtle accent border so it stays easy to spot in a long list. A summary header above the list shows session count, best, and average. The list resets on Restart; the local PB on disk is unaffected. Pure helpers (`appendLap`, `makeLapEntry`, `formatLapDelta`, `summarizeHistory`) live in `src/game/lapHistory.ts`; the panel itself is `src/components/LapHistory.tsx`. Unit coverage in `tests/unit/lapHistory.test.ts` (15 tests covering null-PB short-circuits, PB tie + faster + slower paths, append immutability, multi-lap chaining, signed-delta formatting incl. the 999.5 ms millis rollover, summary across empty / single / multi-entry inputs).
 
 ### Title screen (route `/`)
 
@@ -420,6 +421,7 @@ Items:
 - Restart
 - Edit Track
 - Leaderboards (for this track version)
+- Laps (this session's completed laps with deltas vs PB)
 - Setup
 - Settings
 - Share track (Web Share API on mobile, clipboard fallback on desktop)

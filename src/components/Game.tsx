@@ -40,6 +40,8 @@ import {
   type SplitDelta,
 } from '@/game/splits'
 import { Leaderboard } from './Leaderboard'
+import { LapHistory } from './LapHistory'
+import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
 import { ReplaySchema, type Replay } from '@/lib/replay'
@@ -129,7 +131,7 @@ interface HudState {
   splitDelta: SplitDelta | null
 }
 
-type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning'
+type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning' | 'lapHistory'
 
 function GameSession({
   slug,
@@ -223,6 +225,9 @@ function GameSession({
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
+  // Session-scoped lap log. Reset on Restart so a fresh race starts clean.
+  // The local PB on disk persists across restarts; this list does not.
+  const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([])
   const [hud, setHud] = useState<HudState>(() => ({
     currentMs: 0,
     lastLapMs: null,
@@ -302,6 +307,7 @@ function GameSession({
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     silenceAllSfx(0.05)
     setPaused(false)
+    setLapHistory([])
     setHud((prev) => ({
       ...prev,
       currentMs: 0,
@@ -487,6 +493,17 @@ function GameSession({
       const isAllTimePb = prev.bestAllTimeMs === null || lapMs < prev.bestAllTimeMs
       const isNewRecord =
         prev.overallRecord === null || lapMs < prev.overallRecord.lapTimeMs
+      // Snapshot the prior PB before this lap rewrites it so the lap-history
+      // entry shows the right delta. Captured inside the setHud closure so
+      // back-to-back lap completions never compare against each other's
+      // already-applied PB update.
+      setLapHistory((current) =>
+        appendLap(current, {
+          lapNumber: event.lapNumber,
+          lapTimeMs: lapMs,
+          priorBestAllTimeMs: prev.bestAllTimeMs,
+        }),
+      )
       if (isAllTimePb) {
         writeLocalBest(slug, versionHash, lapMs)
         // Capture the lap's checkpoint splits so the next lap's live delta
@@ -686,6 +703,8 @@ function GameSession({
               onRestart={restart}
               onEditTrack={editTrack}
               onLeaderboards={() => setPauseView('leaderboard')}
+              onLapHistory={() => setPauseView('lapHistory')}
+              lapCount={lapHistory.length}
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
               onShare={() => {
@@ -703,6 +722,12 @@ function GameSession({
                 applyTuning(p)
                 setPauseView('menu')
               }}
+            />
+          ) : pauseView === 'lapHistory' ? (
+            <LapHistory
+              entries={lapHistory}
+              bestAllTimeMs={hud.bestAllTimeMs}
+              onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (
             <TuningPanel
