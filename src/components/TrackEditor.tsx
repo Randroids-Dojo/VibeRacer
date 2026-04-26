@@ -1,5 +1,5 @@
 'use client'
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece, PieceType, Rotation } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
@@ -15,6 +15,17 @@ import {
   withPieceRemoved,
   withPieceRotated,
 } from '@/game/editor'
+import {
+  ZOOM_DEFAULT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  clampZoom,
+  distance,
+  fitZoom,
+  pinchZoom,
+  shiftZoomTowardCursor,
+} from '@/game/editorZoom'
 
 type Tool = 'erase' | PieceType | 'start'
 const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90', 'scurve']
@@ -68,6 +79,14 @@ export function TrackEditor({
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
+  const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
+  const gridContainerRef = useRef<HTMLDivElement | null>(null)
+  // Tracks an active two-finger pinch gesture. Null when no pinch is active.
+  const pinchRef = useRef<{
+    pointers: Map<number, { x: number; y: number }>
+    startDistance: number
+    startZoom: number
+  } | null>(null)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -76,8 +95,13 @@ export function TrackEditor({
   const rowMax = bounds.rowMax + PAD_CELLS
   const colMin = bounds.colMin - PAD_CELLS
   const colMax = bounds.colMax + PAD_CELLS
-  const width = (colMax - colMin + 1) * CELL
-  const height = (rowMax - rowMin + 1) * CELL
+  // Base content size at zoom = 1. The SVG keeps its viewBox at this size and
+  // the rendered width and height scale by `zoom`, so all interior coordinates
+  // (and click hit-testing via data-row / data-col) stay in base units.
+  const baseWidth = (colMax - colMin + 1) * CELL
+  const baseHeight = (rowMax - rowMin + 1) * CELL
+  const renderedWidth = baseWidth * zoom
+  const renderedHeight = baseHeight * zoom
 
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
@@ -158,7 +182,155 @@ export function TrackEditor({
     return { row, col }
   }
 
+  // Apply a zoom change anchored on a specific cursor location inside the
+  // grid container so the world point under the cursor stays put. When no
+  // cursor is provided (button taps), we anchor on the viewport center.
+  const applyZoom = useCallback(
+    (
+      newZoom: number,
+      anchor?: { clientX: number; clientY: number },
+    ) => {
+      const container = gridContainerRef.current
+      if (!container) {
+        setZoom((prev) => clampZoom(newZoom <= 0 ? prev : newZoom))
+        return
+      }
+      const rect = container.getBoundingClientRect()
+      const cursorClientX =
+        anchor !== undefined ? anchor.clientX - rect.left : rect.width / 2
+      const cursorClientY =
+        anchor !== undefined ? anchor.clientY - rect.top : rect.height / 2
+      setZoom((prev) => {
+        const result = shiftZoomTowardCursor({
+          oldZoom: prev,
+          newZoom,
+          cursorClientX,
+          cursorClientY,
+          scrollLeft: container.scrollLeft,
+          scrollTop: container.scrollTop,
+        })
+        // Apply scroll on the next frame so the new SVG width has been
+        // committed; otherwise scrollLeft will be clamped to the old size.
+        requestAnimationFrame(() => {
+          container.scrollLeft = result.scrollLeft
+          container.scrollTop = result.scrollTop
+        })
+        return result.zoom
+      })
+    },
+    [],
+  )
+
+  const zoomIn = useCallback(() => {
+    applyZoom(zoom * ZOOM_STEP)
+  }, [applyZoom, zoom])
+  const zoomOut = useCallback(() => {
+    applyZoom(zoom / ZOOM_STEP)
+  }, [applyZoom, zoom])
+  const zoomFit = useCallback(() => {
+    const container = gridContainerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const next = fitZoom({
+      contentWidth: baseWidth,
+      contentHeight: baseHeight,
+      viewportWidth: rect.width,
+      viewportHeight: rect.height,
+      padding: 16,
+    })
+    setZoom(next)
+    // Recenter after layout settles.
+    requestAnimationFrame(() => {
+      const c = gridContainerRef.current
+      if (!c) return
+      c.scrollLeft = (baseWidth * next - c.clientWidth) / 2
+      c.scrollTop = (baseHeight * next - c.clientHeight) / 2
+    })
+  }, [baseHeight, baseWidth])
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      // Only treat as zoom when a modifier is held; otherwise let the user
+      // scroll the grid normally. Trackpad pinch gestures arrive with
+      // ctrlKey synthesized by the browser, so they zoom out of the box.
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const factor = Math.exp(-e.deltaY * 0.0015)
+      applyZoom(zoom * factor, { clientX: e.clientX, clientY: e.clientY })
+    },
+    [applyZoom, zoom],
+  )
+
+  // Wheel needs a non-passive listener to call preventDefault. React's
+  // synthetic onWheel attaches as passive in modern React, so we attach
+  // imperatively.
+  useEffect(() => {
+    const container = gridContainerRef.current
+    if (!container) return
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
+  // Center the content the first time we have a viewport. Without this the
+  // user can land on a tall track scrolled to the top-left corner.
+  const didInitialCenterRef = useRef(false)
+  useLayoutEffect(() => {
+    if (didInitialCenterRef.current) return
+    const container = gridContainerRef.current
+    if (!container) return
+    if (container.clientWidth === 0 || container.clientHeight === 0) return
+    container.scrollLeft = Math.max(0, (renderedWidth - container.clientWidth) / 2)
+    container.scrollTop = Math.max(0, (renderedHeight - container.clientHeight) / 2)
+    didInitialCenterRef.current = true
+  }, [renderedHeight, renderedWidth])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== 'touch') return
+    const pinch = pinchRef.current ?? {
+      pointers: new Map<number, { x: number; y: number }>(),
+      startDistance: 0,
+      startZoom: zoom,
+    }
+    pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinch.pointers.size === 2) {
+      const [a, b] = Array.from(pinch.pointers.values())
+      pinch.startDistance = distance(a.x, a.y, b.x, b.y)
+      pinch.startZoom = zoom
+    }
+    pinchRef.current = pinch
+  }, [zoom])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const pinch = pinchRef.current
+    if (!pinch || !pinch.pointers.has(e.pointerId)) return
+    pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinch.pointers.size !== 2 || pinch.startDistance <= 0) return
+    e.preventDefault()
+    const [a, b] = Array.from(pinch.pointers.values())
+    const cur = distance(a.x, a.y, b.x, b.y)
+    const next = pinchZoom(pinch.startZoom, pinch.startDistance, cur)
+    const midX = (a.x + b.x) / 2
+    const midY = (a.y + b.y) / 2
+    applyZoom(next, { clientX: midX, clientY: midY })
+  }, [applyZoom])
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const pinch = pinchRef.current
+    if (!pinch) return
+    pinch.pointers.delete(e.pointerId)
+    if (pinch.pointers.size < 2) {
+      pinch.startDistance = 0
+    }
+    if (pinch.pointers.size === 0) {
+      pinchRef.current = null
+    }
+  }, [])
+
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    // Suppress the click that would otherwise fire after a pinch gesture
+    // releases its last pointer. Without this a two-finger zoom can
+    // accidentally place a piece.
+    if (pinchRef.current !== null) return
     const cell = cellFromEvent(e)
     if (cell) applyTool(cell.row, cell.col)
   }, [applyTool])
@@ -304,42 +476,84 @@ export function TrackEditor({
         <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
 
-      <div style={gridWrap}>
-        <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          style={{
-            display: 'block',
-            background: '#162233',
-            cursor: 'pointer',
-            touchAction: 'manipulation',
-          }}
-          onClick={handleSvgClick}
-          onContextMenu={handleSvgContextMenu}
-        >
-          {rows.map((r) =>
-            cols.map((c) => {
-              const x = (c - colMin) * CELL
-              const y = (r - rowMin) * CELL
-              const key = cellKey(r, c)
-              const piece = cellMap.get(key)
-              const isStart = key === startKey
-              return (
-                <Cell
-                  key={key}
-                  row={r}
-                  col={c}
-                  x={x}
-                  y={y}
-                  piece={piece}
-                  isStart={isStart}
-                  startExitDir={isStart ? startExitDir : null}
-                />
-              )
-            }),
-          )}
-        </svg>
+      <div style={gridOuter}>
+        <div style={gridWrap} ref={gridContainerRef}>
+          <svg
+            width={renderedWidth}
+            height={renderedHeight}
+            viewBox={`0 0 ${baseWidth} ${baseHeight}`}
+            style={{
+              display: 'block',
+              background: '#162233',
+              cursor: 'pointer',
+              // `none` lets us own pinch gestures; without it the browser
+              // intercepts two-finger touches as page zoom.
+              touchAction: 'none',
+            }}
+            onClick={handleSvgClick}
+            onContextMenu={handleSvgContextMenu}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            {rows.map((r) =>
+              cols.map((c) => {
+                const x = (c - colMin) * CELL
+                const y = (r - rowMin) * CELL
+                const key = cellKey(r, c)
+                const piece = cellMap.get(key)
+                const isStart = key === startKey
+                return (
+                  <Cell
+                    key={key}
+                    row={r}
+                    col={c}
+                    x={x}
+                    y={y}
+                    piece={piece}
+                    isStart={isStart}
+                    startExitDir={isStart ? startExitDir : null}
+                  />
+                )
+              }),
+            )}
+          </svg>
+        </div>
+        <div style={zoomToolbar} role="toolbar" aria-label="Zoom controls">
+          <button
+            type="button"
+            onClick={zoomOut}
+            disabled={zoom <= ZOOM_MIN + 1e-6}
+            style={zoomBtn}
+            aria-label="Zoom out"
+            title="Zoom out (Ctrl + scroll)"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={zoomFit}
+            style={zoomBtnWide}
+            aria-label="Fit track to viewport"
+            title="Fit track to viewport"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={zoomIn}
+            disabled={zoom >= ZOOM_MAX - 1e-6}
+            style={zoomBtn}
+            aria-label="Zoom in"
+            title="Zoom in (Ctrl + scroll)"
+          >
+            +
+          </button>
+          <span style={zoomReadout} aria-live="polite">
+            {Math.round(zoom * 100)}%
+          </span>
+        </div>
       </div>
 
       {advancedOpen ? (
@@ -741,12 +955,64 @@ const paletteHint: React.CSSProperties = {
   opacity: 0.6,
   marginLeft: 'auto',
 }
+const gridOuter: React.CSSProperties = {
+  flex: 1,
+  position: 'relative',
+  display: 'flex',
+  minHeight: 0,
+}
 const gridWrap: React.CSSProperties = {
   flex: 1,
   overflow: 'auto',
   display: 'grid',
   placeItems: 'center',
   padding: 20,
+  // Reserve space below for the toolbar so the centered SVG never sits
+  // underneath it.
+  paddingBottom: 60,
+}
+const zoomToolbar: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 12,
+  right: 16,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 8px',
+  background: 'rgba(13, 20, 32, 0.85)',
+  border: '1px solid #2b3a50',
+  borderRadius: 8,
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+  pointerEvents: 'auto',
+}
+const zoomBtn: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'transparent',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  color: 'white',
+  fontFamily: 'inherit',
+  fontSize: 18,
+  fontWeight: 700,
+  cursor: 'pointer',
+  lineHeight: 1,
+}
+const zoomBtnWide: React.CSSProperties = {
+  ...zoomBtn,
+  width: 48,
+  fontSize: 12,
+  letterSpacing: 0.5,
+}
+const zoomReadout: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.7,
+  minWidth: 36,
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
 }
 const footer: React.CSSProperties = {
   padding: '12px 20px',
