@@ -419,6 +419,15 @@ function GameSession({
   const sessionPriorPbRef = useRef<number | null>(
     readLocalBest(slug, versionHash),
   )
+  // Player's all-time best sectors AT MOUNT, before any laps were recorded
+  // this session. Drives the "Where you lost time" sector breakdown card in
+  // the end-of-session summary so the per-sector deltas read against the bar
+  // the player walked in with rather than the post-session bar that the
+  // session itself just moved. Updated on slug / version change so a navigation
+  // between tracks resets the comparison reference cleanly.
+  const sessionPriorSectorsRef = useRef<SectorDuration[] | null>(
+    readLocalBestSectors(slug, versionHash),
+  )
   const pendingRaceStartRef = useRef<number | null>(null)
   const pendingResetRef = useRef(false)
   // Mid-race "restart this lap" pulse. The rAF loop in RaceCanvas drains it
@@ -853,6 +862,9 @@ function GameSession({
     sessionPriorPbRef.current = readLocalBest(slug, versionHash)
     const freshSectors = readLocalBestSectors(slug, versionHash)
     bestSectorsRef.current = freshSectors
+    // Reseed the prior-sector reference too so the end-of-session sector
+    // breakdown card compares against the right bar after a navigation.
+    sessionPriorSectorsRef.current = freshSectors
     // Same idea for the drift PB and the optimal lap: a fresh slug load
     // should reflect what the player's banked on this track / version, not
     // whatever was in HudState from a prior slug.
@@ -2502,6 +2514,7 @@ function GameSession({
               stats={summarizeSession({
                 history: lapHistory,
                 priorAllTimeMs: sessionPriorPbRef.current,
+                priorAllTimeSectors: sessionPriorSectorsRef.current,
                 driftBest: hud.driftLapBest,
                 sessionDurationMs: Date.now() - sessionStartedAtRef.current,
               })}
