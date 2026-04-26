@@ -4,6 +4,7 @@ import { validateClosedLoop } from '@/game/track'
 import { buildTrackPath } from '@/game/trackPath'
 import { initGameState, startRace, tick } from '@/game/tick'
 import { DEFAULT_CAR_PARAMS } from '@/game/physics'
+import type { PieceType } from '@/lib/schemas'
 
 describe('TUNING_LAB_TRACK_PIECES', () => {
   it('forms a valid closed loop', () => {
@@ -18,7 +19,13 @@ describe('TUNING_LAB_TRACK_PIECES', () => {
   })
 
   it('has the required piece-type mix', () => {
-    const counts = { straight: 0, left90: 0, right90: 0, scurve: 0 }
+    const counts: Record<PieceType, number> = {
+      straight: 0,
+      left90: 0,
+      right90: 0,
+      scurve: 0,
+      scurveLeft: 0,
+    }
     for (const p of TUNING_LAB_TRACK_PIECES) counts[p.type] += 1
     expect(counts.straight).toBeGreaterThanOrEqual(4)
     expect(counts.left90).toBeGreaterThanOrEqual(1)

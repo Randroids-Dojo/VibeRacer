@@ -163,6 +163,17 @@ export function sampleScurveLocal(): SampledPoint[] {
   return samples
 }
 
+// Mirror image of sampleScurveLocal across the local x = 0 axis. The
+// scurveLeft piece bumps WEST (negative x) at its midpoint instead of east,
+// otherwise sharing the same connectors and arc-length parameterization.
+export function sampleScurveLeftLocal(): SampledPoint[] {
+  return sampleScurveLocal().map((s) => ({
+    x: -s.x,
+    z: s.z,
+    heading: Math.PI - s.heading,
+  }))
+}
+
 // Arc step: parametrize a quarter-circle by t in [0, 1]. (cx, cz) is the
 // arc center, startAngle is the math-frame angle from center to start
 // position, dir = +1 for CCW motion, -1 for CW motion. Returns position and
@@ -263,9 +274,11 @@ export function transformSample(
   }
 }
 
-// Cached local-frame samples for the S-curve. Computed once on import; the
-// transform per-piece is cheap (rotate + translate).
+// Cached local-frame samples for the S-curves. The right-bend version is
+// computed by sampleScurveLocal(); the left-bend version is its mirror across
+// the local x = 0 axis (negate x and reflect headings: atan2(-z, -x) = pi - h).
 const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
+const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 
 function buildScurveSamples(
   piece: Piece,
@@ -277,9 +290,13 @@ function buildScurveSamples(
   // If the loop traversal enters from the OPPOSITE end, the car drives the
   // path in reverse, so flip the sample order and rotate every heading by
   // 180 degrees so headings still face the direction of travel.
+  const localSamples =
+    piece.type === 'scurveLeft'
+      ? SCURVE_LEFT_LOCAL_SAMPLES
+      : SCURVE_LOCAL_SAMPLES
   const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
   const reversed = entryDir !== baseEntryAfterRotation
-  const transformed = SCURVE_LOCAL_SAMPLES.map((s) =>
+  const transformed = localSamples.map((s) =>
     transformSample(s, center.x, center.z, piece.rotation),
   )
   if (!reversed) return transformed
@@ -313,7 +330,8 @@ export function buildTrackPath(
     seen.add(key)
     const center = cellCenter(current.row, current.col)
     const isCorner = current.type === 'left90' || current.type === 'right90'
-    const isScurve = current.type === 'scurve'
+    const isScurve =
+      current.type === 'scurve' || current.type === 'scurveLeft'
     order.push({
       piece: current,
       entryDir,

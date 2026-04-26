@@ -2,7 +2,13 @@ import { z } from 'zod'
 import { CarParamsSchema, InputModeSchema } from './tuningSettings'
 import { ReplaySchema } from './replay'
 
-export const PieceTypeSchema = z.enum(['straight', 'left90', 'right90', 'scurve'])
+export const PieceTypeSchema = z.enum([
+  'straight',
+  'left90',
+  'right90',
+  'scurve',
+  'scurveLeft',
+])
 export type PieceType = z.infer<typeof PieceTypeSchema>
 
 export const RotationSchema = z.union([

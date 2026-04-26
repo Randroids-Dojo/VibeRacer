@@ -21,6 +21,14 @@ describe('connectorsOf', () => {
     expect(connectorsOf({ type: 'scurve', row: 0, col: 0, rotation: 90 }))
       .toEqual([3, 1])
   })
+  it('scurveLeft shares the same connectors as scurve so the two are interchangeable in a layout', () => {
+    expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 }))
+      .toEqual([2, 0])
+    expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 90 }))
+      .toEqual([3, 1])
+    expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 180 }))
+      .toEqual([0, 2])
+  })
 })
 
 describe('validateClosedLoop', () => {

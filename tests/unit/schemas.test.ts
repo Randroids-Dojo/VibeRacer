@@ -36,6 +36,12 @@ describe('PieceSchema', () => {
       PieceSchema.parse({ type: 'scurve', row: 0, col: 0, rotation: 0 }),
     ).toEqual({ type: 'scurve', row: 0, col: 0, rotation: 0 })
   })
+
+  it('accepts the scurveLeft piece type', () => {
+    expect(
+      PieceSchema.parse({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 })
+  })
 })
 
 describe('TrackSchema', () => {

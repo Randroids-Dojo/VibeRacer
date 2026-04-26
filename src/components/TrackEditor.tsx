@@ -28,14 +28,21 @@ import {
 } from '@/game/editorZoom'
 
 type Tool = 'erase' | PieceType | 'start'
-const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90', 'scurve']
+const PIECE_TOOLS: PieceType[] = [
+  'straight',
+  'left90',
+  'right90',
+  'scurve',
+  'scurveLeft',
+]
 const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
   left90: 'Left turn',
   right90: 'Right turn',
-  scurve: 'S-curve',
+  scurve: 'S-curve (right)',
+  scurveLeft: 'S-curve (left)',
   start: 'Set start',
 }
 
@@ -813,39 +820,48 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
         </>
       ) : null}
-      {piece.type === 'scurve' ? (
+      {piece.type === 'scurve' || piece.type === 'scurveLeft' ? (
         <>
           {/*
             Top-down SVG: y grows downward, so a piece that travels south->north
             in world coords (rotation 0) goes from y=CELL (bottom of glyph) to
-            y=0 (top of glyph). The snake bends right (+x) first, matching the
-            game world.
+            y=0 (top of glyph). The snake bends right (+x) first for 'scurve'
+            and left (-x) first for 'scurveLeft'; we draw the scurve glyph and
+            mirror the inner group across x = cx for the left variant.
           */}
-          <path
-            d={`M ${cx - roadWidth / 2} ${CELL}
-                L ${cx - roadWidth / 2} ${CELL * 0.78}
-                C ${cx - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.42}
-                C ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.06}
-                L ${cx - roadWidth / 2} 0
-                L ${cx + roadWidth / 2} 0
-                L ${cx + roadWidth / 2} ${CELL * 0.06}
-                C ${cx + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.42}
-                C ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.78}
-                L ${cx + roadWidth / 2} ${CELL}
-                Z`}
-            fill={road}
-          />
-          <path
-            d={`M ${cx} ${CELL}
-                L ${cx} ${CELL * 0.78}
-                C ${cx} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.42}
-                C ${cx + CELL * 0.32} ${CELL * 0.24} ${cx} ${CELL * 0.24} ${cx} ${CELL * 0.06}
-                L ${cx} 0`}
-            stroke={stroke}
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            fill="none"
-          />
+          <g
+            transform={
+              piece.type === 'scurveLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx - roadWidth / 2} ${CELL}
+                  L ${cx - roadWidth / 2} ${CELL * 0.78}
+                  C ${cx - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.06}
+                  L ${cx - roadWidth / 2} 0
+                  L ${cx + roadWidth / 2} 0
+                  L ${cx + roadWidth / 2} ${CELL * 0.06}
+                  C ${cx + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.78}
+                  L ${cx + roadWidth / 2} ${CELL}
+                  Z`}
+              fill={road}
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  L ${cx} ${CELL * 0.78}
+                  C ${cx} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32} ${CELL * 0.24} ${cx} ${CELL * 0.24} ${cx} ${CELL * 0.06}
+                  L ${cx} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
         </>
       ) : null}
       <circle cx={cx} cy={CELL - 8} r={3} fill="#9ad8ff" />

@@ -23,6 +23,7 @@ const BASE_CONNECTORS: Record<PieceType, [Dir, Dir]> = {
   left90: [2, 3], // S -> W (left turn)
   right90: [2, 1], // S -> E (right turn)
   scurve: [2, 0], // S -> N (snakes inside the cell, right then left)
+  scurveLeft: [2, 0], // S -> N (mirror of scurve: snakes left then right)
 }
 
 export function connectorsOf(piece: Piece): [Dir, Dir] {
