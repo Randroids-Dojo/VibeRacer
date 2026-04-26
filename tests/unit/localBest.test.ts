@@ -1,14 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
+  freshTrackStats,
   readLocalBestDrift,
   readLocalBestSectors,
   readLocalBestSplits,
+  readTrackStats,
   writeLocalBestDrift,
   writeLocalBestSectors,
   writeLocalBestSplits,
+  writeTrackStats,
 } from '@/lib/localBest'
 import type { CheckpointHit } from '@/lib/schemas'
 import type { SectorDuration } from '@/game/optimalLap'
+import type { TrackStats } from '@/game/trackStats'
 
 interface FakeWindow {
   localStorage: {
@@ -260,5 +264,116 @@ describe('local best sectors storage', () => {
         { cpId: 0, durationMs: 1500 },
       ]),
     ).not.toThrow()
+  })
+})
+
+describe('per-track stats storage', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+  const HASH_B = 'b'.repeat(64)
+  const VALID: TrackStats = {
+    lapCount: 7,
+    totalDriveMs: 126_500,
+    sessionCount: 3,
+    firstPlayedAt: 1_700_000_000_000,
+    lastPlayedAt: 1_700_000_900_000,
+  }
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no stats are stored', () => {
+    expect(readTrackStats('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a valid snapshot', () => {
+    writeTrackStats('oval', HASH, VALID)
+    expect(readTrackStats('oval', HASH)).toEqual(VALID)
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeTrackStats('oval', HASH, VALID)
+    writeTrackStats('oval', HASH_B, { ...VALID, lapCount: 99 })
+    writeTrackStats('sandbox', HASH, { ...VALID, lapCount: 11 })
+    expect(readTrackStats('oval', HASH)?.lapCount).toBe(7)
+    expect(readTrackStats('oval', HASH_B)?.lapCount).toBe(99)
+    expect(readTrackStats('sandbox', HASH)?.lapCount).toBe(11)
+    expect(readTrackStats('mystery', HASH)).toBeNull()
+  })
+
+  it('round-trips a stats object with null timestamps (fresh slate)', () => {
+    const fresh = freshTrackStats()
+    writeTrackStats('oval', HASH, fresh)
+    expect(readTrackStats('oval', HASH)).toEqual(fresh)
+  })
+
+  it('refuses to persist an obviously corrupt snapshot', () => {
+    writeTrackStats('oval', HASH, {
+      lapCount: -1,
+      totalDriveMs: 0,
+      sessionCount: 0,
+      firstPlayedAt: null,
+      lastPlayedAt: null,
+    } as unknown as TrackStats)
+    expect(readTrackStats('oval', HASH)).toBeNull()
+  })
+
+  it('returns null when the stored value fails the schema (manual edit)', () => {
+    store['viberacer.stats.oval.' + HASH] = JSON.stringify({
+      lapCount: 'lots',
+      totalDriveMs: 0,
+      sessionCount: 0,
+      firstPlayedAt: null,
+      lastPlayedAt: null,
+    })
+    expect(readTrackStats('oval', HASH)).toBeNull()
+  })
+
+  it('returns null on malformed JSON', () => {
+    store['viberacer.stats.oval.' + HASH] = '{not json'
+    expect(readTrackStats('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeTrackStats('oval', HASH, VALID)).not.toThrow()
+  })
+
+  it('exports freshTrackStats as the empty snapshot factory', () => {
+    expect(freshTrackStats()).toEqual({
+      lapCount: 0,
+      totalDriveMs: 0,
+      sessionCount: 0,
+      firstPlayedAt: null,
+      lastPlayedAt: null,
+    })
   })
 })

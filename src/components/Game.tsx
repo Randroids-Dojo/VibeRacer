@@ -38,7 +38,16 @@ import {
   writeLocalBestDrift,
   readLocalBestSectors,
   writeLocalBestSectors,
+  readTrackStats,
+  writeTrackStats,
+  freshTrackStats,
 } from '@/lib/localBest'
+import {
+  recordLap as recordTrackStatsLap,
+  recordSession as recordTrackStatsSession,
+  type TrackStats,
+} from '@/game/trackStats'
+import { TrackStatsPane } from './TrackStatsPane'
 import type { CheckpointHit } from '@/lib/schemas'
 import {
   SPLIT_DISPLAY_MS,
@@ -188,7 +197,13 @@ interface HudState {
   driftAllTimeBest: number | null
 }
 
-type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning' | 'lapHistory'
+type PauseView =
+  | 'menu'
+  | 'leaderboard'
+  | 'settings'
+  | 'tuning'
+  | 'lapHistory'
+  | 'stats'
 
 function GameSession({
   slug,
@@ -356,6 +371,23 @@ function GameSession({
   // piece count when no override is set.
   const expectedSectorCount = checkpointCount ?? pieces.length
 
+  // Per-track engagement stats (lap count, total drive time, sessions, first /
+  // last played). Loaded once on mount and updated through pure helpers on
+  // session start and lap completion. State (not just a ref) so opening the
+  // Stats pause pane re-renders with the freshest values.
+  const [trackStats, setTrackStats] = useState<TrackStats>(
+    () => readTrackStats(slug, versionHash) ?? freshTrackStats(),
+  )
+  // Mirror the live trackStats into a ref so the lap-complete handler can
+  // compute the next snapshot without closing over a stale value (mirrors the
+  // pbLapMsRef / recordLapMsRef pattern above).
+  const trackStatsRef = useRef<TrackStats>(trackStats)
+  // Tracks whether this Game instance has already counted itself toward the
+  // session counter. Flipped exactly once on the first countdown -> racing
+  // transition so a player who restarts the lap (or restarts the race) within
+  // the same mount does not inflate the session count.
+  const sessionCountedRef = useRef<boolean>(false)
+
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
@@ -418,6 +450,15 @@ function GameSession({
         expectedSectorCount,
       ),
     }))
+    // Engagement stats are also (slug, version)-scoped: reload them so the
+    // pause-menu Stats pane reflects what the player banked on this layout
+    // rather than whatever was in state from a prior slug. The session
+    // counter is a per-mount latch and keeps its value across this effect
+    // so navigating between two versions in the same tab does not double up.
+    const freshStats = readTrackStats(slug, versionHash) ?? freshTrackStats()
+    trackStatsRef.current = freshStats
+    setTrackStats(freshStats)
+    sessionCountedRef.current = false
   }, [slug, versionHash, expectedSectorCount])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
@@ -961,6 +1002,20 @@ function GameSession({
       toastTimerRef.current = null
     }, 1800)
 
+    // Update the per-track engagement record. Increments the all-time lap
+    // count, adds the lap time to total drive time, and stamps `lastPlayedAt`
+    // with the wall-clock moment the lap finished. Persisted through the
+    // existing localStorage layer so the Stats pause pane reads the freshest
+    // values on the next open.
+    const nextStats = recordTrackStatsLap(
+      trackStatsRef.current,
+      lapMs,
+      Date.now(),
+    )
+    trackStatsRef.current = nextStats
+    setTrackStats(nextStats)
+    writeTrackStats(slug, versionHash, nextStats)
+
     void submitLap(event)
   }
 
@@ -1019,6 +1074,18 @@ function GameSession({
     pendingRaceStartRef.current = performance.now()
     crossfadeTo('game', RACE_START_CROSSFADE_SEC)
     setPhase('racing')
+    // Count this drop into the racing phase as a session, exactly once per
+    // mount. A Restart that re-mounts GameSession resets the latch and is
+    // intentionally counted again, since the player has truly re-entered the
+    // racing phase. Silent on the lap timeline so a counter bump never blocks
+    // anything visible.
+    if (!sessionCountedRef.current) {
+      sessionCountedRef.current = true
+      const next = recordTrackStatsSession(trackStatsRef.current, Date.now())
+      trackStatsRef.current = next
+      setTrackStats(next)
+      writeTrackStats(slug, versionHash, next)
+    }
   }
 
   return (
@@ -1146,6 +1213,7 @@ function GameSession({
               onLeaderboards={() => setPauseView('leaderboard')}
               onLapHistory={() => setPauseView('lapHistory')}
               lapCount={lapHistory.length}
+              onStats={() => setPauseView('stats')}
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
               onShare={() => {
@@ -1169,6 +1237,13 @@ function GameSession({
               entries={lapHistory}
               bestAllTimeMs={hud.bestAllTimeMs}
               bestSectors={bestSectorsRef.current ?? []}
+              onBack={() => setPauseView('menu')}
+            />
+          ) : pauseView === 'stats' ? (
+            <TrackStatsPane
+              stats={trackStats}
+              slug={slug}
+              bestAllTimeMs={hud.bestAllTimeMs}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (

@@ -16,6 +16,7 @@ interface PauseMenuProps {
   // Number of laps completed this session. Drives the count badge on the
   // Laps button so the player can see at a glance how many entries are queued.
   lapCount: number
+  onStats: () => void
   onSettings: () => void
   onTuning: () => void
   onShare: () => void
@@ -31,6 +32,7 @@ export function PauseMenu({
   onLeaderboards,
   onLapHistory,
   lapCount,
+  onStats,
   onSettings,
   onTuning,
   onShare,
@@ -55,6 +57,7 @@ export function PauseMenu({
         <MenuButton onClick={onLapHistory}>
           {lapCount > 0 ? `Laps (${lapCount})` : 'Laps'}
         </MenuButton>
+        <MenuButton onClick={onStats}>Stats</MenuButton>
         <MenuButton onClick={onTuning}>Setup</MenuButton>
         <MenuButton onClick={onSettings}>Settings</MenuButton>
         <MenuButton onClick={onShare}>{shareLabel ?? 'Share track'}</MenuButton>

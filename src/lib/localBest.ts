@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { ReplaySchema, type Replay } from './replay'
 import { CheckpointHitSchema, type CheckpointHit } from './schemas'
 import type { SectorDuration } from '@/game/optimalLap'
+import { emptyStats, type TrackStats } from '@/game/trackStats'
 
 function bestKey(slug: string, versionHash: string): string {
   return `viberacer.best.${slug}.${versionHash}`
@@ -21,6 +22,10 @@ function driftBestKey(slug: string, versionHash: string): string {
 
 function bestSectorsKey(slug: string, versionHash: string): string {
   return `viberacer.bestSectors.${slug}.${versionHash}`
+}
+
+function trackStatsKey(slug: string, versionHash: string): string {
+  return `viberacer.stats.${slug}.${versionHash}`
 }
 
 const SplitsArraySchema = z.array(CheckpointHitSchema)
@@ -187,4 +192,59 @@ export function writeLocalBestSectors(
     // Best-sectors persistence is a best-effort UX enhancement. A quota
     // failure should never break the lap-complete flow.
   }
+}
+
+// Per-track engagement stats (lap count, total drive time, session count,
+// first / last played timestamps). Persisted across sessions so the pause
+// menu's Stats pane can show "you have spent 4:32 racing this layout across
+// 7 sessions" instead of resetting on every reload.
+const TrackStatsSchema = z.object({
+  lapCount: z.number().int().nonnegative().finite(),
+  totalDriveMs: z.number().nonnegative().finite(),
+  sessionCount: z.number().int().nonnegative().finite(),
+  firstPlayedAt: z.number().positive().finite().nullable(),
+  lastPlayedAt: z.number().positive().finite().nullable(),
+})
+
+export function readTrackStats(
+  slug: string,
+  versionHash: string,
+): TrackStats | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(trackStatsKey(slug, versionHash))
+  if (!raw) return null
+  try {
+    const parsed = TrackStatsSchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+export function writeTrackStats(
+  slug: string,
+  versionHash: string,
+  stats: TrackStats,
+): void {
+  if (typeof window === 'undefined') return
+  // Defensive: refuse to persist an obviously corrupt snapshot so a single
+  // bad write does not poison the stored record. The schema mirrors the
+  // reader's shape so a write that survives this check will round-trip.
+  const parsed = TrackStatsSchema.safeParse(stats)
+  if (!parsed.success) return
+  try {
+    window.localStorage.setItem(
+      trackStatsKey(slug, versionHash),
+      JSON.stringify(parsed.data),
+    )
+  } catch {
+    // Engagement stats are a best-effort UX enhancement. A quota failure
+    // should never break the lap-complete flow.
+  }
+}
+
+// Build a starting snapshot for a fresh slug + version. Re-exports the pure
+// helper so callers do not have to import from two places.
+export function freshTrackStats(): TrackStats {
+  return emptyStats()
 }
