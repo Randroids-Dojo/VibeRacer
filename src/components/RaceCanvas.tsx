@@ -22,6 +22,11 @@ import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { RacingNumberSetting } from '@/lib/racingNumber'
 import {
+  isBrakingNow,
+  shouldBrakeLightsLight,
+  type BrakeLightMode,
+} from '@/lib/brakeLights'
+import {
   initGameState,
   startRace,
   tick,
@@ -116,6 +121,12 @@ export interface RaceCanvasProps {
   // a Settings flip (or a time-of-day swap) lights or extinguishes the lamps
   // on the next frame without rebuilding the renderer.
   headlightsOnRef?: MutableRefObject<boolean>
+  // Live brake-light mode pick from Settings ('off' / 'auto' / 'on'). The
+  // renderer combines this with its per-frame braking detection so 'auto'
+  // glows the lamps only while the player is actually slowing the car down.
+  // Polled each frame so a Settings flip lands on the next frame without
+  // rebuilding the renderer.
+  brakeLightModeRef?: MutableRefObject<BrakeLightMode>
   // Live time-of-day lighting override from Settings. Same poll-and-set
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
   // color, ambient, sun) without rebuilding the renderer.
@@ -211,6 +222,7 @@ export function RaceCanvas({
   carPaintRef,
   racingNumberRef,
   headlightsOnRef,
+  brakeLightModeRef,
   timeOfDayRef,
   weatherRef,
   showSkidMarksRef,
@@ -314,6 +326,26 @@ export function RaceCanvas({
       bundle.setHeadlights(next)
     }
     syncHeadlights()
+
+    // Brake-light visibility. The parent passes a BrakeLightMode pick; the
+    // renderer combines it with the per-frame braking predicate computed
+    // inside the rAF loop (it knows the live throttle / handbrake / speed
+    // before the rest of the visualization does). Cheap O(1) on no-op
+    // (single boolean compare on the cached value before flipping the
+    // parent group's visibility flag). The actual sync call lives inside
+    // the loop because it needs the per-frame braking boolean; we cache
+    // the last applied state here so the common path stays one compare.
+    let lastBrakeLightsOn: boolean | undefined = undefined
+    function applyBrakeLights(on: boolean) {
+      if (on === lastBrakeLightsOn) return
+      lastBrakeLightsOn = on
+      bundle.setBrakeLights(on)
+    }
+    // Initial frame is unlit (the default mode is 'auto' and the player has
+    // not pressed brake yet). Doing this explicitly avoids a single-frame
+    // flicker if the parent group ever defaults visible somewhere down the
+    // line.
+    applyBrakeLights(false)
 
     // Same poll-and-set for the time-of-day lighting preset. The setter is
     // cheap (mutates existing colors / lights in place, no allocation) so
@@ -661,6 +693,16 @@ export function RaceCanvas({
         paramsRef.current,
       )
       state = result.state
+
+      // Brake-light glow. Resolve the live "should the rear lamps be lit"
+      // boolean from the player's mode pick + the per-frame braking predicate
+      // (any of: holding the brake key while moving forward, holding the
+      // handbrake). Cheap on no-op (single boolean compare cached above).
+      // Sits between the physics step and the rest of the visualization so
+      // the lamps glow on the same frame the input lands.
+      const brakeMode = brakeLightModeRef?.current ?? 'auto'
+      const brakingNow = isBrakingNow(throttleInput, state.speed, k.handbrake)
+      applyBrakeLights(shouldBrakeLightsLight(brakeMode, brakingNow))
 
       // Fire the per-checkpoint callback when an in-lap hit is appended this
       // frame. The lap-complete branch below handles the final hit (it carries

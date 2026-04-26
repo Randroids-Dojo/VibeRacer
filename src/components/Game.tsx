@@ -13,6 +13,7 @@ import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
+import type { BrakeLightMode } from '@/lib/brakeLights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -473,6 +474,14 @@ function GameSession({
   )
   const headlightsOnRef = useRef<boolean>(headlightsOn)
   headlightsOnRef.current = headlightsOn
+  // Brake-light mode pick. The renderer combines this with its own per-frame
+  // braking detection (it knows the live throttle / handbrake / speed before
+  // the rest of the visualization does) so the lamps glow on the same frame
+  // the input lands. Mirroring the mode (not a resolved boolean) into the
+  // ref keeps the source of truth in one place: the rAF loop reconciles the
+  // live driver input against the player's preference each frame.
+  const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
+  brakeLightModeRef.current = settings.brakeLights
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -1622,6 +1631,7 @@ function GameSession({
         carPaintRef={carPaintRef}
         racingNumberRef={racingNumberRef}
         headlightsOnRef={headlightsOnRef}
+        brakeLightModeRef={brakeLightModeRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}

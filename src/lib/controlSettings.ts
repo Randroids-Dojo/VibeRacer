@@ -30,6 +30,11 @@ import {
   HeadlightModeSchema,
   type HeadlightMode,
 } from './headlights'
+import {
+  DEFAULT_BRAKE_LIGHT_MODE,
+  BrakeLightModeSchema,
+  type BrakeLightMode,
+} from './brakeLights'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -235,6 +240,13 @@ export interface ControlSettings {
   // a player would expect ("the car turns its lights on at night") so the
   // upgrade is opt-out, not opt-in.
   headlights: HeadlightMode
+  // Cosmetic brake lamps + soft red glow on the rear of the player car. 'auto'
+  // glows them while the player is braking (brake key while moving forward,
+  // or handbrake at any time); 'on' always glows them; 'off' keeps them dark.
+  // Pure cosmetic; never affects physics. Most visible from the rear-view
+  // mirror or when chasing the player car. Default 'auto' matches a real car
+  // so the upgrade is opt-out.
+  brakeLights: BrakeLightMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -272,6 +284,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   weather: DEFAULT_WEATHER,
   respectTrackMood: true,
   headlights: DEFAULT_HEADLIGHT_MODE,
+  brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -385,6 +398,10 @@ const ControlSettingsSchema = z.object({
   // foggy / snowy / rainy scene without having to dig into Settings; players
   // who want them off can flip to 'off' once.
   headlights: HeadlightModeSchema.default(DEFAULT_HEADLIGHT_MODE),
+  // Brake lights landed after headlights. Default 'auto' so legacy stored
+  // payloads start showing red rear lamps while braking on the next race
+  // (matches a real car) without having to dig into Settings.
+  brakeLights: BrakeLightModeSchema.default(DEFAULT_BRAKE_LIGHT_MODE),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -414,6 +431,7 @@ export function cloneDefaultSettings(): ControlSettings {
     weather: DEFAULT_CONTROL_SETTINGS.weather,
     respectTrackMood: DEFAULT_CONTROL_SETTINGS.respectTrackMood,
     headlights: DEFAULT_CONTROL_SETTINGS.headlights,
+    brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
   }
 }
 

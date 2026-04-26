@@ -458,6 +458,51 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().headlights).toBe('auto')
   })
 
+  it("defaults brakeLights to 'auto'", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.brakeLights).toBe('auto')
+    expect(cloneDefaultSettings().brakeLights).toBe('auto')
+  })
+
+  it("round-trips a brakeLights pick of 'on'", () => {
+    const custom = cloneDefaultSettings()
+    custom.brakeLights = 'on'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("round-trips a brakeLights pick of 'off'", () => {
+    const custom = cloneDefaultSettings()
+    custom.brakeLights = 'off'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("backfills brakeLights to 'auto' when reading legacy storage that omits it", () => {
+    // Legacy payloads that predate the brake-light setting should pick up the
+    // sensible default so the upgrade is opt-out, not opt-in.
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().brakeLights).toBe('auto')
+  })
+
+  it('rejects an unknown stored brakeLights value and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      brakeLights: 'pulsing',
+    })
+    expect(readStoredControlSettings().brakeLights).toBe('auto')
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

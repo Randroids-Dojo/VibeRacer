@@ -34,6 +34,7 @@ import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
+import type { BrakeLightMode } from '@/lib/brakeLights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
@@ -159,6 +160,12 @@ export function TuningSession({
   )
   const headlightsOnRef = useRef<boolean>(headlightsOn)
   headlightsOnRef.current = headlightsOn
+  // Brake-light mode pick. The renderer combines this with its own per-frame
+  // braking detection so the rear lamps glow on the same frame the player
+  // touches the brake. Mirrors `headlightsOn` from the race renderer so the
+  // lab car visually matches the race car.
+  const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
+  brakeLightModeRef.current = settings.brakeLights
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -339,6 +346,7 @@ export function TuningSession({
             carPaintRef={carPaintRef}
             racingNumberRef={racingNumberRef}
             headlightsOnRef={headlightsOnRef}
+            brakeLightModeRef={brakeLightModeRef}
             timeOfDayRef={timeOfDayRef}
             weatherRef={weatherRef}
             disableMusicIntensity

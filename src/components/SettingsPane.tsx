@@ -80,6 +80,12 @@ import {
   type HeadlightMode,
 } from '@/lib/headlights'
 import {
+  BRAKE_LIGHT_MODES,
+  BRAKE_LIGHT_MODE_DESCRIPTIONS,
+  BRAKE_LIGHT_MODE_LABELS,
+  type BrakeLightMode,
+} from '@/lib/brakeLights'
+import {
   MenuButton,
   MenuHeader,
   MenuHint,
@@ -455,6 +461,11 @@ export function SettingsPane({
   function setHeadlights(value: HeadlightMode) {
     clickSoft()
     onChange({ ...settings, headlights: value })
+  }
+
+  function setBrakeLights(value: BrakeLightMode) {
+    clickSoft()
+    onChange({ ...settings, brakeLights: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -1032,6 +1043,30 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>{HEADLIGHT_MODE_DESCRIPTIONS[settings.headlights]}</MenuHint>
+        </MenuSection>
+
+        <MenuSection title="Brake lights">
+          <MenuHint>
+            Glowing red lamps on the rear of your car. Pure cosmetic. Auto
+            lights them while you brake or hold the handbrake. Most visible
+            from the rear-view mirror.
+          </MenuHint>
+          <div style={touchToggleRow}>
+            {BRAKE_LIGHT_MODES.map((mode) => {
+              const active = settings.brakeLights === mode
+              return (
+                <MenuButton
+                  key={mode}
+                  variant={active ? 'primary' : 'secondary'}
+                  onClick={() => setBrakeLights(mode)}
+                  title={BRAKE_LIGHT_MODE_DESCRIPTIONS[mode]}
+                >
+                  {BRAKE_LIGHT_MODE_LABELS[mode]}
+                </MenuButton>
+              )
+            })}
+          </div>
+          <MenuHint>{BRAKE_LIGHT_MODE_DESCRIPTIONS[settings.brakeLights]}</MenuHint>
         </MenuSection>
 
         <MenuSection title="Time of day">

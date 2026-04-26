@@ -126,6 +126,15 @@ import {
   HEADLIGHT_LAMP_OFFSET_Z,
   HEADLIGHT_LAMP_RADIUS,
 } from '@/lib/headlights'
+import {
+  BRAKE_LIGHT_COLOR_HEX,
+  BRAKE_LIGHT_GLOW_OPACITY,
+  BRAKE_LIGHT_GLOW_RADIUS,
+  BRAKE_LIGHT_LAMP_OFFSET_X,
+  BRAKE_LIGHT_LAMP_OFFSET_Y,
+  BRAKE_LIGHT_LAMP_OFFSET_Z,
+  BRAKE_LIGHT_LAMP_RADIUS,
+} from '@/lib/brakeLights'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -162,6 +171,12 @@ export interface SceneBundle {
   // the rAF loop can poll-and-set every frame (single boolean compare on the
   // cached value before flipping the parent group's visibility flag).
   setHeadlights: (on: boolean) => void
+  // Toggle the cosmetic brake-light glow on the rear of the player car.
+  // `true` lights the rear lamps red and shows the soft additive halo, `false`
+  // dims them back to a flat dark housing. Pure cosmetic; never affects
+  // physics. Cheap on no-op (single boolean compare on the cached value before
+  // flipping the visibility flag).
+  setBrakeLights: (on: boolean) => void
   // Apply a time-of-day lighting preset by name. Updates the sky color, the
   // ground material color, the ambient light, and the sun's color, intensity,
   // and direction in place. Cheap; no allocation per call so the rAF loop can
@@ -545,11 +560,75 @@ function buildHeadlights(): {
   }
 }
 
+function buildBrakeLights(): {
+  group: Group
+  setVisible: (value: boolean) => void
+  dispose: () => void
+} {
+  const group = new Group()
+  // Default hidden so a fresh load with the toggle off (or auto + not braking)
+  // costs nothing per frame: the parent's `setVisible(false)` skips the entire
+  // subtree during render-list traversal.
+  group.visible = false
+
+  // Shared resources so two lamps + two glow halos collapse to two materials
+  // total. The lamp uses a flat color material (the rear lens itself) and the
+  // glow uses an additive translucent material (the soft red halo around the
+  // lit lens). When the parent group is hidden both vanish in one O(1) flip.
+  const lampGeom = new SphereGeometry(BRAKE_LIGHT_LAMP_RADIUS, 16, 12)
+  const lampMat = new MeshBasicMaterial({
+    color: BRAKE_LIGHT_COLOR_HEX,
+    transparent: false,
+  })
+  // The glow disc is a flat sphere drawn slightly larger than the lamp,
+  // additive-blended so it reads as light spilling out of the lens against
+  // either a bright body or a dark night scene.
+  const glowGeom = new SphereGeometry(BRAKE_LIGHT_GLOW_RADIUS, 16, 12)
+  const glowMat = new MeshBasicMaterial({
+    color: BRAKE_LIGHT_COLOR_HEX,
+    transparent: true,
+    opacity: BRAKE_LIGHT_GLOW_OPACITY,
+    depthWrite: false,
+    blending: AdditiveBlending,
+  })
+
+  function addAssembly(zSign: 1 | -1) {
+    const lamp = new Mesh(lampGeom, lampMat)
+    lamp.position.set(
+      BRAKE_LIGHT_LAMP_OFFSET_X,
+      BRAKE_LIGHT_LAMP_OFFSET_Y,
+      BRAKE_LIGHT_LAMP_OFFSET_Z * zSign,
+    )
+    group.add(lamp)
+
+    const glow = new Mesh(glowGeom, glowMat)
+    glow.position.copy(lamp.position)
+    group.add(glow)
+  }
+
+  addAssembly(1)
+  addAssembly(-1)
+
+  return {
+    group,
+    setVisible(value) {
+      group.visible = value
+    },
+    dispose() {
+      lampGeom.dispose()
+      lampMat.dispose()
+      glowGeom.dispose()
+      glowMat.dispose()
+    },
+  }
+}
+
 function buildCar(): {
   car: Group
   setPaint: (hex: string | null) => void
   setRacingNumber: (setting: RacingNumberSetting) => void
   setHeadlights: (on: boolean) => void
+  setBrakeLights: (on: boolean) => void
   cancel: () => void
 } {
   let bodyMesh: Mesh | null = null
@@ -580,6 +659,7 @@ function buildCar(): {
 
   const plate = buildRacingNumberPlate()
   const headlights = buildHeadlights()
+  const brakeLights = buildBrakeLights()
 
   const { car, cancel: cancelLoad } = buildCarFrame((clone) => {
     clone.traverse((obj) => {
@@ -603,6 +683,8 @@ function buildCar(): {
   // frame (forward = +X at heading 0) so they only need to inherit the
   // heading rotation, not the inner-group's GLB-orientation yaw / scale.
   car.add(headlights.group)
+  // Mirror layout for the brake lights, just on the rear face.
+  car.add(brakeLights.group)
 
   return {
     car,
@@ -612,12 +694,14 @@ function buildCar(): {
     },
     setRacingNumber: plate.apply,
     setHeadlights: headlights.setVisible,
+    setBrakeLights: brakeLights.setVisible,
     cancel: () => {
       cancelLoad()
       paintMaterial?.dispose()
       paintMaterial = null
       plate.dispose()
       headlights.dispose()
+      brakeLights.dispose()
     },
   }
 }
@@ -1585,6 +1669,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     setPaint: setCarPaint,
     setRacingNumber,
     setHeadlights,
+    setBrakeLights,
     cancel: cancelCar,
   } = buildCar()
   scene.add(car)
@@ -1645,6 +1730,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     setCarPaint,
     setRacingNumber,
     setHeadlights,
+    setBrakeLights,
     setTimeOfDay,
     setWeather,
     skidMarks,
