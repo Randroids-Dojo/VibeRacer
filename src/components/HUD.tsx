@@ -171,7 +171,10 @@ function StatBlock({
 // Compact prediction block. Shares the StatBlock layout but tints the
 // lap-time numerals green when the player is ahead of PB and red when
 // behind, with a subtle delta line below the time so the prediction reads
-// at a glance without consuming a full extra row of HUD real estate.
+// at a glance without consuming a full extra row of HUD real estate. When a
+// track-wide record is on file the block also renders a second smaller line
+// "vs REC" so competitive players can see how much time they need to find
+// against the leaderboard #1 in addition to their own PB.
 function PredictionBlock({ prediction }: { prediction: LapPrediction }) {
   const ahead = prediction.deltaMs < 0
   const tone = prediction.deltaMs === 0
@@ -179,6 +182,14 @@ function PredictionBlock({ prediction }: { prediction: LapPrediction }) {
     : ahead
       ? predictionAhead
       : predictionBehind
+  const recDelta = prediction.deltaVsRecordMs
+  const recAhead = recDelta !== null && recDelta < 0
+  const recTone =
+    recDelta === null || recDelta === 0
+      ? predictionNeutral
+      : recAhead
+        ? predictionAhead
+        : predictionBehind
   return (
     <div
       key={`pred-${prediction.cpId}`}
@@ -188,8 +199,15 @@ function PredictionBlock({ prediction }: { prediction: LapPrediction }) {
       <div style={labelStyle}>PROJECTED</div>
       <div style={{ ...timeSm, ...tone }}>{formatLapTime(prediction.predictedMs)}</div>
       <div style={{ ...predictionDelta, ...tone }}>
+        <span style={predictionDeltaCaption}>vs PB </span>
         {formatSplitDelta(prediction.deltaMs)}
       </div>
+      {recDelta !== null ? (
+        <div style={{ ...predictionRecDelta, ...recTone }}>
+          <span style={predictionDeltaCaption}>vs REC </span>
+          {formatSplitDelta(recDelta)}
+        </div>
+      ) : null}
     </div>
   )
 }
@@ -585,6 +603,30 @@ const predictionDelta: React.CSSProperties = {
   lineHeight: 1.1,
   marginTop: 1,
   opacity: 0.95,
+}
+// Smaller "vs REC" line under the existing "vs PB" line. Same color tones
+// (green ahead / red behind / gold tied) so the visual language matches the
+// PB delta, but rendered at a slightly smaller size and dimmer opacity so
+// the PB delta still reads as the primary number.
+const predictionRecDelta: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  lineHeight: 1.1,
+  marginTop: 0,
+  opacity: 0.85,
+}
+// Tiny caption (vs PB / vs REC) prefixing each delta line. Lower opacity so
+// the numeric delta keeps visual weight while still reading as a labeled
+// comparison. Inline-block so the caption sits flush with the value.
+const predictionDeltaCaption: React.CSSProperties = {
+  display: 'inline-block',
+  marginRight: 2,
+  fontSize: 9,
+  letterSpacing: 0.8,
+  opacity: 0.75,
+  textTransform: 'uppercase',
 }
 const predictionAhead: React.CSSProperties = { color: '#5fe08a' }
 const predictionBehind: React.CSSProperties = { color: '#ff7b6e' }

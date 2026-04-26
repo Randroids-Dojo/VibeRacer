@@ -319,6 +319,15 @@ function GameSession({
   // projected final lap time without closing over `hud.bestAllTimeMs` (which
   // would stale-close inside handleCheckpointHit between renders).
   const pbLapMsRef = useRef<number | null>(null)
+  // Track-wide RECORD lap time mirrored into a ref so the same checkpoint
+  // handler can compute the projection's "vs REC" delta without closing over
+  // `hud.overallRecord` (which would stale-close inside handleCheckpointHit
+  // between renders, just like pbLapMsRef). Updated alongside the HUD's
+  // overallRecord wherever that field changes (initial seed, optimistic
+  // post-PB swap, slug change).
+  const recordLapMsRef = useRef<number | null>(
+    initialRecord ? initialRecord.lapTimeMs : null,
+  )
   const splitClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Best per-sector durations on this (slug, hash). Mirrored into a ref so
   // handleLapComplete can merge a fresh lap's sectors without going through
@@ -797,7 +806,12 @@ function GameSession({
     // the stored PB lap time. Only refreshes at checkpoints so it does not
     // jitter mid-sector. Persists in HudState until the next checkpoint or the
     // lap completes / restarts.
-    const prediction = predictLapTimeFromHits([hit], pb, pbLapMsRef.current)
+    const prediction = predictLapTimeFromHits(
+      [hit],
+      pb,
+      pbLapMsRef.current,
+      recordLapMsRef.current,
+    )
     setHud((prev) => ({
       ...prev,
       splitDelta: { deltaMs: out.deltaMs, cpId: out.cpId, generatedAtMs },
@@ -844,6 +858,12 @@ function GameSession({
           priorBestAllTimeMs: prev.bestAllTimeMs,
         }),
       )
+      if (isNewRecord) {
+        // Mirror the optimistic record swap into the prediction ref so the
+        // next lap's "vs REC" projection compares against the freshest
+        // baseline (matches the pbLapMsRef pattern below).
+        recordLapMsRef.current = lapMs
+      }
       if (isAllTimePb) {
         writeLocalBest(slug, versionHash, lapMs)
         // Capture the lap's checkpoint splits so the next lap's live delta

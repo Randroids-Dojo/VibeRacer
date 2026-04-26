@@ -155,7 +155,12 @@ describe('predictLapTimeFromHits', () => {
       PB,
       PB_LAP_MS,
     )
-    expect(out).toEqual({ predictedMs: 4800, deltaMs: -200, cpId: 1 })
+    expect(out).toEqual({
+      predictedMs: 4800,
+      deltaMs: -200,
+      deltaVsRecordMs: null,
+      cpId: 1,
+    })
   })
 
   it('projects slower lap when behind PB', () => {
@@ -165,7 +170,12 @@ describe('predictLapTimeFromHits', () => {
       PB,
       PB_LAP_MS,
     )
-    expect(out).toEqual({ predictedMs: 5350, deltaMs: 350, cpId: 2 })
+    expect(out).toEqual({
+      predictedMs: 5350,
+      deltaMs: 350,
+      deltaVsRecordMs: null,
+      cpId: 2,
+    })
   })
 
   it('matches PB exactly when delta is zero', () => {
@@ -174,7 +184,12 @@ describe('predictLapTimeFromHits', () => {
       PB,
       PB_LAP_MS,
     )
-    expect(out).toEqual({ predictedMs: 5000, deltaMs: 0, cpId: 3 })
+    expect(out).toEqual({
+      predictedMs: 5000,
+      deltaMs: 0,
+      deltaVsRecordMs: null,
+      cpId: 3,
+    })
   })
 
   it('uses the latest hit when multiple checkpoints have fired', () => {
@@ -187,6 +202,7 @@ describe('predictLapTimeFromHits', () => {
     expect(predictLapTimeFromHits(current, PB, PB_LAP_MS)).toEqual({
       predictedMs: 4900,
       deltaMs: -100,
+      deltaVsRecordMs: null,
       cpId: 2,
     })
   })
@@ -208,5 +224,69 @@ describe('predictLapTimeFromHits', () => {
       5000.7,
     )
     expect(out?.predictedMs).toBe(5001)
+  })
+
+  it('omits the record delta when no record is supplied', () => {
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2200 }],
+      PB,
+      PB_LAP_MS,
+    )
+    expect(out?.deltaVsRecordMs).toBeNull()
+  })
+
+  it('returns a negative record delta when projected to beat the record', () => {
+    // Player is on PB pace -> projected = 5000. Record is 5200 -> -200.
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2200 }],
+      PB,
+      PB_LAP_MS,
+      5200,
+    )
+    expect(out?.deltaVsRecordMs).toBe(-200)
+  })
+
+  it('returns a positive record delta when projected behind the record', () => {
+    // Player 200ms slower at cp1 -> projected = 5200. Record is 4900 -> +300.
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2400 }],
+      PB,
+      PB_LAP_MS,
+      4900,
+    )
+    expect(out?.deltaVsRecordMs).toBe(300)
+  })
+
+  it('returns zero record delta when the projection ties the record', () => {
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2200 }],
+      PB,
+      PB_LAP_MS,
+      PB_LAP_MS,
+    )
+    expect(out?.deltaVsRecordMs).toBe(0)
+  })
+
+  it('rejects bogus record lap times defensively', () => {
+    for (const bad of [0, -1, NaN, Infinity, -Infinity]) {
+      const out = predictLapTimeFromHits(
+        [{ cpId: 1, tMs: 2200 }],
+        PB,
+        PB_LAP_MS,
+        bad,
+      )
+      expect(out?.deltaVsRecordMs).toBeNull()
+    }
+  })
+
+  it('rounds the record lap time before computing the delta', () => {
+    // Predicted 5000, record 5200.7 rounds to 5201 -> -201.
+    const out = predictLapTimeFromHits(
+      [{ cpId: 1, tMs: 2200 }],
+      PB,
+      PB_LAP_MS,
+      5200.7,
+    )
+    expect(out?.deltaVsRecordMs).toBe(-201)
   })
 })

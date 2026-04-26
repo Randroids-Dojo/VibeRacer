@@ -71,6 +71,12 @@ export interface LapPrediction {
   // value as the latest split delta but kept here so the HUD can render it
   // without re-deriving from PB.
   deltaMs: number
+  // Signed delta vs the track-wide RECORD lap time at this same checkpoint
+  // pace. Negative = projected to beat the record, positive = projected to
+  // come in behind it. null when no record was supplied (fresh leaderboard,
+  // KV outage, etc) so the HUD can omit the line cleanly. Computed from the
+  // same projected lap time as `deltaMs` so the two readings stay consistent.
+  deltaVsRecordMs: number | null
   // The cpId the projection was derived from. Used as a React key so a fresh
   // checkpoint cross retriggers a subtle pop animation.
   cpId: number
@@ -81,10 +87,16 @@ export interface LapPrediction {
 // missing (no PB recorded yet, no current hits, last cpId not in PB), so the
 // HUD can hide the tile cleanly until the first matching checkpoint of the
 // next attempt.
+//
+// `recordLapMs` is optional. When provided and finite/positive, the result
+// also carries a signed delta vs that record so the HUD can show "vs REC"
+// alongside "vs PB". Bogus values (null, NaN, Infinity, <= 0) are treated
+// like "no record on file" and the field comes back as null.
 export function predictLapTimeFromHits(
   currentHits: CheckpointHit[],
   pbHits: CheckpointHit[] | null,
   pbLapMs: number | null,
+  recordLapMs: number | null = null,
 ): LapPrediction | null {
   if (!pbHits || pbHits.length === 0) return null
   if (pbLapMs === null || !Number.isFinite(pbLapMs) || pbLapMs <= 0) return null
@@ -94,5 +106,11 @@ export function predictLapTimeFromHits(
   if (!pb) return null
   const deltaMs = last.tMs - pb.tMs
   const predictedMs = Math.max(0, Math.round(pbLapMs + deltaMs))
-  return { predictedMs, deltaMs, cpId: last.cpId }
+  const deltaVsRecordMs =
+    recordLapMs !== null &&
+    Number.isFinite(recordLapMs) &&
+    recordLapMs > 0
+      ? predictedMs - Math.round(recordLapMs)
+      : null
+  return { predictedMs, deltaMs, deltaVsRecordMs, cpId: last.cpId }
 }
