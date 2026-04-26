@@ -442,6 +442,10 @@ export function SettingsPane({
     onChange({ ...settings, showLeaderboardRank: value })
   }
 
+  function setShowPaceNotes(value: boolean) {
+    onChange({ ...settings, showPaceNotes: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })

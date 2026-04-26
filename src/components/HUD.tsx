@@ -123,6 +123,11 @@ interface HudProps {
   // leaderboard pane. null hides the chip (no submitted lap on file or the
   // Settings toggle is off upstream).
   leaderboardRank?: { rank: number; boardSize: number } | null
+  // Pace-notes call-out for the upcoming track feature. Pre-formatted text
+  // (e.g. "Sharp left next", "S-curve in 2", "Finish") plus a hex severity
+  // accent that drives the chip border / glow color. null hides the chip
+  // (off-track, Settings toggle off, or no path data on file).
+  paceNote?: { text: string; accent: string } | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -646,6 +651,25 @@ export function HUD(props: HudProps) {
           generatedAtMs={props.reactionTime.generatedAtMs}
         />
       ) : null}
+      {props.paceNote ? (
+        <div
+          style={{
+            ...paceNoteChipStyle,
+            borderColor: hexWithAlpha(props.paceNote.accent, 0.7),
+            boxShadow: `0 0 12px ${hexWithAlpha(props.paceNote.accent, 0.4)}, 0 4px 12px rgba(0,0,0,0.4)`,
+          }}
+          role="status"
+          aria-live="polite"
+          aria-label={`Pace note: ${props.paceNote.text}`}
+        >
+          <span style={paceNoteLabelStyle}>PACE</span>
+          <span
+            style={{ ...paceNoteValueStyle, color: props.paceNote.accent }}
+          >
+            {props.paceNote.text}
+          </span>
+        </div>
+      ) : null}
       {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
     </div>
   )
@@ -987,6 +1011,39 @@ const reactionPbStyle: React.CSSProperties = {
   borderRadius: 6,
   padding: '1px 5px',
   marginLeft: 4,
+}
+// Pace-notes chip. Pinned upper-left under the rear-view mirror band so it
+// sits in the corner of vision the player naturally checks for "what's next"
+// (the same screen quadrant a real co-driver shouts from). Severity color
+// tints the border; the upstream `paceNote.accent` drives the value text and
+// box shadow so a sharp call-out reads red and a flat-out call-out reads
+// green at a glance.
+const paceNoteChipStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 96,
+  left: 16,
+  padding: '5px 12px',
+  borderRadius: 999,
+  background: 'rgba(8, 16, 28, 0.82)',
+  border: '1.5px solid rgba(255, 255, 255, 0.4)',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 8,
+  pointerEvents: 'none',
+  fontFamily: 'system-ui, sans-serif',
+}
+const paceNoteLabelStyle: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.85,
+  fontWeight: 700,
+}
+const paceNoteValueStyle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+  letterSpacing: 0.4,
+  textTransform: 'none',
 }
 // Predicted lap-time block. Slots into the top stat row beside CURRENT so the
 // player can glance at "where this lap is heading" without taking eyes off

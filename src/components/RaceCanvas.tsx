@@ -70,6 +70,12 @@ import {
 } from '@/game/drift'
 import { ghostGapMs } from '@/game/ghostGap'
 import { isReactionInputPressed } from '@/game/reactionTime'
+import {
+  PACE_NOTE_SEVERITY_COLORS,
+  buildPaceNotes,
+  formatPaceNoteChipText,
+  lookAheadPaceNote,
+} from '@/game/paceNotes'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -92,6 +98,11 @@ export interface RaceCanvasHud {
   // off in Settings. Computed every HUD frame from the active ghost replay
   // and the player's current world position.
   ghostGapMs: number | null
+  // Pace-notes call-out for the upcoming track feature ("Sharp left next",
+  // "S-curve in 2", "Finish"). null hides the chip (off-track, Settings
+  // toggle off, no path data on file). Pre-formatted upstream so the HUD
+  // does not need to know the pace-note shape.
+  paceNote: { text: string; accent: string } | null
 }
 
 const HUD_UPDATE_MS = 50
@@ -139,6 +150,11 @@ export interface RaceCanvasProps {
   // skipped entirely so a hidden chip costs zero per frame. Default when
   // omitted: enabled.
   showGhostGapRef?: MutableRefObject<boolean>
+  // Toggle the pace-notes HUD chip ("co-driver call-outs"). Polled each
+  // frame so a Settings flip takes effect without rebuilding any state.
+  // When false, the look-up is skipped entirely so a hidden chip costs zero
+  // per frame. Default when omitted: disabled (opt-in coaching aid).
+  showPaceNotesRef?: MutableRefObject<boolean>
   // Live camera-rig overrides from Settings. The rAF loop reads this every
   // frame so a slider tweak in the pause menu takes effect on resume without
   // rebuilding the renderer.
@@ -271,6 +287,7 @@ export function RaceCanvas({
   ghostSourceRef,
   showGhostNameplateRef,
   showGhostGapRef,
+  showPaceNotesRef,
   cameraRigRef,
   carPaintRef,
   racingNumberRef,
@@ -318,6 +335,11 @@ export function RaceCanvas({
     if (!canvas) return
 
     const path = buildTrackPath(pieces, checkpointCount)
+    // Build the per-piece pace-notes table once per path so the rAF loop just
+    // does a piece-index lookup each HUD frame. The table never changes
+    // mid-race; a new pieces / checkpointCount value re-runs this effect and
+    // rebuilds the table fresh.
+    const paceNotesTable = buildPaceNotes(path)
     const bundle = buildScene(path)
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -1214,6 +1236,28 @@ export function RaceCanvas({
             ghostGapHintIdx = result.sampleIdx
           }
         }
+        // Pace notes: resolve the upcoming track-feature call-out from the
+        // player's current piece (read off `state.lastCellKey`). The look-up
+        // is short-circuited when the toggle is off so a hidden chip costs
+        // zero per frame. Off-track / unknown cells return null so the chip
+        // hides cleanly rather than locking onto a stale call-out.
+        let paceNoteValue: { text: string; accent: string } | null = null
+        const paceNotesShown = showPaceNotesRef?.current ?? false
+        if (paceNotesShown && paceNotesTable.length > 0) {
+          const pieceIdx = path.cellToOrderIdx.get(state.lastCellKey)
+          if (pieceIdx !== undefined) {
+            const upcoming = lookAheadPaceNote(paceNotesTable, pieceIdx)
+            if (upcoming) {
+              const text = formatPaceNoteChipText(upcoming.note, upcoming.distance)
+              if (text) {
+                paceNoteValue = {
+                  text,
+                  accent: PACE_NOTE_SEVERITY_COLORS[upcoming.note.severity],
+                }
+              }
+            }
+          }
+        }
         const next: RaceCanvasHud = {
           currentMs,
           lapCount: state.lapCount,
@@ -1225,7 +1269,12 @@ export function RaceCanvas({
           driftMultiplier: driftMultInt,
           driftLapBest: driftLapBestInt,
           ghostGapMs: ghostGapMsValue,
+          paceNote: paceNoteValue,
         }
+        const prevPaceText = prevHud?.paceNote?.text ?? null
+        const nextPaceText = next.paceNote?.text ?? null
+        const prevPaceAccent = prevHud?.paceNote?.accent ?? null
+        const nextPaceAccent = next.paceNote?.accent ?? null
         if (
           prevHud === null ||
           prevHud.currentMs !== next.currentMs ||
@@ -1237,7 +1286,9 @@ export function RaceCanvas({
           prevHud.driftScore !== next.driftScore ||
           prevHud.driftMultiplier !== next.driftMultiplier ||
           prevHud.driftLapBest !== next.driftLapBest ||
-          prevHud.ghostGapMs !== next.ghostGapMs
+          prevHud.ghostGapMs !== next.ghostGapMs ||
+          prevPaceText !== nextPaceText ||
+          prevPaceAccent !== nextPaceAccent
         ) {
           prevHud = next
           onHudUpdateRef.current(next)

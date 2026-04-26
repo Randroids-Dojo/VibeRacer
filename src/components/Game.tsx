@@ -337,6 +337,10 @@ interface HudState {
   // until then so a brand-new track does not show a misleading "ranked"
   // pill before the first submit lands).
   leaderboardRank: { rank: number; boardSize: number } | null
+  // Pace-notes call-out for the upcoming track feature. Pre-formatted text
+  // (e.g. "Sharp left next") plus a hex severity accent. null hides the chip
+  // (off-track, Settings toggle off, no path data on file).
+  paceNote: { text: string; accent: string } | null
 }
 
 type PauseView =
@@ -471,6 +475,11 @@ function GameSession({
   // gap math entirely so a hidden chip costs zero per frame.
   const showGhostGapRef = useRef<boolean>(settings.showGhostGap)
   showGhostGapRef.current = settings.showGhostGap
+  // Mirrors settings.showPaceNotes into the rAF loop so a Settings flip
+  // takes effect on the next HUD tick. When false the renderer skips the
+  // pace-notes look-up entirely so a hidden chip costs zero per frame.
+  const showPaceNotesRef = useRef<boolean>(settings.showPaceNotes)
+  showPaceNotesRef.current = settings.showPaceNotes
   // Identity tuple (initials + lap time) for the active ghost replay. Kept
   // in lockstep with `activeGhostRef` so the floating nameplate above the
   // ghost car always shows the right "WHO + TIME". null hides the plate
@@ -828,6 +837,7 @@ function GameSession({
       reactionTime: null,
       pbReactionMs: readLocalBestReaction(slug, versionHash),
       leaderboardRank: readLocalBestRank(slug, versionHash),
+      paceNote: null,
     }
   })
 
@@ -902,6 +912,7 @@ function GameSession({
           ? Math.max(prev.driftLapBest ?? 0, next.driftLapBest)
           : prev.driftLapBest,
       ghostGapMs: next.ghostGapMs,
+      paceNote: next.paceNote,
     }))
   }, [])
 
@@ -1016,6 +1027,10 @@ function GameSession({
       // countdown. The pb baseline survives (it lives on disk) so the next
       // measurement still grades against the player's all-time best.
       reactionTime: null,
+      // Pace notes clear so the chip slot collapses cleanly during the
+      // post-restart countdown; RaceCanvas repopulates them on the first
+      // post-GO HUD tick.
+      paceNote: null,
     }))
     setPhase('countdown')
   }, [])
@@ -1057,6 +1072,10 @@ function GameSession({
       // post-teleport frame; RaceCanvas will repopulate it on the next HUD
       // tick once the player crosses the start again.
       ghostGapMs: null,
+      // Pace notes clear with the same rationale as the ghost gap: the chip
+      // slot collapses for one frame and RaceCanvas repopulates it on the
+      // next HUD tick once the teleported car settles into its piece.
+      paceNote: null,
     }))
   }, [])
 
@@ -2228,6 +2247,7 @@ function GameSession({
         ghostSourceRef={ghostSourceRef}
         showGhostNameplateRef={showGhostNameplateRef}
         showGhostGapRef={showGhostGapRef}
+        showPaceNotesRef={showPaceNotesRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
         racingNumberRef={racingNumberRef}
@@ -2331,6 +2351,11 @@ function GameSession({
         }
         leaderboardRank={
           settings.showLeaderboardRank ? hud.leaderboardRank : null
+        }
+        paceNote={
+          phase === 'racing' && !paused && settings.showPaceNotes
+            ? hud.paceNote
+            : null
         }
       />
       {achievementToast ? (

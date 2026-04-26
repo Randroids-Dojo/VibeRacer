@@ -260,6 +260,13 @@ export interface ControlSettings {
   // moment a recognized layout loads, before the next submit lands. Default
   // on; the toggle is here for users who prefer a clean post-launch HUD.
   showLeaderboardRank: boolean
+  // Toggle the pace-notes HUD chip ("co-driver call-outs"). When on, the HUD
+  // surfaces the upcoming track feature ("Sharp left next", "S-curve in 2",
+  // "Finish") so the player can plan a corner before they see it, in the
+  // spirit of rally-game pace notes. Pure topology lookup; updates every HUD
+  // frame from the player's current piece. Default OFF (opt-in coaching aid)
+  // so legacy stored payloads keep their existing screen exactly as it was.
+  showPaceNotes: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -355,6 +362,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showSpeedLines: true,
   showReactionTime: true,
   showLeaderboardRank: true,
+  showPaceNotes: false,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   racingNumber: DEFAULT_RACING_NUMBER,
@@ -473,6 +481,11 @@ const ControlSettingsSchema = z.object({
   // stored payloads start showing the placement chip on their next race;
   // players who want a clean HUD can flip it off in Settings.
   showLeaderboardRank: z.boolean().default(true),
+  // Pace notes chip landed after the leaderboard rank chip. Default OFF
+  // (opt-in coaching aid) so legacy stored payloads keep their existing
+  // screen exactly as it was; players who want rally-style co-driver
+  // call-outs flip it on once in Settings.
+  showPaceNotes: z.boolean().default(false),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Top-speed marker landed after the speedometer toggle. Default on so legacy
   // stored payloads start showing the peak tick on their next race; players
@@ -550,6 +563,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showSpeedLines: DEFAULT_CONTROL_SETTINGS.showSpeedLines,
     showReactionTime: DEFAULT_CONTROL_SETTINGS.showReactionTime,
     showLeaderboardRank: DEFAULT_CONTROL_SETTINGS.showLeaderboardRank,
+    showPaceNotes: DEFAULT_CONTROL_SETTINGS.showPaceNotes,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     racingNumber: { ...DEFAULT_RACING_NUMBER },

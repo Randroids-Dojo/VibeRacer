@@ -958,6 +958,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showLeaderboardRank).toBe(true)
   })
 
+  it('defaults showPaceNotes to false (opt-in coaching aid)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showPaceNotes).toBe(false)
+    expect(cloneDefaultSettings().showPaceNotes).toBe(false)
+  })
+
+  it('round-trips an enabled showPaceNotes flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showPaceNotes = true
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().showPaceNotes).toBe(true)
+  })
+
+  it('backfills showPaceNotes to false when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showPaceNotes).toBe(false)
+  })
+
   it('defaults showTopSpeedMarker to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker).toBe(true)
     expect(cloneDefaultSettings().showTopSpeedMarker).toBe(true)
