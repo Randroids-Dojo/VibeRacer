@@ -12,12 +12,15 @@ import {
 } from '@/game/wrongWay'
 import {
   buildGhostCar,
+  buildGhostNameplate,
   buildScene,
   initCameraRig,
   updateCameraRig,
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import type { GhostMeta } from '@/game/ghostNameplate'
+import type { GhostSource } from '@/lib/ghostSource'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { RacingNumberSetting } from '@/lib/racingNumber'
@@ -108,6 +111,21 @@ export interface RaceCanvasProps {
   activeGhostRef?: MutableRefObject<Replay | null>
   // Toggle visibility from Settings without tearing down the renderer.
   showGhostRef?: MutableRefObject<boolean>
+  // Live ghost-meta tuple (initials + lap time) the floating nameplate above
+  // the ghost car displays. Polled each frame; the renderer cache-keys on
+  // (meta, source) so an unchanged tuple is a single string compare instead
+  // of a canvas redraw + GPU upload. null hides the nameplate (e.g. while
+  // the leaderboard top fetch is in flight, or when the ghost itself is
+  // hidden). Game.tsx writes this in lockstep with `activeGhostRef`.
+  activeGhostMetaRef?: MutableRefObject<GhostMeta | null>
+  // Mirrors the player's ghost-source pick so the nameplate's tag chip can
+  // read "TOP" / "PB" / "LAST" / "GHOST" alongside the initials. Polled
+  // each frame so a Settings flip lands on the next frame.
+  ghostSourceRef?: MutableRefObject<GhostSource>
+  // Toggle the floating nameplate without tearing down the sprite. Polled
+  // each frame; setting it false hides the plate without disposing it so a
+  // flip back is cheap.
+  showGhostNameplateRef?: MutableRefObject<boolean>
   // Live camera-rig overrides from Settings. The rAF loop reads this every
   // frame so a slider tweak in the pause menu takes effect on resume without
   // rebuilding the renderer.
@@ -229,6 +247,9 @@ export function RaceCanvas({
   onHudUpdate,
   activeGhostRef,
   showGhostRef,
+  activeGhostMetaRef,
+  ghostSourceRef,
+  showGhostNameplateRef,
   cameraRigRef,
   carPaintRef,
   racingNumberRef,
@@ -510,6 +531,17 @@ export function RaceCanvas({
     ghostMesh.rotation.y = state.heading
     bundle.scene.add(ghostMesh)
 
+    // Floating nameplate that hovers above the ghost car. Attached as a
+    // child of the ghost mesh so it inherits the ghost's world position
+    // each frame without needing a separate position write. The Sprite is
+    // camera-facing by construction so the plate always reads upright.
+    const ghostNameplate = buildGhostNameplate()
+    ghostMesh.add(ghostNameplate.group)
+    // Track the last applied (meta-key, source) combo so a per-frame poll
+    // is a single string compare when nothing changed.
+    let lastNameplateKey: string | null = null
+    let lastNameplateVisible = false
+
     // Per-lap recording. The buffer is interleaved [x, z, heading] triples and
     // is sampled at REPLAY_SAMPLE_MS offsets from raceStartMs so playback is a
     // constant-time array lookup. Buffer resets every time a lap completes
@@ -573,6 +605,9 @@ export function RaceCanvas({
         bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
         bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
         ghostMesh.visible = false
+        ghostNameplate.setVisible(false)
+        lastNameplateVisible = false
+        lastNameplateKey = null
         if (carPoseOutRef) {
           carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
         }
@@ -797,6 +832,7 @@ export function RaceCanvas({
       // the ghost automatically restarts from t=0 with the player.
       const replay = activeGhostRef?.current ?? null
       const showGhost = showGhostRef?.current ?? true
+      let ghostVisibleThisFrame = false
       if (replay && showGhost && state.raceStartMs !== null) {
         const tLap = ts - state.raceStartMs
         const pose = interpolateGhostPose(replay, tLap)
@@ -804,6 +840,7 @@ export function RaceCanvas({
           ghostMesh.position.set(pose.x, 0, pose.z)
           ghostMesh.rotation.y = pose.heading
           ghostMesh.visible = true
+          ghostVisibleThisFrame = true
           if (ghostPoseOutRef) {
             ghostPoseOutRef.current = {
               x: pose.x,
@@ -818,6 +855,35 @@ export function RaceCanvas({
       } else {
         ghostMesh.visible = false
         if (ghostPoseOutRef) ghostPoseOutRef.current = null
+      }
+
+      // Sync the floating ghost nameplate. The plate is hidden whenever the
+      // ghost car itself is hidden (no ghost on screen means no name to put
+      // above it) or the player turned the toggle off. Otherwise the plate
+      // shows the active meta tuple; the cache key short-circuits the
+      // canvas redraw when nothing changed since the previous frame.
+      const nameplateOn = showGhostNameplateRef?.current ?? true
+      const wantNameplate = ghostVisibleThisFrame && nameplateOn
+      if (wantNameplate) {
+        const meta = activeGhostMetaRef?.current ?? null
+        const source = ghostSourceRef?.current ?? 'auto'
+        // Build a cheap key for the combined (meta, source) tuple so the
+        // expensive canvas draw path runs only on a real change. The key
+        // shape mirrors `nameplateCacheKey` but inlined here so we do not
+        // import from sceneBuilder twice.
+        const key =
+          meta === null
+            ? `<none>|${source}`
+            : `${source}|${meta.initials}|${meta.lapTimeMs}`
+        if (key !== lastNameplateKey || !lastNameplateVisible) {
+          ghostNameplate.apply(meta, source)
+          lastNameplateKey = key
+          lastNameplateVisible = true
+        }
+      } else if (lastNameplateVisible) {
+        ghostNameplate.setVisible(false)
+        lastNameplateVisible = false
+        lastNameplateKey = null
       }
 
       // Skid marks: lay a paired stripe behind the rear wheels when the
@@ -1088,6 +1154,8 @@ export function RaceCanvas({
         stopEngineDrone(0.1)
         stopSkid(0.1)
       }
+      ghostNameplate.dispose()
+      ghostMesh.remove(ghostNameplate.group)
       ghostBuild.dispose()
       bundle.scene.remove(ghostMesh)
       bundle.dispose()

@@ -126,6 +126,23 @@ import {
   type RacingNumberSetting,
 } from '@/lib/racingNumber'
 import {
+  NAMEPLATE_BG_HEX,
+  NAMEPLATE_BORDER_HEX,
+  NAMEPLATE_SOURCE_TAGS,
+  NAMEPLATE_SPRITE_HEIGHT,
+  NAMEPLATE_SPRITE_WIDTH,
+  NAMEPLATE_TAG_HEX,
+  NAMEPLATE_TEXT_HEX,
+  NAMEPLATE_TEXTURE_HEIGHT,
+  NAMEPLATE_TEXTURE_WIDTH,
+  NAMEPLATE_Y_OFFSET,
+  formatNameplateInitials,
+  formatNameplateLapTime,
+  nameplateCacheKey,
+  type GhostMeta,
+} from './ghostNameplate'
+import type { GhostSource } from '@/lib/ghostSource'
+import {
   HEADLIGHT_BEAM_COLOR_HEX,
   HEADLIGHT_BEAM_LENGTH,
   HEADLIGHT_BEAM_OPACITY,
@@ -1698,6 +1715,159 @@ export function buildGhostCar(): { ghost: Group; dispose: () => void } {
       ghostMat.dispose()
     },
   }
+}
+
+// Floating "WHO + TIME" nameplate that hovers above the ghost car. Uses a
+// CanvasTexture-backed Sprite so the plate always faces the camera without
+// any per-frame billboard math, and so the renderer pays the cost of one
+// canvas redraw + GPU upload only when the meta tuple actually changes
+// (a one-time cost when the player picks a different ghost source, or when
+// they finish a fresh PB lap that swaps the active ghost).
+//
+// `apply(meta, source)` rebuilds the texture only on a cache-key change.
+// Passing `meta = null` hides the sprite without disposing it so a quick
+// flip back (or the next race load) does not pay the rebuild cost again.
+//
+// Caller (RaceCanvas.tsx) attaches the returned `group` as a child of the
+// ghost car group so the plate inherits the ghost's world position; the
+// plate sits `NAMEPLATE_Y_OFFSET` units above the ghost origin.
+export interface GhostNameplate {
+  group: Group
+  apply: (meta: GhostMeta | null, source: GhostSource) => void
+  setVisible: (value: boolean) => void
+  dispose: () => void
+}
+
+export function buildGhostNameplate(): GhostNameplate {
+  const group = new Group()
+  group.position.set(0, NAMEPLATE_Y_OFFSET, 0)
+  group.visible = false
+
+  // Detect SSR / no-canvas environments (Vitest's jsdom does not implement
+  // 2D canvas). When unavailable we keep the plate hidden and skip every
+  // draw; the rest of the renderer still wires up cleanly.
+  const hasCanvas =
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function'
+
+  let canvas: HTMLCanvasElement | null = null
+  let ctx: CanvasRenderingContext2D | null = null
+  let texture: CanvasTexture | null = null
+  let material: SpriteMaterial | null = null
+  let sprite: Sprite | null = null
+  let lastKey: string | null = null
+
+  function ensureSprite() {
+    if (sprite || !hasCanvas) return
+    canvas = document.createElement('canvas')
+    canvas.width = NAMEPLATE_TEXTURE_WIDTH
+    canvas.height = NAMEPLATE_TEXTURE_HEIGHT
+    ctx = canvas.getContext('2d')
+    if (!ctx) {
+      canvas = null
+      return
+    }
+    texture = new CanvasTexture(canvas)
+    // Sprite material with a transparent texture so the rounded plate
+    // corners stay alpha-cut against the sky / track. depthTest stays on
+    // so the plate occludes correctly behind / in front of scenery.
+    material = new SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+    })
+    sprite = new Sprite(material)
+    sprite.scale.set(NAMEPLATE_SPRITE_WIDTH, NAMEPLATE_SPRITE_HEIGHT, 1)
+    group.add(sprite)
+  }
+
+  function drawPlate(meta: GhostMeta, source: GhostSource) {
+    if (!ctx) return
+    const w = NAMEPLATE_TEXTURE_WIDTH
+    const h = NAMEPLATE_TEXTURE_HEIGHT
+    ctx.clearRect(0, 0, w, h)
+
+    // Rounded-rectangle background (manual corner arcs so jsdom-friendly).
+    const r = 18
+    ctx.fillStyle = NAMEPLATE_BG_HEX
+    ctx.beginPath()
+    ctx.moveTo(r, 0)
+    ctx.lineTo(w - r, 0)
+    ctx.quadraticCurveTo(w, 0, w, r)
+    ctx.lineTo(w, h - r)
+    ctx.quadraticCurveTo(w, h, w - r, h)
+    ctx.lineTo(r, h)
+    ctx.quadraticCurveTo(0, h, 0, h - r)
+    ctx.lineTo(0, r)
+    ctx.quadraticCurveTo(0, 0, r, 0)
+    ctx.closePath()
+    ctx.fill()
+
+    ctx.strokeStyle = NAMEPLATE_BORDER_HEX
+    ctx.lineWidth = 4
+    ctx.stroke()
+
+    // Source tag (small, top): "GHOST" / "TOP" / "PB" / "LAST".
+    ctx.fillStyle = NAMEPLATE_TAG_HEX
+    ctx.font = 'bold 22px sans-serif'
+    ctx.textAlign = 'center'
+    ctx.textBaseline = 'middle'
+    ctx.fillText(NAMEPLATE_SOURCE_TAGS[source], w / 2, 24)
+
+    // Initials (big, middle): the player's 3-letter tag.
+    ctx.fillStyle = NAMEPLATE_TEXT_HEX
+    ctx.font = 'bold 44px sans-serif'
+    ctx.fillText(formatNameplateInitials(meta.initials), w / 2, 64)
+
+    // Lap time (small, bottom): formatted m:ss.mmm.
+    ctx.fillStyle = NAMEPLATE_TEXT_HEX
+    ctx.font = '24px monospace'
+    ctx.fillText(formatNameplateLapTime(meta.lapTimeMs), w / 2, 104)
+  }
+
+  function apply(meta: GhostMeta | null, source: GhostSource) {
+    if (meta === null) {
+      group.visible = false
+      lastKey = null
+      return
+    }
+    const key = nameplateCacheKey(meta, source)
+    if (key === lastKey && sprite) {
+      group.visible = true
+      return
+    }
+    ensureSprite()
+    if (!ctx || !texture) {
+      // Canvas-less environment (jsdom). Stay hidden so we never reference
+      // a half-initialized sprite.
+      group.visible = false
+      return
+    }
+    drawPlate(meta, source)
+    texture.needsUpdate = true
+    group.visible = true
+    lastKey = key
+  }
+
+  function setVisible(value: boolean) {
+    if (!value) {
+      group.visible = false
+      return
+    }
+    if (sprite) group.visible = true
+  }
+
+  function dispose() {
+    if (texture) texture.dispose()
+    if (material) material.dispose()
+    sprite = null
+    canvas = null
+    ctx = null
+    texture = null
+    material = null
+  }
+
+  return { group, apply, setVisible, dispose }
 }
 
 export function buildScene(path: TrackPath): SceneBundle {

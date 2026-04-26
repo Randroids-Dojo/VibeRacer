@@ -1,5 +1,6 @@
 import { z } from 'zod'
 import type { Replay } from './replay'
+import type { GhostMeta } from '@/game/ghostNameplate'
 
 // Which ghost to show alongside the player. The boolean `showGhost` toggle
 // in ControlSettings is the master "show or not"; ghostSource picks WHICH
@@ -97,4 +98,37 @@ export function pickGhostAfterPb(
 // 'pb' and 'lastLap' never need it (neither source falls back to top).
 export function ghostSourceNeedsTopFetch(source: GhostSource): boolean {
   return source !== 'pb' && source !== 'lastLap'
+}
+
+// Pure: pick which ghost-meta tuple (initials + lap time) belongs to the
+// active ghost replay. Mirrors `pickGhostReplay` branch-for-branch so the
+// nameplate renderer never shows the wrong identity above the ghost car.
+//
+// All inputs are nullable because some sources legitimately have no meta
+// to display: 'pb' returns null until the player sets a personal best on
+// the slug, 'lastLap' returns null until the first lap of the session
+// completes, and 'top' returns null when the leaderboard is empty.
+export function pickGhostMeta(
+  source: GhostSource,
+  localPbMeta: GhostMeta | null,
+  topMeta: GhostMeta | null,
+  lastLapMeta: GhostMeta | null = null,
+): GhostMeta | null {
+  if (source === 'pb') return localPbMeta
+  if (source === 'top') return topMeta
+  if (source === 'lastLap') return lastLapMeta
+  return localPbMeta ?? topMeta
+}
+
+// Pure: pick which ghost-meta tuple should become active AFTER a fresh
+// personal-best lap. Mirrors `pickGhostAfterPb` so the nameplate swap
+// stays in lockstep with the replay swap.
+export function pickGhostMetaAfterPb(
+  source: GhostSource,
+  newPbMeta: GhostMeta,
+  prevActive: GhostMeta | null,
+): GhostMeta | null {
+  if (source === 'top') return prevActive
+  if (source === 'lastLap') return prevActive
+  return newPbMeta
 }

@@ -175,6 +175,12 @@ export interface ControlSettings {
   // PB, no fallback to top). Setting `showGhost: false` hides the ghost
   // regardless of source.
   ghostSource: GhostSource
+  // Toggle the floating nameplate above the ghost car (initials + lap
+  // time). Default on so players know whose lap they are chasing without
+  // having to open the leaderboard. The toggle is here for users who want
+  // a totally clean ghost car silhouette. Has no effect when `showGhost`
+  // is false (the nameplate hides whenever the ghost itself is hidden).
+  showGhostNameplate: boolean
   // Toggle the bottom-right top-down minimap card. Default on for new users
   // (cheap render, useful on unfamiliar tracks); turning it off hides the
   // card entirely with no other side effects.
@@ -311,6 +317,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   touchMode: 'single',
   showGhost: true,
   ghostSource: DEFAULT_GHOST_SOURCE,
+  showGhostNameplate: true,
   showMinimap: true,
   showSkidMarks: true,
   showTireSmoke: true,
@@ -389,6 +396,11 @@ const ControlSettingsSchema = z.object({
   // payloads keep their existing behavior on the next race without having to
   // open Settings.
   ghostSource: GhostSourceSchema.default(DEFAULT_GHOST_SOURCE),
+  // Ghost nameplate landed after the ghost-source picker. Default on so
+  // legacy stored payloads start showing the floating "WHO + TIME" plate
+  // above the ghost car automatically without losing any other choices;
+  // players who want a clean silhouette can flip it off.
+  showGhostNameplate: z.boolean().default(true),
   // Minimap toggle landed after the original settings shape. Default on for
   // legacy stored payloads so the upgrade is opt-out, not opt-in.
   showMinimap: z.boolean().default(true),
@@ -484,6 +496,7 @@ export function cloneDefaultSettings(): ControlSettings {
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
     ghostSource: DEFAULT_CONTROL_SETTINGS.ghostSource,
+    showGhostNameplate: DEFAULT_CONTROL_SETTINGS.showGhostNameplate,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
     showTireSmoke: DEFAULT_CONTROL_SETTINGS.showTireSmoke,

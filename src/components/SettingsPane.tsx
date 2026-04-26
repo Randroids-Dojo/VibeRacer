@@ -382,6 +382,10 @@ export function SettingsPane({
     onChange({ ...settings, showGhost: false })
   }
 
+  function setShowGhostNameplate(value: boolean) {
+    onChange({ ...settings, showGhostNameplate: value })
+  }
+
   function setShowMinimap(value: boolean) {
     onChange({ ...settings, showMinimap: value })
   }
@@ -820,6 +824,19 @@ export function SettingsPane({
               {!settings.showGhost
                 ? 'No ghost will appear during the race.'
                 : GHOST_SOURCE_DESCRIPTIONS[settings.ghostSource]}
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show nameplate</div>
+              <MenuToggle
+                value={settings.showGhostNameplate}
+                onChange={setShowGhostNameplate}
+                disabled={!settings.showGhost}
+              />
+            </div>
+            <MenuHint>
+              Floats the ghost racer&apos;s initials and lap time above their
+              car so you know whose lap you are chasing without opening the
+              leaderboard.
             </MenuHint>
           </div>
 

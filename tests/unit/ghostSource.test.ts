@@ -8,9 +8,12 @@ import {
   ghostSourceNeedsTopFetch,
   isGhostSource,
   pickGhostAfterPb,
+  pickGhostMeta,
+  pickGhostMetaAfterPb,
   pickGhostReplay,
 } from '@/lib/ghostSource'
 import type { Replay } from '@/lib/replay'
+import type { GhostMeta } from '@/game/ghostNameplate'
 
 const PB: Replay = {
   lapTimeMs: 12000,
@@ -171,5 +174,91 @@ describe('ghostSourceNeedsTopFetch', () => {
     // The lastLap source never falls back to the leaderboard top, so a
     // network round-trip on race load is wasted work.
     expect(ghostSourceNeedsTopFetch('lastLap')).toBe(false)
+  })
+})
+
+describe('pickGhostMeta', () => {
+  const PB_META: GhostMeta = { initials: 'YOU', lapTimeMs: 12000 }
+  const TOP_META: GhostMeta = { initials: 'TOP', lapTimeMs: 11000 }
+  const LAST_META: GhostMeta = { initials: 'YOU', lapTimeMs: 13500 }
+
+  it('source pb returns the pb meta even when null and top exists', () => {
+    expect(pickGhostMeta('pb', null, TOP_META, LAST_META)).toBeNull()
+    expect(pickGhostMeta('pb', PB_META, TOP_META, LAST_META)).toBe(PB_META)
+  })
+
+  it('source top always returns the top meta even when pb beats it', () => {
+    expect(pickGhostMeta('top', PB_META, TOP_META, LAST_META)).toBe(TOP_META)
+    expect(pickGhostMeta('top', PB_META, null, LAST_META)).toBeNull()
+  })
+
+  it('source lastLap returns the lastLap meta with no fallback', () => {
+    expect(pickGhostMeta('lastLap', PB_META, TOP_META, LAST_META)).toBe(LAST_META)
+    expect(pickGhostMeta('lastLap', PB_META, TOP_META, null)).toBeNull()
+  })
+
+  it('source auto prefers pb when present', () => {
+    expect(pickGhostMeta('auto', PB_META, TOP_META, LAST_META)).toBe(PB_META)
+  })
+
+  it('source auto falls back to top when pb is null', () => {
+    expect(pickGhostMeta('auto', null, TOP_META, LAST_META)).toBe(TOP_META)
+  })
+
+  it('source auto returns null when both pb and top are null', () => {
+    expect(pickGhostMeta('auto', null, null, LAST_META)).toBeNull()
+  })
+
+  it('matches pickGhostReplay branch-for-branch', () => {
+    // Mirror invariant: every (source, present?, present?, present?) combo
+    // resolves to the same picked-or-null shape between meta and replay so
+    // the nameplate never desyncs from the ghost car.
+    const cases: Array<[GhostMeta | null, GhostMeta | null, GhostMeta | null]> = [
+      [PB_META, TOP_META, LAST_META],
+      [null, TOP_META, LAST_META],
+      [PB_META, null, LAST_META],
+      [PB_META, TOP_META, null],
+      [null, null, null],
+    ]
+    for (const [pb, top, last] of cases) {
+      for (const src of GHOST_SOURCES) {
+        const metaPick = pickGhostMeta(src, pb, top, last)
+        // Build dummy replays whose presence matches the meta's presence.
+        const pbReplay = pb ? PB : null
+        const topReplay = top ? TOP : null
+        const lastReplay = last ? LAST_LAP : null
+        const replayPick = pickGhostReplay(src, pbReplay, topReplay, lastReplay)
+        if (replayPick === null) {
+          expect(metaPick).toBeNull()
+        } else {
+          // Whichever meta was picked, it must NOT be null when replayPick is non-null.
+          expect(metaPick).not.toBeNull()
+        }
+      }
+    }
+  })
+})
+
+describe('pickGhostMetaAfterPb', () => {
+  const NEW_PB_META: GhostMeta = { initials: 'YOU', lapTimeMs: 9500 }
+  const PREV_TOP_META: GhostMeta = { initials: 'TOP', lapTimeMs: 11000 }
+
+  it('top keeps the previous active meta', () => {
+    expect(pickGhostMetaAfterPb('top', NEW_PB_META, PREV_TOP_META)).toBe(
+      PREV_TOP_META,
+    )
+  })
+
+  it('lastLap keeps the previous active meta (per-lap writer is canonical)', () => {
+    expect(pickGhostMetaAfterPb('lastLap', NEW_PB_META, PREV_TOP_META)).toBe(
+      PREV_TOP_META,
+    )
+  })
+
+  it('auto and pb swap to the fresh PB meta', () => {
+    expect(pickGhostMetaAfterPb('auto', NEW_PB_META, PREV_TOP_META)).toBe(
+      NEW_PB_META,
+    )
+    expect(pickGhostMetaAfterPb('pb', NEW_PB_META, null)).toBe(NEW_PB_META)
   })
 })

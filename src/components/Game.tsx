@@ -117,8 +117,11 @@ import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
   ghostSourceNeedsTopFetch,
   pickGhostAfterPb,
+  pickGhostMeta,
+  pickGhostMetaAfterPb,
   pickGhostReplay,
 } from '@/lib/ghostSource'
+import type { GhostMeta } from '@/game/ghostNameplate'
 import {
   buildChallengeSharePayload,
   type ChallengePayload,
@@ -396,6 +399,25 @@ function GameSession({
   // captured a stale value at mount time.
   const ghostSourceRef = useRef(settings.ghostSource)
   ghostSourceRef.current = settings.ghostSource
+  // Mirrors settings.showGhostNameplate into the rAF loop so a Settings
+  // flip lands on the next frame without re-mounting the renderer.
+  const showGhostNameplateRef = useRef<boolean>(settings.showGhostNameplate)
+  showGhostNameplateRef.current = settings.showGhostNameplate
+  // Identity tuple (initials + lap time) for the active ghost replay. Kept
+  // in lockstep with `activeGhostRef` so the floating nameplate above the
+  // ghost car always shows the right "WHO + TIME". null hides the plate
+  // (e.g. while the leaderboard top fetch is in flight, or when the
+  // 'lastLap' source has no completed lap yet this session).
+  const activeGhostMetaRef = useRef<GhostMeta | null>(null)
+  // Per-source meta tuples kept alongside the per-source replay refs so the
+  // race-load resolver can pick the right one without a network round-trip.
+  // PB meta updates whenever a fresh PB lands; top meta updates from the
+  // /api/replay/top response (which now carries `initials` alongside the
+  // replay); lastLap meta updates from `handleLapReplay` on every completed
+  // lap, mirroring `lastLapReplayRef`.
+  const localPbMetaRef = useRef<GhostMeta | null>(null)
+  const topGhostMetaRef = useRef<GhostMeta | null>(null)
+  const lastLapMetaRef = useRef<GhostMeta | null>(null)
   // Mirrors the player's camera tunables into the rAF loop the same way.
   // Recomputed every render from `settings.camera` so a slider tweak in
   // SettingsPane takes effect on the next frame.
@@ -1080,6 +1102,21 @@ function GameSession({
       null,
       lastLapReplayRef.current,
     )
+    // Seed local PB meta from the in-scope replay's lap time + the player's
+    // initials. The replay already carries `lapTimeMs` so we never need to
+    // double-look-up the on-disk PB tile here.
+    localPbMetaRef.current = local
+      ? { initials, lapTimeMs: local.lapTimeMs }
+      : null
+    // Resolve the initial nameplate meta synchronously alongside the replay
+    // so the plate paints with the right identity on the very first frame
+    // when the source is 'pb' / 'lastLap' / 'auto' and a local PB exists.
+    activeGhostMetaRef.current = pickGhostMeta(
+      source,
+      localPbMetaRef.current,
+      topGhostMetaRef.current,
+      lastLapMetaRef.current,
+    )
     if (!ghostSourceNeedsTopFetch(source)) {
       return () => {
         cancelled = true
@@ -1102,6 +1139,29 @@ function GameSession({
           parsed.data,
           lastLapReplayRef.current,
         )
+        // Pull the optional `initials` field off the raw response (the
+        // server adds it from the leaderboard top member; an empty board
+        // returns null). Falls back to "???" so the plate never reads
+        // blank when the leaderboard write predates the metadata path.
+        const topInitials =
+          body && typeof body === 'object' && 'initials' in body
+            ? typeof (body as { initials?: unknown }).initials === 'string'
+              ? ((body as { initials: string }).initials as string)
+              : null
+            : null
+        topGhostMetaRef.current = {
+          initials: topInitials ?? '???',
+          lapTimeMs: parsed.data.lapTimeMs,
+        }
+        localPbMetaRef.current = fresh
+          ? { initials, lapTimeMs: fresh.lapTimeMs }
+          : null
+        activeGhostMetaRef.current = pickGhostMeta(
+          source,
+          localPbMetaRef.current,
+          topGhostMetaRef.current,
+          lastLapMetaRef.current,
+        )
       })
       .catch(() => {
         // Best-effort; absent ghost is a non-fatal degradation.
@@ -1109,7 +1169,7 @@ function GameSession({
     return () => {
       cancelled = true
     }
-  }, [slug, versionHash, settings.ghostSource])
+  }, [slug, versionHash, settings.ghostSource, initials])
 
   // Friend-challenge ghost. When the player opens a `?challenge=<nonce>` link,
   // override the active ghost with the referenced lap so the recipient races
@@ -1132,6 +1192,18 @@ function GameSession({
         const parsed = ReplaySchema.safeParse(body)
         if (cancelled || !parsed.success) return
         activeGhostRef.current = parsed.data
+        // Surface the friend's identity above the ghost car. The challenge
+        // payload carries the sender's initials and target time; both come
+        // from the URL, so we trust them as far as a browsable link goes
+        // (the `formatNameplate*` helpers sanitize anyway). Falls back to
+        // the replay's own lap time when the challenge omits a target.
+        activeGhostMetaRef.current = {
+          initials: challenge.from ?? '???',
+          lapTimeMs:
+            typeof challenge.timeMs === 'number' && challenge.timeMs > 0
+              ? challenge.timeMs
+              : parsed.data.lapTimeMs,
+        }
       })
       .catch(() => {
         // Best-effort; if the challenge replay cannot be loaded we degrade to
@@ -1290,11 +1362,16 @@ function GameSession({
     // Runs for every completed lap, even non-PB ones, so the player can
     // chase their most recent attempt even when slowly slipping off pace.
     lastLapReplayRef.current = replay
+    // Mirror the lastLap meta tuple so the floating nameplate above the
+    // ghost car shows the right initials + lap time on the very next frame
+    // when the player picked the lastLap source (or switches to it later).
+    lastLapMetaRef.current = { initials, lapTimeMs: replay.lapTimeMs }
     // When the player picked the lastLap ghost source, swap the active ghost
     // immediately so the next lap races against this latest attempt. Skip the
     // swap in friend-challenge mode where the friend's ghost takes priority.
     if (challenge === null && ghostSourceRef.current === 'lastLap') {
       activeGhostRef.current = replay
+      activeGhostMetaRef.current = lastLapMetaRef.current
     }
   }
 
@@ -1472,6 +1549,18 @@ function GameSession({
               ghostSourceRef.current,
               pending,
               activeGhostRef.current,
+            )
+            // Mirror the meta swap so the floating nameplate above the
+            // ghost car picks up the player's fresh PB (initials + lap
+            // time) on the next finish-line cross. 'top' keeps showing
+            // the leaderboard top's identity; 'lastLap' is handled by
+            // handleLapReplay (the canonical writer for that source).
+            const newPbMeta: GhostMeta = { initials, lapTimeMs: lapMs }
+            localPbMetaRef.current = newPbMeta
+            activeGhostMetaRef.current = pickGhostMetaAfterPb(
+              ghostSourceRef.current,
+              newPbMeta,
+              activeGhostMetaRef.current,
             )
           }
         }
@@ -1801,6 +1890,9 @@ function GameSession({
         onHudUpdate={onCanvasHud}
         activeGhostRef={activeGhostRef}
         showGhostRef={showGhostRef}
+        activeGhostMetaRef={activeGhostMetaRef}
+        ghostSourceRef={ghostSourceRef}
+        showGhostNameplateRef={showGhostNameplateRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
         racingNumberRef={racingNumberRef}

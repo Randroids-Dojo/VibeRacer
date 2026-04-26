@@ -246,6 +246,27 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().ghostSource).toBe('auto')
   })
 
+  it('defaults showGhostNameplate to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showGhostNameplate).toBe(true)
+    expect(cloneDefaultSettings().showGhostNameplate).toBe(true)
+  })
+
+  it('round-trips a disabled showGhostNameplate flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showGhostNameplate = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showGhostNameplate when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().showGhostNameplate).toBe(true)
+  })
+
   it('defaults showMinimap to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showMinimap).toBe(true)
     expect(cloneDefaultSettings().showMinimap).toBe(true)
