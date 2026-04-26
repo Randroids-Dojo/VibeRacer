@@ -38,6 +38,10 @@ export function TrackEditor({
       ? initialCheckpointCount
       : null,
   )
+  const [advancedOpen, setAdvancedOpen] = useState<boolean>(
+    initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length,
+  )
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -224,27 +228,68 @@ export function TrackEditor({
         </svg>
       </div>
 
+      {advancedOpen ? (
+        <div style={advancedPanel}>
+          <div style={advancedHeader}>
+            <span style={advancedTitle}>Advanced</span>
+            <button
+              onClick={() => setAdvancedOpen(false)}
+              style={btnGhostSmall}
+            >
+              Hide
+            </button>
+          </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
+              <div style={advancedLabel}>Checkpoints</div>
+              <p style={advancedHelp}>
+                Invisible gates around the loop. The car has to cross every
+                gate, in order, before a lap counts. The default is one gate
+                per piece, which is the strictest setting and forces the
+                player to follow the whole track. Lowering the count spreads
+                the gates out evenly so racers can experiment with shortcut
+                lines or cut a corner without invalidating the lap. Most
+                tracks should leave this on default.
+              </p>
+            </div>
+            <div style={advancedControl}>
+              <input
+                type="number"
+                min={cpMin}
+                max={cpMax}
+                value={effectiveCp}
+                disabled={cpInputDisabled}
+                onChange={(e) => onCpChange(e.target.value)}
+                style={cpInput}
+                aria-label="Checkpoint count"
+              />
+              <span style={cpHint}>
+                {checkpointCount === null ? 'default' : `of ${cpMax}`}
+              </span>
+              {checkpointCount !== null ? (
+                <button
+                  onClick={() => setCheckpointCount(null)}
+                  style={btnGhostSmall}
+                >
+                  Reset
+                </button>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <div style={footer}>
         <div style={status}>
           <span>{pieces.length} / {MAX_PIECES_PER_TRACK} pieces</span>
-          <label style={cpLabel}>
-            <span>Checkpoints</span>
-            <input
-              type="number"
-              min={cpMin}
-              max={cpMax}
-              value={effectiveCp}
-              disabled={cpInputDisabled}
-              onChange={(e) => onCpChange(e.target.value)}
-              style={cpInput}
-            />
-            <span style={cpHint}>
-              {checkpointCount === null ? 'default' : `of ${cpMax}`}
-            </span>
-          </label>
           <span style={{ color: validation.ok ? '#6ee787' : '#ffb86b' }}>
             {validation.ok ? 'valid closed loop' : (validation.reason ?? 'invalid')}
           </span>
+          {checkpointCount !== null ? (
+            <span style={cpHint}>
+              {effectiveCp} of {cpMax} checkpoints
+            </span>
+          ) : null}
           {error ? <span style={{ color: '#ff6b6b' }}>{error}</span> : null}
         </div>
         <div style={buttons}>
@@ -259,6 +304,12 @@ export function TrackEditor({
           <button onClick={clearAll} style={btnGhost} disabled={pieces.length === 0}>
             Clear
           </button>
+          {!advancedOpen ? (
+            <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
+              Advanced
+              {checkpointCount !== null ? <span style={advancedDot} /> : null}
+            </button>
+          ) : null}
           <button
             onClick={save}
             disabled={!validation.ok || saving}
@@ -447,13 +498,6 @@ const buttons: React.CSSProperties = {
   display: 'flex',
   gap: 10,
 }
-const cpLabel: React.CSSProperties = {
-  display: 'inline-flex',
-  gap: 6,
-  alignItems: 'center',
-  fontSize: 13,
-  opacity: 0.9,
-}
 const cpInput: React.CSSProperties = {
   width: 56,
   background: '#162233',
@@ -467,6 +511,71 @@ const cpInput: React.CSSProperties = {
 const cpHint: React.CSSProperties = {
   fontSize: 11,
   opacity: 0.6,
+}
+const advancedPanel: React.CSSProperties = {
+  borderTop: '1px solid #1f2b3d',
+  background: '#111a28',
+  padding: '14px 20px',
+}
+const advancedHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  marginBottom: 10,
+}
+const advancedTitle: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 1,
+  textTransform: 'uppercase',
+  opacity: 0.7,
+}
+const advancedRow: React.CSSProperties = {
+  display: 'flex',
+  gap: 20,
+  alignItems: 'flex-start',
+  flexWrap: 'wrap',
+}
+const advancedCopy: React.CSSProperties = {
+  flex: '1 1 320px',
+  minWidth: 240,
+}
+const advancedLabel: React.CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  marginBottom: 4,
+}
+const advancedHelp: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1.5,
+  opacity: 0.75,
+  margin: 0,
+}
+const advancedControl: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexShrink: 0,
+}
+const btnGhostSmall: React.CSSProperties = {
+  border: '1px solid #334155',
+  background: 'transparent',
+  color: 'white',
+  padding: '4px 10px',
+  borderRadius: 6,
+  fontWeight: 600,
+  fontSize: 12,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const advancedDot: React.CSSProperties = {
+  display: 'inline-block',
+  width: 6,
+  height: 6,
+  borderRadius: '50%',
+  background: '#ffd36b',
+  marginLeft: 6,
+  verticalAlign: 'middle',
 }
 const btnPrimary: React.CSSProperties = {
   border: 'none',
