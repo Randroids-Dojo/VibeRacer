@@ -351,6 +351,10 @@ export function SettingsPane({
     onChange({ ...settings, showKerbs: value })
   }
 
+  function setShowScenery(value: boolean) {
+    onChange({ ...settings, showScenery: value })
+  }
+
   function setShowDrift(value: boolean) {
     onChange({ ...settings, showDrift: value })
   }
@@ -685,6 +689,22 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showKerbs}
                 onChange={setShowKerbs}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Trackside scenery</div>
+            <MenuHint>
+              Trees on the grass, traffic cones at the outside of every
+              corner, and red and white barriers framing the start gate. Turn
+              off for a clean grass field.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show scenery</div>
+              <MenuToggle
+                value={settings.showScenery}
+                onChange={setShowScenery}
               />
             </div>
           </div>

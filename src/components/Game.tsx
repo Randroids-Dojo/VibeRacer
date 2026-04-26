@@ -242,6 +242,11 @@ function GameSession({
   // any geometry.
   const showKerbsRef = useRef<boolean>(settings.showKerbs)
   showKerbsRef.current = settings.showKerbs
+  // Mirrors settings.showScenery into the rAF loop so a flip in Settings
+  // hides (or shows) the trackside trees / cones / barriers on the next
+  // frame without rebuilding any geometry.
+  const showSceneryRef = useRef<boolean>(settings.showScenery)
+  showSceneryRef.current = settings.showScenery
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -835,6 +840,7 @@ function GameSession({
         timeOfDayRef={timeOfDayRef}
         showSkidMarksRef={showSkidMarksRef}
         showKerbsRef={showKerbsRef}
+        showSceneryRef={showSceneryRef}
         rearviewCanvasRef={rearviewCanvasRef}
         showRearviewRef={showRearviewRef}
         carPoseOutRef={minimapCarPoseRef}

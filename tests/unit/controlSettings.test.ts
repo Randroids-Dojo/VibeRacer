@@ -292,6 +292,32 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showKerbs).toBe(true)
   })
 
+  it('defaults showScenery to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showScenery).toBe(true)
+    expect(cloneDefaultSettings().showScenery).toBe(true)
+  })
+
+  it('round-trips a disabled showScenery flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showScenery = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showScenery when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+    })
+    expect(readStoredControlSettings().showScenery).toBe(true)
+  })
+
   it('defaults showDrift to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showDrift).toBe(true)
     expect(cloneDefaultSettings().showDrift).toBe(true)

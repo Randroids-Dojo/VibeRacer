@@ -4,6 +4,8 @@ import {
   BufferAttribute,
   BufferGeometry,
   Color,
+  ConeGeometry,
+  CylinderGeometry,
   DataTexture,
   DirectionalLight,
   Group,
@@ -57,6 +59,12 @@ import {
   gatePoleSeparation,
 } from './finishLine'
 import { KERB_Y, buildTrackKerbTiles } from './kerbs'
+import {
+  SCENERY_BARRIER_HEX_RED,
+  SCENERY_BARRIER_HEX_WHITE,
+  buildScenery,
+  type SceneryItem,
+} from './scenery'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -94,6 +102,10 @@ export interface SceneBundle {
   // apex of every turn). Exposed so the rAF loop can poll a Settings toggle
   // and flip visibility without rebuilding any geometry.
   kerbs: KerbLayer
+  // Trackside scenery (trees on the grass, cones at every corner outside,
+  // barriers at the start gate). Same poll-and-set pattern as kerbs so a
+  // Settings toggle can hide everything in O(1).
+  scenery: SceneryLayer
   dispose: () => void
 }
 
@@ -542,6 +554,153 @@ export function buildKerbLayer(path: TrackPath): KerbLayer {
   }
 }
 
+// Trackside scenery layer: trees scattered on the grass area, traffic cones
+// at the outside of every corner, and red / white barriers framing the start
+// gate. All meshes share a small set of geometries / materials cached in
+// closures so a hundred trees collapses to two foliage materials, one trunk,
+// and one shared cylinder + cone geometry pair.
+export interface SceneryLayer {
+  group: Group
+  setVisible: (value: boolean) => void
+  dispose: () => void
+}
+
+// Per-prop dimensions. Trees ship as a green cone (foliage) on a brown
+// cylinder (trunk); the foliage cone scales to read as a stylized pine and
+// the trunk peeks out underneath. Cones use a slim orange cone with a tiny
+// flat base. Barriers are short rectangular blocks alternating red / white.
+const TREE_TRUNK_HEIGHT = 1.2
+const TREE_TRUNK_RADIUS = 0.28
+const TREE_FOLIAGE_HEIGHT = 3.6
+const TREE_FOLIAGE_RADIUS = 1.55
+const CONE_HEIGHT = 1.1
+const CONE_RADIUS = 0.45
+const CONE_BASE_HEIGHT = 0.08
+const CONE_BASE_HALF_WIDTH = 0.55
+const BARRIER_LENGTH = 1.4
+const BARRIER_HEIGHT = 0.7
+const BARRIER_DEPTH = 0.55
+
+export function buildSceneryLayer(path: TrackPath): SceneryLayer {
+  const group = new Group()
+  const items = buildScenery(path)
+
+  // Cached materials and geometries. One entry per unique color so a hundred
+  // trees with two foliage palettes collapses to two foliage materials.
+  const colorMatCache = new Map<number, MeshStandardMaterial>()
+  const trunkMat = new MeshStandardMaterial({
+    color: 0x6b4423,
+    roughness: 0.95,
+  })
+  const coneBaseMat = new MeshStandardMaterial({
+    color: 0x111111,
+    roughness: 0.9,
+  })
+
+  function getColorMat(hex: number): MeshStandardMaterial {
+    let m = colorMatCache.get(hex)
+    if (!m) {
+      m = new MeshStandardMaterial({ color: hex, roughness: 0.85 })
+      colorMatCache.set(hex, m)
+    }
+    return m
+  }
+
+  // Shared geometries. PlaneGeometry rotation tricks are not needed here
+  // because cones and cylinders already point along +Y by default, which is
+  // what we want for upright props. The foliage cone is offset along +Y at
+  // construction so the prop's pivot can sit at the ground.
+  const trunkGeom = new CylinderGeometry(
+    TREE_TRUNK_RADIUS,
+    TREE_TRUNK_RADIUS,
+    TREE_TRUNK_HEIGHT,
+    8,
+  )
+  const foliageGeom = new ConeGeometry(TREE_FOLIAGE_RADIUS, TREE_FOLIAGE_HEIGHT, 8)
+  const coneGeom = new ConeGeometry(CONE_RADIUS, CONE_HEIGHT, 12)
+  const coneBaseGeom = new BoxGeometry(
+    CONE_BASE_HALF_WIDTH * 2,
+    CONE_BASE_HEIGHT,
+    CONE_BASE_HALF_WIDTH * 2,
+  )
+  const barrierGeom = new BoxGeometry(BARRIER_LENGTH, BARRIER_HEIGHT, BARRIER_DEPTH)
+
+  function addTree(item: SceneryItem) {
+    const tree = new Group()
+    tree.position.set(item.x, 0, item.z)
+    tree.rotation.y = item.rotationY
+    tree.scale.setScalar(item.scale)
+
+    const trunk = new Mesh(trunkGeom, trunkMat)
+    trunk.position.y = TREE_TRUNK_HEIGHT / 2
+    tree.add(trunk)
+
+    const foliageMat = getColorMat(item.colorHex)
+    const foliage = new Mesh(foliageGeom, foliageMat)
+    // Sit the foliage cone on top of the trunk. The cone's pivot is at its
+    // geometric center, so lift it by its half height plus the trunk height.
+    foliage.position.y = TREE_TRUNK_HEIGHT + TREE_FOLIAGE_HEIGHT / 2 - 0.2
+    tree.add(foliage)
+
+    group.add(tree)
+  }
+
+  function addCone(item: SceneryItem) {
+    const cone = new Group()
+    cone.position.set(item.x, 0, item.z)
+    cone.rotation.y = item.rotationY
+
+    const base = new Mesh(coneBaseGeom, coneBaseMat)
+    base.position.y = CONE_BASE_HEIGHT / 2
+    cone.add(base)
+
+    const body = new Mesh(coneGeom, getColorMat(item.colorHex))
+    body.position.y = CONE_BASE_HEIGHT + CONE_HEIGHT / 2
+    cone.add(body)
+
+    group.add(cone)
+  }
+
+  function addBarrier(item: SceneryItem) {
+    // Barriers always alternate red / white from the helper. The renderer
+    // simply mirrors that color through the shared material cache so two
+    // unique materials cover any number of barrier blocks.
+    const mat = getColorMat(item.colorHex)
+    const block = new Mesh(barrierGeom, mat)
+    block.position.set(item.x, BARRIER_HEIGHT / 2, item.z)
+    block.rotation.y = item.rotationY
+    group.add(block)
+  }
+
+  for (const item of items) {
+    if (item.kind === 'tree') addTree(item)
+    else if (item.kind === 'cone') addCone(item)
+    else if (item.kind === 'barrier') addBarrier(item)
+  }
+
+  // Force the barrier color cache to exist even if a track has no barriers
+  // so the dispose path stays uniform across every code path.
+  getColorMat(SCENERY_BARRIER_HEX_RED)
+  getColorMat(SCENERY_BARRIER_HEX_WHITE)
+
+  return {
+    group,
+    setVisible(value) {
+      group.visible = value
+    },
+    dispose() {
+      for (const m of colorMatCache.values()) m.dispose()
+      trunkMat.dispose()
+      coneBaseMat.dispose()
+      trunkGeom.dispose()
+      foliageGeom.dispose()
+      coneGeom.dispose()
+      coneBaseGeom.dispose()
+      barrierGeom.dispose()
+    },
+  }
+}
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -710,6 +869,9 @@ export function buildScene(path: TrackPath): SceneBundle {
   const kerbs = buildKerbLayer(path)
   scene.add(kerbs.group)
 
+  const scenery = buildSceneryLayer(path)
+  scene.add(scenery.group)
+
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
@@ -736,7 +898,17 @@ export function buildScene(path: TrackPath): SceneBundle {
     bannerCheckerTexture.dispose()
   }
 
-  return { scene, camera, car, setCarPaint, setTimeOfDay, skidMarks, kerbs, dispose }
+  return {
+    scene,
+    camera,
+    car,
+    setCarPaint,
+    setTimeOfDay,
+    skidMarks,
+    kerbs,
+    scenery,
+    dispose,
+  }
 }
 
 export interface CameraRigParams {

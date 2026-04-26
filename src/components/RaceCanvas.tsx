@@ -117,6 +117,10 @@ export interface RaceCanvasProps {
   // Polled each frame so a Settings flip takes effect without rebuilding the
   // scene. Default behavior when omitted: enabled.
   showKerbsRef?: MutableRefObject<boolean>
+  // Toggle the trackside scenery (trees, cones, barriers). Polled each frame
+  // so a Settings flip takes effect without rebuilding the scene. Default
+  // behavior when omitted: enabled.
+  showSceneryRef?: MutableRefObject<boolean>
   // Optional second canvas the renderer draws a backward-facing pass into
   // every frame. The parent owns the canvas DOM element so the layout (and
   // a CSS-driven show/hide) stays inside the React tree. The backward pass
@@ -177,6 +181,7 @@ export function RaceCanvas({
   timeOfDayRef,
   showSkidMarksRef,
   showKerbsRef,
+  showSceneryRef,
   rearviewCanvasRef,
   showRearviewRef,
   carPoseOutRef,
@@ -248,6 +253,18 @@ export function RaceCanvas({
       bundle.kerbs.setVisible(next)
     }
     syncKerbs()
+
+    // Same poll-and-set for the trackside scenery layer (trees, cones,
+    // barriers). The setter just flips the parent group's visibility flag,
+    // so the per-frame cost is a single boolean compare on the cached value.
+    let lastShowScenery: boolean | undefined = undefined
+    function syncScenery() {
+      const next = showSceneryRef?.current ?? true
+      if (next === lastShowScenery) return
+      lastShowScenery = next
+      bundle.scenery.setVisible(next)
+    }
+    syncScenery()
 
     function resize() {
       const el = canvasRef.current
@@ -366,6 +383,8 @@ export function RaceCanvas({
       syncTimeOfDay()
       // And the inside-corner kerb visibility.
       syncKerbs()
+      // And the trackside scenery visibility.
+      syncScenery()
 
       if (pendingResetRef.current) {
         state = initGameState(path)

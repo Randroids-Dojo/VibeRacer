@@ -155,6 +155,12 @@ export interface ControlSettings {
   // Cheap to render (a couple of materials shared across every tile) so
   // default on; the toggle is here for users who want a pure-asphalt look.
   showKerbs: boolean
+  // Toggle the trackside scenery (trees on the grass, traffic cones at the
+  // outside of every corner, red / white barrier blocks framing the start
+  // gate). Cheap to render (a small handful of cached geometries reused
+  // across every prop) so default on; the toggle is here for users who want
+  // a totally clean track and grass field with nothing else on it.
+  showScenery: boolean
   // Toggle the live drift-score HUD block. Default on. Hides both the live
   // score and the lap / all-time best blocks; the underlying scoring keeps
   // running so a flip back mid-session still shows the in-progress totals.
@@ -198,6 +204,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   speedUnit: DEFAULT_SPEED_UNIT,
   showRearview: true,
   showKerbs: true,
+  showScenery: true,
   showDrift: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
@@ -268,6 +275,10 @@ const ControlSettingsSchema = z.object({
   // Kerbs landed later still. Default on so legacy stored payloads start
   // showing the curb stones automatically without losing any other choices.
   showKerbs: z.boolean().default(true),
+  // Trackside scenery landed after kerbs. Default on so legacy payloads start
+  // seeing trees / cones / barriers automatically without losing any other
+  // choices.
+  showScenery: z.boolean().default(true),
   // Drift-score HUD landed after kerbs. Default on so legacy payloads start
   // showing the new readouts automatically without losing any other choices.
   showDrift: z.boolean().default(true),
@@ -302,6 +313,7 @@ export function cloneDefaultSettings(): ControlSettings {
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,
     showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
+    showScenery: DEFAULT_CONTROL_SETTINGS.showScenery,
     showDrift: DEFAULT_CONTROL_SETTINGS.showDrift,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
