@@ -37,6 +37,7 @@ import { TuningPanel } from './TuningPanel'
 import { Minimap, type MinimapPose } from './Minimap'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { Speedometer } from './Speedometer'
+import { SpeedLinesOverlay } from './SpeedLinesOverlay'
 import {
   readLocalBest,
   writeLocalBest,
@@ -1850,6 +1851,9 @@ function GameSession({
           topSpeedRef={topSpeedRef}
           showTopSpeedMarker={settings.showTopSpeedMarker}
         />
+      ) : null}
+      {settings.showSpeedLines && phase === 'racing' && !paused ? (
+        <SpeedLinesOverlay speedRef={speedRef} maxSpeedRef={maxSpeedRef} />
       ) : null}
       <ConfettiOverlay kind={confettiKind} triggerKey={confettiKey} />
       <HUD

@@ -422,6 +422,10 @@ export function SettingsPane({
     onChange({ ...settings, showRacingLine: value })
   }
 
+  function setShowSpeedLines(value: boolean) {
+    onChange({ ...settings, showSpeedLines: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -985,6 +989,23 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showRearview}
                 onChange={setShowRearview}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Speed lines</div>
+            <MenuHint>
+              Thin streaks that radiate outward from the screen center while
+              you are pushing past about two-thirds of your tuning&apos;s top
+              speed. Pure cosmetic. Sells the rush at full chat. Turn off
+              for a fully clean screen at top speed.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show speed lines</div>
+              <MenuToggle
+                value={settings.showSpeedLines}
+                onChange={setShowSpeedLines}
               />
             </div>
           </div>

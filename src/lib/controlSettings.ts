@@ -225,6 +225,13 @@ export interface ControlSettings {
   // line is a coaching aid that not every player wants on screen; the toggle
   // is here for players who want to study the fast line.
   showRacingLine: boolean
+  // Toggle the screen-space speed-line streak overlay: thin streaks radiate
+  // outward from the screen center while the player is going fast (above
+  // ~65% of their tuning's maxSpeed). Pure cosmetic; sells velocity in the
+  // anime / Forza Horizon rush style. Default on so existing players see the
+  // effect on their next race; the toggle is here for users who prefer a
+  // clean screen at top speed.
+  showSpeedLines: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -315,6 +322,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showScenery: true,
   showDrift: true,
   showRacingLine: false,
+  showSpeedLines: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   racingNumber: DEFAULT_RACING_NUMBER,
@@ -411,6 +419,10 @@ const ControlSettingsSchema = z.object({
   // so legacy stored payloads keep their existing screen exactly as it was;
   // players who want the line have to flip it on once in Settings.
   showRacingLine: z.boolean().default(false),
+  // Speed-line streak overlay landed after racing line. Default ON (cosmetic
+  // velocity cue) so legacy stored payloads start seeing the streaks the next
+  // time they hit top speed; players who want a clean screen can flip it off.
+  showSpeedLines: z.boolean().default(true),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Top-speed marker landed after the speedometer toggle. Default on so legacy
   // stored payloads start showing the peak tick on their next race; players
@@ -483,6 +495,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showScenery: DEFAULT_CONTROL_SETTINGS.showScenery,
     showDrift: DEFAULT_CONTROL_SETTINGS.showDrift,
     showRacingLine: DEFAULT_CONTROL_SETTINGS.showRacingLine,
+    showSpeedLines: DEFAULT_CONTROL_SETTINGS.showSpeedLines,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     racingNumber: { ...DEFAULT_RACING_NUMBER },

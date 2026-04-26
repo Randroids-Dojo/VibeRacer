@@ -849,6 +849,31 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
 
+  it('defaults showSpeedLines to true (cosmetic velocity cue)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showSpeedLines).toBe(true)
+    expect(cloneDefaultSettings().showSpeedLines).toBe(true)
+  })
+
+  it('round-trips a disabled showSpeedLines flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showSpeedLines = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().showSpeedLines).toBe(false)
+  })
+
+  it('backfills showSpeedLines to true when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    expect(readStoredControlSettings().showSpeedLines).toBe(true)
+  })
+
   it('defaults showTopSpeedMarker to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker).toBe(true)
     expect(cloneDefaultSettings().showTopSpeedMarker).toBe(true)
