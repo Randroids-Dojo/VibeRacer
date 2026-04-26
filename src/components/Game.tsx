@@ -41,6 +41,7 @@ import {
   silenceAllSfx,
 } from '@/game/audio'
 import { TitleMusic } from './TitleMusic'
+import { buildSharePayload, shareOrCopy } from '@/lib/share'
 
 export type ToastKind = 'lap' | 'pb' | 'record'
 
@@ -250,6 +251,45 @@ function GameSession({
   const editTrack = useCallback(() => {
     router.push(`/${slug}/edit`)
   }, [router, slug])
+
+  // Pause-menu Share button. Wraps `shareOrCopy` and surfaces the result as a
+  // transient label on the button itself (the HUD's toast lane is reserved for
+  // celebratory PB feedback).
+  const [shareLabel, setShareLabel] = useState<string | null>(null)
+  const shareLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const handleShare = useCallback(async () => {
+    if (typeof window === 'undefined') return
+    const payload = buildSharePayload({
+      origin: window.location.origin,
+      slug,
+      versionHash,
+      bestMs: hud.bestAllTimeMs,
+      record: hud.overallRecord,
+      initials,
+    })
+    const outcome = await shareOrCopy(payload)
+    const next =
+      outcome === 'shared'
+        ? 'Shared!'
+        : outcome === 'copied'
+          ? 'Link copied!'
+          : outcome === 'cancelled'
+            ? null
+            : 'Could not share'
+    if (next === null) return
+    setShareLabel(next)
+    if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current)
+    shareLabelTimerRef.current = setTimeout(() => {
+      setShareLabel(null)
+      shareLabelTimerRef.current = null
+    }, 1600)
+  }, [slug, versionHash, hud.bestAllTimeMs, hud.overallRecord, initials])
+
+  useEffect(() => {
+    return () => {
+      if (shareLabelTimerRef.current) clearTimeout(shareLabelTimerRef.current)
+    }
+  }, [])
 
   useEffect(() => {
     // Resolve the initial ghost: prefer the player's local PB replay, fall
@@ -492,6 +532,10 @@ function GameSession({
               onLeaderboards={() => setPauseView('leaderboard')}
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
+              onShare={() => {
+                void handleShare()
+              }}
+              shareLabel={shareLabel ?? undefined}
               onExit={exitToTitle}
             />
           ) : pauseView === 'leaderboard' ? (

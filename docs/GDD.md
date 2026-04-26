@@ -352,6 +352,7 @@ Ghost rendering reuses the player car's GLB through `buildGhostCar()` in `sceneB
 - Edit Track button: wired to `router.push('/<slug>/edit')`. See Section 6 for the editor UI.
 - Title screen at `/`: server component in `src/app/page.tsx`. `next/font/google` loads Fredoka as the cartoony wordmark font (CSS var `--font-cartoony`). `src/components/TitleBackground.tsx` mounts a full-viewport canvas behind the menu that reuses `buildTrackPath` + `buildScene` to render the default oval track, then drives a car along the centerline (straights interpolate entry→exit, corners sample the arc at radius `CELL_SIZE/2`) with a slow camera orbit. Menu is Play (links to `/start`), Load existing track (the `RecentTrackList` of the latest-updated slugs, falling back to sample slugs), and a Settings button that opens the Settings pane in a modal via `src/components/SettingsLauncher.tsx`.
 - Settings pane: `src/components/SettingsPane.tsx` ships keyboard remap (with a click-then-press capture flow per slot, modifier keys ignored, conflict transfer to the new action) plus a dual / single touch mode toggle. Reachable from both the title screen and the pause menu. See Section 4 build log for storage and detection details.
+- Share button: pause menu entry between Settings and Exit. `Game.tsx` builds a `SharePayload` from the current slug, version hash, local PB, and overall record (helpers in `src/lib/share.ts`), then calls `shareOrCopy` which prefers `navigator.share` (mobile share sheet) and falls back to `navigator.clipboard.writeText` on desktop. The shared URL is `${origin}/${slug}?v=${versionHash}` so recipients always race the exact version the sharer was on. The button label flips to "Link copied!" / "Shared!" / "Could not share" for 1.6s, then back to "Share track". Pure helpers (`buildShareUrl`, `buildShareText`, `buildSharePayload`, `shareOrCopy`) are unit-tested in `tests/unit/share.test.ts`.
 - **Not yet landed.** Always-visible touch pause button (the current pause button works on touch but its sizing is not yet optimized for one-thumb reach).
 
 ### Title screen (route `/`)
@@ -374,7 +375,9 @@ Items:
 - Restart
 - Edit Track
 - Leaderboards (for this track version)
+- Setup
 - Settings
+- Share track (Web Share API on mobile, clipboard fallback on desktop)
 - Exit to title
 
 The feedback FAB appears only while paused. See Section 12.
@@ -823,7 +826,6 @@ These are steps the user performs in external dashboards. Every step is mandator
 Not v1. Listed so agents know not to scope-creep into them without approval.
 
 - Car customization (paint, decals, multiple body shapes).
-- Share button (copy URL plus personal best to clipboard).
 - Music personalization (hash slug or initials to perturb music parameters).
 - More track pieces (ramps, banked turns, jumps, 45-degree turns).
 - Friend challenges (tap to race a ghost from a link).
