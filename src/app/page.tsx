@@ -12,6 +12,7 @@ import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { MyPbs } from '@/components/MyPbs'
+import { DailyChallenge } from '@/components/DailyChallenge'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -43,6 +44,8 @@ export default async function HomePage() {
           <Link href={`/${PLAY_SLUG}`} style={primaryBtnStyle}>
             Play
           </Link>
+
+          <DailyChallenge />
 
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Go to any track</div>
