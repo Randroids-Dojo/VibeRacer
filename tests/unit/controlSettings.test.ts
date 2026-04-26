@@ -526,6 +526,51 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().brakeLights).toBe('auto')
   })
 
+  it("defaults haptics to 'auto'", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.haptics).toBe('auto')
+    expect(cloneDefaultSettings().haptics).toBe('auto')
+  })
+
+  it("round-trips a haptics pick of 'on'", () => {
+    const custom = cloneDefaultSettings()
+    custom.haptics = 'on'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("round-trips a haptics pick of 'off'", () => {
+    const custom = cloneDefaultSettings()
+    custom.haptics = 'off'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("backfills haptics to 'auto' when reading legacy storage that omits it", () => {
+    // Legacy payloads predating the haptics setting should pick up the same
+    // default a brand-new install gets so the upgrade is opt-out, not opt-in.
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().haptics).toBe('auto')
+  })
+
+  it('rejects an unknown stored haptics value and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      haptics: 'continuous',
+    })
+    expect(readStoredControlSettings().haptics).toBe('auto')
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

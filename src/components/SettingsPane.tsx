@@ -86,6 +86,12 @@ import {
   type BrakeLightMode,
 } from '@/lib/brakeLights'
 import {
+  HAPTIC_MODES,
+  HAPTIC_MODE_DESCRIPTIONS,
+  HAPTIC_MODE_LABELS,
+  type HapticMode,
+} from '@/lib/haptics'
+import {
   MenuButton,
   MenuHeader,
   MenuHint,
@@ -474,6 +480,11 @@ export function SettingsPane({
   function setBrakeLights(value: BrakeLightMode) {
     clickSoft()
     onChange({ ...settings, brakeLights: value })
+  }
+
+  function setHaptics(value: HapticMode) {
+    clickSoft()
+    onChange({ ...settings, haptics: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -1104,6 +1115,30 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>{BRAKE_LIGHT_MODE_DESCRIPTIONS[settings.brakeLights]}</MenuHint>
+        </MenuSection>
+
+        <MenuSection title="Haptic feedback">
+          <MenuHint>
+            Buzz the device on lap completion, fresh personal best, and fresh
+            track-wide record. Auto fires only on touch devices where the
+            buzz is felt.
+          </MenuHint>
+          <div style={touchToggleRow}>
+            {HAPTIC_MODES.map((mode) => {
+              const active = settings.haptics === mode
+              return (
+                <MenuButton
+                  key={mode}
+                  variant={active ? 'primary' : 'secondary'}
+                  onClick={() => setHaptics(mode)}
+                  title={HAPTIC_MODE_DESCRIPTIONS[mode]}
+                >
+                  {HAPTIC_MODE_LABELS[mode]}
+                </MenuButton>
+              )
+            })}
+          </div>
+          <MenuHint>{HAPTIC_MODE_DESCRIPTIONS[settings.haptics]}</MenuHint>
         </MenuSection>
 
         <MenuSection title="Time of day">

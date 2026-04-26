@@ -35,6 +35,11 @@ import {
   BrakeLightModeSchema,
   type BrakeLightMode,
 } from './brakeLights'
+import {
+  DEFAULT_HAPTIC_MODE,
+  HapticModeSchema,
+  type HapticMode,
+} from './haptics'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -260,6 +265,12 @@ export interface ControlSettings {
   // mirror or when chasing the player car. Default 'auto' matches a real car
   // so the upgrade is opt-out.
   brakeLights: BrakeLightMode
+  // Haptic feedback (Vibration API) on lap completion, fresh personal best,
+  // and a fresh track-wide record. 'auto' fires only on touch devices (the
+  // buzz is meaningless on a hardwired desktop); 'on' always fires; 'off'
+  // suppresses every buzz. Default 'auto' so phone players opt in by default
+  // and desktop sessions stay quiet.
+  haptics: HapticMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -300,6 +311,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   respectTrackMood: true,
   headlights: DEFAULT_HEADLIGHT_MODE,
   brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
+  haptics: DEFAULT_HAPTIC_MODE,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -425,6 +437,11 @@ const ControlSettingsSchema = z.object({
   // payloads start showing red rear lamps while braking on the next race
   // (matches a real car) without having to dig into Settings.
   brakeLights: BrakeLightModeSchema.default(DEFAULT_BRAKE_LIGHT_MODE),
+  // Haptics landed after brake lights. Default 'auto' so phone players feel
+  // the buzz on the next race without having to dig into Settings; legacy
+  // stored payloads pick up the same default so the upgrade is opt-out, not
+  // opt-in.
+  haptics: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -457,6 +474,7 @@ export function cloneDefaultSettings(): ControlSettings {
     respectTrackMood: DEFAULT_CONTROL_SETTINGS.respectTrackMood,
     headlights: DEFAULT_CONTROL_SETTINGS.headlights,
     brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
+    haptics: DEFAULT_CONTROL_SETTINGS.haptics,
   }
 }
 

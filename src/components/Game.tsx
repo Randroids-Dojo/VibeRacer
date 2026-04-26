@@ -14,6 +14,7 @@ import type { Weather } from '@/lib/weather'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
+import type { HapticMode } from '@/lib/haptics'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -137,6 +138,7 @@ import {
 import { TitleMusic } from './TitleMusic'
 import { buildSharePayload, shareOrCopy } from '@/lib/share'
 import { buildToastWithRank, isLapRankInfo } from '@/lib/lapToast'
+import { fireHaptic, isTouchRuntime, shouldHapticFire } from '@/lib/haptics'
 
 export type ToastKind = 'lap' | 'pb' | 'record'
 
@@ -487,6 +489,13 @@ function GameSession({
   // live driver input against the player's preference each frame.
   const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
   brakeLightModeRef.current = settings.brakeLights
+  // Mirror the haptics mode into a ref so handleLapComplete reads the freshest
+  // pick without depending on a stale closure. Mode (not a resolved boolean)
+  // is the source of truth: shouldHapticFire reconciles it against the live
+  // touch-runtime detection at fire time so a player who plugs in a phone
+  // mid-session feels the buzz on the next lap without restarting.
+  const hapticsModeRef = useRef<HapticMode>(settings.haptics)
+  hapticsModeRef.current = settings.haptics
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -1427,6 +1436,14 @@ function GameSession({
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
     else playLapStinger()
+    // Tactile cue mirrors the audio outcome: a short pulse for every lap, a
+    // longer double-pulse for a fresh personal best, a triple-pulse for a
+    // fresh track-wide record. The mode picker (`settings.haptics`) plus the
+    // touch-runtime check are folded into a single shouldHapticFire decision
+    // so a desktop session with mode 'auto' never buzzes.
+    if (shouldHapticFire(hapticsModeRef.current, isTouchRuntime())) {
+      fireHaptic(outcome)
+    }
     if (outcome === 'record' || outcome === 'pb') {
       setConfettiKind(outcome)
       setConfettiKey((k) => k + 1)
