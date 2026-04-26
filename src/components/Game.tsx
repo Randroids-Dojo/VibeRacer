@@ -178,6 +178,10 @@ function GameSession({
       targetLerp: lerps.targetLerp,
     }
   }
+  // Mirrors the player's chosen paint into the rAF loop. Same pattern as
+  // showGhostRef: RaceCanvas polls this each frame and reapplies on change.
+  const carPaintRef = useRef<string | null>(settings.carPaint)
+  carPaintRef.current = settings.carPaint
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -529,6 +533,7 @@ function GameSession({
         activeGhostRef={activeGhostRef}
         showGhostRef={showGhostRef}
         cameraRigRef={cameraRigRef}
+        carPaintRef={carPaintRef}
         onLapReplay={handleLapReplay}
         style={canvasStyle}
       />

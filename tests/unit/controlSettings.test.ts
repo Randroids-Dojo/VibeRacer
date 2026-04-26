@@ -203,6 +203,43 @@ describe('localStorage round-trip', () => {
     })
     expect(readStoredControlSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
   })
+
+  it('defaults carPaint to null (stock colormap)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.carPaint).toBeNull()
+    expect(cloneDefaultSettings().carPaint).toBeNull()
+  })
+
+  it('round-trips a chosen paint hex', () => {
+    const custom = cloneDefaultSettings()
+    custom.carPaint = '#3b6cf4'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().carPaint).toBe('#3b6cf4')
+  })
+
+  it('lowercases stored carPaint hex on read', () => {
+    const custom = cloneDefaultSettings()
+    custom.carPaint = '#3B6CF4'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().carPaint).toBe('#3b6cf4')
+  })
+
+  it('backfills carPaint when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+    })
+    expect(readStoredControlSettings().carPaint).toBeNull()
+  })
+
+  it('falls back to defaults when stored carPaint is malformed', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      carPaint: 'not-a-hex',
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
 })
 
 describe('camera defaults', () => {

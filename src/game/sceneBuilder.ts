@@ -40,6 +40,11 @@ export interface SceneBundle {
   scene: Scene
   camera: PerspectiveCamera
   car: Group
+  // Recolor the body mesh of the player car. `null` restores the stock
+  // colormap baked into the GLB. Safe to call before the GLB has finished
+  // loading: the requested paint is buffered and applied as soon as the
+  // mesh appears.
+  setCarPaint: (paintHex: string | null) => void
   dispose: () => void
 }
 
@@ -177,8 +182,73 @@ function buildCarFrame(
   return { car: outer, cancel: () => { cancelled = true } }
 }
 
-function buildCar(): { car: Group; cancel: () => void } {
-  return buildCarFrame()
+// Player car with a paint hook. The Kenney race car GLB exposes the body as
+// a single mesh node named "body" sharing the colormap atlas with the
+// wheels. To recolor only the chassis we clone the material on the body
+// node, drop the `.map` reference (the body region of the atlas is solid
+// red, so dropping it gives a clean unicolor repaint), and tint to the
+// requested hex. `null` restores the original shared material so wheels
+// stay in the same family. The setter is exposed so live Settings updates
+// can reach the renderer without rebuilding the scene.
+function buildCar(): {
+  car: Group
+  setPaint: (hex: string | null) => void
+  cancel: () => void
+} {
+  let bodyMesh: Mesh | null = null
+  let originalBodyMaterial: Material | null = null
+  let paintMaterial: MeshStandardMaterial | null = null
+  // Buffer the paint requested before the GLB resolves so the first apply
+  // happens the moment the mesh appears.
+  let pendingHex: string | null = null
+
+  function applyPaint(hex: string | null) {
+    if (!bodyMesh || !originalBodyMaterial) return
+    if (hex === null) {
+      // Restore stock. Keep the paint material around so a re-apply can
+      // reuse it without churning GPU resources.
+      bodyMesh.material = originalBodyMaterial
+      return
+    }
+    if (!paintMaterial) {
+      paintMaterial = new MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.5,
+        metalness: 0.05,
+      })
+    }
+    paintMaterial.color.set(hex)
+    bodyMesh.material = paintMaterial
+  }
+
+  const { car, cancel: cancelLoad } = buildCarFrame((clone) => {
+    clone.traverse((obj) => {
+      if (bodyMesh) return
+      const mesh = obj as Mesh
+      if (!mesh.isMesh) return
+      // The Kenney GLB names the chassis node "body". Match prefix so a
+      // future re-export with a numeric suffix still works.
+      if (typeof mesh.name === 'string' && mesh.name.startsWith('body')) {
+        bodyMesh = mesh
+        const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+        originalBodyMaterial = mat ?? null
+      }
+    })
+    applyPaint(pendingHex)
+  })
+
+  return {
+    car,
+    setPaint: (hex: string | null) => {
+      pendingHex = hex
+      applyPaint(hex)
+    },
+    cancel: () => {
+      cancelLoad()
+      paintMaterial?.dispose()
+      paintMaterial = null
+    },
+  }
 }
 
 // Ghost variant of the player car: same GLB clone, but every material is
@@ -241,7 +311,7 @@ export function buildScene(path: TrackPath): SceneBundle {
   stripe.position.set(path.finishLine.position.x, 0.02, path.finishLine.position.z)
   scene.add(stripe)
 
-  const { car, cancel: cancelCar } = buildCar()
+  const { car, setPaint: setCarPaint, cancel: cancelCar } = buildCar()
   scene.add(car)
 
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
@@ -260,7 +330,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     mats.forEach((m) => m.dispose())
   }
 
-  return { scene, camera, car, dispose }
+  return { scene, camera, car, setCarPaint, dispose }
 }
 
 export interface CameraRigParams {

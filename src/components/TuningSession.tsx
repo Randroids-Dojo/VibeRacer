@@ -123,6 +123,9 @@ export function TuningSession({
       targetLerp: lerps.targetLerp,
     }
   }
+  // Same idea for car paint: the lab car wears the player's chosen color.
+  const carPaintRef = useRef<string | null>(settings.carPaint)
+  carPaintRef.current = settings.carPaint
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -280,6 +283,7 @@ export function TuningSession({
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
+            carPaintRef={carPaintRef}
             disableMusicIntensity
             style={canvasStyle}
           />

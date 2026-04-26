@@ -27,6 +27,7 @@ import { useClickSfx } from '@/hooks/useClickSfx'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
+import { CAR_PAINTS } from '@/lib/carPaint'
 import {
   MenuButton,
   MenuHeader,
@@ -217,6 +218,11 @@ export function SettingsPane({
 
   function setShowGhost(value: boolean) {
     onChange({ ...settings, showGhost: value })
+  }
+
+  function setCarPaint(value: string | null) {
+    clickSoft()
+    onChange({ ...settings, carPaint: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -430,6 +436,30 @@ export function SettingsPane({
           </div>
         </MenuSection>
 
+        <MenuSection title="Car paint">
+          <MenuHint>
+            Pick a paint color for your car. Stock keeps the original red
+            finish from the model. Wheels stay dark either way.
+          </MenuHint>
+          <div style={paintGrid}>
+            <PaintSwatch
+              label="Stock"
+              hex={null}
+              selected={settings.carPaint === null}
+              onClick={() => setCarPaint(null)}
+            />
+            {CAR_PAINTS.map((paint) => (
+              <PaintSwatch
+                key={paint.id}
+                label={paint.name}
+                hex={paint.hex}
+                selected={settings.carPaint === paint.hex}
+                onClick={() => setCarPaint(paint.hex)}
+              />
+            ))}
+          </div>
+        </MenuSection>
+
         <MenuSection title="Camera">
           <MenuHint>
             Tune the trailing chase camera. Higher views see more of the track,
@@ -523,6 +553,44 @@ function truncatePadId(id: string | null): string {
   if (trimmed.length <= 38) return trimmed
   return trimmed.slice(0, 35) + '...'
 }
+
+function PaintSwatch({
+  label,
+  hex,
+  selected,
+  onClick,
+}: {
+  label: string
+  // `null` for the stock entry, which renders a checker pattern so it does
+  // not look like a missing swatch.
+  hex: string | null
+  selected: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...swatchBtn,
+        borderColor: selected ? '#ffb74d' : '#3a3a3a',
+        boxShadow: selected ? '0 0 0 2px rgba(255,183,77,0.35)' : 'none',
+      }}
+      aria-label={`Paint: ${label}`}
+      aria-pressed={selected}
+    >
+      <span
+        style={{
+          ...swatchChip,
+          background: hex ?? STOCK_SWATCH_BG,
+        }}
+      />
+      <span style={swatchLabel}>{label}</span>
+    </button>
+  )
+}
+
+const STOCK_SWATCH_BG =
+  'repeating-conic-gradient(#bbb 0% 25%, #777 0% 50%) 50% / 12px 12px'
 
 function KeySlot({
   label,
@@ -665,4 +733,35 @@ const cameraResetRow: React.CSSProperties = {
   display: 'flex',
   justifyContent: 'flex-end',
   marginTop: 4,
+}
+const paintGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fill, minmax(82px, 1fr))',
+  gap: 8,
+}
+const swatchBtn: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 6,
+  padding: '8px 4px 6px',
+  borderRadius: 8,
+  border: '2px solid #3a3a3a',
+  background: 'rgba(255,255,255,0.04)',
+  cursor: 'pointer',
+  color: 'white',
+  transition: 'border-color 120ms ease, box-shadow 120ms ease',
+}
+const swatchChip: React.CSSProperties = {
+  width: 36,
+  height: 36,
+  borderRadius: '50%',
+  border: '1px solid rgba(0,0,0,0.4)',
+  display: 'block',
+}
+const swatchLabel: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 600,
+  letterSpacing: 0.4,
+  textTransform: 'uppercase',
 }

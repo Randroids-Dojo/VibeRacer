@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { CarPaintSettingSchema } from './carPaint'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -58,6 +59,10 @@ export interface ControlSettings {
   touchMode: TouchMode
   showGhost: boolean
   camera: CameraRigSettings
+  // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
+  // Stored as a string so the Settings UI can compare directly against the
+  // palette in `src/lib/carPaint.ts`.
+  carPaint: string | null
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -73,6 +78,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   touchMode: 'single',
   showGhost: true,
   camera: DEFAULT_CAMERA_SETTINGS,
+  carPaint: null,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -107,6 +113,8 @@ const ControlSettingsSchema = z.object({
   // defaults when reading legacy localStorage payloads so existing users do
   // not see a broken Settings pane.
   camera: CameraRigSettingsSchema.default(DEFAULT_CAMERA_SETTINGS),
+  // Car paint also landed later. Null = stock colormap from the GLB.
+  carPaint: CarPaintSettingSchema.default(null),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -119,6 +127,7 @@ export function cloneDefaultSettings(): ControlSettings {
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
     camera: cloneDefaultCameraSettings(),
+    carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
   }
 }
 

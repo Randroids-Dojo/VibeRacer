@@ -64,6 +64,11 @@ export interface RaceCanvasProps {
   // frame so a slider tweak in the pause menu takes effect on resume without
   // rebuilding the renderer.
   cameraRigRef?: MutableRefObject<CameraRigParams | null>
+  // Live car-paint override from Settings. Same ref pattern as
+  // `cameraRigRef`: the rAF loop polls it and reapplies whenever the value
+  // changes so a swatch click in the pause menu repaints the car on the
+  // next frame.
+  carPaintRef?: MutableRefObject<string | null>
   // Fired when the recorder finishes a lap. Game.tsx decides whether to
   // persist the path locally and bundle it into the next /race/submit.
   onLapReplay?: (replay: Replay) => void
@@ -90,6 +95,7 @@ export function RaceCanvas({
   activeGhostRef,
   showGhostRef,
   cameraRigRef,
+  carPaintRef,
   onLapReplay,
   disableMusicIntensity,
   className,
@@ -113,6 +119,17 @@ export function RaceCanvas({
     const bundle = buildScene(path)
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+
+    // Apply the initial paint synchronously. The setter buffers internally
+    // when the GLB is still loading, so this is safe even on a cold cache.
+    let lastPaint: string | null | undefined = undefined
+    function syncPaint() {
+      const next = carPaintRef?.current ?? null
+      if (next === lastPaint) return
+      lastPaint = next
+      bundle.setCarPaint(next)
+    }
+    syncPaint()
 
     function resize() {
       const el = canvasRef.current
@@ -166,6 +183,10 @@ export function RaceCanvas({
 
     function loop(ts: number) {
       if (!running) return
+
+      // Reapply paint when the user picks a new swatch in Settings. Cheap:
+      // the setter compares string equality and short-circuits on a no-op.
+      syncPaint()
 
       if (pendingResetRef.current) {
         state = initGameState(path)
