@@ -326,6 +326,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Live split delta vs local PB (color-coded, pops in at each checkpoint, see below).
 - Pause button (always visible on touch devices).
 - Minimap (bottom-right, top-down, toggleable in Settings).
+- Speedometer (bottom-center, swept needle plus numeric readout, toggleable in Settings).
 
 ### Minimap
 
@@ -344,6 +345,14 @@ Pure helpers live in `src/game/skidMarks.ts`. `shouldSpawnSkidMark(intensity, sp
 `buildSkidMarkLayer(poolSize)` in `src/game/sceneBuilder.ts` owns the renderer side: a `Group` of `SKID_MARK_POOL_SIZE = 220` pre-allocated `MeshBasicMaterial` quads sharing one `PlaneGeometry`. Each spawn places two stripes (one per rear wheel) offset perpendicular to the heading by `SKID_MARK_REAR_OFFSET = 1.05` and back along `SKID_MARK_REAR_BACK = 1.4`. `tick(nowMs)` updates per-mark opacity each frame; `clear()` resets the pool on a Restart so a new lap starts on a clean track. The layer's materials and geometry are released through the bundle's existing scene-traversal `dispose` so there is no double-dispose path.
 
 `RaceCanvas.tsx` reads the existing `skidIntensity` heuristic from `audio.ts` to feed the spawn decision and polls `showSkidMarksRef` each frame so a Settings flip lands without rebuilding the renderer. Tests: `tests/unit/skidMarks.test.ts` covers spawn gating (intensity floor, speed floor, interval debounce, custom interval), alpha ramp (peak at age 0, zero at fade end, midpoint linearity, peak clamping, custom fade), peak alpha scaling, and ring-buffer wrap including a custom pool size and the defensive zero-pool case. Toggle coverage in `tests/unit/controlSettings.test.ts` (default, round-trip, legacy backfill).
+
+### Speedometer
+
+A bottom-center HUD card shows the player's live speed as a swept needle plus a large numeric readout. The dial sweeps from zero on the left to the player's current tuning `maxSpeed` on the right, with a hot-zone tint near the top end. A small REV badge fades in when the car is moving in reverse so the readout (which always shows the magnitude) stays unambiguous. The card is opt-out and toggleable from the Settings pane (`showSpeedometer: boolean` in `ControlSettings`, default on, persisted via the existing `viberacer.controls` localStorage key). The chosen unit (`speedUnit: 'mph' | 'kmh' | 'us'`, default `mph`) sits next to the toggle and applies live without restarting the race.
+
+Pure helpers live in `src/lib/speedometer.ts` (`SPEED_UNITS`, `SpeedUnitSchema`, `convertSpeed`, `formatSpeed`, `unitLabel`, `speedFraction`, plus `MPS_TO_MPH` and `MPS_TO_KMH` constants). The integrator's world units are treated as meters for display so the stock `maxSpeed = 26` reads as ~58 mph or ~94 km/h. Negative speeds (reverse) collapse to their absolute value for the numeric readout and clamp to zero for the gauge needle. `formatSpeed` rounds mph and km/h to whole numbers and prints raw u/s with one decimal so the tuning unit stays useful.
+
+`src/components/Speedometer.tsx` owns its own rAF loop and writes the SVG needle's `transform` attribute and the readout's `textContent` directly so the 60 Hz update never sends React re-renders into the rest of the HUD tree. `RaceCanvas.tsx` writes the live signed speed into `speedOutRef` every frame; `Game.tsx` owns the ref alongside a `maxSpeedRef` mirroring `tuning.maxSpeed` so a slider tweak in TuningPanel reshapes the dial range immediately. The Speedometer is only mounted during the `racing` phase and unmounts on pause so it does not collide with the pause overlay. Tests: `tests/unit/speedometer.test.ts` covers unit enumeration, schema validation, conversion constants, format rounding, reverse magnitude, defensive non-finite handling, and `speedFraction` clamping with bad max-speed inputs. Toggle and unit coverage in `tests/unit/controlSettings.test.ts` (default, round-trip, legacy backfill, malformed-unit rejection).
 
 ### Live split delta vs PB
 

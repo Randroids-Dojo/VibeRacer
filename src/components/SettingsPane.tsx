@@ -28,6 +28,7 @@ import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import { CAR_PAINTS } from '@/lib/carPaint'
+import { SPEED_UNITS, unitLabel, type SpeedUnit } from '@/lib/speedometer'
 import {
   MenuButton,
   MenuHeader,
@@ -226,6 +227,15 @@ export function SettingsPane({
 
   function setShowSkidMarks(value: boolean) {
     onChange({ ...settings, showSkidMarks: value })
+  }
+
+  function setShowSpeedometer(value: boolean) {
+    onChange({ ...settings, showSpeedometer: value })
+  }
+
+  function setSpeedUnit(unit: SpeedUnit) {
+    clickSoft()
+    onChange({ ...settings, speedUnit: unit })
   }
 
   function setCarPaint(value: string | null) {
@@ -472,6 +482,35 @@ export function SettingsPane({
                 value={settings.showSkidMarks}
                 onChange={setShowSkidMarks}
               />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Speedometer</div>
+            <MenuHint>
+              Bottom-center dial that shows your live speed plus a swept
+              needle from zero to your tuning&apos;s top speed.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show speedometer</div>
+              <MenuToggle
+                value={settings.showSpeedometer}
+                onChange={setShowSpeedometer}
+              />
+            </div>
+            <div style={touchToggleRow}>
+              {SPEED_UNITS.map((unit) => (
+                <MenuButton
+                  key={unit}
+                  variant={
+                    settings.speedUnit === unit ? 'primary' : 'secondary'
+                  }
+                  disabled={!settings.showSpeedometer}
+                  onClick={() => setSpeedUnit(unit)}
+                >
+                  {unitLabel(unit)}
+                </MenuButton>
+              ))}
             </div>
           </div>
         </MenuSection>

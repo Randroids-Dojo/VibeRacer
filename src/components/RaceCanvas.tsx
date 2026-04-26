@@ -85,6 +85,9 @@ export interface RaceCanvasProps {
   // tuning lab can skip the wiring.
   carPoseOutRef?: MutableRefObject<{ x: number; z: number; heading: number } | null>
   ghostPoseOutRef?: MutableRefObject<{ x: number; z: number; heading: number } | null>
+  // Same pattern for the player's signed speed (world units / second). The
+  // speedometer overlay reads it from its own rAF loop.
+  speedOutRef?: MutableRefObject<number>
   // Fired when the recorder finishes a lap. Game.tsx decides whether to
   // persist the path locally and bundle it into the next /race/submit.
   onLapReplay?: (replay: Replay) => void
@@ -120,6 +123,7 @@ export function RaceCanvas({
   showSkidMarksRef,
   carPoseOutRef,
   ghostPoseOutRef,
+  speedOutRef,
   onLapReplay,
   onCheckpointHit,
   disableMusicIntensity,
@@ -229,6 +233,7 @@ export function RaceCanvas({
           carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
         }
         if (ghostPoseOutRef) ghostPoseOutRef.current = null
+        if (speedOutRef) speedOutRef.current = 0
         resetRecording()
         bundle.skidMarks.clear()
         lastSkidSpawnTs = -Infinity
@@ -329,6 +334,9 @@ export function RaceCanvas({
       // loop so React state never has to fan out.
       if (carPoseOutRef) {
         carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
+      }
+      if (speedOutRef) {
+        speedOutRef.current = state.speed
       }
       updateCameraRig(
         rig,

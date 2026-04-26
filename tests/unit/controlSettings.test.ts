@@ -283,6 +283,44 @@ describe('localStorage round-trip', () => {
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
+
+  it('defaults showSpeedometer to true and speedUnit to mph', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showSpeedometer).toBe(true)
+    expect(DEFAULT_CONTROL_SETTINGS.speedUnit).toBe('mph')
+    expect(cloneDefaultSettings().showSpeedometer).toBe(true)
+    expect(cloneDefaultSettings().speedUnit).toBe('mph')
+  })
+
+  it('round-trips a disabled speedometer with a non-default unit', () => {
+    const custom = cloneDefaultSettings()
+    custom.showSpeedometer = false
+    custom.speedUnit = 'kmh'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills speedometer flags when reading legacy storage that omits them', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    const out = readStoredControlSettings()
+    expect(out.showSpeedometer).toBe(true)
+    expect(out.speedUnit).toBe('mph')
+  })
+
+  it('falls back to defaults when stored speedUnit is malformed', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      speedUnit: 'knots',
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
 })
 
 describe('camera defaults', () => {

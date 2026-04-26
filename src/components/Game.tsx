@@ -24,6 +24,7 @@ import { SettingsPane } from './SettingsPane'
 import { TuningPanel } from './TuningPanel'
 import { Minimap, type MinimapPose } from './Minimap'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
+import { Speedometer } from './Speedometer'
 import {
   readLocalBest,
   writeLocalBest,
@@ -203,6 +204,15 @@ function GameSession({
   // that mounts / unmounts the Minimap does not lose the live position.
   const minimapCarPoseRef = useRef<MinimapPose | null>(null)
   const minimapGhostPoseRef = useRef<MinimapPose | null>(null)
+  // Live signed speed (world units / s). Speedometer overlay reads it from
+  // its own rAF loop so the readout updates at 60 Hz without sending React
+  // re-renders into the rest of the HUD tree.
+  const speedRef = useRef<number>(0)
+  // Mirrors the live tuning's maxSpeed for the gauge needle. Updated each
+  // render from `tuning` so a slider tweak in TuningPanel reshapes the dial
+  // immediately.
+  const maxSpeedRef = useRef<number>(tuning.maxSpeed)
+  maxSpeedRef.current = tuning.maxSpeed
   // PB checkpoint splits. Loaded once on mount and overwritten each time the
   // player posts a new all-time PB so the live "delta vs PB" tile always
   // compares against the freshest reference. A ref (not state) so updates do
@@ -613,6 +623,7 @@ function GameSession({
         showSkidMarksRef={showSkidMarksRef}
         carPoseOutRef={minimapCarPoseRef}
         ghostPoseOutRef={minimapGhostPoseRef}
+        speedOutRef={speedRef}
         onLapReplay={handleLapReplay}
         onCheckpointHit={handleCheckpointHit}
         style={canvasStyle}
@@ -623,6 +634,13 @@ function GameSession({
           checkpointCount={checkpointCount}
           carPoseRef={minimapCarPoseRef}
           ghostPoseRef={settings.showGhost ? minimapGhostPoseRef : undefined}
+        />
+      ) : null}
+      {settings.showSpeedometer && phase === 'racing' && !paused ? (
+        <Speedometer
+          speedRef={speedRef}
+          maxSpeedRef={maxSpeedRef}
+          unit={settings.speedUnit}
         />
       ) : null}
       <HUD

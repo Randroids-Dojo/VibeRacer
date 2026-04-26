@@ -1,5 +1,10 @@
 import { z } from 'zod'
 import { CarPaintSettingSchema } from './carPaint'
+import {
+  DEFAULT_SPEED_UNIT,
+  SpeedUnitSchema,
+  type SpeedUnit,
+} from './speedometer'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -66,6 +71,11 @@ export interface ControlSettings {
   // Cheap to render (a fixed-size pool of fading quads) so default on; the
   // toggle is here for users who want a fully clean track surface.
   showSkidMarks: boolean
+  // Toggle the bottom-center speedometer overlay. Default on. The chosen
+  // unit is independent of the toggle: turning the readout off keeps the
+  // unit choice for whenever the player turns it back on.
+  showSpeedometer: boolean
+  speedUnit: SpeedUnit
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -87,6 +97,8 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showGhost: true,
   showMinimap: true,
   showSkidMarks: true,
+  showSpeedometer: true,
+  speedUnit: DEFAULT_SPEED_UNIT,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
 }
@@ -125,6 +137,10 @@ const ControlSettingsSchema = z.object({
   // Skid marks toggle landed later still; default on so legacy payloads
   // start showing them automatically without losing any other choices.
   showSkidMarks: z.boolean().default(true),
+  // Speedometer landed later. Default on so existing players see the new
+  // overlay on their next race; the unit choice backfills to mph.
+  showSpeedometer: z.boolean().default(true),
+  speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
   // not see a broken Settings pane.
@@ -144,6 +160,8 @@ export function cloneDefaultSettings(): ControlSettings {
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
+    showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
+    speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
   }
