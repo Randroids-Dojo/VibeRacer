@@ -55,21 +55,28 @@ export function moveStartTo(
 ): Piece[] {
   if (pieces.length === 0) return pieces
   if (pieces[0].row === row && pieces[0].col === col) return pieces
+  // Closed-loop fast path: rotate the array along travel order so the
+  // existing direction is preserved.
   try {
     const path = buildTrackPath(pieces)
-    // buildTrackPath returns a partial walk when the track is not a valid
-    // closed loop. Rotating a partial walk would drop the unwalked pieces,
-    // so bail out and leave the array alone.
-    if (path.order.length !== pieces.length) return pieces
-    const idx = path.order.findIndex(
-      (o) => o.piece.row === row && o.piece.col === col,
-    )
-    if (idx <= 0) return pieces
-    const rotated = [...path.order.slice(idx), ...path.order.slice(0, idx)]
-    return rotated.map((o) => o.piece)
+    if (path.order.length === pieces.length) {
+      const idx = path.order.findIndex(
+        (o) => o.piece.row === row && o.piece.col === col,
+      )
+      if (idx > 0) {
+        const rotated = [...path.order.slice(idx), ...path.order.slice(0, idx)]
+        return rotated.map((o) => o.piece)
+      }
+    }
   } catch {
-    return pieces
+    // fall through to the open-track behavior
   }
+  // Open-track fallback: just promote the picked piece to index 0 without
+  // dropping anything else. Travel direction will resolve naturally once
+  // the loop closes.
+  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  if (idx <= 0) return pieces
+  return [pieces[idx], ...pieces.slice(0, idx), ...pieces.slice(idx + 1)]
 }
 
 export function reverseStartDirection(pieces: Piece[]): Piece[] {

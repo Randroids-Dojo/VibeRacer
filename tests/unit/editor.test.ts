@@ -126,7 +126,7 @@ describe('moveStartTo', () => {
     expect(result).toBe(DEFAULT_TRACK_PIECES)
   })
 
-  it('does not drop pieces when the track is not a closed loop', () => {
+  it('promotes the picked piece to index 0 on an open track without dropping any', () => {
     // A dangling straight at (0, 0) and an orphan piece at (5, 5). The walker
     // from pieces[0] can't reach the orphan, and the loop isn't closed.
     const dangling: Piece[] = [
@@ -134,8 +134,11 @@ describe('moveStartTo', () => {
       { type: 'straight', row: 5, col: 5, rotation: 0 },
     ]
     const result = moveStartTo(dangling, 5, 5)
-    expect(result).toBe(dangling)
     expect(result.length).toBe(dangling.length)
+    expect(result[0]).toEqual(dangling[1])
+    const before = new Set(dangling.map((p) => `${p.row},${p.col}`))
+    const after = new Set(result.map((p) => `${p.row},${p.col}`))
+    expect(after).toEqual(before)
   })
 })
 

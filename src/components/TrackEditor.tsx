@@ -107,10 +107,9 @@ export function TrackEditor({
           ? reverseStartDirection(prev)
           : moveStartTo(prev, row, col)
       }
-      // Tapping an existing matching piece rotates it in place. Tapping
-      // empty or a different piece stamps the selected tool at its current
-      // rotation.
-      if (existing && existing.type === t) {
+      // Tapping any existing piece rotates it. To change the piece type,
+      // erase it first and then place the new one.
+      if (existing) {
         return withPieceRotated(prev, row, col)
       }
       const next = withPiecePlaced(prev, row, col, t, tr)
