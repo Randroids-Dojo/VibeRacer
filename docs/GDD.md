@@ -91,7 +91,7 @@ Trailing third-person camera, Forza Horizon style.
 
 ## 4. Controls
 
-**Status.** Partial. Keyboard (WASD + arrows + Space, all remappable) plus Esc-to-pause are live. Touch controls support both a dual-stick layout and a single-stick layout, switchable in Settings. The reserved Q/E shift keys and gamepad are still pending.
+**Status.** Partial. Keyboard (WASD + arrows + Space, all remappable) plus Esc-to-pause are live. Touch controls support both a dual-stick layout and a single-stick layout, switchable in Settings. Gamepad support (Standard layout: triggers for gas / brake, left stick for steering, RB for handbrake, Start to pause) is live. The reserved Q/E shift keys are still pending.
 
 ### Build log
 
@@ -108,7 +108,8 @@ Trailing third-person camera, Forza Horizon style.
 - Wiring: `src/components/SettingsLauncher.tsx` exposes the Settings button on the home page (`src/app/page.tsx`). The pause menu (`src/components/PauseMenu.tsx`) gains a Settings entry that switches `pauseView` to `'settings'` in `Game.tsx`.
 - Tests: `tests/unit/controlSettings.test.ts` covers default-binding lookup, rebind transfers across actions, immutability of inputs, slot growth past current length, clear bounds, key-code formatting, and the localStorage round-trip (defaults on missing or malformed payloads).
 - Initials editing: live. The Settings pane (`SettingsPane`) renders an "Identity" section with the current initials in an inline 3-letter input (uppercase A-Z, same `InitialsSchema` validation as the first-visit prompt). Saving calls `writeStoredInitials(value)` from `src/lib/initials.ts`, which writes the localStorage key `viberacer.initials` and dispatches a `viberacer:initials-changed` CustomEvent. `Game` subscribes to that event plus the cross-tab `storage` event so the HUD's RACER block reflects the new tag on the next frame without restarting the race. Mid-race edits affect future laps only; historical leaderboard entries keep their old tag (per `§7` and `§11`).
-- **Not yet landed.** Q/E shifter keys, gamepad.
+- Gamepad: live. `src/game/gamepadInput.ts` is a pure helper that maps the W3C Standard Gamepad layout to a `{axes:{steer,throttle}, keys:{...}, pausePressed}` payload (right trigger = forward, left trigger = brake / reverse, A / B as analog-trigger fallback, left stick X with deadzone for steering, dpad left / right overrides the stick, RB or X for handbrake, Start emits pause on the rising edge). `src/hooks/useGamepad.ts` polls `navigator.getGamepads()` on rAF, treats the first connected pad as active, and writes both the analog axes and the boolean keys onto the same `KeyInput` ref the keyboard owns. When the pad is idle (zero deflection, no buttons), it blanks `keys.current.axes` so a connected-but-unused controller does not lock out arrow keys. `KeyInput` gained an optional `axes` field; `RaceCanvas` reads it each frame and prefers it over the boolean derivation when set, which feeds analog values straight into `stepPhysics`. SFX (`steerAbs`, `throttle`) read from the same combined inputs so engine drone, skid, and rumble cues react to trigger pressure rather than just on / off. Last-input-wins now flips `inputModeRef` to `'gamepad'` whenever the analog axes are populated, so the leaderboard's input-mode badge surfaces a small controller icon (alongside keyboard / touch). `InputModeSchema` extended to `z.enum(['keyboard','touch','gamepad'])`. The Settings pane gained a Gamepad section under Controls that shows whether a controller is detected (live `gamepadconnected` listener plus a 1.5s poll) and explains the bindings. Bindings are not yet remappable. Tuning Lab also calls `useGamepad` so the practice loop benefits.
+- **Not yet landed.** Q/E shifter keys, gamepad-binding remap UI.
 
 ### Keyboard (defaults, remappable in Settings)
 
@@ -121,7 +122,7 @@ Trailing third-person camera, Forza Horizon style.
 | Handbrake       | `Space`               |
 | Shift up        | `E` (reserved)        |
 | Shift down      | `Q` (reserved)        |
-| Pause           | `Esc`                 |
+| Pause           | `Esc` (or gamepad Start) |
 
 Manual gearing is a stretch feature. Default car is automatic.
 

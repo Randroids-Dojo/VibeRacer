@@ -220,11 +220,20 @@ export function RaceCanvas({
       }
 
       const k = keys.current
+      // Prefer analog axes when a gamepad has populated them this frame so
+      // triggers + stick deflection feed stepPhysics directly. Falls back to
+      // the boolean keyboard / touch derivation otherwise.
+      const throttleInput = k.axes
+        ? k.axes.throttle
+        : (k.forward ? 1 : 0) + (k.backward ? -1 : 0)
+      const steerInput = k.axes
+        ? k.axes.steer
+        : (k.left ? 1 : 0) + (k.right ? -1 : 0)
       const result = tick(
         state,
         {
-          throttle: (k.forward ? 1 : 0) + (k.backward ? -1 : 0),
-          steer: (k.left ? 1 : 0) + (k.right ? -1 : 0),
+          throttle: throttleInput,
+          steer: steerInput,
           handbrake: k.handbrake,
         },
         dtMs,
@@ -285,8 +294,8 @@ export function RaceCanvas({
           startSkid()
           droneStarted = true
         }
-        const steerAbs = Math.abs((k.left ? 1 : 0) - (k.right ? 1 : 0))
-        const throttle = (k.forward ? 1 : 0) - (k.backward ? 1 : 0)
+        const steerAbs = Math.abs(steerInput)
+        const throttle = throttleInput
         updateDriveSfx({
           speedAbs: Math.abs(state.speed),
           maxSpeed: paramsRef.current.maxSpeed,

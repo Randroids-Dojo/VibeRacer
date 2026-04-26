@@ -171,7 +171,7 @@ export const CarParamsSchema = z.object({
   ),
 })
 
-export const InputModeSchema = z.enum(['keyboard', 'touch'])
+export const InputModeSchema = z.enum(['keyboard', 'touch', 'gamepad'])
 export type InputMode = z.infer<typeof InputModeSchema>
 
 export const TUNING_KEYS = TUNING_PARAM_META.map((m) => m.key)

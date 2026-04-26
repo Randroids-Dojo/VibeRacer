@@ -4,6 +4,7 @@ import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
 import type { LapCompleteEvent } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -215,6 +216,7 @@ function GameSession({
     keys.current.left = false
     keys.current.right = false
     keys.current.handbrake = false
+    keys.current.axes = null
     setPaused(false)
   }, [keys])
 
@@ -337,6 +339,27 @@ function GameSession({
       window.removeEventListener('pointerdown', onPointer)
     }
   }, [])
+
+  // Gamepad: routes Start to pause / resume and flags inputMode -> 'gamepad'
+  // any time analog axes are populated. Last-input-wins is shared with the
+  // keyboard / touch listeners above.
+  const handlePadPause = useCallback(() => {
+    if (phase !== 'racing') return
+    if (pausedRef.current) resume()
+    else pause()
+  }, [phase, pause, resume])
+  useGamepad(keys, handlePadPause)
+  useEffect(() => {
+    let raf = 0
+    function check() {
+      if (keys.current.axes !== null) {
+        inputModeRef.current = 'gamepad'
+      }
+      raf = requestAnimationFrame(check)
+    }
+    raf = requestAnimationFrame(check)
+    return () => cancelAnimationFrame(raf)
+  }, [keys])
 
   useEffect(() => {
     function onKey(e: KeyboardEvent) {

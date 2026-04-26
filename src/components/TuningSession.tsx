@@ -28,6 +28,7 @@ import {
 import { TUNING_PARAM_META } from '@/lib/tuningSettings'
 import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
@@ -70,6 +71,10 @@ export function TuningSession({
 }: Props) {
   const { settings } = useControlSettings()
   const keys = useKeyboard(settings.keyBindings)
+  // Gamepad polling shares the same KeyInput ref so analog axes feed straight
+  // into RaceCanvas. The Tuning Lab has no pause concept, so the toggle
+  // callback is a no-op.
+  useGamepad(keys)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [params, setParams] = useState<CarParams>(initialParams)

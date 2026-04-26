@@ -54,6 +54,10 @@ export function SettingsPane({
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
+  const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
+    connected: false,
+    id: null,
+  })
   const clickConfirm = useClickSfx('confirm')
   const clickSoft = useClickSfx('soft')
   const {
@@ -124,6 +128,38 @@ export function SettingsPane({
       typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
     setHasKeyboard(fineQuery.matches || !coarseQuery.matches)
     setHasTouch(coarseQuery.matches || fallbackTouch)
+  }, [])
+
+  // Show whether a gamepad is currently plugged in. Some browsers gate
+  // getGamepads() until the first connect event, so we listen to both.
+  useEffect(() => {
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return
+    function refresh() {
+      const pads = navigator.getGamepads()
+      for (let i = 0; i < pads.length; i++) {
+        const p = pads[i]
+        if (p && p.connected) {
+          setPad({ connected: true, id: p.id })
+          return
+        }
+      }
+      setPad({ connected: false, id: null })
+    }
+    refresh()
+    function onConnect(e: GamepadEvent) {
+      setPad({ connected: true, id: e.gamepad.id })
+    }
+    function onDisconnect() {
+      refresh()
+    }
+    window.addEventListener('gamepadconnected', onConnect)
+    window.addEventListener('gamepaddisconnected', onDisconnect)
+    const interval = window.setInterval(refresh, 1500)
+    return () => {
+      window.removeEventListener('gamepadconnected', onConnect)
+      window.removeEventListener('gamepaddisconnected', onDisconnect)
+      window.clearInterval(interval)
+    }
   }, [])
 
   useEffect(() => {
@@ -330,6 +366,29 @@ export function SettingsPane({
           ) : null}
 
           <div style={subSection}>
+            <div style={subTitle}>Gamepad</div>
+            <MenuHint>
+              Plug in a controller and the game uses the right trigger for
+              gas, the left trigger for brake / reverse, the left stick for
+              steering, the right shoulder for handbrake, and Start to pause.
+              The bindings are not yet remappable.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Status</div>
+              <div
+                style={{
+                  fontSize: 13,
+                  color: pad.connected ? '#5fe08a' : 'rgba(255,255,255,0.55)',
+                }}
+              >
+                {pad.connected
+                  ? `Detected: ${truncatePadId(pad.id)}`
+                  : 'No controller detected'}
+              </div>
+            </div>
+          </div>
+
+          <div style={subSection}>
             <div style={subTitle}>Ghost car</div>
             <MenuHint>
               Race a translucent car that drives the fastest known lap on this
@@ -372,6 +431,16 @@ export function SettingsPane({
       </MenuPanel>
     </MenuOverlay>
   )
+}
+
+function truncatePadId(id: string | null): string {
+  if (!id) return ''
+  // Browsers report a verbose vendor / product blob like
+  // "Wireless Controller (STANDARD GAMEPAD Vendor: 054c Product: 0ce6)".
+  // Strip the parenthetical so the chip stays readable.
+  const trimmed = id.replace(/\s*\([^)]*\)\s*$/, '').trim()
+  if (trimmed.length <= 38) return trimmed
+  return trimmed.slice(0, 35) + '...'
 }
 
 function KeySlot({
