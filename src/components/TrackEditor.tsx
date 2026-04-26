@@ -16,13 +16,15 @@ import {
   withPieceRotated,
 } from '@/game/editor'
 
-type Tool = 'erase' | PieceType
+type Tool = 'erase' | PieceType | 'start'
 const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90']
+const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
   left90: 'Left turn',
   right90: 'Right turn',
+  start: 'Set start',
 }
 
 interface TrackEditorProps {
@@ -83,12 +85,27 @@ export function TrackEditor({
   latestRef.current = { cellMap, startKey, error, tool, toolRotation }
 
   const applyTool = useCallback((row: number, col: number) => {
-    const { tool: t, toolRotation: tr, cellMap: cm, error: err } = latestRef.current
+    const {
+      tool: t,
+      toolRotation: tr,
+      cellMap: cm,
+      startKey: sk,
+      error: err,
+    } = latestRef.current
     const key = cellKey(row, col)
     const existing = cm.get(key)
     setPieces((prev) => {
       if (t === 'erase') {
         return existing ? withPieceRemoved(prev, row, col) : prev
+      }
+      if (t === 'start') {
+        // Mirrors the right-click semantics: re-tapping the current start
+        // reverses the loop direction; tapping any other piece relocates
+        // start to it. Tapping an empty cell is a no-op.
+        if (!existing) return prev
+        return key === sk
+          ? reverseStartDirection(prev)
+          : moveStartTo(prev, row, col)
       }
       // Tapping an existing matching piece rotates it in place. Tapping
       // empty or a different piece stamps the selected tool at its current
@@ -104,7 +121,9 @@ export function TrackEditor({
   }, [])
 
   function selectTool(next: Tool) {
-    if (next === tool && next !== 'erase') {
+    // Only piece tools have a rotation; tapping the same erase or start
+    // tool is a no-op.
+    if (next === tool && (PIECE_TOOLS as Tool[]).includes(next)) {
       setToolRotation((r) => nextRotation(r))
       return
     }
@@ -219,14 +238,16 @@ export function TrackEditor({
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
           Pick a tool below, then tap a cell to place it. Tap the selected
-          tool again to rotate it. Tap a placed piece to rotate it in place.
-          Right-click (or long-press on touch) a piece to make it the start.
+          tool again to rotate. Tap a placed piece to rotate it in place.
+          Right-click (or long-press on touch) is a shortcut for the Set
+          start tool.
         </div>
       </div>
 
       <div style={paletteBar} role="toolbar" aria-label="Piece palette">
-        {(['erase', ...PIECE_TOOLS] as Tool[]).map((t) => {
+        {TOOLS.map((t) => {
           const selected = t === tool
+          const isPiece = (PIECE_TOOLS as Tool[]).includes(t)
           return (
             <button
               key={t}
@@ -235,7 +256,7 @@ export function TrackEditor({
               style={selected ? toolBtnSelected : toolBtnIdle}
               aria-pressed={selected}
               aria-label={
-                selected && t !== 'erase'
+                selected && isPiece
                   ? `${TOOL_LABELS[t]}, tap again to rotate`
                   : TOOL_LABELS[t]
               }
@@ -243,6 +264,8 @@ export function TrackEditor({
               <svg width={36} height={36} viewBox={`0 0 ${CELL} ${CELL}`}>
                 {t === 'erase' ? (
                   <EraseGlyph />
+                ) : t === 'start' ? (
+                  <StartGlyph />
                 ) : (
                   <PieceGlyph
                     piece={{ type: t, row: 0, col: 0, rotation: toolRotation }}
@@ -253,15 +276,7 @@ export function TrackEditor({
             </button>
           )
         })}
-        {tool !== 'erase' ? (
-          <span style={paletteHint}>
-            Rotation {toolRotation}°. Tap the tile again to spin it.
-          </span>
-        ) : (
-          <span style={paletteHint}>
-            Tap a placed piece to remove it.
-          </span>
-        )}
+        <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
 
       <div style={gridWrap}>
@@ -448,6 +463,29 @@ const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }
     </g>
   )
 })
+
+function StartGlyph() {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  const r = CELL * 0.32
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={r} stroke="#6ee787" strokeWidth={3} fill="none" />
+      <polygon
+        points={`${cx - 7},${cy + 4} ${cx + 7},${cy + 4} ${cx},${cy - 8}`}
+        fill="#6ee787"
+      />
+    </g>
+  )
+}
+
+function paletteHintText(tool: Tool, rotation: Rotation): string {
+  if (tool === 'erase') return 'Tap a placed piece to remove it.'
+  if (tool === 'start') {
+    return 'Tap any piece to make it the start. Tap the current start to reverse direction.'
+  }
+  return `Rotation ${rotation}°. Tap the tile above to spin it.`
+}
 
 function EraseGlyph() {
   const cx = CELL / 2
