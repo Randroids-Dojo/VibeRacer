@@ -22,6 +22,7 @@ export default async function HomePage() {
         slug: r.slug,
         label: formatDate(r.updatedAt),
         pieces: r.pieces,
+        topTime: r.topTime,
       }))
     : SAMPLE_SLUGS.map((slug) => ({ slug, label: 'sample' }))
 

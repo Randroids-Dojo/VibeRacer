@@ -1,6 +1,8 @@
 import Link from 'next/link'
 import type { Piece } from '@/lib/schemas'
 import { buildTrackThumbnail } from '@/lib/trackThumbnail'
+import { formatLapTime } from '@/lib/share'
+import type { TopTime } from '@/lib/recentTracks'
 import { TrackThumbnail } from './TrackThumbnail'
 
 export interface RecentTrackListItem {
@@ -11,6 +13,11 @@ export interface RecentTrackListItem {
   // silhouette without opening it. When null, the row falls back to the
   // text-only layout used before previews shipped.
   pieces?: Piece[] | null
+  // Optional top time on the latest version of this track. When present a
+  // small badge with the leader's initials and lap time is shown on the
+  // right of the row so a browsing player sees the record holder at a
+  // glance. Null and undefined both render no badge.
+  topTime?: TopTime | null
 }
 
 interface Props {
@@ -22,6 +29,7 @@ export function RecentTrackList({ items }: Props) {
     <ul style={listStyle}>
       {items.map((item) => {
         const thumb = item.pieces ? buildTrackThumbnail(item.pieces) : null
+        const top = item.topTime ?? null
         return (
           <li key={item.slug}>
             <Link href={`/${item.slug}`} style={rowStyle}>
@@ -37,7 +45,21 @@ export function RecentTrackList({ items }: Props) {
                 )}
               </span>
               <span style={textColStyle}>
-                <span style={slugStyle}>/{item.slug}</span>
+                <span style={slugColStyle}>
+                  <span style={slugStyle}>/{item.slug}</span>
+                  {top ? (
+                    <span
+                      style={topTimeStyle}
+                      title={`${top.initials} holds the record at ${formatLapTime(top.lapTimeMs)}`}
+                      aria-label={`Track record: ${top.initials} ${formatLapTime(top.lapTimeMs)}`}
+                    >
+                      <span style={topTimeInitialsStyle}>{top.initials}</span>
+                      <span style={topTimeValueStyle}>
+                        {formatLapTime(top.lapTimeMs)}
+                      </span>
+                    </span>
+                  ) : null}
+                </span>
                 <span style={labelStyle}>{item.label}</span>
               </span>
             </Link>
@@ -86,21 +108,54 @@ const previewPlaceholderStyle: React.CSSProperties = {
 }
 const textColStyle: React.CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
+  flexDirection: 'column',
+  justifyContent: 'center',
+  alignItems: 'stretch',
   flex: 1,
   minWidth: 0,
-  gap: 12,
+  gap: 4,
+}
+const slugColStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 0,
 }
 const slugStyle: React.CSSProperties = {
   fontFamily: 'monospace',
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+  flex: 1,
+  minWidth: 0,
 }
 const labelStyle: React.CSSProperties = {
-  fontSize: 12,
-  opacity: 0.7,
+  fontSize: 11,
+  opacity: 0.6,
   fontFamily: 'monospace',
+}
+// The top-time badge sits at the right edge of the slug row. Two stacked
+// monospace pieces (initials in gold, time in plain mono) so the eye can
+// scan a column of badges down the list and compare times without parsing
+// the slug text alongside it.
+const topTimeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'baseline',
+  gap: 6,
+  padding: '2px 8px',
+  background: 'rgba(255, 215, 80, 0.14)',
+  border: '1px solid rgba(255, 215, 80, 0.35)',
+  borderRadius: 6,
   flex: '0 0 auto',
+  fontSize: 11,
+  fontFamily: 'monospace',
+  letterSpacing: 0.5,
+  whiteSpace: 'nowrap',
+}
+const topTimeInitialsStyle: React.CSSProperties = {
+  color: '#ffd750',
+  fontWeight: 700,
+}
+const topTimeValueStyle: React.CSSProperties = {
+  color: 'rgba(255,255,255,0.9)',
 }

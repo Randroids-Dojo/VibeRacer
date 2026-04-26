@@ -37,6 +37,7 @@ export function SlugLanding({ slug, recent }: Props) {
                 slug: r.slug,
                 label: formatDate(r.updatedAt),
                 pieces: r.pieces,
+                topTime: r.topTime,
               }))}
             />
           )}

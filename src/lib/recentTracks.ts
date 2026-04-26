@@ -15,8 +15,21 @@ export interface RecentTrack {
   updatedAt: number
 }
 
+// Top time on the latest version of a track. Shown as a small badge on the
+// track row so a player browsing the home page can see who currently holds
+// the record on each track without opening it. Composite member format mirrors
+// the leaderboard zset: `initials:racerId:ts:nonce`.
+export interface TopTime {
+  initials: string
+  lapTimeMs: number
+}
+
 export interface RecentTrackPreview extends RecentTrack {
   pieces: Piece[] | null
+  // Latest version's track record. Null when KV has no entries for this
+  // slug's latest version, or when KV is unreachable. The row degrades to
+  // showing no badge in either case.
+  topTime: TopTime | null
 }
 
 interface ZRangeCapable {
@@ -26,6 +39,52 @@ interface ZRangeCapable {
     stop: number,
     opts?: { withScores?: boolean; rev?: boolean },
   ): Promise<unknown[]>
+}
+
+interface ZRangeAndGetCapable extends ZRangeCapable {
+  get<T = unknown>(key: string): Promise<T | null>
+}
+
+// Parse the rank-1 leaderboard entry out of an Upstash `zrange withScores`
+// response. The composite member is `initials:racerId:ts:nonce`; the score
+// is the lap time in ms. Returns `null` for missing / malformed inputs so
+// callers can degrade gracefully without try/catch.
+export function parseTopTimeFromZrange(raw: unknown[]): TopTime | null {
+  if (!Array.isArray(raw) || raw.length < 2) return null
+  const memberRaw = raw[0]
+  const scoreRaw = raw[1]
+  const member = typeof memberRaw === 'string' ? memberRaw : String(memberRaw)
+  const lapTimeMs = Number(scoreRaw)
+  if (!Number.isFinite(lapTimeMs) || lapTimeMs <= 0) return null
+  // Cap at hour-scale to silently drop obviously malformed scores.
+  if (lapTimeMs > 60 * 60 * 1000) return null
+  const parts = member.split(':')
+  if (parts.length < 4) return null
+  const initials = parts[0]
+  if (!/^[A-Z]{3}$/.test(initials)) return null
+  return { initials, lapTimeMs: Math.round(lapTimeMs) }
+}
+
+// Fetch the rank-1 (fastest) entry for a slug's latest version. Returns null
+// when the slug has no saved track, no leaderboard entries, or KV throws.
+// Pure-ish: takes a kv-shaped object so tests can drop in `FakeKv`.
+export async function fetchTopTimeForSlug(
+  kv: ZRangeAndGetCapable,
+  slug: string,
+): Promise<TopTime | null> {
+  try {
+    const latestHash = await kv.get<string>(kvKeys.trackLatest(slug))
+    if (!latestHash || typeof latestHash !== 'string') return null
+    const raw = await kv.zrange(
+      kvKeys.leaderboard(slug, latestHash),
+      0,
+      0,
+      { withScores: true },
+    )
+    return parseTopTimeFromZrange(raw)
+  } catch {
+    return null
+  }
 }
 
 export async function readRecentTracks(
@@ -71,9 +130,10 @@ export async function loadRecentTracksSafe(
 }
 
 // Same as loadRecentTracksSafe but also pulls each track's latest pieces so
-// callers can render preview thumbnails. KV failures degrade to `pieces:
-// null` on the affected row rather than dropping the row entirely so the
-// list stays visually stable.
+// callers can render preview thumbnails plus the track's current top time
+// so the row can show a leader badge. KV failures degrade to `pieces: null`
+// and `topTime: null` on the affected row rather than dropping the row
+// entirely so the list stays visually stable.
 export async function loadRecentTrackPreviewsSafe(
   excludeSlug: string | null = null,
   limit: number = RECENT_TRACKS_DEFAULT_LIMIT,
@@ -82,21 +142,33 @@ export async function loadRecentTrackPreviewsSafe(
   if (recents.length === 0) return []
   const previewable = recents.slice(0, RECENT_TRACKS_PREVIEW_MAX)
   const trailing = recents.slice(RECENT_TRACKS_PREVIEW_MAX)
+  let kv: ZRangeAndGetCapable | null = null
+  if (hasKvConfigured()) {
+    try {
+      const { getKv } = await import('./kv')
+      kv = getKv() as unknown as ZRangeAndGetCapable
+    } catch {
+      kv = null
+    }
+  }
   const previews = await Promise.all(
     previewable.map(async (r): Promise<RecentTrackPreview> => {
-      try {
-        const result = await loadTrack(r.slug)
-        if (result.kind === 'ok') {
-          return { ...r, pieces: result.pieces }
-        }
-        return { ...r, pieces: null }
-      } catch {
-        return { ...r, pieces: null }
-      }
+      const [piecesRes, topTime] = await Promise.all([
+        loadTrack(r.slug)
+          .then((result) =>
+            result.kind === 'ok' ? (result.pieces as Piece[]) : null,
+          )
+          .catch(() => null),
+        kv ? fetchTopTimeForSlug(kv, r.slug) : Promise.resolve(null),
+      ])
+      return { ...r, pieces: piecesRes, topTime }
     }),
   )
   // Append any rows we did not preview (extremely rare, only when limit was
   // bumped past the cap) so the visible list still matches the requested
   // count.
-  return [...previews, ...trailing.map((r) => ({ ...r, pieces: null }))]
+  return [
+    ...previews,
+    ...trailing.map((r) => ({ ...r, pieces: null, topTime: null })),
+  ]
 }
