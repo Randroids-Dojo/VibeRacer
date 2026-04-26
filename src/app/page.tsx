@@ -10,6 +10,7 @@ import { TitleBackground } from '@/components/TitleBackground'
 import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
+import { MyPbs } from '@/components/MyPbs'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -53,6 +54,8 @@ export default async function HomePage() {
             </div>
             <RecentTrackList items={items} />
           </div>
+
+          <MyPbs />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
