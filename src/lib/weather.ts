@@ -14,7 +14,7 @@ import { z } from 'zod'
 // sky color, ambient color, and sun direction, then the weather preset mixes a
 // fog tint into the sky and applies the multipliers below.
 
-export const WEATHER_NAMES = ['clear', 'cloudy', 'foggy', 'rainy'] as const
+export const WEATHER_NAMES = ['clear', 'cloudy', 'foggy', 'rainy', 'snowy'] as const
 export type Weather = (typeof WEATHER_NAMES)[number]
 
 export const DEFAULT_WEATHER: Weather = 'clear'
@@ -29,6 +29,7 @@ export const WEATHER_LABELS: Record<Weather, string> = {
   cloudy: 'Cloudy',
   foggy: 'Foggy',
   rainy: 'Rainy',
+  snowy: 'Snowy',
 }
 
 // A short blurb shown beneath the swatch so the player knows what they are
@@ -38,6 +39,7 @@ export const WEATHER_DESCRIPTIONS: Record<Weather, string> = {
   cloudy: 'Light overcast. Far props soften into a thin haze.',
   foggy: 'Thick fog rolls in. Vision drops to the next corner.',
   rainy: 'Steady downpour with falling streaks and a grey overcast.',
+  snowy: 'Light snowfall drifts down through a pale overcast sky.',
 }
 
 export interface WeatherPreset {
@@ -100,6 +102,18 @@ const RAW_PRESETS: Record<Weather, WeatherPreset> = {
     skyTintMix: 0.6,
     ambientMultiplier: 1.1,
     sunMultiplier: 0.55,
+  },
+  snowy: {
+    // Pale overcast similar to cloudy but with a colder grey-blue fog tint
+    // and a lifted ambient so the white flakes (rendered by the snow layer)
+    // pop against the road. The snowfall is what sells the weather; fog
+    // density sits just above cloudy so the horizon softens without drowning
+    // distant corners.
+    fogDensity: 0.014,
+    fogColor: 0xd6dde6,
+    skyTintMix: 0.55,
+    ambientMultiplier: 1.2,
+    sunMultiplier: 0.7,
   },
 }
 

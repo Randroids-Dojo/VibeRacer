@@ -46,7 +46,7 @@ describe('WeatherSchema', () => {
   })
 
   it('rejects unknown strings', () => {
-    expect(() => WeatherSchema.parse('snowy')).toThrow()
+    expect(() => WeatherSchema.parse('hailstorm')).toThrow()
     expect(() => WeatherSchema.parse('')).toThrow()
     expect(() => WeatherSchema.parse(123)).toThrow()
   })
@@ -60,7 +60,7 @@ describe('isWeather', () => {
   })
 
   it('returns false for unknown values', () => {
-    expect(isWeather('snowy')).toBe(false)
+    expect(isWeather('hailstorm')).toBe(false)
     expect(isWeather(null)).toBe(false)
     expect(isWeather(undefined)).toBe(false)
     expect(isWeather(0)).toBe(false)
@@ -121,6 +121,36 @@ describe('getWeatherPreset', () => {
     expect(rainy.skyTintMix).toBeGreaterThan(clear.skyTintMix)
   })
 
+  it("'snowy' is denser than 'cloudy' and dims the sun", () => {
+    const cloudy = getWeatherPreset('cloudy')
+    const snowy = getWeatherPreset('snowy')
+    expect(snowy.fogDensity).toBeGreaterThan(cloudy.fogDensity)
+    expect(snowy.sunMultiplier).toBeLessThan(cloudy.sunMultiplier)
+  })
+
+  it("'snowy' lifts ambient versus 'cloudy' so flakes pop against the road", () => {
+    const cloudy = getWeatherPreset('cloudy')
+    const snowy = getWeatherPreset('snowy')
+    expect(snowy.ambientMultiplier).toBeGreaterThan(cloudy.ambientMultiplier)
+  })
+
+  it("'snowy' is lighter than 'foggy' so distant corners still read", () => {
+    const foggy = getWeatherPreset('foggy')
+    const snowy = getWeatherPreset('snowy')
+    expect(snowy.fogDensity).toBeLessThan(foggy.fogDensity)
+  })
+
+  it("'snowy' tints the sky toward a pale colder grey than 'rainy'", () => {
+    const clear = getWeatherPreset('clear')
+    const snowy = getWeatherPreset('snowy')
+    const rainy = getWeatherPreset('rainy')
+    // Cold grey-blue overcast vs the heavier, darker rainy grey.
+    expect(snowy.skyTintMix).toBeGreaterThan(clear.skyTintMix)
+    // Snowy uses a paler fog color (numerically larger 0xRRGGBB hex) than
+    // rainy so the chip and the live sky read as a colder, lighter overcast.
+    expect(snowy.fogColor).toBeGreaterThan(rainy.fogColor)
+  })
+
   it('overcast presets dim the sun versus clear', () => {
     const clear = getWeatherPreset('clear')
     const cloudy = getWeatherPreset('cloudy')
@@ -146,7 +176,7 @@ describe('getWeatherPreset', () => {
   it('falls back to the default preset for an unknown name (defensive)', () => {
     // The signature is typed, but JS callers can sneak through. Falling back
     // beats throwing in a code path that runs every frame.
-    const bogus = getWeatherPreset('snowy' as never)
+    const bogus = getWeatherPreset('hailstorm' as never)
     const fallback = getWeatherPreset(DEFAULT_WEATHER)
     expect(bogus.fogDensity).toBe(fallback.fogDensity)
     expect(bogus.skyTintMix).toBe(fallback.skyTintMix)

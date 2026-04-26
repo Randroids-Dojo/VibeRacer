@@ -1,4 +1,5 @@
 import {
+  AdditiveBlending,
   AmbientLight,
   BoxGeometry,
   BufferAttribute,
@@ -22,6 +23,8 @@ import {
   type Object3D,
   PerspectiveCamera,
   PlaneGeometry,
+  Points,
+  PointsMaterial,
   RGBAFormat,
   Scene,
   type Texture,
@@ -86,6 +89,19 @@ import {
   writeRainGeometry,
   type RainParticle,
 } from './rain'
+import {
+  DEFAULT_SNOW_CONFIG,
+  DEFAULT_SNOW_PARTICLES,
+  SNOW_COLOR_HEX,
+  SNOW_OPACITY,
+  SNOW_POINT_SIZE,
+  buildSnowflakeSprite,
+  initSnowParticles,
+  makeSnowRng,
+  tickSnowParticles,
+  writeSnowGeometry,
+  type SnowParticle,
+} from './snow'
 import type { Replay } from '@/lib/replay'
 import {
   SCENERY_BARRIER_HEX_RED,
@@ -152,6 +168,11 @@ export interface SceneBundle {
   // the layer with the camera position each frame so the streaks wrap into
   // a fresh box after the player drives a long distance.
   rain: RainLayer
+  // Falling snow particle layer. Same lifecycle as `rain`: hidden unless the
+  // active weather preset is 'snowy', visibility flipped inside `setWeather`,
+  // and the rAF loop ticks the layer with the camera position each frame so
+  // the flurry wraps into a fresh box and the sway phase advances naturally.
+  snow: SnowLayer
   dispose: () => void
 }
 
@@ -950,6 +971,158 @@ export function buildRainLayer(
   }
 }
 
+// Snow particle layer. A pool of soft white points falling inside a box that
+// follows the player car each frame, so the player always sees a steady
+// flurry regardless of where they are on the track. The layer is hidden by
+// default; the rAF loop flips visibility when the active weather preset is
+// 'snowy' and feeds the per-frame tick (dt + nowSec + follow point) so the
+// flakes drift, sway, and wrap.
+//
+// Implementation notes:
+//
+//  - One `Points` mesh with one vertex per particle. Cheap to render: a
+//    single draw call for the whole flurry. PointsMaterial honors
+//    `sizeAttenuation` so distant flakes shrink naturally.
+//  - The follow point is the camera (computed by the rAF loop). Using the
+//    camera (not the car) means the player always sees a full box even when
+//    looking sideways.
+//  - The point material uses a procedurally-generated alpha-feathered sprite
+//    so each flake reads as a soft round dot instead of the default 1px
+//    square; no asset needed.
+//  - Vertex positions are written in world space so the underlying `Group`
+//    stays at the origin; the per-frame cost is one Float32Array fill plus
+//    one `needsUpdate = true` flip.
+export interface SnowLayer {
+  group: Group
+  // Advance every particle by `dtSec` seconds, then write the resulting world
+  // positions (with sway evaluated at `nowSec`) into the shared geometry
+  // buffer using the supplied follow point. Cheap per frame: no allocations,
+  // no branch misses on the common visible path.
+  tick: (
+    dtSec: number,
+    nowSec: number,
+    followX: number,
+    followY: number,
+    followZ: number,
+  ) => void
+  // Toggle the layer on or off. When off the per-frame `tick` calls are
+  // skipped entirely by the caller (via a poll-and-set in the rAF loop) so
+  // the cost is exactly the cost of having no snow at all.
+  setVisible: (value: boolean) => void
+  // Reset particle positions back to the spawn distribution. Called when the
+  // player restarts a race so the flurry does not carry over an unwrapped
+  // tail of flakes from the previous lap. Pure: no allocations.
+  reset: () => void
+  dispose: () => void
+}
+
+export function buildSnowLayer(
+  particleCount: number = DEFAULT_SNOW_PARTICLES,
+): SnowLayer {
+  const group = new Group()
+  group.visible = false
+
+  // Stable RNG so two players who happen to run the same seed see the same
+  // initial spawn pattern. The seed is arbitrary; the visible variety comes
+  // from the wrap-on-floor-impact branch using fresh RNG draws at runtime.
+  const rng = makeSnowRng(0xfeed5)
+  const particles: SnowParticle[] = initSnowParticles(
+    particleCount,
+    rng,
+    DEFAULT_SNOW_CONFIG,
+  )
+
+  const positions = new Float32Array(particleCount * 3)
+  const geom = new BufferGeometry()
+  const posAttr = new BufferAttribute(positions, 3)
+  // Mark dynamic so Three.js uses the streaming path on each frame's
+  // `needsUpdate = true` flip (gl.bufferSubData under the hood).
+  posAttr.setUsage(DynamicDrawUsage)
+  geom.setAttribute('position', posAttr)
+
+  // Procedural alpha-feathered sprite so each Point reads as a soft round
+  // flake. 32x32 pixels is plenty for a tiny dot and ships zero binary
+  // assets. NearestFilter keeps the alpha edge crisp at the small render
+  // sizes typical of distant flakes.
+  const SPRITE_SIZE = 32
+  const spritePixels = buildSnowflakeSprite(SPRITE_SIZE)
+  const spriteTex = new DataTexture(
+    spritePixels,
+    SPRITE_SIZE,
+    SPRITE_SIZE,
+    RGBAFormat,
+    UnsignedByteType,
+  )
+  spriteTex.magFilter = NearestFilter
+  spriteTex.minFilter = NearestFilter
+  spriteTex.needsUpdate = true
+
+  const mat = new PointsMaterial({
+    color: SNOW_COLOR_HEX,
+    map: spriteTex,
+    size: SNOW_POINT_SIZE,
+    sizeAttenuation: true,
+    transparent: true,
+    opacity: SNOW_OPACITY,
+    depthWrite: false,
+    // Additive blending makes the flakes glow softly against dark asphalt
+    // without turning into bright squares against the lighter overcast sky.
+    blending: AdditiveBlending,
+  })
+  const points = new Points(geom, mat)
+  group.add(points)
+
+  function tick(
+    dtSec: number,
+    nowSec: number,
+    followX: number,
+    followY: number,
+    followZ: number,
+  ) {
+    if (!group.visible) return
+    tickSnowParticles(particles, dtSec, nowSec, rng, DEFAULT_SNOW_CONFIG)
+    writeSnowGeometry(
+      particles,
+      followX,
+      followY,
+      followZ,
+      nowSec,
+      positions,
+      DEFAULT_SNOW_CONFIG,
+    )
+    posAttr.needsUpdate = true
+  }
+
+  function reset() {
+    const fresh = initSnowParticles(
+      particles.length,
+      makeSnowRng(0xfeed5),
+      DEFAULT_SNOW_CONFIG,
+    )
+    for (let i = 0; i < particles.length; i++) {
+      particles[i].ox = fresh[i].ox
+      particles[i].oy = fresh[i].oy
+      particles[i].oz = fresh[i].oz
+      particles[i].phase = fresh[i].phase
+      particles[i].freqScale = fresh[i].freqScale
+    }
+  }
+
+  return {
+    group,
+    tick,
+    setVisible(value) {
+      group.visible = value
+    },
+    reset,
+    dispose() {
+      geom.dispose()
+      mat.dispose()
+      spriteTex.dispose()
+    },
+  }
+}
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -1053,12 +1226,20 @@ export function buildScene(path: TrackPath): SceneBundle {
     if (rainLayerHolder.layer) {
       rainLayerHolder.layer.setVisible(activeWeather === 'rainy')
     }
+    // Snow layer: same lifecycle as rain, only visible under the 'snowy'
+    // preset. Same poll-and-set pattern in the rAF loop short-circuits the
+    // tick when hidden so non-snow weather costs nothing.
+    if (snowLayerHolder.layer) {
+      snowLayerHolder.layer.setVisible(activeWeather === 'snowy')
+    }
   }
 
   // Holder so `applyTimeAndWeather` can flip the rain layer's visibility
   // even though the layer is constructed after this function is defined.
   // Populated below once `buildRainLayer` returns.
   const rainLayerHolder: { layer: RainLayer | null } = { layer: null }
+  // Same holder pattern for the snow layer.
+  const snowLayerHolder: { layer: SnowLayer | null } = { layer: null }
 
   function setTimeOfDay(name: TimeOfDay) {
     activeTimeOfDay = name
@@ -1174,9 +1355,12 @@ export function buildScene(path: TrackPath): SceneBundle {
   const rain = buildRainLayer()
   rainLayerHolder.layer = rain
   scene.add(rain.group)
-  // Re-apply so the rain visibility reflects whatever weather was seeded
-  // before the layer existed. Cheap; just one boolean flip + the existing
-  // weather/sky math.
+  const snow = buildSnowLayer()
+  snowLayerHolder.layer = snow
+  scene.add(snow.group)
+  // Re-apply so the rain and snow visibility reflects whatever weather was
+  // seeded before the layers existed. Cheap; just two boolean flips plus the
+  // existing weather/sky math.
   applyTimeAndWeather()
 
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
@@ -1217,6 +1401,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     scenery,
     racingLine,
     rain,
+    snow,
     dispose,
   }
 }

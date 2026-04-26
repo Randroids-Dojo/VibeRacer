@@ -491,6 +491,7 @@ export function RaceCanvas({
         resetRecording()
         bundle.skidMarks.clear()
         bundle.rain.reset()
+        bundle.snow.reset()
         lastSkidSpawnTs = -Infinity
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
@@ -789,6 +790,18 @@ export function RaceCanvas({
       // floor on resume.
       bundle.rain.tick(
         dtMs / 1000,
+        bundle.camera.position.x,
+        bundle.camera.position.y,
+        bundle.camera.position.z,
+      )
+
+      // Snow particles. Same lifecycle as rain, only this layer also reads
+      // wall-clock time so the per-flake sway phase advances naturally rather
+      // than ticking in lockstep with the dt-clamped frame counter. The layer
+      // short-circuits when hidden so non-snow weather costs nothing.
+      bundle.snow.tick(
+        dtMs / 1000,
+        ts / 1000,
         bundle.camera.position.x,
         bundle.camera.position.y,
         bundle.camera.position.z,

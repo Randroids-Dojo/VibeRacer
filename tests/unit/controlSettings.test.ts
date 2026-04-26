@@ -635,7 +635,7 @@ describe('localStorage round-trip', () => {
   it('falls back to defaults when stored weather is unknown', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       ...cloneDefaultSettings(),
-      weather: 'snowy',
+      weather: 'hailstorm',
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
