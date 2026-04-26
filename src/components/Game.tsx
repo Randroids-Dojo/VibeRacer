@@ -88,6 +88,11 @@ import {
   type AchievementId,
 } from '@/game/achievements'
 import {
+  buildAchievementProgress,
+  type AchievementProgressMap,
+} from '@/game/achievementProgress'
+import { readLifetimeBests } from '@/lib/lifetimeBests'
+import {
   ACHIEVEMENTS_EVENT,
   readAchievements,
   readVisitedSlugs,
@@ -2382,6 +2387,15 @@ function GameSession({
           ) : pauseView === 'achievements' ? (
             <AchievementsPane
               achievements={achievements}
+              progress={buildAchievementProgressForPane({
+                achievements,
+                trackStats,
+                expectedSectorCount,
+                bestSectors: bestSectorsRef.current,
+                distinctSlugCount: distinctSlugCountRef.current,
+                wrongWayTriggered: wrongWayTriggeredRef.current,
+                hudPbStreakBest: hud.pbStreakBest,
+              })}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (
@@ -2486,6 +2500,51 @@ const achievementTotalCount = ACHIEVEMENTS.length
 // destructuring three fields when they only want the unlocked tally.
 function achievementProgressCount(map: AchievementMap): number {
   return achievementProgress(map).unlockedCount
+}
+
+// Build the per-achievement progress map for the AchievementsPane. Composes
+// lifetime bests scanned from localStorage with the live in-session HUD state
+// and per-track snapshots so each locked row can show "your best is X / target
+// Y" without the pane reaching into storage itself. Called once per render of
+// the achievements pause view so a quick lap that bumps the player's best
+// reads as fresh on the next pause.
+function buildAchievementProgressForPane(args: {
+  achievements: AchievementMap
+  trackStats: TrackStats
+  expectedSectorCount: number
+  bestSectors: SectorDuration[] | null
+  distinctSlugCount: number
+  wrongWayTriggered: boolean
+  // The HUD's live PB-streak high-water mark for the current (slug, version).
+  // Falls back to the lifetime aggregate when null so a fresh page load with a
+  // streak set on a different version still shows progress.
+  hudPbStreakBest: number | null
+}): AchievementProgressMap {
+  const lifetime = readLifetimeBests()
+  const bestPbStreak =
+    args.hudPbStreakBest !== null && args.hudPbStreakBest > 0
+      ? Math.max(args.hudPbStreakBest, lifetime.bestPbStreak ?? 0)
+      : lifetime.bestPbStreak
+  return buildAchievementProgress(
+    {
+      lifetimeFastestLapMs: lifetime.fastestLapMs,
+      lifetimeBestDriftScore: lifetime.bestDriftScore,
+      lifetimeBestPbStreak: bestPbStreak,
+      trackLapCount: args.trackStats.lapCount,
+      trackDriveMs: args.trackStats.totalDriveMs,
+      optimalComplete: hasCompleteOptimalLap(
+        args.bestSectors,
+        args.expectedSectorCount,
+      ),
+      distinctSlugCount: args.distinctSlugCount,
+      // Binary milestones derive their "earned" state from the unlock map: once
+      // unlocked we know the player has done the thing on this device.
+      platinumEarnedAnywhere: !!args.achievements['platinum-medal'],
+      wrongWayTriggered:
+        args.wrongWayTriggered || !!args.achievements['wrong-way'],
+    },
+    args.achievements,
+  )
 }
 const canvasStyle: React.CSSProperties = {
   display: 'block',

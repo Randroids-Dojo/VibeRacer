@@ -4,9 +4,16 @@ import { useMemo } from 'react'
 import {
   ACHIEVEMENTS,
   achievementProgress,
+  getAchievementDef,
   type AchievementDef,
+  type AchievementId,
   type AchievementMap,
 } from '@/game/achievements'
+import {
+  pickNextGoals,
+  type AchievementProgressEntry,
+  type AchievementProgressMap,
+} from '@/game/achievementProgress'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
 
 interface AchievementsPaneProps {
@@ -15,17 +22,34 @@ interface AchievementsPaneProps {
   // achievement list (so the player can see what is on offer even before
   // their first lap).
   achievements: AchievementMap
+  // Per-achievement progress bars (value, target, fraction, label) for
+  // trackable milestones. Optional: when omitted the pane renders the legacy
+  // unlocked-or-locked layout. When present, each locked row shows a small
+  // progress bar so the player can see how close they are to the next badge.
+  progress?: AchievementProgressMap
   onBack: () => void
 }
 
+const NEXT_GOALS_MAX = 3
+
 export function AchievementsPane({
   achievements,
+  progress,
   onBack,
 }: AchievementsPaneProps) {
-  const progress = useMemo(
+  const progressSummary = useMemo(
     () => achievementProgress(achievements),
     [achievements],
   )
+
+  // The "Next goals" strip surfaces up to three closest unlocked goals so the
+  // player can see what to chase without scrolling the full list. Skips
+  // binary milestones (perfectionist, platinum, wrong-way, first-*) since
+  // those have no incremental progress to bar-fill.
+  const nextGoals = useMemo<AchievementId[]>(() => {
+    if (!progress) return []
+    return pickNextGoals(progress, NEXT_GOALS_MAX)
+  }, [progress])
 
   // Sort: unlocked first (most-recent first inside that group), then locked in
   // the canonical ACHIEVEMENTS order so a player browsing the locked list sees
@@ -67,11 +91,15 @@ export function AchievementsPane({
               textTransform: 'uppercase',
             }}
           >
-            {progress.unlockedCount} / {progress.totalCount}
+            {progressSummary.unlockedCount} / {progressSummary.totalCount}
           </div>
         </div>
 
-        <ProgressBar fraction={progress.fraction} />
+        <ProgressBar fraction={progressSummary.fraction} />
+
+        {nextGoals.length > 0 ? (
+          <NextGoalsStrip goals={nextGoals} progress={progress!} />
+        ) : null}
 
         <div
           style={{
@@ -88,6 +116,7 @@ export function AchievementsPane({
                 def={def}
                 unlockedAt={meta?.unlockedAt ?? null}
                 slug={meta?.slug ?? null}
+                progress={progress?.[def.id] ?? null}
               />
             )
           })}
@@ -130,12 +159,16 @@ function AchievementRow({
   def,
   unlockedAt,
   slug,
+  progress,
 }: {
   def: AchievementDef
   unlockedAt: number | null
   slug: string | null
+  progress: AchievementProgressEntry | null
 }) {
   const isUnlocked = unlockedAt !== null
+  const showProgressBar =
+    !isUnlocked && progress !== null && !progress.binary && progress.target > 0
   return (
     <div
       style={{
@@ -183,6 +216,12 @@ function AchievementRow({
         >
           {def.description}
         </div>
+        {showProgressBar ? (
+          <RowProgressBar
+            entry={progress!}
+            accent={CATEGORY_COLOR[def.category]}
+          />
+        ) : null}
         {isUnlocked && unlockedAt !== null ? (
           <div
             style={{
@@ -195,7 +234,7 @@ function AchievementRow({
             Earned {formatUnlockDate(unlockedAt)}
             {slug ? ` on /${slug}` : null}
           </div>
-        ) : (
+        ) : !showProgressBar ? (
           <div
             style={{
               fontSize: 10,
@@ -203,10 +242,169 @@ function AchievementRow({
               letterSpacing: 0.4,
             }}
           >
-            Locked
+            {progress && progress.binary && !isUnlocked
+              ? progress.label
+              : 'Locked'}
           </div>
-        )}
+        ) : null}
       </div>
+    </div>
+  )
+}
+
+function RowProgressBar({
+  entry,
+  accent,
+}: {
+  entry: AchievementProgressEntry
+  accent: string
+}) {
+  const fraction = Math.max(0, Math.min(1, entry.fraction))
+  const percent = Math.round(fraction * 100)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+      <div
+        style={{
+          display: 'flex',
+          justifyContent: 'space-between',
+          alignItems: 'baseline',
+          gap: 8,
+        }}
+      >
+        <span
+          style={{
+            fontSize: 10,
+            color: menuTheme.textHint,
+            letterSpacing: 0.4,
+            fontFamily: 'monospace',
+          }}
+        >
+          {entry.label}
+        </span>
+        <span
+          style={{
+            fontSize: 10,
+            color: menuTheme.textMuted,
+            letterSpacing: 0.6,
+            fontWeight: 600,
+          }}
+        >
+          {percent}%
+        </span>
+      </div>
+      <div
+        style={{
+          height: 5,
+          background: menuTheme.rowBg,
+          borderRadius: 999,
+          overflow: 'hidden',
+          border: `1px solid ${menuTheme.panelBorder}`,
+        }}
+        aria-label={`${percent}% toward unlock`}
+      >
+        <div
+          style={{
+            width: `${fraction * 100}%`,
+            height: '100%',
+            background: accent,
+            transition: 'width 0.2s ease-out',
+          }}
+        />
+      </div>
+    </div>
+  )
+}
+
+function NextGoalsStrip({
+  goals,
+  progress,
+}: {
+  goals: AchievementId[]
+  progress: AchievementProgressMap
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        gap: 6,
+        padding: '10px 12px',
+        background: 'rgba(244, 215, 116, 0.08)',
+        border: '1px solid rgba(244, 215, 116, 0.35)',
+        borderRadius: 8,
+      }}
+    >
+      <div
+        style={{
+          fontSize: 10,
+          letterSpacing: 1.4,
+          color: '#f4d774',
+          textTransform: 'uppercase',
+          fontWeight: 700,
+        }}
+      >
+        Next goals
+      </div>
+      {goals.map((id) => {
+        const def = getAchievementDef(id)
+        const entry = progress[id]
+        if (!def || !entry) return null
+        const fraction = Math.max(0, Math.min(1, entry.fraction))
+        const percent = Math.round(fraction * 100)
+        return (
+          <div
+            key={id}
+            style={{ display: 'flex', flexDirection: 'column', gap: 3 }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'baseline',
+                gap: 8,
+              }}
+            >
+              <span
+                style={{
+                  fontSize: 12,
+                  fontWeight: 700,
+                  color: menuTheme.textPrimary,
+                }}
+              >
+                {def.name}
+              </span>
+              <span
+                style={{
+                  fontSize: 10,
+                  color: menuTheme.textHint,
+                  letterSpacing: 0.4,
+                  fontFamily: 'monospace',
+                }}
+              >
+                {entry.label} ({percent}%)
+              </span>
+            </div>
+            <div
+              style={{
+                height: 4,
+                background: menuTheme.rowBg,
+                borderRadius: 999,
+                overflow: 'hidden',
+                border: `1px solid ${menuTheme.panelBorder}`,
+              }}
+            >
+              <div
+                style={{
+                  width: `${fraction * 100}%`,
+                  height: '100%',
+                  background: CATEGORY_COLOR[def.category],
+                  transition: 'width 0.2s ease-out',
+                }}
+              />
+            </div>
+          </div>
+        )
+      })}
     </div>
   )
 }
