@@ -545,6 +545,19 @@ export function SettingsPane({
                 onChange={(v) => setAudio({ ...audio, musicPerTrack: v })}
               />
             </div>
+            <MenuHint>
+              Folds your initials into the seed too, so two racers on the same
+              track hear distinct flavors. Off by default; flip on once and the
+              choice persists.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Mix in your initials</div>
+              <MenuToggle
+                value={audio.musicMixInitials}
+                disabled={!audio.musicEnabled || !audio.musicPerTrack}
+                onChange={(v) => setAudio({ ...audio, musicMixInitials: v })}
+              />
+            </div>
           </div>
         </MenuSection>
 

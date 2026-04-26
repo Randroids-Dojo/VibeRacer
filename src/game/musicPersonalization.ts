@@ -85,7 +85,68 @@ export function slugMusicSeed(slug: string): number {
  * (safe to mutate by the caller, though the renderer treats it as read-only).
  */
 export function personalizeForSlug(slug: string): MusicPersonalization {
-  const seed = slugMusicSeed(slug)
+  return personalizationFromSeed(slugMusicSeed(slug))
+}
+
+/**
+ * Stable 32-bit FNV-1a hash of the player's three-letter initials. Returns 0
+ * for empty / non-string / wrong-length input so the caller can fall back to
+ * a slug-only personalization. The hash is uppercased internally so the same
+ * tag produces the same fingerprint regardless of how the player typed it.
+ */
+export function initialsMusicSeed(initials: string): number {
+  if (typeof initials !== 'string') return 0
+  const trimmed = initials.trim()
+  if (trimmed.length === 0) return 0
+  let hash = FNV_OFFSET_BASIS_32
+  for (let i = 0; i < trimmed.length; i++) {
+    // Uppercase a-z to A-Z by clearing bit 5; leaves digits and other
+    // characters untouched. The upstream InitialsSchema enforces A-Z only,
+    // but defending here means a hand-rolled call cannot poison the seed.
+    const code = trimmed.charCodeAt(i) & 0xff
+    const upper = code >= 0x61 && code <= 0x7a ? code & 0xdf : code
+    hash ^= upper
+    hash = Math.imul(hash, FNV_PRIME_32)
+  }
+  return hash >>> 0
+}
+
+/**
+ * Pick a stable personalization for a (slug, initials) pair. The two seeds
+ * are folded together with a 13-bit rotate-left on the slug seed before XOR
+ * so flipping a single initial reshuffles every output dimension instead of
+ * flipping just one bit. Falls back to slug-only when initials are missing
+ * or empty so a player who has not entered initials yet still hears the
+ * existing per-track flavor unchanged.
+ */
+export function personalizeForRacer(
+  slug: string,
+  initials: string | null | undefined,
+): MusicPersonalization {
+  const slugSeed = slugMusicSeed(slug)
+  const initialsSeed =
+    typeof initials === 'string' ? initialsMusicSeed(initials) : 0
+  if (slugSeed === 0 && initialsSeed === 0) {
+    return { ...NEUTRAL_PERSONALIZATION }
+  }
+  if (initialsSeed === 0) return personalizationFromSeed(slugSeed)
+  // Rotate left by 13 so a single-bit flip in the initials seed lands on a
+  // different lane of the modulo arithmetic below than the slug seed
+  // contributed. 13 is a coprime shift relative to the menu sizes (3 / 7 /
+  // 8) so the slug and initials contributions stay independent.
+  const rotated = ((slugSeed << 13) | (slugSeed >>> 19)) >>> 0
+  const combined = (rotated ^ initialsSeed) >>> 0
+  // Force a non-zero combined seed so the empty short-circuit above is the
+  // only path that returns the neutral tweak. (The XOR would land on zero
+  // if rotated and initials were equal; OR-in a small constant keeps the
+  // downstream modulo arithmetic deterministic in that edge case.)
+  const seed = combined === 0 ? 1 : combined
+  return personalizationFromSeed(seed)
+}
+
+// Shared draw used by both the slug-only and the slug+initials helpers so
+// any change to the menu indexing math lands in one place.
+function personalizationFromSeed(seed: number): MusicPersonalization {
   if (seed === 0) return { ...NEUTRAL_PERSONALIZATION }
   // Three independent draws from the same seed, each spread across a
   // different prime so the choices do not move in lockstep.

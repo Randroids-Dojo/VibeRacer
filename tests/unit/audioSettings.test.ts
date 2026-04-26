@@ -127,4 +127,32 @@ describe('localStorage round-trip', () => {
     expect(read.musicVolume).toBeCloseTo(0.6, 6)
     expect(read.sfxVolume).toBeCloseTo(0.5, 6)
   })
+
+  it('defaults musicMixInitials to false on a fresh defaults object', () => {
+    expect(DEFAULT_AUDIO_SETTINGS.musicMixInitials).toBe(false)
+  })
+
+  it('round-trips musicMixInitials: true', () => {
+    const custom = cloneDefaultAudioSettings()
+    custom.musicMixInitials = true
+    writeStoredAudioSettings(custom)
+    expect(readStoredAudioSettings().musicMixInitials).toBe(true)
+  })
+
+  it('backfills musicMixInitials to false when the field is missing from a legacy stored payload', () => {
+    // Write a payload that has musicPerTrack but not musicMixInitials. This
+    // mirrors the storage shape from the per-track-only release.
+    store[AUDIO_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      musicEnabled: true,
+      sfxEnabled: true,
+      musicVolume: 0.6,
+      sfxVolume: 0.5,
+      musicPerTrack: true,
+    })
+    const read = readStoredAudioSettings()
+    expect(read.musicMixInitials).toBe(false)
+    // Other fields survive the backfill.
+    expect(read.musicPerTrack).toBe(true)
+    expect(read.musicVolume).toBeCloseTo(0.6, 6)
+  })
 })

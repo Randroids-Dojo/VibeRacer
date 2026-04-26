@@ -111,6 +111,7 @@ import {
 } from '@/game/music'
 import {
   NEUTRAL_PERSONALIZATION,
+  personalizeForRacer,
   personalizeForSlug,
 } from '@/game/musicPersonalization'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
@@ -272,12 +273,26 @@ function GameSession({
   // can safely re-fire on every dependency change. Falls back to the neutral
   // tweak when the player turned the feature off in Settings; the game track
   // will sound exactly like the legacy G-minor / 140-BPM loop in that case.
+  // When the player also opted in to the initials mix, the slug seed gets
+  // folded with a hash of their initials so two players on the same slug
+  // hear distinct flavors. An initials edit in Settings re-fires the effect
+  // through the dependency on `initials`.
   useEffect(() => {
-    const next = audioSettings.musicPerTrack
-      ? personalizeForSlug(slug)
-      : { ...NEUTRAL_PERSONALIZATION }
+    let next
+    if (!audioSettings.musicPerTrack) {
+      next = { ...NEUTRAL_PERSONALIZATION }
+    } else if (audioSettings.musicMixInitials) {
+      next = personalizeForRacer(slug, initials)
+    } else {
+      next = personalizeForSlug(slug)
+    }
     setMusicPersonalization(next)
-  }, [slug, audioSettings.musicPerTrack])
+  }, [
+    slug,
+    initials,
+    audioSettings.musicPerTrack,
+    audioSettings.musicMixInitials,
+  ])
   const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
