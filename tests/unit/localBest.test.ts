@@ -1,11 +1,14 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   readLocalBestDrift,
+  readLocalBestSectors,
   readLocalBestSplits,
   writeLocalBestDrift,
+  writeLocalBestSectors,
   writeLocalBestSplits,
 } from '@/lib/localBest'
 import type { CheckpointHit } from '@/lib/schemas'
+import type { SectorDuration } from '@/game/optimalLap'
 
 interface FakeWindow {
   localStorage: {
@@ -162,5 +165,100 @@ describe('local best drift score storage', () => {
       throw new Error('quota exceeded')
     }
     expect(() => writeLocalBestDrift('oval', 'a'.repeat(64), 100)).not.toThrow()
+  })
+})
+
+describe('local best sectors storage', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no sectors are stored', () => {
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('round-trips a stored sectors array', () => {
+    const sectors: SectorDuration[] = [
+      { cpId: 0, durationMs: 1500 },
+      { cpId: 1, durationMs: 2700 },
+      { cpId: 2, durationMs: 4800 },
+    ]
+    writeLocalBestSectors('oval', 'a'.repeat(64), sectors)
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toEqual(sectors)
+  })
+
+  it('namespaces by slug + version hash', () => {
+    const a: SectorDuration[] = [{ cpId: 0, durationMs: 1000 }]
+    const b: SectorDuration[] = [{ cpId: 0, durationMs: 2000 }]
+    writeLocalBestSectors('oval', 'a'.repeat(64), a)
+    writeLocalBestSectors('oval', 'b'.repeat(64), b)
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toEqual(a)
+    expect(readLocalBestSectors('oval', 'b'.repeat(64))).toEqual(b)
+    expect(readLocalBestSectors('sandbox', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('returns null on malformed JSON', () => {
+    store['viberacer.bestSectors.oval.' + 'a'.repeat(64)] = 'not json'
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('returns null when a stored entry has a non-positive duration', () => {
+    store['viberacer.bestSectors.oval.' + 'a'.repeat(64)] = JSON.stringify([
+      { cpId: 0, durationMs: 0 },
+    ])
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('returns null when a stored entry has a negative cpId', () => {
+    store['viberacer.bestSectors.oval.' + 'a'.repeat(64)] = JSON.stringify([
+      { cpId: -1, durationMs: 1500 },
+    ])
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('returns null when the payload is not an array', () => {
+    store['viberacer.bestSectors.oval.' + 'a'.repeat(64)] = JSON.stringify({
+      cpId: 0,
+      durationMs: 1500,
+    })
+    expect(readLocalBestSectors('oval', 'a'.repeat(64))).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() =>
+      writeLocalBestSectors('oval', 'a'.repeat(64), [
+        { cpId: 0, durationMs: 1500 },
+      ]),
+    ).not.toThrow()
   })
 })

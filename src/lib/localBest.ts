@@ -1,6 +1,7 @@
 import { z } from 'zod'
 import { ReplaySchema, type Replay } from './replay'
 import { CheckpointHitSchema, type CheckpointHit } from './schemas'
+import type { SectorDuration } from '@/game/optimalLap'
 
 function bestKey(slug: string, versionHash: string): string {
   return `viberacer.best.${slug}.${versionHash}`
@@ -18,7 +19,20 @@ function driftBestKey(slug: string, versionHash: string): string {
   return `viberacer.driftBest.${slug}.${versionHash}`
 }
 
+function bestSectorsKey(slug: string, versionHash: string): string {
+  return `viberacer.bestSectors.${slug}.${versionHash}`
+}
+
 const SplitsArraySchema = z.array(CheckpointHitSchema)
+
+// Persisted shape mirrors SectorDuration but validates each entry so a
+// hand-edited or corrupt localStorage payload can never feed the HUD a
+// negative or non-finite duration.
+const SectorDurationSchema = z.object({
+  cpId: z.number().int().nonnegative(),
+  durationMs: z.number().positive().finite(),
+})
+const SectorDurationsArraySchema = z.array(SectorDurationSchema)
 
 export function readLocalBest(slug: string, versionHash: string): number | null {
   if (typeof window === 'undefined') return null
@@ -136,5 +150,41 @@ export function writeLocalBestDrift(
   } catch {
     // Drift score persistence is a best-effort UX enhancement. Quota
     // exhaustion should never break the lap-complete flow.
+  }
+}
+
+// Per-sector best durations for the theoretical-best ("OPTIMAL") lap HUD
+// block. Stored alongside the PB lap time so a fresh page load shows the
+// player's optimal lap from the very first frame instead of waiting for the
+// first lap to seed it.
+export function readLocalBestSectors(
+  slug: string,
+  versionHash: string,
+): SectorDuration[] | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(bestSectorsKey(slug, versionHash))
+  if (!raw) return null
+  try {
+    const parsed = SectorDurationsArraySchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+export function writeLocalBestSectors(
+  slug: string,
+  versionHash: string,
+  sectors: readonly SectorDuration[],
+): void {
+  if (typeof window === 'undefined') return
+  try {
+    window.localStorage.setItem(
+      bestSectorsKey(slug, versionHash),
+      JSON.stringify(sectors),
+    )
+  } catch {
+    // Best-sectors persistence is a best-effort UX enhancement. A quota
+    // failure should never break the lap-complete flow.
   }
 }

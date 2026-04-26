@@ -36,6 +36,8 @@ import {
   writeLocalBestSplits,
   readLocalBestDrift,
   writeLocalBestDrift,
+  readLocalBestSectors,
+  writeLocalBestSectors,
 } from '@/lib/localBest'
 import type { CheckpointHit } from '@/lib/schemas'
 import {
@@ -45,6 +47,13 @@ import {
   type LapPrediction,
   type SplitDelta,
 } from '@/game/splits'
+import {
+  computeSectorDurations,
+  hasCompleteOptimalLap,
+  mergeBestSectors,
+  optimalLapTime,
+  type SectorDuration,
+} from '@/game/optimalLap'
 import { Leaderboard } from './Leaderboard'
 import { LapHistory } from './LapHistory'
 import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
@@ -130,6 +139,14 @@ interface HudState {
   lastLapMs: number | null
   bestSessionMs: number | null
   bestAllTimeMs: number | null
+  // Theoretical-best lap time for this (slug, hash). Sum of the player's best
+  // ever per-sector durations, recomputed every lap from the merged sector
+  // map. null until at least one sector has been recorded.
+  optimalLapMs: number | null
+  // True once every sector on the current track has at least one recorded
+  // best (i.e. the player has run a clean lap or stitched together coverage
+  // across multiple laps). Drives the OPTIMAL block's tinting.
+  optimalLapComplete: boolean
   overallRecord: OverallRecord | null
   lapCount: number
   onTrack: boolean
@@ -284,6 +301,14 @@ function GameSession({
   // would stale-close inside handleCheckpointHit between renders).
   const pbLapMsRef = useRef<number | null>(null)
   const splitClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  // Best per-sector durations on this (slug, hash). Mirrored into a ref so
+  // handleLapComplete can merge a fresh lap's sectors without going through
+  // setState, then push the merged result into HudState in one call.
+  const bestSectorsRef = useRef<SectorDuration[] | null>(null)
+  // Expected sector count for OPTIMAL completeness. Equals the track's
+  // checkpoint count (one sector per checkpoint), which defaults to the
+  // piece count when no override is set.
+  const expectedSectorCount = checkpointCount ?? pieces.length
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -297,25 +322,34 @@ function GameSession({
   // Session-scoped lap log. Reset on Restart so a fresh race starts clean.
   // The local PB on disk persists across restarts; this list does not.
   const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([])
-  const [hud, setHud] = useState<HudState>(() => ({
-    currentMs: 0,
-    lastLapMs: null,
-    bestSessionMs: null,
-    bestAllTimeMs: readLocalBest(slug, versionHash),
-    overallRecord: initialRecord,
-    lapCount: 0,
-    onTrack: true,
-    wrongWay: false,
-    toast: null,
-    toastKind: null,
-    splitDelta: null,
-    prediction: null,
-    driftActive: false,
-    driftScore: 0,
-    driftMultiplier: 1,
-    driftLapBest: null,
-    driftAllTimeBest: readLocalBestDrift(slug, versionHash),
-  }))
+  const [hud, setHud] = useState<HudState>(() => {
+    const initialSectors = readLocalBestSectors(slug, versionHash)
+    bestSectorsRef.current = initialSectors
+    return {
+      currentMs: 0,
+      lastLapMs: null,
+      bestSessionMs: null,
+      bestAllTimeMs: readLocalBest(slug, versionHash),
+      optimalLapMs: optimalLapTime(initialSectors),
+      optimalLapComplete: hasCompleteOptimalLap(
+        initialSectors,
+        expectedSectorCount,
+      ),
+      overallRecord: initialRecord,
+      lapCount: 0,
+      onTrack: true,
+      wrongWay: false,
+      toast: null,
+      toastKind: null,
+      splitDelta: null,
+      prediction: null,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: null,
+      driftAllTimeBest: readLocalBestDrift(slug, versionHash),
+    }
+  })
 
   // Hydrate the PB-splits ref on mount / slug change. Stored alongside the
   // local PB lap time so a fresh page load shows a delta tile from the very
@@ -323,14 +357,21 @@ function GameSession({
   useEffect(() => {
     pbSplitsRef.current = readLocalBestSplits(slug, versionHash)
     pbLapMsRef.current = readLocalBest(slug, versionHash)
-    // Same idea for the drift PB: a fresh slug load should reflect what the
-    // player's banked on this track / version, not whatever was in HudState
-    // from a prior slug.
+    const freshSectors = readLocalBestSectors(slug, versionHash)
+    bestSectorsRef.current = freshSectors
+    // Same idea for the drift PB and the optimal lap: a fresh slug load
+    // should reflect what the player's banked on this track / version, not
+    // whatever was in HudState from a prior slug.
     setHud((prev) => ({
       ...prev,
       driftAllTimeBest: readLocalBestDrift(slug, versionHash),
+      optimalLapMs: optimalLapTime(freshSectors),
+      optimalLapComplete: hasCompleteOptimalLap(
+        freshSectors,
+        expectedSectorCount,
+      ),
     }))
-  }, [slug, versionHash])
+  }, [slug, versionHash, expectedSectorCount])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
     setHud((prev) => ({
@@ -679,6 +720,20 @@ function GameSession({
   function handleLapComplete(event: LapCompleteEvent) {
     const lapMs = event.lapTimeMs
     const outcomeRef: { current: ToastKind } = { current: 'lap' }
+    // Merge the just-completed lap's per-sector durations into the running
+    // best-sector map. Runs on every completed lap (not just PBs) because a
+    // single sector can be a personal best even when the rest of the lap was
+    // slow. The merge is pure and dedupes by cpId, so a stitched optimal
+    // lap can be assembled across multiple imperfect laps.
+    const lapSectors = computeSectorDurations(event.hits)
+    const mergedSectors = mergeBestSectors(bestSectorsRef.current, lapSectors)
+    bestSectorsRef.current = mergedSectors
+    writeLocalBestSectors(slug, versionHash, mergedSectors)
+    const newOptimal = optimalLapTime(mergedSectors)
+    const newOptimalComplete = hasCompleteOptimalLap(
+      mergedSectors,
+      expectedSectorCount,
+    )
     setHud((prev) => {
       const isSessionPb = prev.bestSessionMs === null || lapMs < prev.bestSessionMs
       const isAllTimePb = prev.bestAllTimeMs === null || lapMs < prev.bestAllTimeMs
@@ -728,6 +783,8 @@ function GameSession({
         ...prev,
         bestSessionMs: isSessionPb ? lapMs : prev.bestSessionMs,
         bestAllTimeMs: isAllTimePb ? lapMs : prev.bestAllTimeMs,
+        optimalLapMs: newOptimal,
+        optimalLapComplete: newOptimalComplete,
         overallRecord: isNewRecord
           ? { initials, lapTimeMs: lapMs }
           : prev.overallRecord,
@@ -887,6 +944,8 @@ function GameSession({
         lastLapMs={hud.lastLapMs}
         bestSessionMs={hud.bestSessionMs}
         bestAllTimeMs={hud.bestAllTimeMs}
+        optimalLapMs={hud.optimalLapMs}
+        optimalLapComplete={hud.optimalLapComplete}
         overallRecord={hud.overallRecord}
         lapCount={hud.lapCount}
         onTrack={hud.onTrack}

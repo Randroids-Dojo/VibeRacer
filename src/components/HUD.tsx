@@ -19,6 +19,15 @@ interface HudProps {
   lastLapMs: number | null
   bestSessionMs: number | null
   bestAllTimeMs: number | null
+  // Theoretical-best lap time: sum of the player's best ever per-sector
+  // durations on this slug + version. null when not all sectors have been
+  // covered yet so the HUD can render a "WORK IN PROGRESS" placeholder
+  // instead of a misleading sub-PB number.
+  optimalLapMs: number | null
+  // True once every sector on the current track has at least one recorded
+  // best. Drives the OPTIMAL block's tinting (gold + "ideal" subtitle when
+  // complete, dim "build it" subtitle while still missing a sector).
+  optimalLapComplete: boolean
   overallRecord: { initials: string; lapTimeMs: number } | null
   lapCount: number
   onTrack: boolean
@@ -135,6 +144,29 @@ function timeOrDash(ms: number | null): string {
   return ms !== null ? formatLapTime(ms) : '--'
 }
 
+// Theoretical-best lap block. Sums the player's best ever per-sector
+// durations so the HUD can show "what you could do if you nailed every
+// corner". Tints gold when the optimal lap is complete (all sectors have a
+// best on file), dims the value when the player is still building a full
+// reference set (so it never feels like a stale lie).
+function OptimalBlock({
+  optimalLapMs,
+  complete,
+}: {
+  optimalLapMs: number | null
+  complete: boolean
+}) {
+  const valueText = optimalLapMs !== null && complete ? formatLapTime(optimalLapMs) : '--'
+  return (
+    <div style={block} aria-live="polite">
+      <div style={labelStyle}>OPTIMAL</div>
+      <div style={complete ? optimalValueComplete : optimalValuePending}>
+        {valueText}
+      </div>
+    </div>
+  )
+}
+
 function DriftPanel({
   active,
   score,
@@ -197,6 +229,10 @@ export function HUD(props: HudProps) {
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
         <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
         <StatBlock label="BEST (ALL TIME)" value={timeOrDash(props.bestAllTimeMs)} />
+        <OptimalBlock
+          optimalLapMs={props.optimalLapMs}
+          complete={props.optimalLapComplete}
+        />
         <StatBlock label="RECORD" value={recordValue} />
         <StatBlock label="LAP" value={props.lapCount} />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
@@ -449,6 +485,18 @@ const predictionDelta: React.CSSProperties = {
 const predictionAhead: React.CSSProperties = { color: '#5fe08a' }
 const predictionBehind: React.CSSProperties = { color: '#ff7b6e' }
 const predictionNeutral: React.CSSProperties = { color: '#f4d774' }
+// OPTIMAL block. Gold reads as aspirational but achievable; the dim style
+// for an in-progress reference set keeps the slot non-shouty until the
+// player has driven every sector at least once.
+const optimalValueComplete: React.CSSProperties = {
+  ...timeSm,
+  color: '#f4d774',
+  textShadow: '0 1px 4px rgba(0,0,0,0.6), 0 0 6px rgba(244, 215, 116, 0.35)',
+}
+const optimalValuePending: React.CSSProperties = {
+  ...timeSm,
+  color: 'rgba(244, 215, 116, 0.45)',
+}
 // Drift score panel. Sits on the left edge below the top stat row so it
 // reads at a glance without competing with the centered split delta tile or
 // the OFF TRACK / WRONG WAY warnings (further down the screen). Uses a
