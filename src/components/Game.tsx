@@ -67,6 +67,7 @@ import {
 } from '@/game/optimalLap'
 import { Leaderboard } from './Leaderboard'
 import { LapHistory } from './LapHistory'
+import { HowToPlay } from './HowToPlay'
 import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import type { CarParams } from '@/game/physics'
@@ -204,6 +205,7 @@ type PauseView =
   | 'tuning'
   | 'lapHistory'
   | 'stats'
+  | 'howToPlay'
 
 function GameSession({
   slug,
@@ -1216,6 +1218,7 @@ function GameSession({
               onStats={() => setPauseView('stats')}
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
+              onHowToPlay={() => setPauseView('howToPlay')}
               onShare={() => {
                 void handleShare()
               }}
@@ -1251,6 +1254,13 @@ function GameSession({
               params={tuning}
               onChange={setTuning}
               onReset={resetTuning}
+              onClose={() => setPauseView('menu')}
+            />
+          ) : pauseView === 'howToPlay' ? (
+            <HowToPlay
+              keyBindings={settings.keyBindings}
+              gamepadBindings={settings.gamepadBindings}
+              touchMode={settings.touchMode}
               onClose={() => setPauseView('menu')}
             />
           ) : (

@@ -19,6 +19,7 @@ interface PauseMenuProps {
   onStats: () => void
   onSettings: () => void
   onTuning: () => void
+  onHowToPlay: () => void
   onShare: () => void
   shareLabel?: string
   onExit: () => void
@@ -35,6 +36,7 @@ export function PauseMenu({
   onStats,
   onSettings,
   onTuning,
+  onHowToPlay,
   onShare,
   shareLabel,
   onExit,
@@ -60,6 +62,7 @@ export function PauseMenu({
         <MenuButton onClick={onStats}>Stats</MenuButton>
         <MenuButton onClick={onTuning}>Setup</MenuButton>
         <MenuButton onClick={onSettings}>Settings</MenuButton>
+        <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
         <MenuButton onClick={onShare}>{shareLabel ?? 'Share track'}</MenuButton>
         <MenuButton click="back" onClick={onExit}>
           Exit to title

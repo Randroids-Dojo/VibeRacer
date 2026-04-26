@@ -10,6 +10,7 @@ import { TitleBackground } from '@/components/TitleBackground'
 import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
+import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { MyPbs } from '@/components/MyPbs'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
@@ -59,6 +60,7 @@ export default async function HomePage() {
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
+          <HowToPlayLauncher buttonStyle={settingsBtnStyle} />
         </div>
       </section>
     </main>
