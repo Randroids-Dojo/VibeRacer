@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  compareSectorToBest,
   computeSectorDurations,
   hasCompleteOptimalLap,
   mergeBestSectors,
@@ -304,5 +305,86 @@ describe('hasCompleteOptimalLap', () => {
   it('handles a single-sector mini-track', () => {
     const sectors: SectorDuration[] = [{ cpId: 0, durationMs: 1500 }]
     expect(hasCompleteOptimalLap(sectors, 1)).toBe(true)
+  })
+})
+
+describe('compareSectorToBest', () => {
+  it('marks the first-ever sector for a cpId as a PB', () => {
+    const out = compareSectorToBest({ cpId: 2, tMs: 4200 }, 2700, [])
+    expect(out).not.toBeNull()
+    expect(out!.cpId).toBe(2)
+    expect(out!.durationMs).toBe(1500)
+    expect(out!.priorBestMs).toBeNull()
+    expect(out!.isPb).toBe(true)
+  })
+
+  it('marks first-ever as PB even when bestSectors is null', () => {
+    const out = compareSectorToBest({ cpId: 0, tMs: 1500 }, 0, null)
+    expect(out!.isPb).toBe(true)
+    expect(out!.priorBestMs).toBeNull()
+  })
+
+  it('flags a faster duration as a PB and reports the prior best', () => {
+    const best: SectorDuration[] = [
+      { cpId: 0, durationMs: 1800 },
+      { cpId: 1, durationMs: 1400 },
+    ]
+    const out = compareSectorToBest({ cpId: 1, tMs: 3000 }, 1800, best)
+    expect(out!.cpId).toBe(1)
+    expect(out!.durationMs).toBe(1200)
+    expect(out!.priorBestMs).toBe(1400)
+    expect(out!.isPb).toBe(true)
+  })
+
+  it('does not flag a slower duration as a PB', () => {
+    const best: SectorDuration[] = [{ cpId: 1, durationMs: 1100 }]
+    const out = compareSectorToBest({ cpId: 1, tMs: 3000 }, 1500, best)
+    expect(out!.durationMs).toBe(1500)
+    expect(out!.priorBestMs).toBe(1100)
+    expect(out!.isPb).toBe(false)
+  })
+
+  it('does not flag a tied duration as a PB', () => {
+    const best: SectorDuration[] = [{ cpId: 0, durationMs: 1500 }]
+    const out = compareSectorToBest({ cpId: 0, tMs: 1500 }, 0, best)
+    expect(out!.durationMs).toBe(1500)
+    expect(out!.priorBestMs).toBe(1500)
+    expect(out!.isPb).toBe(false)
+  })
+
+  it('rejects a non-positive computed duration', () => {
+    expect(compareSectorToBest({ cpId: 0, tMs: 0 }, 0, null)).toBeNull()
+    expect(compareSectorToBest({ cpId: 0, tMs: 1500 }, 1500, null)).toBeNull()
+    expect(compareSectorToBest({ cpId: 0, tMs: 1000 }, 1500, null)).toBeNull()
+  })
+
+  it('rejects non-finite tMs or prevHitTMs', () => {
+    expect(compareSectorToBest({ cpId: 0, tMs: NaN }, 0, null)).toBeNull()
+    expect(compareSectorToBest({ cpId: 0, tMs: Infinity }, 0, null)).toBeNull()
+    expect(compareSectorToBest({ cpId: 0, tMs: 1500 }, NaN, null)).toBeNull()
+    expect(
+      compareSectorToBest({ cpId: 0, tMs: 1500 }, Infinity, null),
+    ).toBeNull()
+  })
+
+  it('ignores a stored best with a non-positive duration', () => {
+    // A glitched / hand-edited row for cpId 0 should fall back to "no prior".
+    const best: SectorDuration[] = [{ cpId: 0, durationMs: -10 }]
+    const out = compareSectorToBest({ cpId: 0, tMs: 1500 }, 0, best)
+    expect(out!.priorBestMs).toBeNull()
+    expect(out!.isPb).toBe(true)
+  })
+
+  it('matches the cpId, not array order', () => {
+    // Best for cpId 2 only; comparing cpId 0 should still report "no prior".
+    const best: SectorDuration[] = [{ cpId: 2, durationMs: 1100 }]
+    const out = compareSectorToBest({ cpId: 0, tMs: 1500 }, 0, best)
+    expect(out!.priorBestMs).toBeNull()
+    expect(out!.isPb).toBe(true)
+  })
+
+  it('rounds the duration to whole ms', () => {
+    const out = compareSectorToBest({ cpId: 0, tMs: 1499.6 }, 0, null)
+    expect(out!.durationMs).toBe(1500)
   })
 })

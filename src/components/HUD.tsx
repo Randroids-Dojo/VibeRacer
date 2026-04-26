@@ -61,6 +61,11 @@ interface HudProps {
   driftLapBest: number | null
   driftAllTimeBest: number | null
   showDrift: boolean
+  // Per-sector PB celebration. Populated by Game when the just-completed
+  // sector beats the player's prior best for that cpId (or sets the first-
+  // ever best). The HUD pops in a small "S<n> PB" badge that fades after
+  // SECTOR_PB_DISPLAY_MS. null hides it.
+  sectorPb: { cpId: number; durationMs: number; generatedAtMs: number } | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -93,7 +98,49 @@ const HUD_ANIMATIONS_CSS = `
   0%, 100% { box-shadow: 0 0 14px rgba(255, 138, 60, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4) }
   50% { box-shadow: 0 0 28px rgba(255, 200, 80, 0.85), 0 4px 12px rgba(0, 0, 0, 0.4) }
 }
+@keyframes viberacer-sector-pb-pop {
+  0% { transform: translate(-50%, -8px) scale(0.6); opacity: 0 }
+  20% { transform: translate(-50%, 0) scale(1.12); opacity: 1 }
+  60% { transform: translate(-50%, 0) scale(1); opacity: 1 }
+  100% { transform: translate(-50%, -2px) scale(1); opacity: 0 }
+}
 `
+
+// Format a sub-lap sector duration as S.mmm (e.g. "1.421"). Sectors that
+// stretch past 60 s fall back to the same mm:ss.mmm format the lap timer
+// uses so the badge never overflows its slot or reads as a tiny number.
+function formatSectorDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '0.000'
+  const total = Math.max(0, Math.round(ms))
+  if (total >= 60000) return formatLapTime(total)
+  const seconds = Math.floor(total / 1000)
+  const millis = total % 1000
+  return `${seconds}.${String(millis).padStart(3, '0')}`
+}
+
+function SectorPbBadge({
+  sectorPb,
+}: {
+  sectorPb: { cpId: number; durationMs: number; generatedAtMs: number }
+}) {
+  // Display sector number 1-based for readability (cpId 0 is the first sector).
+  const sectorLabel = `S${sectorPb.cpId + 1}`
+  return (
+    <div
+      key={`sector-pb-${sectorPb.cpId}-${sectorPb.generatedAtMs}`}
+      style={sectorPbBadge}
+      role="status"
+      aria-live="polite"
+    >
+      <span style={sectorPbStar} aria-hidden>
+        {'★'}
+      </span>
+      <span style={sectorPbLabel}>SECTOR PB</span>
+      <span style={sectorPbSector}>{sectorLabel}</span>
+      <span style={sectorPbTime}>{formatSectorDuration(sectorPb.durationMs)}</span>
+    </div>
+  )
+}
 
 function StatBlock({
   label,
@@ -286,6 +333,7 @@ export function HUD(props: HudProps) {
           </div>
         </div>
       ) : null}
+      {props.sectorPb ? <SectorPbBadge sectorPb={props.sectorPb} /> : null}
       {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
     </div>
   )
@@ -566,4 +614,58 @@ const driftSubValue: React.CSSProperties = {
   fontWeight: 700,
   color: '#f4d774',
   lineHeight: 1.1,
+}
+// SECTOR PB badge. Sits a touch below the split tile so the two read as a
+// stacked pair when both fire on the same checkpoint cross (split tile shows
+// "vs PB", sector tile celebrates the underlying sector improvement). Gold
+// palette mirrors the OPTIMAL block and the lap-history PB chip so the visual
+// language for "personal best" stays consistent across the HUD. Pop-in
+// animation runs per cpId via the React key on the container element so a
+// string of sector PBs through a fast section feels punchy.
+const sectorPbBadge: React.CSSProperties = {
+  position: 'absolute',
+  top: 134,
+  left: '50%',
+  transform: 'translate(-50%, 0)',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '4px 12px',
+  borderRadius: 999,
+  background: 'linear-gradient(180deg, rgba(60, 40, 0, 0.85), rgba(40, 24, 0, 0.85))',
+  border: '1px solid rgba(244, 215, 116, 0.65)',
+  boxShadow:
+    '0 4px 12px rgba(0, 0, 0, 0.45), 0 0 18px rgba(244, 215, 116, 0.45)',
+  color: '#f4d774',
+  pointerEvents: 'none',
+  animation: 'viberacer-sector-pb-pop 2.2s ease-out forwards',
+}
+const sectorPbStar: React.CSSProperties = {
+  fontSize: 14,
+  lineHeight: 1,
+  color: '#ffe892',
+  textShadow: '0 0 6px rgba(255, 232, 146, 0.8)',
+}
+const sectorPbLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.5,
+  fontWeight: 800,
+  textTransform: 'uppercase',
+  opacity: 0.95,
+}
+const sectorPbSector: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 13,
+  fontWeight: 700,
+  background: 'rgba(244, 215, 116, 0.18)',
+  borderRadius: 4,
+  padding: '0 6px',
+  color: '#fff5d6',
+}
+const sectorPbTime: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 14,
+  fontWeight: 800,
+  letterSpacing: 0.5,
+  color: '#fff5d6',
 }

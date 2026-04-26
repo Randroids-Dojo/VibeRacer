@@ -106,6 +106,72 @@ export function optimalLapTime(
   return Math.round(total)
 }
 
+// How long the per-sector PB celebration badge stays on the HUD before it
+// fades. Each fresh checkpoint cross overwrites the previous expiry; lap
+// boundaries clear it. A bit shorter than SPLIT_DISPLAY_MS so a string of
+// PBs through a fast section still feels punchy rather than sticky.
+export const SECTOR_PB_DISPLAY_MS = 2200
+
+// Per-sector PB result for a single just-completed sector. Returned by
+// `compareSectorToBest` so the HUD can flash a celebratory "S<n> PB" badge the
+// moment the player nails a corner faster than ever before. Mirrors the same
+// "compare against the running best" rule the lap-completion merge uses, but
+// runs once per checkpoint instead of once per lap so the player gets feedback
+// while the lap is still in flight.
+export interface SectorPbResult {
+  // The cpId at the END of the sector that just completed.
+  cpId: number
+  // The just-measured sector duration in ms. Always > 0 (negative / zero
+  // computations short-circuit to a null result so the HUD never flashes
+  // garbage).
+  durationMs: number
+  // Prior best for this cpId before this sector ran, or null when the player
+  // has never recorded a best for this cpId yet (so the celebration reads as
+  // a "first-time lap" sector PB instead of comparing to an absent prior).
+  priorBestMs: number | null
+  // True when this sector beats the prior best (or no prior best existed).
+  // Drives the HUD celebration; false results mean the player ran the sector
+  // but did not improve.
+  isPb: boolean
+}
+
+// Compare a single just-completed sector against the running best-sector map.
+// Returns null when the inputs are nonsensical (non-finite or non-positive
+// duration, missing previous tMs reference); otherwise returns a result whose
+// `isPb` is true when this sector beats the prior best for its cpId, OR when
+// no prior best for that cpId exists yet.
+//
+// The duration is computed as `currentHit.tMs - prevHitTMs`. Pass
+// `prevHitTMs = 0` for the first checkpoint of a lap so the start-line-to-cp0
+// segment compares correctly.
+export function compareSectorToBest(
+  currentHit: { cpId: number; tMs: number },
+  prevHitTMs: number,
+  bestSectors: readonly SectorDuration[] | null,
+): SectorPbResult | null {
+  if (!currentHit) return null
+  if (!Number.isFinite(currentHit.tMs)) return null
+  if (!Number.isFinite(prevHitTMs)) return null
+  const durationMs = currentHit.tMs - prevHitTMs
+  if (!Number.isFinite(durationMs) || durationMs <= 0) return null
+  let priorBestMs: number | null = null
+  if (bestSectors) {
+    for (const s of bestSectors) {
+      if (s.cpId !== currentHit.cpId) continue
+      if (!Number.isFinite(s.durationMs) || s.durationMs <= 0) continue
+      priorBestMs = s.durationMs
+      break
+    }
+  }
+  const isPb = priorBestMs === null || durationMs < priorBestMs
+  return {
+    cpId: currentHit.cpId,
+    durationMs: Math.round(durationMs),
+    priorBestMs: priorBestMs === null ? null : Math.round(priorBestMs),
+    isPb,
+  }
+}
+
 // True when the stored best-sectors cover every sector of the current track
 // (one entry per expected cpId, with positive durations). Used by the HUD to
 // decide whether to render the OPTIMAL block as a real time vs a placeholder.

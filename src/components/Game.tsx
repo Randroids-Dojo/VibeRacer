@@ -48,6 +48,8 @@ import {
   type SplitDelta,
 } from '@/game/splits'
 import {
+  SECTOR_PB_DISPLAY_MS,
+  compareSectorToBest,
   computeSectorDurations,
   hasCompleteOptimalLap,
   mergeBestSectors,
@@ -162,6 +164,13 @@ interface HudState {
   // estimate while the player drives a sector. Cleared at lap completion and
   // on Restart / Restart Lap so a fresh lap starts blank.
   prediction: LapPrediction | null
+  // Per-sector PB celebration. Populated only when the just-completed sector
+  // beat the player's prior best for that cpId (or set the first-ever best for
+  // that cpId). Auto-clears after SECTOR_PB_DISPLAY_MS, on lap completion, and
+  // on Restart / Restart Lap so the HUD never freezes on a stale celebration.
+  // The `generatedAtMs` plus React-key on the HUD give back-to-back sector PBs
+  // a clean re-pop animation per cpId.
+  sectorPb: { cpId: number; durationMs: number; generatedAtMs: number } | null
   // Drift state mirrored from RaceCanvas's per-frame session machine. The
   // HUD's drift block reads these directly; live score updates land at the
   // throttled HUD cadence (~20 Hz) which is plenty for the readout.
@@ -305,6 +314,17 @@ function GameSession({
   // handleLapComplete can merge a fresh lap's sectors without going through
   // setState, then push the merged result into HudState in one call.
   const bestSectorsRef = useRef<SectorDuration[] | null>(null)
+  // tMs of the previous in-lap checkpoint hit, used to compute the just-
+  // completed sector's duration in handleCheckpointHit. Resets to 0 at lap
+  // start, on lap completion, and on Restart / Restart Lap so the first
+  // checkpoint of every fresh lap measures from the start line correctly.
+  const prevHitTMsRef = useRef<number>(0)
+  // Auto-clear timer for the per-sector PB celebration badge on HUD. Cleared
+  // on every fresh sector PB, on lap completion, and on Restart / Restart Lap
+  // so the badge never sticks when the player abandons the lap.
+  const sectorPbClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   // Expected sector count for OPTIMAL completeness. Equals the track's
   // checkpoint count (one sector per checkpoint), which defaults to the
   // piece count when no override is set.
@@ -343,6 +363,7 @@ function GameSession({
       toastKind: null,
       splitDelta: null,
       prediction: null,
+      sectorPb: null,
       driftActive: false,
       driftScore: 0,
       driftMultiplier: 1,
@@ -429,6 +450,7 @@ function GameSession({
     resumeShiftRef.current = 0
     pendingResetRef.current = true
     tokenRef.current = null
+    prevHitTMsRef.current = 0
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
@@ -436,6 +458,10 @@ function GameSession({
     if (splitClearTimerRef.current) {
       clearTimeout(splitClearTimerRef.current)
       splitClearTimerRef.current = null
+    }
+    if (sectorPbClearTimerRef.current) {
+      clearTimeout(sectorPbClearTimerRef.current)
+      sectorPbClearTimerRef.current = null
     }
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     silenceAllSfx(0.05)
@@ -454,6 +480,7 @@ function GameSession({
       toastKind: null,
       splitDelta: null,
       prediction: null,
+      sectorPb: null,
       driftActive: false,
       driftScore: 0,
       driftMultiplier: 1,
@@ -470,9 +497,14 @@ function GameSession({
   const armLapReset = useCallback(() => {
     pendingLapResetRef.current = true
     pendingReplayForSubmitRef.current = null
+    prevHitTMsRef.current = 0
     if (splitClearTimerRef.current) {
       clearTimeout(splitClearTimerRef.current)
       splitClearTimerRef.current = null
+    }
+    if (sectorPbClearTimerRef.current) {
+      clearTimeout(sectorPbClearTimerRef.current)
+      sectorPbClearTimerRef.current = null
     }
     setHud((prev) => ({
       ...prev,
@@ -481,6 +513,7 @@ function GameSession({
       wrongWay: false,
       splitDelta: null,
       prediction: null,
+      sectorPb: null,
       driftActive: false,
       driftScore: 0,
       driftMultiplier: 1,
@@ -659,6 +692,9 @@ function GameSession({
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
       if (splitClearTimerRef.current) clearTimeout(splitClearTimerRef.current)
+      if (sectorPbClearTimerRef.current) {
+        clearTimeout(sectorPbClearTimerRef.current)
+      }
       silenceAllSfx(0.05)
     }
   }, [])
@@ -695,11 +731,49 @@ function GameSession({
   // splits stored from their last all-time PB. The tile auto-clears after
   // SPLIT_DISPLAY_MS and resets between laps (handleLapComplete clears it).
   function handleCheckpointHit(hit: CheckpointHit) {
-    const pb = pbSplitsRef.current
-    if (!pb || pb.length === 0) return
-    const out = computeSplitDeltaForLastHit([hit], pb)
-    if (!out) return
     const generatedAtMs = performance.now()
+    // Per-sector PB detection. Runs independently of the PB-splits / projection
+    // path so the very first lap of a brand-new track still flashes a sector
+    // PB the moment a sector completes (no recorded best yet => first-time PB).
+    const sectorOut = compareSectorToBest(
+      hit,
+      prevHitTMsRef.current,
+      bestSectorsRef.current,
+    )
+    prevHitTMsRef.current = hit.tMs
+    const sectorPb =
+      sectorOut && sectorOut.isPb
+        ? {
+            cpId: sectorOut.cpId,
+            durationMs: sectorOut.durationMs,
+            generatedAtMs,
+          }
+        : null
+    if (sectorPb) {
+      if (sectorPbClearTimerRef.current) {
+        clearTimeout(sectorPbClearTimerRef.current)
+      }
+      sectorPbClearTimerRef.current = setTimeout(() => {
+        setHud((prev) => ({ ...prev, sectorPb: null }))
+        sectorPbClearTimerRef.current = null
+      }, SECTOR_PB_DISPLAY_MS)
+    }
+
+    const pb = pbSplitsRef.current
+    if (!pb || pb.length === 0) {
+      // No PB on file yet, but a sector PB might still want to flash.
+      if (sectorPb) {
+        setHud((prev) => ({ ...prev, sectorPb }))
+      }
+      return
+    }
+    const out = computeSplitDeltaForLastHit([hit], pb)
+    if (!out) {
+      if (sectorPb) {
+        setHud((prev) => ({ ...prev, sectorPb }))
+      }
+      return
+    }
     // Live projected lap time. Same input ingredients as the split tile, plus
     // the stored PB lap time. Only refreshes at checkpoints so it does not
     // jitter mid-sector. Persists in HudState until the next checkpoint or the
@@ -709,6 +783,7 @@ function GameSession({
       ...prev,
       splitDelta: { deltaMs: out.deltaMs, cpId: out.cpId, generatedAtMs },
       prediction: prediction ?? prev.prediction,
+      sectorPb: sectorPb ?? prev.sectorPb,
     }))
     if (splitClearTimerRef.current) clearTimeout(splitClearTimerRef.current)
     splitClearTimerRef.current = setTimeout(() => {
@@ -798,11 +873,21 @@ function GameSession({
         // projection is meaningless once a new lap has begun; clear it so the
         // PROJECTED slot disappears until the first checkpoint of the next lap.
         prediction: null,
+        // Same rule for the sector PB badge: a finished lap's celebration
+        // belongs to the lap that just ended; the next lap should start clean.
+        sectorPb: null,
       }
     })
+    // Reset the per-sector PB tracking ref so the very first checkpoint of the
+    // next lap measures from the start line correctly.
+    prevHitTMsRef.current = 0
     if (splitClearTimerRef.current) {
       clearTimeout(splitClearTimerRef.current)
       splitClearTimerRef.current = null
+    }
+    if (sectorPbClearTimerRef.current) {
+      clearTimeout(sectorPbClearTimerRef.current)
+      sectorPbClearTimerRef.current = null
     }
     const outcome = outcomeRef.current
     if (outcome === 'record') playPbFanfare('record')
@@ -956,6 +1041,7 @@ function GameSession({
         splitDeltaMs={hud.splitDelta?.deltaMs ?? null}
         splitCpId={hud.splitDelta?.cpId ?? null}
         prediction={hud.prediction}
+        sectorPb={hud.sectorPb}
         driftActive={hud.driftActive && phase === 'racing' && !paused}
         driftScore={hud.driftScore}
         driftMultiplier={hud.driftMultiplier}
