@@ -4,7 +4,7 @@ import { hasKvConfigured } from '@/lib/kv'
 import { loadTrack } from '@/lib/loadTrack'
 import { Game, type OverallRecord } from '@/components/Game'
 import { SlugLanding } from '@/components/SlugLanding'
-import { loadRecentTracksSafe } from '@/lib/recentTracks'
+import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
 
 async function loadOverallRecord(
   slug: string,
@@ -44,7 +44,7 @@ export default async function SlugPage(ctx: {
   const loaded = await loadTrack(slug, requestedHash)
   if (loaded.kind === 'notFound') notFound()
   if (loaded.kind === 'fresh') {
-    const recent = await loadRecentTracksSafe(slug)
+    const recent = await loadRecentTrackPreviewsSafe(slug)
     return <SlugLanding slug={slug} recent={recent} />
   }
   const { pieces, versionHash, checkpointCount } = loaded

@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { loadRecentTracksSafe } from '@/lib/recentTracks'
+import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
 import {
   RecentTrackList,
@@ -15,10 +15,14 @@ const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
 
 export default async function HomePage() {
-  const recent = await loadRecentTracksSafe()
+  const recent = await loadRecentTrackPreviewsSafe()
   const hasRecent = recent.length > 0
   const items: RecentTrackListItem[] = hasRecent
-    ? recent.map((r) => ({ slug: r.slug, label: formatDate(r.updatedAt) }))
+    ? recent.map((r) => ({
+        slug: r.slug,
+        label: formatDate(r.updatedAt),
+        pieces: r.pieces,
+      }))
     : SAMPLE_SLUGS.map((slug) => ({ slug, label: 'sample' }))
 
   return (

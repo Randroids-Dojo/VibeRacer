@@ -1,12 +1,12 @@
 import Link from 'next/link'
-import type { RecentTrack } from '@/lib/recentTracks'
+import type { RecentTrackPreview } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
 import { RecentTrackList } from './RecentTrackList'
 import { TitleMusic } from './TitleMusic'
 
 interface Props {
   slug: string
-  recent: RecentTrack[]
+  recent: RecentTrackPreview[]
 }
 
 export function SlugLanding({ slug, recent }: Props) {
@@ -36,6 +36,7 @@ export function SlugLanding({ slug, recent }: Props) {
               items={recent.map((r) => ({
                 slug: r.slug,
                 label: formatDate(r.updatedAt),
+                pieces: r.pieces,
               }))}
             />
           )}
