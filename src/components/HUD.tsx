@@ -1,6 +1,13 @@
 'use client'
 import { formatSplitDelta, type LapPrediction } from '@/game/splits'
 import { formatDriftScore } from '@/game/drift'
+import {
+  MEDAL_COLORS,
+  MEDAL_GLYPH,
+  MEDAL_LABELS,
+  medalForTime,
+  type MedalTier,
+} from '@/game/medals'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -191,6 +198,42 @@ function timeOrDash(ms: number | null): string {
   return ms !== null ? formatLapTime(ms) : '--'
 }
 
+// Medal chip pinned next to BEST (ALL TIME). The tier is computed from the
+// player's PB versus the route's leaderboard #1 lap time. The tier color
+// reads as the metal at a glance and the label says the name in plain text
+// so emoji-free fonts and screen readers both surface the right meaning.
+function MedalBadge({ tier }: { tier: MedalTier }) {
+  const color = MEDAL_COLORS[tier]
+  const label = MEDAL_LABELS[tier]
+  return (
+    <span
+      style={{
+        ...medalBadgeStyle,
+        color,
+        borderColor: hexWithAlpha(color, 0.55),
+        boxShadow: `0 0 8px ${hexWithAlpha(color, 0.35)}`,
+      }}
+      title={`${label} medal: PB within tier vs leaderboard #1`}
+      aria-label={`${label} medal`}
+    >
+      <span style={medalGlyphStyle} aria-hidden>
+        {MEDAL_GLYPH}
+      </span>
+      <span style={medalLabelStyle}>{label.toUpperCase()}</span>
+    </span>
+  )
+}
+
+// Append an alpha component to a "#rrggbb" color. Returns rgba(r,g,b,a).
+// Returns the original color unchanged when the input is not a 7-char hex.
+function hexWithAlpha(hex: string, alpha: number): string {
+  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
+  const r = parseInt(hex.slice(1, 3), 16)
+  const g = parseInt(hex.slice(3, 5), 16)
+  const b = parseInt(hex.slice(5, 7), 16)
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`
+}
+
 // Theoretical-best lap block. Sums the player's best ever per-sector
 // durations so the HUD can show "what you could do if you nailed every
 // corner". Tints gold when the optimal lap is complete (all sectors have a
@@ -267,6 +310,13 @@ export function HUD(props: HudProps) {
   const isRecord = props.toastKind === 'record'
   const showSplit = props.splitDeltaMs !== null
   const splitAhead = showSplit && (props.splitDeltaMs ?? 0) < 0
+  // Medal tier earned by the player's all-time PB versus the leaderboard #1
+  // for this version. Stays null when either is missing or the PB is slower
+  // than the bronze cutoff so the badge slot collapses cleanly.
+  const medalTier = medalForTime(
+    props.bestAllTimeMs,
+    props.overallRecord ? props.overallRecord.lapTimeMs : null,
+  )
   return (
     <div style={wrap}>
       <style>{HUD_ANIMATIONS_CSS}</style>
@@ -275,7 +325,13 @@ export function HUD(props: HudProps) {
         {props.prediction ? <PredictionBlock prediction={props.prediction} /> : null}
         <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
         <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
-        <StatBlock label="BEST (ALL TIME)" value={timeOrDash(props.bestAllTimeMs)} />
+        <div style={bestBlockGroup}>
+          <StatBlock
+            label="BEST (ALL TIME)"
+            value={timeOrDash(props.bestAllTimeMs)}
+          />
+          {medalTier ? <MedalBadge tier={medalTier} /> : null}
+        </div>
         <OptimalBlock
           optimalLapMs={props.optimalLapMs}
           complete={props.optimalLapComplete}
@@ -668,4 +724,34 @@ const sectorPbTime: React.CSSProperties = {
   fontWeight: 800,
   letterSpacing: 0.5,
   color: '#fff5d6',
+}
+// Medal badge container. Sits flush to the BEST (ALL TIME) tile so the medal
+// reads as a property OF that lap time. Uses a column flex so the badge can
+// drop to a second row on narrow viewports if the row would otherwise wrap.
+const bestBlockGroup: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 4,
+}
+const medalBadgeStyle: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '1px 7px',
+  borderRadius: 999,
+  background: 'rgba(0, 0, 0, 0.45)',
+  border: '1px solid rgba(255, 255, 255, 0.25)',
+  fontWeight: 800,
+  fontSize: 10,
+  letterSpacing: 1.2,
+  lineHeight: 1.2,
+}
+const medalGlyphStyle: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1,
+  textShadow: '0 0 5px currentColor',
+}
+const medalLabelStyle: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
 }
