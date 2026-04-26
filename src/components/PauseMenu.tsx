@@ -16,6 +16,12 @@ interface PauseMenuProps {
   // Number of laps completed this session. Drives the count badge on the
   // Laps button so the player can see at a glance how many entries are queued.
   lapCount: number
+  // Lifetime PB-progression view for this (slug, version). Mounting
+  // `onPbHistory` opts the row in; pbHistoryCount drives a small badge that
+  // surfaces how many PBs the player has logged here so the entry reads as a
+  // long-running record rather than an empty pane.
+  onPbHistory?: () => void
+  pbHistoryCount?: number
   onStats: () => void
   onAchievements: () => void
   // Lifetime unlocks count and total. Drives the "x/y" badge on the
@@ -61,6 +67,8 @@ export function PauseMenu({
   onLeaderboards,
   onLapHistory,
   lapCount,
+  onPbHistory,
+  pbHistoryCount,
   onStats,
   onAchievements,
   achievementCount,
@@ -97,6 +105,16 @@ export function PauseMenu({
         <MenuButton onClick={onLapHistory}>
           {lapCount > 0 ? `Laps (${lapCount})` : 'Laps'}
         </MenuButton>
+        {onPbHistory ? (
+          <MenuButton
+            onClick={onPbHistory}
+            title="See every personal best you have ever set on this version of the layout."
+          >
+            {pbHistoryCount && pbHistoryCount > 0
+              ? `PB History (${pbHistoryCount})`
+              : 'PB History'}
+          </MenuButton>
+        ) : null}
         <MenuButton onClick={onStats}>Stats</MenuButton>
         <MenuButton onClick={onAchievements}>
           Achievements ({achievementCount}/{achievementTotal})

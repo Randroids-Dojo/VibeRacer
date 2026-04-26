@@ -106,6 +106,12 @@ import {
 } from '@/game/optimalLap'
 import { Leaderboard } from './Leaderboard'
 import { LapHistory } from './LapHistory'
+import { PbHistory } from './PbHistory'
+import {
+  appendStoredPbHistory,
+  readPbHistory,
+  type PbHistoryEntry,
+} from '@/lib/pbHistory'
 import { HowToPlay } from './HowToPlay'
 import { PhotoMode } from './PhotoMode'
 import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
@@ -300,6 +306,7 @@ type PauseView =
   | 'settings'
   | 'tuning'
   | 'lapHistory'
+  | 'pbHistory'
   | 'stats'
   | 'achievements'
   | 'howToPlay'
@@ -735,6 +742,14 @@ function GameSession({
   // Session-scoped lap log. Reset on Restart so a fresh race starts clean.
   // The local PB on disk persists across restarts; this list does not.
   const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([])
+  // Lifetime PB-progression log for this (slug, versionHash). Survives
+  // Restart, page reload, and version changes (re-read on slug or hash change
+  // via the loader effect below). Mutated only when handleLapComplete writes
+  // a fresh PB; the React state mirrors the persisted list so the pause-menu
+  // pane and the menu-row count badge stay in sync without a second read.
+  const [pbHistoryEntries, setPbHistoryEntries] = useState<PbHistoryEntry[]>(
+    () => readPbHistory(slug, versionHash),
+  )
   const [hud, setHud] = useState<HudState>(() => {
     const initialSectors = readLocalBestSectors(slug, versionHash)
     bestSectorsRef.current = initialSectors
@@ -1072,6 +1087,14 @@ function GameSession({
   useEffect(() => {
     setLastSubmit(readLastSubmit(slug, versionHash))
   }, [slug, versionHash, hud.bestAllTimeMs])
+  // Reload the lifetime PB-progression list whenever the player navigates to
+  // a different slug or version (the history is per (slug, version), so a
+  // navigation from one layout to another should swap the list rather than
+  // carrying stale entries across). The fresh read is cheap (one
+  // localStorage.getItem + JSON.parse) so the effect runs on mount as well.
+  useEffect(() => {
+    setPbHistoryEntries(readPbHistory(slug, versionHash))
+  }, [slug, versionHash])
 
   const [challengeLabel, setChallengeLabel] = useState<string | null>(null)
   const challengeLabelTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
@@ -1679,6 +1702,21 @@ function GameSession({
       }
       if (isAllTimePb) {
         writeLocalBest(slug, versionHash, lapMs)
+        // Append to the lifetime PB-progression log for this (slug, version).
+        // The pure helper drops oldest entries past the cap, validates the
+        // shape, and silently no-ops on storage-quota failures so the lap
+        // flow stays unbroken. Mirror the result into local React state so the
+        // pause-menu pane and the menu-row badge stay in sync without a
+        // second read.
+        const nextHistory = appendStoredPbHistory(slug, versionHash, {
+          lapTimeMs: lapMs,
+          // prev.bestAllTimeMs is the value being beaten right now (or null on
+          // a fresh slug + version). Captured before the setHud reducer
+          // promotes the new PB into bestAllTimeMs.
+          priorBestMs: prev.bestAllTimeMs,
+          achievedAt: Date.now(),
+        })
+        setPbHistoryEntries(nextHistory)
         // Mark this submit as a PB so the response handler knows to promote
         // the returned `submittedNonce` into the friend-challenge pointer.
         pendingPbForSubmitRef.current = { lapTimeMs: lapMs }
@@ -2200,6 +2238,8 @@ function GameSession({
               onLeaderboards={() => setPauseView('leaderboard')}
               onLapHistory={() => setPauseView('lapHistory')}
               lapCount={lapHistory.length}
+              onPbHistory={() => setPauseView('pbHistory')}
+              pbHistoryCount={pbHistoryEntries.length}
               onStats={() => setPauseView('stats')}
               onAchievements={() => setPauseView('achievements')}
               achievementCount={achievementProgressCount(achievements)}
@@ -2240,6 +2280,11 @@ function GameSession({
               entries={lapHistory}
               bestAllTimeMs={hud.bestAllTimeMs}
               bestSectors={bestSectorsRef.current ?? []}
+              onBack={() => setPauseView('menu')}
+            />
+          ) : pauseView === 'pbHistory' ? (
+            <PbHistory
+              entries={pbHistoryEntries}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'stats' ? (
