@@ -17,6 +17,12 @@ interface PauseMenuProps {
   // Laps button so the player can see at a glance how many entries are queued.
   lapCount: number
   onStats: () => void
+  onAchievements: () => void
+  // Lifetime unlocks count and total. Drives the "x/y" badge on the
+  // Achievements button so the player sees their progress at a glance from
+  // the menu without opening the pane.
+  achievementCount: number
+  achievementTotal: number
   onSettings: () => void
   onTuning: () => void
   onHowToPlay: () => void
@@ -34,6 +40,9 @@ export function PauseMenu({
   onLapHistory,
   lapCount,
   onStats,
+  onAchievements,
+  achievementCount,
+  achievementTotal,
   onSettings,
   onTuning,
   onHowToPlay,
@@ -60,6 +69,9 @@ export function PauseMenu({
           {lapCount > 0 ? `Laps (${lapCount})` : 'Laps'}
         </MenuButton>
         <MenuButton onClick={onStats}>Stats</MenuButton>
+        <MenuButton onClick={onAchievements}>
+          Achievements ({achievementCount}/{achievementTotal})
+        </MenuButton>
         <MenuButton onClick={onTuning}>Setup</MenuButton>
         <MenuButton onClick={onSettings}>Settings</MenuButton>
         <MenuButton onClick={onHowToPlay}>How to play</MenuButton>

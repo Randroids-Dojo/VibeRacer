@@ -55,6 +55,24 @@ import {
   type TrackStats,
 } from '@/game/trackStats'
 import { TrackStatsPane } from './TrackStatsPane'
+import { AchievementsPane } from './AchievementsPane'
+import {
+  ACHIEVEMENTS,
+  achievementProgress,
+  evaluateAchievements,
+  unlockAchievements,
+  getAchievementDef,
+  type AchievementMap,
+  type AchievementId,
+} from '@/game/achievements'
+import {
+  ACHIEVEMENTS_EVENT,
+  readAchievements,
+  readVisitedSlugs,
+  recordSlugVisit,
+  writeAchievements,
+} from '@/lib/achievements'
+import { medalForTime } from '@/game/medals'
 import type { CheckpointHit } from '@/lib/schemas'
 import {
   SPLIT_DISPLAY_MS,
@@ -223,6 +241,7 @@ type PauseView =
   | 'tuning'
   | 'lapHistory'
   | 'stats'
+  | 'achievements'
   | 'howToPlay'
 
 function GameSession({
@@ -408,6 +427,61 @@ function GameSession({
   // the same mount does not inflate the session count.
   const sessionCountedRef = useRef<boolean>(false)
 
+  // Cross-track lifetime achievements. Loaded once on mount and updated through
+  // the pure evaluator on every lap completion. State (not just a ref) so
+  // opening the Achievements pane re-renders with the freshest unlock map.
+  const [achievements, setAchievements] = useState<AchievementMap>(() =>
+    readAchievements(),
+  )
+  const achievementsRef = useRef<AchievementMap>(achievements)
+  achievementsRef.current = achievements
+  // Transient toast surfaced when a lap completion unlocks one or more
+  // achievements. Lives in its own state slot (not the lap-saved toast) so
+  // a true PB lap that also unlocks an achievement shows both messages.
+  const [achievementToast, setAchievementToast] = useState<string | null>(null)
+  const achievementToastTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  // Distinct-slug count seeded from disk and bumped exactly once per mount on
+  // the first countdown -> racing transition. The achievement evaluator reads
+  // the live count on every lap so a player who hits five distinct slugs in a
+  // single sprint sees the badge fire on the very next lap.
+  const distinctSlugCountRef = useRef<number>(
+    typeof window === 'undefined' ? 0 : readVisitedSlugs().length,
+  )
+  // Live wrong-way flag for the current session. The HUD keeps a separate
+  // mirror for the on-screen banner; this ref outlives the per-frame banner
+  // so a brief wrong-way blip at any point in the race still credits the
+  // achievement on the next lap completion. Reset on Restart so a fresh race
+  // starts clean.
+  const wrongWayTriggeredRef = useRef<boolean>(false)
+  // Just-finished lap's drift peak. Set by handleLapDriftBest (which fires
+  // immediately before handleLapComplete inside the rAF loop) so the
+  // achievement evaluator sees the drift score for the SAME lap that just
+  // completed without round-tripping through the throttled HUD setState.
+  // Reset to null after each evaluation so a non-drift lap reads as null.
+  const lastLapDriftScoreRef = useRef<number | null>(null)
+  // Listen for cross-tab achievement updates plus the same-tab broadcast so
+  // unlocking an achievement in another tab (or via a Test escape hatch)
+  // immediately refreshes the live state.
+  useEffect(() => {
+    function onCustom(e: Event) {
+      const detail = (e as CustomEvent<AchievementMap>).detail
+      if (detail && typeof detail === 'object') setAchievements(detail)
+      else setAchievements(readAchievements())
+    }
+    function onStorage(e: StorageEvent) {
+      if (e.key !== 'viberacer.achievements') return
+      setAchievements(readAchievements())
+    }
+    window.addEventListener(ACHIEVEMENTS_EVENT, onCustom)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(ACHIEVEMENTS_EVENT, onCustom)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
+
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
@@ -490,6 +564,11 @@ function GameSession({
   }, [slug, versionHash, expectedSectorCount])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
+    // Latch wrong-way detection for the achievement evaluator. The on-screen
+    // banner toggles every time the player turns around; this ref stays true
+    // for the rest of the session so a fleeting blip earns the badge on the
+    // next lap completion. Reset on Restart (see the restart() handler).
+    if (next.wrongWay) wrongWayTriggeredRef.current = true
     setHud((prev) => ({
       ...prev,
       currentMs: next.currentMs,
@@ -563,6 +642,15 @@ function GameSession({
     setPaused(false)
     setLapHistory([])
     setConfettiKind(null)
+    // A full restart abandons the session so a wrong-way blip from the prior
+    // run no longer counts toward the achievement. Restart Lap intentionally
+    // keeps it: the player did go the wrong way at some point in this session.
+    wrongWayTriggeredRef.current = false
+    if (achievementToastTimerRef.current) {
+      clearTimeout(achievementToastTimerRef.current)
+      achievementToastTimerRef.current = null
+    }
+    setAchievementToast(null)
     setHud((prev) => ({
       ...prev,
       currentMs: 0,
@@ -823,6 +911,10 @@ function GameSession({
   // localStorage and surfaces a toast (uses the same lane as the lap-saved
   // toast, so a true PB lap takes precedence).
   function handleLapDriftBest(score: number) {
+    // Capture the just-finished lap's drift peak in a ref so the next
+    // handleLapComplete can feed it straight into the achievement evaluator
+    // without waiting for the throttled HUD setState to settle.
+    lastLapDriftScoreRef.current = score > 0 ? score : null
     setHud((prev) => {
       const lapBest = score > 0 ? score : prev.driftLapBest ?? 0
       const allTime = prev.driftAllTimeBest ?? 0
@@ -912,6 +1004,14 @@ function GameSession({
   function handleLapComplete(event: LapCompleteEvent) {
     const lapMs = event.lapTimeMs
     const outcomeRef: { current: ToastKind } = { current: 'lap' }
+    // Mirror the values setHud computes inside its updater so the achievement
+    // evaluator (which runs after the closure) reads from a single source of
+    // truth without a second setState.
+    const lapDerivedRef: {
+      current: { isAllTimePb: boolean; nextStreak: number; lapBestAllTimeMs: number | null }
+    } = {
+      current: { isAllTimePb: false, nextStreak: 0, lapBestAllTimeMs: null },
+    }
     // Merge the just-completed lap's per-sector durations into the running
     // best-sector map. Runs on every completed lap (not just PBs) because a
     // single sector can be a personal best even when the rest of the lap was
@@ -1002,6 +1102,11 @@ function GameSession({
           ? 'pb'
           : 'lap'
       outcomeRef.current = toastKind
+      lapDerivedRef.current = {
+        isAllTimePb,
+        nextStreak,
+        lapBestAllTimeMs: isAllTimePb ? lapMs : prev.bestAllTimeMs,
+      }
       const toast =
         toastKind === 'record'
           ? 'NEW RECORD!'
@@ -1073,7 +1178,82 @@ function GameSession({
     setTrackStats(nextStats)
     writeTrackStats(slug, versionHash, nextStats)
 
+    // Evaluate achievements against the freshly-updated state. The evaluator
+    // is pure and runs on every lap; the unlock helper merges only the ids
+    // that were not previously unlocked so a repeat trigger is a no-op.
+    const lapDerived = lapDerivedRef.current
+    // Compare the freshly-updated all-time PB against the best record we know
+    // for this version. The optimistic record swap inside the setHud closure
+    // already handled the case where THIS lap took the record; for any other
+    // lap we use the seeded initialRecord (server-side load) as the baseline.
+    const recordTimeForMedal =
+      lapDerived.lapBestAllTimeMs !== null && lapDerived.lapBestAllTimeMs <= lapMs
+        ? // The player just took the record themselves: use the new lap as
+          // its own target, which makes medalForTime resolve to platinum.
+          lapMs
+        : initialRecord?.lapTimeMs ?? null
+    const medalTier = medalForTime(
+      lapDerived.lapBestAllTimeMs,
+      recordTimeForMedal,
+    )
+    const earned = evaluateAchievements({
+      lapTimeMs: lapMs,
+      isPb: lapDerived.isAllTimePb,
+      driftLapScore: lastLapDriftScoreRef.current,
+      pbStreak: lapDerived.nextStreak,
+      trackLapCount: nextStats.lapCount,
+      trackDriveMs: nextStats.totalDriveMs,
+      optimalComplete: hasCompleteOptimalLap(
+        bestSectorsRef.current,
+        expectedSectorCount,
+      ),
+      distinctSlugCount: distinctSlugCountRef.current,
+      wrongWayTriggered: wrongWayTriggeredRef.current,
+      medalTier,
+    })
+    // Drop the drift cache so the next lap starts clean.
+    lastLapDriftScoreRef.current = null
+    if (earned.length > 0) {
+      const meta = {
+        unlockedAt: Date.now(),
+        slug,
+        versionHash,
+      }
+      const merge = unlockAchievements(achievementsRef.current, earned, meta)
+      if (merge.unlocked.length > 0) {
+        achievementsRef.current = merge.next
+        setAchievements(merge.next)
+        writeAchievements(merge.next)
+        announceAchievementUnlock(merge.unlocked)
+      }
+    }
+
     void submitLap(event)
+  }
+
+  // Surface a brief toast for the freshest unlock so the player knows they
+  // just earned something without having to open the pane. Multiple unlocks
+  // in one lap (e.g. first-lap + first-pb on the very first lap of a fresh
+  // browser) collapse to a single combined toast so the lap-saved lane never
+  // queues a stack of overlapping notifications.
+  function announceAchievementUnlock(ids: readonly AchievementId[]) {
+    if (ids.length === 0) return
+    const names = ids
+      .map((id) => getAchievementDef(id)?.name ?? null)
+      .filter((s): s is string => s !== null)
+    if (names.length === 0) return
+    const label =
+      names.length === 1
+        ? `Achievement: ${names[0]}`
+        : `Achievement x${names.length}: ${names.join(', ')}`
+    if (achievementToastTimerRef.current) {
+      clearTimeout(achievementToastTimerRef.current)
+    }
+    setAchievementToast(label)
+    achievementToastTimerRef.current = setTimeout(() => {
+      setAchievementToast(null)
+      achievementToastTimerRef.current = null
+    }, 3200)
   }
 
   async function startRaceServerSide() {
@@ -1142,6 +1322,10 @@ function GameSession({
       trackStatsRef.current = next
       setTrackStats(next)
       writeTrackStats(slug, versionHash, next)
+      // Bookmark this slug as visited so the Variety Pack achievement counts
+      // toward its threshold on the very next lap completion. Idempotent: a
+      // re-visit returns the existing distinct count without changing state.
+      distinctSlugCountRef.current = recordSlugVisit(slug)
     }
   }
 
@@ -1233,6 +1417,12 @@ function GameSession({
         showDrift={settings.showDrift}
         pbStreak={hud.pbStreak}
       />
+      {achievementToast ? (
+        <div style={achievementToastStyle} role="status" aria-live="polite">
+          <span style={achievementToastGlyphStyle}>★</span>
+          {achievementToast}
+        </div>
+      ) : null}
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls
         keys={keys}
@@ -1272,6 +1462,9 @@ function GameSession({
               onLapHistory={() => setPauseView('lapHistory')}
               lapCount={lapHistory.length}
               onStats={() => setPauseView('stats')}
+              onAchievements={() => setPauseView('achievements')}
+              achievementCount={achievementProgressCount(achievements)}
+              achievementTotal={achievementTotalCount}
               onSettings={() => setPauseView('settings')}
               onTuning={() => setPauseView('tuning')}
               onHowToPlay={() => setPauseView('howToPlay')}
@@ -1305,6 +1498,11 @@ function GameSession({
               bestAllTimeMs={hud.bestAllTimeMs}
               pbStreakBestEver={hud.pbStreakBest}
               pbStreakLive={hud.pbStreak}
+              onBack={() => setPauseView('menu')}
+            />
+          ) : pauseView === 'achievements' ? (
+            <AchievementsPane
+              achievements={achievements}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (
@@ -1346,6 +1544,43 @@ const root: React.CSSProperties = {
   userSelect: 'none',
   WebkitUserSelect: 'none',
   WebkitTouchCallout: 'none',
+}
+// Achievement toast lane. Sits below the HUD's top row so a "lap saved" toast
+// and an "Achievement unlocked" toast read as two independent messages rather
+// than fighting for the same slot. Auto-dismisses after ~3.2s.
+const achievementToastStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: 88,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  background: 'rgba(20, 20, 20, 0.92)',
+  color: '#f4d774',
+  border: '1px solid #f4d774',
+  borderRadius: 999,
+  padding: '8px 16px',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 700,
+  letterSpacing: 1,
+  boxShadow: '0 6px 18px rgba(0, 0, 0, 0.45)',
+  zIndex: 30,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  pointerEvents: 'none',
+}
+const achievementToastGlyphStyle: React.CSSProperties = {
+  fontSize: 16,
+  lineHeight: 1,
+}
+// Cached total achievement count so the pause-menu badge does not allocate a
+// new computation per render.
+const achievementTotalCount = ACHIEVEMENTS.length
+// Cheap derivation reused by both the pause-menu badge and (potentially) other
+// surfaces. The pure helper does the work; this thin wrapper keeps callers from
+// destructuring three fields when they only want the unlocked tally.
+function achievementProgressCount(map: AchievementMap): number {
+  return achievementProgress(map).unlockedCount
 }
 const canvasStyle: React.CSSProperties = {
   display: 'block',
