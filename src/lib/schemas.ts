@@ -1,6 +1,8 @@
 import { z } from 'zod'
 import { CarParamsSchema, InputModeSchema } from './tuningSettings'
 import { ReplaySchema } from './replay'
+import { TimeOfDaySchema } from './lighting'
+import { WeatherSchema } from './weather'
 
 export const PieceTypeSchema = z.enum([
   'straight',
@@ -36,10 +38,26 @@ const CheckpointCountSchema = z
   .min(MIN_CHECKPOINT_COUNT)
   .max(MAX_PIECES_PER_TRACK)
 
+// Optional per-track-author "preferred mood": a time-of-day and / or weather
+// preset baked into the saved track version. The race page applies these on
+// load so every player sees the author's intended look (unless the player
+// turns off the "respect track mood" toggle in Settings). Both fields are
+// optional so a track author can pick one, both, or neither. The mood is NOT
+// included in the version hash, so adding or changing the mood on an existing
+// track keeps every prior leaderboard entry intact.
+export const TrackMoodSchema = z
+  .object({
+    timeOfDay: TimeOfDaySchema.optional(),
+    weather: WeatherSchema.optional(),
+  })
+  .strict()
+export type TrackMood = z.infer<typeof TrackMoodSchema>
+
 export const TrackSchema = z
   .object({
     pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
     checkpointCount: CheckpointCountSchema.optional(),
+    mood: TrackMoodSchema.optional(),
   })
   .superRefine((track, ctx) => {
     if (
@@ -58,6 +76,7 @@ export type Track = z.infer<typeof TrackSchema>
 export const TrackVersionSchema = z.object({
   pieces: z.array(PieceSchema),
   checkpointCount: CheckpointCountSchema.optional(),
+  mood: TrackMoodSchema.optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
 })

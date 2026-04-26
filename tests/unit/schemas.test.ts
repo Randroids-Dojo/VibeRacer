@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import {
   PieceSchema,
   TrackSchema,
+  TrackMoodSchema,
+  TrackVersionSchema,
   InitialsSchema,
   SlugSchema,
   VersionHashSchema,
@@ -89,6 +91,105 @@ describe('TrackSchema', () => {
       rotation: 0 as const,
     }))
     expect(TrackSchema.safeParse({ pieces, checkpointCount: 5 }).success).toBe(false)
+  })
+
+  it('accepts an empty mood object (author opted not to bake one in)', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(TrackSchema.safeParse({ pieces, mood: {} }).success).toBe(true)
+  })
+
+  it('accepts a mood with only timeOfDay set', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({ pieces, mood: { timeOfDay: 'sunset' } }).success,
+    ).toBe(true)
+  })
+
+  it('accepts a mood with only weather set', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({ pieces, mood: { weather: 'foggy' } }).success,
+    ).toBe(true)
+  })
+
+  it('accepts a mood with both fields', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        mood: { timeOfDay: 'night', weather: 'cloudy' },
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects an unknown mood field', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        mood: { timeOfDay: 'noon', extra: 'foo' },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects a mood with an invalid timeOfDay', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({ pieces, mood: { timeOfDay: 'midnight' } }).success,
+    ).toBe(false)
+  })
+
+  it('rejects a mood with an invalid weather', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({ pieces, mood: { weather: 'rain' } }).success,
+    ).toBe(false)
+  })
+})
+
+describe('TrackMoodSchema', () => {
+  it('parses an empty object', () => {
+    expect(TrackMoodSchema.parse({})).toEqual({})
+  })
+
+  it('round-trips both fields', () => {
+    expect(
+      TrackMoodSchema.parse({ timeOfDay: 'morning', weather: 'foggy' }),
+    ).toEqual({ timeOfDay: 'morning', weather: 'foggy' })
+  })
+
+  it('rejects unknown extra fields', () => {
+    expect(TrackMoodSchema.safeParse({ surprise: 1 }).success).toBe(false)
+  })
+})
+
+describe('TrackVersionSchema', () => {
+  const validVersion = {
+    pieces: [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }],
+    createdByRacerId: '00000000-0000-4000-8000-000000000000',
+    createdAt: '2026-01-01T00:00:00.000Z',
+  }
+
+  it('round-trips a version without a mood (legacy payload)', () => {
+    expect(TrackVersionSchema.safeParse(validVersion).success).toBe(true)
+  })
+
+  it('round-trips a version with a mood', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        mood: { timeOfDay: 'sunset', weather: 'cloudy' },
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects a version with an invalid mood', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        mood: { weather: 'tornado' },
+      }).success,
+    ).toBe(false)
   })
 })
 

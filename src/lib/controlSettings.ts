@@ -206,6 +206,12 @@ export interface ControlSettings {
   // cosmetic. Default 'clear' is a no-op (zero fog density, identity
   // multipliers) so users who never open Settings see no change.
   weather: Weather
+  // When true (the default), apply the track author's preferred mood
+  // (timeOfDay / weather baked into the track version) instead of the player's
+  // own picks. The player's `timeOfDay` and `weather` choices remain stored;
+  // turning this off snaps the scene back to those personal picks. Track
+  // authors set the mood from the editor's Advanced panel.
+  respectTrackMood: boolean
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -240,6 +246,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
   timeOfDay: DEFAULT_TIME_OF_DAY,
   weather: DEFAULT_WEATHER,
+  respectTrackMood: true,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -339,6 +346,10 @@ const ControlSettingsSchema = z.object({
   // multipliers) for legacy stored payloads so users see the exact scene they
   // had before this feature shipped.
   weather: WeatherSchema.default(DEFAULT_WEATHER),
+  // Track-author mood respect landed after weather. Default true so brand-new
+  // players see the look the track author intended; legacy stored payloads
+  // pick up the same default so the upgrade is opt-out, not opt-in.
+  respectTrackMood: z.boolean().default(true),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -365,6 +376,7 @@ export function cloneDefaultSettings(): ControlSettings {
     gamepadBindings: cloneDefaultGamepadBindings(),
     timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
     weather: DEFAULT_CONTROL_SETTINGS.weather,
+    respectTrackMood: DEFAULT_CONTROL_SETTINGS.respectTrackMood,
   }
 }
 

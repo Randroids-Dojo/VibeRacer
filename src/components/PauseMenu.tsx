@@ -38,6 +38,12 @@ interface PauseMenuProps {
   // a brief explanatory hint can describe what will happen on click.
   challengeAvailable?: boolean
   challengeLabel?: string
+  // Short label describing the active track-author mood (e.g. "Sunset, Foggy")
+  // when the player is racing under a baked-in author mood. Renders as a
+  // small caption above the Esc hint so the player understands why the scene
+  // looks different from their own picks. Omit / pass null when no track
+  // mood is active.
+  trackMoodLabel?: string | null
   onExit: () => void
 }
 
@@ -62,6 +68,7 @@ export function PauseMenu({
   onChallenge,
   challengeAvailable,
   challengeLabel,
+  trackMoodLabel,
   onExit,
 }: PauseMenuProps) {
   return (
@@ -107,6 +114,25 @@ export function PauseMenu({
         <MenuButton click="back" onClick={onExit}>
           Exit to title
         </MenuButton>
+        {trackMoodLabel ? (
+          <div
+            style={{
+              fontSize: 11,
+              opacity: 0.7,
+              textAlign: 'center',
+              marginTop: 8,
+              padding: '6px 10px',
+              border: '1px solid rgba(154, 216, 255, 0.35)',
+              borderRadius: 6,
+              background: 'rgba(154, 216, 255, 0.08)',
+              color: '#9ad8ff',
+              letterSpacing: 0.6,
+            }}
+            title="The track author baked in this mood. Turn off Respect track mood in Settings to use your own picks."
+          >
+            Track mood: {trackMoodLabel}
+          </div>
+        ) : null}
         <div
           style={{
             fontSize: 11,

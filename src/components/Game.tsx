@@ -1,14 +1,17 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece } from '@/lib/schemas'
+import type { Piece, TrackMood } from '@/lib/schemas'
 import type { LapCompleteEvent } from '@/game/tick'
+import { resolveActiveMood, trackHasMood } from '@/game/trackMood'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
+import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
+import { WEATHER_LABELS } from '@/lib/weather'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -142,6 +145,12 @@ interface GameProps {
   versionHash: string
   pieces: Piece[]
   checkpointCount?: number
+  // Track-author baked mood (timeOfDay / weather). Null when the author has
+  // not picked one, or when the version predates this feature. When set and
+  // the player has `respectTrackMood: true` in Settings (the default), the
+  // resolver overrides the player's own picks for whichever fields the
+  // author set. Pure cosmetic; does not affect physics or hashing.
+  trackMood?: TrackMood | null
   initialRecord: OverallRecord | null
   // Friend-challenge payload parsed from the URL (?challenge=...&from=...&time=...).
   // Null when the player landed on the page through a normal link. When
@@ -269,6 +278,7 @@ function GameSession({
   versionHash,
   pieces,
   checkpointCount,
+  trackMood = null,
   initials,
   initialRecord,
   challenge = null,
@@ -408,13 +418,40 @@ function GameSession({
   const captureScreenshotRef = useRef<
     ((mimeType?: string, quality?: number) => string | null) | null
   >(null)
-  // Mirrors the chosen time-of-day preset into the rAF loop. Same poll-and-set
+  // Resolve the active scene mood (timeOfDay + weather): a track author's
+  // baked-in mood (saved alongside the track version) overrides the player's
+  // own picks for whichever fields it sets, unless the player turned off
+  // "Respect track mood" in Settings. The mood is purely cosmetic and does
+  // not affect physics or hashing.
+  const activeMood = resolveActiveMood({
+    trackMood,
+    playerTimeOfDay: settings.timeOfDay,
+    playerWeather: settings.weather,
+    respectTrackMood: settings.respectTrackMood,
+  })
+  // Mirrors the active time-of-day preset into the rAF loop. Same poll-and-set
   // pattern as carPaintRef: the renderer reads it each frame and reapplies the
   // sky / ambient / sun preset whenever the value changes.
-  const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
-  timeOfDayRef.current = settings.timeOfDay
-  const weatherRef = useRef<Weather | null>(settings.weather)
-  weatherRef.current = settings.weather
+  const timeOfDayRef = useRef<TimeOfDay | null>(activeMood.timeOfDay)
+  timeOfDayRef.current = activeMood.timeOfDay
+  const weatherRef = useRef<Weather | null>(activeMood.weather)
+  weatherRef.current = activeMood.weather
+  // Pause-menu indicator: surfaced in the menu so the player understands why
+  // the scene looks different from their own picks. True when the track
+  // author baked at least one mood field AND the player has the respect
+  // toggle on.
+  const trackMoodActive = settings.respectTrackMood && trackHasMood(trackMood)
+  // Short label for the pause-menu chip describing what the author baked in.
+  // Only includes fields the author actually set so the chip reads honestly:
+  // "Sunset" for time-only, "Foggy" for weather-only, "Sunset, Foggy" for
+  // both. Null when no track mood is active so the chip stays hidden.
+  const trackMoodLabel = (() => {
+    if (!trackMoodActive || !trackMood) return null
+    const parts: string[] = []
+    if (trackMood.timeOfDay) parts.push(TIME_OF_DAY_LABELS[trackMood.timeOfDay])
+    if (trackMood.weather) parts.push(WEATHER_LABELS[trackMood.weather])
+    return parts.length > 0 ? parts.join(', ') : null
+  })()
   // Live pose channel for the minimap. RaceCanvas writes to these refs every
   // frame; the Minimap component reads them in its own rAF loop without going
   // through React state. Keeping the refs alive here means a Settings toggle
@@ -1665,6 +1702,7 @@ function GameSession({
               }}
               challengeAvailable={lastSubmit !== null}
               challengeLabel={challengeLabel ?? undefined}
+              trackMoodLabel={trackMoodLabel}
               onExit={exitToTitle}
             />
           ) : pauseView === 'leaderboard' ? (

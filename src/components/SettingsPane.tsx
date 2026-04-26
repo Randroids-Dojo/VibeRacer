@@ -934,6 +934,17 @@ export function SettingsPane({
               )
             })}
           </div>
+          <MenuHint>
+            When the track author baked in a time of day or weather, use that
+            on this track. Turn this off to always use your own picks above.
+          </MenuHint>
+          <MenuToggle
+            label="Respect track mood"
+            value={settings.respectTrackMood}
+            onChange={(value) =>
+              onChange({ ...settings, respectTrackMood: value })
+            }
+          />
         </MenuSection>
 
         <MenuSection title="Camera">

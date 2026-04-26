@@ -1,10 +1,17 @@
 'use client'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece, PieceType, Rotation } from '@/lib/schemas'
+import type { Piece, PieceType, Rotation, TrackMood } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
+import {
+  TIME_OF_DAY_LABELS,
+  TIME_OF_DAY_NAMES,
+  type TimeOfDay,
+} from '@/lib/lighting'
+import { WEATHER_LABELS, WEATHER_NAMES, type Weather } from '@/lib/weather'
+import { sanitizeTrackMood } from '@/game/trackMood'
 import {
   getBounds,
   getStartExitDir,
@@ -50,6 +57,10 @@ interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
   initialCheckpointCount?: number
+  // Optional baked-in author mood (timeOfDay / weather) to seed the editor's
+  // pickers with. Both fields are optional inside the mood. Undefined when
+  // the loaded track has no mood (legacy or never set).
+  initialMood?: TrackMood
   // When set, the editor was opened against a historical version. Saving still
   // creates a new version on the same slug. The editor surfaces a small banner
   // so the player understands they are forking, not overwriting.
@@ -67,6 +78,7 @@ export function TrackEditor({
   slug,
   initialPieces,
   initialCheckpointCount,
+  initialMood,
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
@@ -80,9 +92,19 @@ export function TrackEditor({
       ? initialCheckpointCount
       : null,
   )
+  // Author-baked mood pickers. null = "use the player's own pick" (no
+  // override). Each field is independent so an author can pick just one.
+  const [moodTimeOfDay, setMoodTimeOfDay] = useState<TimeOfDay | null>(
+    initialMood?.timeOfDay ?? null,
+  )
+  const [moodWeather, setMoodWeather] = useState<Weather | null>(
+    initialMood?.weather ?? null,
+  )
+  const moodActive = moodTimeOfDay !== null || moodWeather !== null
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(
-    initialCheckpointCount !== undefined &&
-      initialCheckpointCount !== initialPieces.length,
+    (initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length) ||
+      initialMood !== undefined,
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
@@ -385,9 +407,20 @@ export function TrackEditor({
     setSaving(true)
     setError(null)
     try {
-      const reqBody: { pieces: Piece[]; checkpointCount?: number } = { pieces }
+      const reqBody: {
+        pieces: Piece[]
+        checkpointCount?: number
+        mood?: TrackMood
+      } = { pieces }
       if (checkpointCount !== null && effectiveCp !== cpMax) {
         reqBody.checkpointCount = effectiveCp
+      }
+      const sanitized = sanitizeTrackMood({
+        timeOfDay: moodTimeOfDay ?? undefined,
+        weather: moodWeather ?? undefined,
+      })
+      if (sanitized !== null) {
+        reqBody.mood = sanitized
       }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
@@ -611,6 +644,75 @@ export function TrackEditor({
               ) : null}
             </div>
           </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
+              <div style={advancedLabel}>Track mood</div>
+              <p style={advancedHelp}>
+                Pick a baked-in time of day or weather and every player who
+                races this version will see that look (unless they turn off
+                Respect track mood in their Settings). Leave both on Player
+                pick to let racers use their own scene preferences. Mood is
+                cosmetic only: it does not change physics, the lap times, or
+                the version hash, so adding or changing it later does not
+                invalidate any leaderboard entry.
+              </p>
+            </div>
+            <div style={moodControl}>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Time of day</span>
+                <select
+                  value={moodTimeOfDay ?? ''}
+                  onChange={(e) =>
+                    setMoodTimeOfDay(
+                      e.target.value === ''
+                        ? null
+                        : (e.target.value as TimeOfDay),
+                    )
+                  }
+                  style={moodSelect}
+                  aria-label="Track time of day"
+                >
+                  <option value="">Player pick</option>
+                  {TIME_OF_DAY_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {TIME_OF_DAY_LABELS[name]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Weather</span>
+                <select
+                  value={moodWeather ?? ''}
+                  onChange={(e) =>
+                    setMoodWeather(
+                      e.target.value === '' ? null : (e.target.value as Weather),
+                    )
+                  }
+                  style={moodSelect}
+                  aria-label="Track weather"
+                >
+                  <option value="">Player pick</option>
+                  {WEATHER_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {WEATHER_LABELS[name]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {moodActive ? (
+                <button
+                  onClick={() => {
+                    setMoodTimeOfDay(null)
+                    setMoodWeather(null)
+                  }}
+                  style={btnGhostSmall}
+                >
+                  Clear mood
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -642,7 +744,9 @@ export function TrackEditor({
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
               Advanced
-              {checkpointCount !== null ? <span style={advancedDot} /> : null}
+              {checkpointCount !== null || moodActive ? (
+                <span style={advancedDot} />
+              ) : null}
             </button>
           ) : null}
           <button
@@ -1108,6 +1212,34 @@ const advancedControl: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   flexShrink: 0,
+}
+const moodControl: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 8,
+  flexShrink: 0,
+  minWidth: 200,
+}
+const moodPickerRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  fontSize: 12,
+}
+const moodPickerLabel: React.CSSProperties = {
+  width: 78,
+  opacity: 0.75,
+}
+const moodSelect: React.CSSProperties = {
+  background: '#162233',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '4px 8px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  minWidth: 130,
 }
 const btnGhostSmall: React.CSSProperties = {
   border: '1px solid #334155',

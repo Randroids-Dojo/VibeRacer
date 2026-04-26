@@ -213,4 +213,51 @@ describe('GET /api/track/[slug]', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('round-trips an author mood without changing the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'mood-slug'
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pieces: squarePieces,
+        mood: { timeOfDay: 'sunset', weather: 'foggy' },
+      }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(hashTrack(squarePieces))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: {
+        pieces: Piece[]
+        mood?: { timeOfDay?: string; weather?: string }
+      }
+    }
+    expect(getBody.track.mood).toEqual({
+      timeOfDay: 'sunset',
+      weather: 'foggy',
+    })
+  })
+
+  it('does not persist an empty mood object', async () => {
+    const { PUT } = await import('@/app/api/track/[slug]/route')
+    const slug = 'empty-mood-slug'
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: squarePieces, mood: {} }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const stored = await fake.get<{ mood?: unknown }>(
+      `track:${slug}:version:${hashTrack(squarePieces)}`,
+    )
+    expect(stored).not.toBeNull()
+    expect(stored!.mood).toBeUndefined()
+  })
 })

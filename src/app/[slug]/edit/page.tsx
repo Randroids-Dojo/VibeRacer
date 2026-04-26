@@ -1,5 +1,10 @@
 import { notFound } from 'next/navigation'
-import { SlugSchema, VersionHashSchema, type Piece } from '@/lib/schemas'
+import {
+  SlugSchema,
+  VersionHashSchema,
+  type Piece,
+  type TrackMood,
+} from '@/lib/schemas'
 import { loadTrack } from '@/lib/loadTrack'
 import { TrackEditor } from '@/components/TrackEditor'
 
@@ -26,6 +31,8 @@ export default async function EditPage(ctx: {
   const initialPieces: Piece[] = loaded.kind === 'fresh' ? [] : loaded.pieces
   const initialCheckpointCount =
     loaded.kind === 'ok' ? loaded.checkpointCount : undefined
+  const initialMood: TrackMood | undefined =
+    loaded.kind === 'ok' ? loaded.mood : undefined
   // When the editor was opened against a specific historical version, surface
   // that as a fork banner so the player understands the saved version will
   // create a new hash rather than overwrite the one they are editing.
@@ -37,6 +44,7 @@ export default async function EditPage(ctx: {
       slug={slug}
       initialPieces={initialPieces}
       initialCheckpointCount={initialCheckpointCount}
+      initialMood={initialMood}
       forkingFromHash={forkingFromHash}
     />
   )

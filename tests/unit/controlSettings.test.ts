@@ -639,6 +639,33 @@ describe('localStorage round-trip', () => {
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
+
+  it('defaults respectTrackMood to true so brand-new players see the author look', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.respectTrackMood).toBe(true)
+    expect(cloneDefaultSettings().respectTrackMood).toBe(true)
+  })
+
+  it('round-trips respectTrackMood = false', () => {
+    const custom = cloneDefaultSettings()
+    custom.respectTrackMood = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().respectTrackMood).toBe(false)
+  })
+
+  it('backfills respectTrackMood when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+      timeOfDay: 'noon',
+      weather: 'clear',
+    })
+    expect(readStoredControlSettings().respectTrackMood).toBe(true)
+  })
 })
 
 describe('camera defaults', () => {
