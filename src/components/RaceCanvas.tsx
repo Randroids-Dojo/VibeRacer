@@ -47,6 +47,12 @@ import {
   shouldSpawnSkidMark,
   skidMarkPeakAlpha,
 } from '@/game/skidMarks'
+import {
+  driftIntensity,
+  initDriftSession,
+  stepDriftSession,
+  type DriftSessionState,
+} from '@/game/drift'
 
 export interface RaceCanvasHud {
   currentMs: number
@@ -56,6 +62,13 @@ export interface RaceCanvasHud {
   // True when the car has been driving against the lap direction long enough
   // for the warning to engage (debounced by the pure helper).
   wrongWay: boolean
+  // Live drift score for the in-flight session (0 when not actively drifting).
+  // The HUD pulses on this so the player gets immediate feedback during a slide.
+  driftActive: boolean
+  driftScore: number
+  driftMultiplier: number
+  // Best drift session score across the current lap. Resets on lap-complete.
+  driftLapBest: number
 }
 
 const HUD_UPDATE_MS = 50
@@ -131,6 +144,11 @@ export interface RaceCanvasProps {
   // hangs off this so it never has to mirror the full hits array through
   // React state.
   onCheckpointHit?: (hit: CheckpointHit) => void
+  // Fired with the best drift score the player accrued during the just-
+  // completed lap. The receiver decides whether to surface a toast or
+  // persist the score as a new local PB. Always emitted on lap complete
+  // (even when the score is 0) so consumers can clear stale UI.
+  onLapDriftBest?: (score: number) => void
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -166,6 +184,7 @@ export function RaceCanvas({
   speedOutRef,
   onLapReplay,
   onCheckpointHit,
+  onLapDriftBest,
   disableMusicIntensity,
   className,
   style,
@@ -175,11 +194,13 @@ export function RaceCanvas({
   const onHudUpdateRef = useRef(onHudUpdate)
   const onLapReplayRef = useRef(onLapReplay)
   const onCheckpointHitRef = useRef(onCheckpointHit)
+  const onLapDriftBestRef = useRef(onLapDriftBest)
   const disableMusicRef = useRef(!!disableMusicIntensity)
   onLapCompleteRef.current = onLapComplete
   onHudUpdateRef.current = onHudUpdate
   onLapReplayRef.current = onLapReplay
   onCheckpointHitRef.current = onCheckpointHit
+  onLapDriftBestRef.current = onLapDriftBest
   disableMusicRef.current = !!disableMusicIntensity
 
   useEffect(() => {
@@ -324,6 +345,13 @@ export function RaceCanvas({
     let droneStarted = false
     let prevHitsLen = 0
     let wrongWayState = initWrongWayDetector()
+    // Drift scoring. The session machine accrues a score across consecutive
+    // sliding frames; `lapBest` is the best single-session score this lap.
+    // `lastEndedScore` is the score of the most recently finished session,
+    // exposed in the HUD for ~2 seconds via the throttled HUD update so the
+    // player can see how big a chain just landed.
+    let driftSession: DriftSessionState = initDriftSession()
+    let driftLapBest = 0
 
     function loop(ts: number) {
       if (!running) return
@@ -363,6 +391,8 @@ export function RaceCanvas({
         prevOnTrack = true
         prevHitsLen = 0
         wrongWayState = initWrongWayDetector()
+        driftSession = initDriftSession()
+        driftLapBest = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -408,6 +438,8 @@ export function RaceCanvas({
         prevOnTrack = true
         prevHitsLen = 0
         wrongWayState = initWrongWayDetector()
+        driftSession = initDriftSession()
+        driftLapBest = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -605,6 +637,38 @@ export function RaceCanvas({
           )
           lastSkidSpawnTs = ts
         }
+        // Drift scoring: independent of the skid spawn decision (we want a
+        // continuous score, not just one tick per spawn). Uses the same
+        // input shape so the audio cue and the score stay in sync.
+        const dIntensity = driftIntensity(
+          skidSpeedAbs,
+          paramsRef.current.maxSpeed,
+          skidSteerAbs,
+        )
+        const driftResult = stepDriftSession(driftSession, {
+          intensity: dIntensity,
+          steerSigned: steerInput,
+          speedAbs: skidSpeedAbs,
+          onTrack: state.onTrack,
+          dtMs,
+        })
+        if (driftResult.ended) {
+          // Session ended: capture the lap best (the score lives on the
+          // PRIOR session's state because step returns the reset state on
+          // end).
+          if (driftSession.score > driftLapBest) {
+            driftLapBest = driftSession.score
+          }
+        }
+        driftSession = driftResult.state
+        // Live track of "current best" includes the in-flight session so the
+        // HUD shows progress before the player commits.
+        if (driftSession.active && driftSession.score > driftLapBest) {
+          driftLapBest = driftSession.score
+        }
+      } else {
+        // Pre-race / between laps: keep drift state idle.
+        driftSession = initDriftSession()
       }
       bundle.skidMarks.tick(ts)
 
@@ -685,6 +749,13 @@ export function RaceCanvas({
             lapTimeMs: result.lapComplete.lapTimeMs,
           })
         }
+        // Capture the lap best including any in-flight drift session, then
+        // emit it for the consumer (Game.tsx persists the local PB and may
+        // toast). Reset for the next lap.
+        const finalLapBest = Math.max(driftLapBest, driftSession.score)
+        onLapDriftBestRef.current?.(finalLapBest)
+        driftLapBest = 0
+        driftSession = initDriftSession()
         resetRecording()
         onLapCompleteRef.current(result.lapComplete)
       }
@@ -693,12 +764,28 @@ export function RaceCanvas({
         lastHudTs = ts
         const currentMs =
           state.raceStartMs !== null ? Math.round(ts - state.raceStartMs) : 0
+        const driftActive = driftSession.active
+        // Round the live score so the throttled HUD bail-out is stable; the
+        // raw float wiggles by tiny amounts every frame even when nothing
+        // visible changed, which would otherwise force a re-render every
+        // 50 ms.
+        const driftScoreInt = Math.round(driftSession.score)
+        const driftLapBestInt = Math.round(driftLapBest)
+        const driftMultInt = driftActive
+          ? Math.round(
+              Math.min(4, 1 + (driftSession.activeMs / 4000) * 3) * 10,
+            ) / 10
+          : 1
         const next: RaceCanvasHud = {
           currentMs,
           lapCount: state.lapCount,
           onTrack: state.onTrack,
           lastLapMs: state.lastLapTimeMs,
           wrongWay: wrongWayState.active,
+          driftActive,
+          driftScore: driftScoreInt,
+          driftMultiplier: driftMultInt,
+          driftLapBest: driftLapBestInt,
         }
         if (
           prevHud === null ||
@@ -706,7 +793,11 @@ export function RaceCanvas({
           prevHud.lapCount !== next.lapCount ||
           prevHud.onTrack !== next.onTrack ||
           prevHud.lastLapMs !== next.lastLapMs ||
-          prevHud.wrongWay !== next.wrongWay
+          prevHud.wrongWay !== next.wrongWay ||
+          prevHud.driftActive !== next.driftActive ||
+          prevHud.driftScore !== next.driftScore ||
+          prevHud.driftMultiplier !== next.driftMultiplier ||
+          prevHud.driftLapBest !== next.driftLapBest
         ) {
           prevHud = next
           onHudUpdateRef.current(next)

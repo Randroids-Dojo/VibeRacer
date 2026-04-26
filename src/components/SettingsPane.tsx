@@ -351,6 +351,10 @@ export function SettingsPane({
     onChange({ ...settings, showKerbs: value })
   }
 
+  function setShowDrift(value: boolean) {
+    onChange({ ...settings, showDrift: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -681,6 +685,22 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showKerbs}
                 onChange={setShowKerbs}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Drift score</div>
+            <MenuHint>
+              Live drift score that climbs while you slide through corners.
+              Longer chained slides hit a bigger multiplier. Per-lap and
+              all-time bests sit underneath. Turn off for a clean HUD.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show drift score</div>
+              <MenuToggle
+                value={settings.showDrift}
+                onChange={setShowDrift}
               />
             </div>
           </div>

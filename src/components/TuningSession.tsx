@@ -104,6 +104,10 @@ export function TuningSession({
     onTrack: true,
     lastLapMs: null,
     wrongWay: false,
+    driftActive: false,
+    driftScore: 0,
+    driftMultiplier: 1,
+    driftLapBest: 0,
   })
   const [saveName, setSaveName] = useState('')
 
@@ -152,7 +156,17 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null, wrongWay: false })
+    setHud({
+      currentMs: 0,
+      lapCount: 0,
+      onTrack: true,
+      lastLapMs: null,
+      wrongWay: false,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: 0,
+    })
     setPhase('countdown')
   }
 
@@ -250,7 +264,17 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null, wrongWay: false })
+    setHud({
+      currentMs: 0,
+      lapCount: 0,
+      onTrack: true,
+      lastLapMs: null,
+      wrongWay: false,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: 0,
+    })
     setPhase('countdown')
   }
 

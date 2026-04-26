@@ -155,6 +155,10 @@ export interface ControlSettings {
   // Cheap to render (a couple of materials shared across every tile) so
   // default on; the toggle is here for users who want a pure-asphalt look.
   showKerbs: boolean
+  // Toggle the live drift-score HUD block. Default on. Hides both the live
+  // score and the lap / all-time best blocks; the underlying scoring keeps
+  // running so a flip back mid-session still shows the in-progress totals.
+  showDrift: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -194,6 +198,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   speedUnit: DEFAULT_SPEED_UNIT,
   showRearview: true,
   showKerbs: true,
+  showDrift: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
@@ -263,6 +268,9 @@ const ControlSettingsSchema = z.object({
   // Kerbs landed later still. Default on so legacy stored payloads start
   // showing the curb stones automatically without losing any other choices.
   showKerbs: z.boolean().default(true),
+  // Drift-score HUD landed after kerbs. Default on so legacy payloads start
+  // showing the new readouts automatically without losing any other choices.
+  showDrift: z.boolean().default(true),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
@@ -294,6 +302,7 @@ export function cloneDefaultSettings(): ControlSettings {
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,
     showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
+    showDrift: DEFAULT_CONTROL_SETTINGS.showDrift,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     gamepadBindings: cloneDefaultGamepadBindings(),

@@ -14,6 +14,10 @@ function splitsKey(slug: string, versionHash: string): string {
   return `viberacer.splits.${slug}.${versionHash}`
 }
 
+function driftBestKey(slug: string, versionHash: string): string {
+  return `viberacer.driftBest.${slug}.${versionHash}`
+}
+
 const SplitsArraySchema = z.array(CheckpointHitSchema)
 
 export function readLocalBest(slug: string, versionHash: string): number | null {
@@ -99,5 +103,38 @@ export function writeLocalBestSplits(
   } catch {
     // Splits are a best-effort UX enhancement. A quota failure should never
     // break the lap-complete flow.
+  }
+}
+
+// All-time best drift score for this (slug, versionHash). Persists across
+// sessions in the same browser. The HUD's BEST DRIFT block compares the live
+// best against this value so a fresh page load shows the true PB instead of
+// just the in-memory session record.
+export function readLocalBestDrift(
+  slug: string,
+  versionHash: string,
+): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(driftBestKey(slug, versionHash))
+  if (!raw) return null
+  const n = Number(raw)
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+export function writeLocalBestDrift(
+  slug: string,
+  versionHash: string,
+  score: number,
+): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(score) || score <= 0) return
+  try {
+    window.localStorage.setItem(
+      driftBestKey(slug, versionHash),
+      String(Math.round(score)),
+    )
+  } catch {
+    // Drift score persistence is a best-effort UX enhancement. Quota
+    // exhaustion should never break the lap-complete flow.
   }
 }

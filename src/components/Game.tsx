@@ -33,6 +33,8 @@ import {
   writeLocalBestReplay,
   readLocalBestSplits,
   writeLocalBestSplits,
+  readLocalBestDrift,
+  writeLocalBestDrift,
 } from '@/lib/localBest'
 import type { CheckpointHit } from '@/lib/schemas'
 import {
@@ -142,6 +144,16 @@ interface HudState {
   // estimate while the player drives a sector. Cleared at lap completion and
   // on Restart / Restart Lap so a fresh lap starts blank.
   prediction: LapPrediction | null
+  // Drift state mirrored from RaceCanvas's per-frame session machine. The
+  // HUD's drift block reads these directly; live score updates land at the
+  // throttled HUD cadence (~20 Hz) which is plenty for the readout.
+  driftActive: boolean
+  driftScore: number
+  driftMultiplier: number
+  driftLapBest: number | null
+  // Best drift score across every lap on this (slug, hash). Loaded from
+  // localStorage on mount and rewritten when a new lap-best beats it.
+  driftAllTimeBest: number | null
 }
 
 type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning' | 'lapHistory'
@@ -290,6 +302,11 @@ function GameSession({
     toastKind: null,
     splitDelta: null,
     prediction: null,
+    driftActive: false,
+    driftScore: 0,
+    driftMultiplier: 1,
+    driftLapBest: null,
+    driftAllTimeBest: readLocalBestDrift(slug, versionHash),
   }))
 
   // Hydrate the PB-splits ref on mount / slug change. Stored alongside the
@@ -298,6 +315,13 @@ function GameSession({
   useEffect(() => {
     pbSplitsRef.current = readLocalBestSplits(slug, versionHash)
     pbLapMsRef.current = readLocalBest(slug, versionHash)
+    // Same idea for the drift PB: a fresh slug load should reflect what the
+    // player's banked on this track / version, not whatever was in HudState
+    // from a prior slug.
+    setHud((prev) => ({
+      ...prev,
+      driftAllTimeBest: readLocalBestDrift(slug, versionHash),
+    }))
   }, [slug, versionHash])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
@@ -308,6 +332,13 @@ function GameSession({
       onTrack: next.onTrack,
       wrongWay: next.wrongWay,
       lastLapMs: next.lastLapMs ?? prev.lastLapMs,
+      driftActive: next.driftActive,
+      driftScore: next.driftScore,
+      driftMultiplier: next.driftMultiplier,
+      driftLapBest:
+        next.driftLapBest > 0
+          ? Math.max(prev.driftLapBest ?? 0, next.driftLapBest)
+          : prev.driftLapBest,
     }))
   }, [])
 
@@ -374,6 +405,10 @@ function GameSession({
       toastKind: null,
       splitDelta: null,
       prediction: null,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: null,
     }))
     setPhase('countdown')
   }, [])
@@ -397,6 +432,10 @@ function GameSession({
       wrongWay: false,
       splitDelta: null,
       prediction: null,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: null,
     }))
   }, [])
 
@@ -580,6 +619,26 @@ function GameSession({
     // store it. The PB swap happens in handleLapComplete where we know the
     // previous best from React state.
     pendingReplayForSubmitRef.current = replay
+  }
+
+  // Drift score for the just-completed lap. Compares against the all-time
+  // local best for this (slug, hash); on a new high water mark, persists to
+  // localStorage and surfaces a toast (uses the same lane as the lap-saved
+  // toast, so a true PB lap takes precedence).
+  function handleLapDriftBest(score: number) {
+    setHud((prev) => {
+      const lapBest = score > 0 ? score : prev.driftLapBest ?? 0
+      const allTime = prev.driftAllTimeBest ?? 0
+      const newAllTime = lapBest > allTime ? lapBest : null
+      if (newAllTime !== null) {
+        writeLocalBestDrift(slug, versionHash, newAllTime)
+      }
+      return {
+        ...prev,
+        driftLapBest: score > 0 ? score : prev.driftLapBest,
+        driftAllTimeBest: newAllTime ?? prev.driftAllTimeBest,
+      }
+    })
   }
 
   // Per-checkpoint live split tile. Re-computed each time the player crosses
@@ -783,6 +842,7 @@ function GameSession({
         speedOutRef={speedRef}
         onLapReplay={handleLapReplay}
         onCheckpointHit={handleCheckpointHit}
+        onLapDriftBest={handleLapDriftBest}
         style={canvasStyle}
       />
       <canvas
@@ -827,6 +887,12 @@ function GameSession({
         splitDeltaMs={hud.splitDelta?.deltaMs ?? null}
         splitCpId={hud.splitDelta?.cpId ?? null}
         prediction={hud.prediction}
+        driftActive={hud.driftActive && phase === 'racing' && !paused}
+        driftScore={hud.driftScore}
+        driftMultiplier={hud.driftMultiplier}
+        driftLapBest={hud.driftLapBest}
+        driftAllTimeBest={hud.driftAllTimeBest}
+        showDrift={settings.showDrift}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls

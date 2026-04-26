@@ -1,5 +1,6 @@
 'use client'
 import { formatSplitDelta, type LapPrediction } from '@/game/splits'
+import { formatDriftScore } from '@/game/drift'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -40,6 +41,17 @@ interface HudProps {
   // it does not jitter mid-sector. null hides the PROJECTED block (no PB on
   // file or no checkpoints crossed yet this lap).
   prediction: LapPrediction | null
+  // Drift score readouts. `driftActive` toggles a glow on the live block so
+  // the player gets immediate feedback when scoring. `driftLapBest` is the
+  // best single-session score during the current lap; `driftAllTimeBest` is
+  // the local-PB equivalent (loaded from localStorage). null hides the
+  // entire drift HUD section (Settings toggle off).
+  driftActive: boolean
+  driftScore: number
+  driftMultiplier: number
+  driftLapBest: number | null
+  driftAllTimeBest: number | null
+  showDrift: boolean
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -67,6 +79,10 @@ const HUD_ANIMATIONS_CSS = `
 @keyframes viberacer-wrongway-arrow {
   0%, 100% { transform: translateX(0) }
   50% { transform: translateX(-8px) }
+}
+@keyframes viberacer-drift-pulse {
+  0%, 100% { box-shadow: 0 0 14px rgba(255, 138, 60, 0.55), 0 4px 12px rgba(0, 0, 0, 0.4) }
+  50% { box-shadow: 0 0 28px rgba(255, 200, 80, 0.85), 0 4px 12px rgba(0, 0, 0, 0.4) }
 }
 `
 
@@ -119,6 +135,51 @@ function timeOrDash(ms: number | null): string {
   return ms !== null ? formatLapTime(ms) : '--'
 }
 
+function DriftPanel({
+  active,
+  score,
+  multiplier,
+  lapBest,
+  allTimeBest,
+}: {
+  active: boolean
+  score: number
+  multiplier: number
+  lapBest: number | null
+  allTimeBest: number | null
+}) {
+  const showLive = active || score > 0
+  const liveStyle = active ? driftLiveActive : driftLiveInactive
+  return (
+    <div style={driftPanel} aria-live="polite">
+      <div style={liveStyle}>
+        <div style={driftLabel}>
+          DRIFT{active ? ` x${multiplier.toFixed(1)}` : ''}
+        </div>
+        <div style={driftScoreValue}>
+          {showLive ? formatDriftScore(score) : '--'}
+        </div>
+      </div>
+      <div style={driftSubRow}>
+        <div style={driftSubBlock}>
+          <div style={driftSubLabel}>BEST (LAP)</div>
+          <div style={driftSubValue}>
+            {lapBest !== null && lapBest > 0 ? formatDriftScore(lapBest) : '--'}
+          </div>
+        </div>
+        <div style={driftSubBlock}>
+          <div style={driftSubLabel}>BEST (ALL)</div>
+          <div style={driftSubValue}>
+            {allTimeBest !== null && allTimeBest > 0
+              ? formatDriftScore(allTimeBest)
+              : '--'}
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function HUD(props: HudProps) {
   const recordValue = props.overallRecord
     ? `${props.overallRecord.initials} ${formatLapTime(props.overallRecord.lapTimeMs)}`
@@ -140,6 +201,15 @@ export function HUD(props: HudProps) {
         <StatBlock label="LAP" value={props.lapCount} />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>
+      {props.showDrift ? (
+        <DriftPanel
+          active={props.driftActive}
+          score={props.driftScore}
+          multiplier={props.driftMultiplier}
+          lapBest={props.driftLapBest}
+          allTimeBest={props.driftAllTimeBest}
+        />
+      ) : null}
       {props.wrongWay ? (
         <div style={wrongWayBanner} role="alert" aria-live="assertive">
           <span style={wrongWayArrow} aria-hidden>
@@ -379,3 +449,73 @@ const predictionDelta: React.CSSProperties = {
 const predictionAhead: React.CSSProperties = { color: '#5fe08a' }
 const predictionBehind: React.CSSProperties = { color: '#ff7b6e' }
 const predictionNeutral: React.CSSProperties = { color: '#f4d774' }
+// Drift score panel. Sits on the left edge below the top stat row so it
+// reads at a glance without competing with the centered split delta tile or
+// the OFF TRACK / WRONG WAY warnings (further down the screen). Uses a
+// vertical stack so the live score and the lap / all-time bests are visible
+// in one scan.
+const driftPanel: React.CSSProperties = {
+  position: 'absolute',
+  top: 90,
+  left: 8,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  pointerEvents: 'none',
+  minWidth: 124,
+}
+const driftLiveBase: React.CSSProperties = {
+  background: 'rgba(0, 0, 0, 0.5)',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  borderRadius: 8,
+  padding: '5px 10px',
+  textAlign: 'center',
+  transition: 'background 0.18s ease-out, border-color 0.18s ease-out',
+}
+const driftLiveActive: React.CSSProperties = {
+  ...driftLiveBase,
+  background: 'rgba(60, 30, 0, 0.65)',
+  borderColor: 'rgba(255, 200, 80, 0.7)',
+  color: '#ffd56b',
+  animation: 'viberacer-drift-pulse 0.9s ease-in-out infinite',
+}
+const driftLiveInactive: React.CSSProperties = {
+  ...driftLiveBase,
+  color: '#cfd5dc',
+}
+const driftLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.5,
+  opacity: 0.85,
+  textTransform: 'uppercase',
+}
+const driftScoreValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 'clamp(16px, 4vw, 22px)',
+  fontWeight: 800,
+  lineHeight: 1.1,
+}
+const driftSubRow: React.CSSProperties = {
+  display: 'flex',
+  gap: 4,
+}
+const driftSubBlock: React.CSSProperties = {
+  flex: 1,
+  background: 'rgba(0, 0, 0, 0.4)',
+  borderRadius: 6,
+  padding: '3px 6px',
+  textAlign: 'center',
+}
+const driftSubLabel: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.2,
+  opacity: 0.7,
+  textTransform: 'uppercase',
+}
+const driftSubValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 13,
+  fontWeight: 700,
+  color: '#f4d774',
+  lineHeight: 1.1,
+}
