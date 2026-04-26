@@ -17,10 +17,47 @@ export type TouchMode = (typeof TOUCH_MODES)[number]
 
 export type KeyBindings = Record<ControlAction, string[]>
 
+// Player-tunable camera rig. Mirrors the runtime CameraRigParams in
+// src/game/sceneBuilder.ts, but only the four parameters worth surfacing in
+// Settings: how high the camera sits, how far it trails, how far ahead the
+// look-target leans into turns, and how snappy the follow is. The two lerp
+// rates are tied together behind a single `followSpeed` so the UI stays a
+// single intuitive slider rather than two fiddly knobs.
+export interface CameraRigSettings {
+  height: number
+  distance: number
+  lookAhead: number
+  followSpeed: number
+}
+
+// Slider ranges. Picked so the extremes still produce a usable view: the
+// minimum height (1.5) is roof-cam and the max (14) is helicopter, the
+// trailing distance spans tight chase to wide cinematic, lookAhead 0 (center
+// the car) to 12 (anticipates corners aggressively), and followSpeed 0.4
+// (loose, drifty cam) to 1.6 (snappy, locked-on). Defaults match the legacy
+// hardcoded `DEFAULT_CAMERA_RIG` so users who never touch the panel see the
+// same view they did before.
+export const CAMERA_HEIGHT_MIN = 1.5
+export const CAMERA_HEIGHT_MAX = 14
+export const CAMERA_DISTANCE_MIN = 6
+export const CAMERA_DISTANCE_MAX = 28
+export const CAMERA_LOOK_AHEAD_MIN = 0
+export const CAMERA_LOOK_AHEAD_MAX = 12
+export const CAMERA_FOLLOW_SPEED_MIN = 0.4
+export const CAMERA_FOLLOW_SPEED_MAX = 1.6
+
+export const DEFAULT_CAMERA_SETTINGS: CameraRigSettings = {
+  height: 6,
+  distance: 14,
+  lookAhead: 6,
+  followSpeed: 1,
+}
+
 export interface ControlSettings {
   keyBindings: KeyBindings
   touchMode: TouchMode
   showGhost: boolean
+  camera: CameraRigSettings
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -35,6 +72,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
   touchMode: 'single',
   showGhost: true,
+  camera: DEFAULT_CAMERA_SETTINGS,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -49,20 +87,66 @@ const KeyBindingsSchema = z.object({
   handbrake: z.array(KeyCodeSchema),
 })
 
+const CameraRigSettingsSchema = z.object({
+  height: z.number().min(CAMERA_HEIGHT_MIN).max(CAMERA_HEIGHT_MAX),
+  distance: z.number().min(CAMERA_DISTANCE_MIN).max(CAMERA_DISTANCE_MAX),
+  lookAhead: z.number().min(CAMERA_LOOK_AHEAD_MIN).max(CAMERA_LOOK_AHEAD_MAX),
+  followSpeed: z
+    .number()
+    .min(CAMERA_FOLLOW_SPEED_MIN)
+    .max(CAMERA_FOLLOW_SPEED_MAX),
+})
+
 const ControlSettingsSchema = z.object({
   keyBindings: KeyBindingsSchema,
   touchMode: z.enum(TOUCH_MODES),
   // Older stored settings predate this flag; default it on so existing users
   // see the ghost on their next race without having to dig into Settings.
   showGhost: z.boolean().default(true),
+  // Camera tunables landed after the original settings shape; backfill from
+  // defaults when reading legacy localStorage payloads so existing users do
+  // not see a broken Settings pane.
+  camera: CameraRigSettingsSchema.default(DEFAULT_CAMERA_SETTINGS),
 })
+
+export function cloneDefaultCameraSettings(): CameraRigSettings {
+  return { ...DEFAULT_CAMERA_SETTINGS }
+}
 
 export function cloneDefaultSettings(): ControlSettings {
   return {
     keyBindings: cloneDefaultBindings(),
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
+    camera: cloneDefaultCameraSettings(),
   }
+}
+
+// Map the two-knob `followSpeed` slider onto sceneBuilder's positionLerp +
+// targetLerp pair. Defaults: positionLerp 0.12, targetLerp 0.20 at speed 1.0.
+// Linear scaling with `followSpeed` keeps the legacy default exact while
+// letting users push the camera looser or tighter without exposing the two
+// raw knobs.
+export const CAMERA_DEFAULT_POSITION_LERP = 0.12
+export const CAMERA_DEFAULT_TARGET_LERP = 0.2
+export function cameraLerpsFor(followSpeed: number): {
+  positionLerp: number
+  targetLerp: number
+} {
+  const clamped = Math.min(
+    Math.max(followSpeed, CAMERA_FOLLOW_SPEED_MIN),
+    CAMERA_FOLLOW_SPEED_MAX,
+  )
+  return {
+    positionLerp: clamp01(CAMERA_DEFAULT_POSITION_LERP * clamped),
+    targetLerp: clamp01(CAMERA_DEFAULT_TARGET_LERP * clamped),
+  }
+}
+
+function clamp01(x: number): number {
+  if (x < 0) return 0
+  if (x > 1) return 1
+  return x
 }
 
 export function cloneDefaultBindings(): KeyBindings {

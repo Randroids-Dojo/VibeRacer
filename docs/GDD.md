@@ -11,7 +11,7 @@
 | § | Section | Status |
 | - | - | - |
 | 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt, PB fanfare with centered HUD burst all work) |
-| 3 | Camera and perspective | partial (trailing third-person rig with lerp; tunable sliders pending) |
+| 3 | Camera and perspective | partial (trailing third-person rig with lerp; player-tunable sliders for height, distance, look-ahead, follow speed live in Settings) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
@@ -71,7 +71,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 
 ## 3. Camera & Perspective
 
-**Status.** Partial. Trailing third-person rig with linear position + target lerp is live. Quaternion slerp on orientation and the dev panel sliders (Section 10) are not yet landed.
+**Status.** Partial. Trailing third-person rig with linear position + target lerp is live. The four player-facing camera tunables (height, distance, look-ahead, follow speed) are now exposed in Settings and persisted in the existing `viberacer.controls` localStorage key. Quaternion slerp on orientation is the remaining open item.
 
 Trailing third-person camera, Forza Horizon style.
 
@@ -85,7 +85,8 @@ Trailing third-person camera, Forza Horizon style.
 - `src/game/sceneBuilder.ts` exports `initCameraRig(carX, carZ, heading)`, `updateCameraRig(rig, carX, carZ, heading, params?)` (mutates `rig` in place to avoid per-frame allocations), and `DEFAULT_CAMERA_RIG`.
 - Defaults: `height=6`, `distance=14`, `lookAhead=6`, `positionLerp=0.12`, `targetLerp=0.2`.
 - The look-at target is projected `lookAhead` units ahead of the car along its heading so the camera anticipates turns rather than trailing dead behind.
-- **Not yet landed.** Quaternion slerp for orientation smoothing (the target-lerp approximates this well enough for the vertical slice), tunable dev-panel sliders.
+- Player-facing camera tuning: live. `ControlSettings` gained a `camera: CameraRigSettings` field with `height`, `distance`, `lookAhead`, and `followSpeed`. Defaults are tuned to reproduce the legacy hardcoded rig exactly so users who never open the panel see the same view they did before. `cameraLerpsFor(followSpeed)` in `src/lib/controlSettings.ts` collapses the two raw lerps onto one slider: `positionLerp = 0.12 * followSpeed`, `targetLerp = 0.2 * followSpeed`, both clamped to `[0, 1]`. `Game.tsx` and `TuningSession.tsx` rebuild a `CameraRigParams` ref every render and pass it to `RaceCanvas` via the new `cameraRigRef` prop. The rAF loop reads the ref each frame so a slider tweak in the pause-menu Settings pane takes effect on resume without re-mounting the renderer. Settings UI: a new Camera section under the Controls block in `SettingsPane.tsx` exposes the four sliders plus a Reset Camera button (disabled when already at defaults). Storage round-trips through the existing `viberacer.controls` key with a backfill default for legacy payloads. Tests: `tests/unit/controlSettings.test.ts` covers default-in-range, schema rejection of out-of-range stored values, legacy backfill, the `cameraLerpsFor` mapping (legacy match at 1.0, linear scaling, clamping, range guarantee), and round-trip persistence.
+- **Not yet landed.** Quaternion slerp for orientation smoothing (the target-lerp approximates this well enough for the vertical slice).
 
 ---
 

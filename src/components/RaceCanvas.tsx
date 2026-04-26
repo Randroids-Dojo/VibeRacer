@@ -8,6 +8,7 @@ import {
   buildScene,
   initCameraRig,
   updateCameraRig,
+  type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
 import {
@@ -59,6 +60,10 @@ export interface RaceCanvasProps {
   activeGhostRef?: MutableRefObject<Replay | null>
   // Toggle visibility from Settings without tearing down the renderer.
   showGhostRef?: MutableRefObject<boolean>
+  // Live camera-rig overrides from Settings. The rAF loop reads this every
+  // frame so a slider tweak in the pause menu takes effect on resume without
+  // rebuilding the renderer.
+  cameraRigRef?: MutableRefObject<CameraRigParams | null>
   // Fired when the recorder finishes a lap. Game.tsx decides whether to
   // persist the path locally and bundle it into the next /race/submit.
   onLapReplay?: (replay: Replay) => void
@@ -84,6 +89,7 @@ export function RaceCanvas({
   onHudUpdate,
   activeGhostRef,
   showGhostRef,
+  cameraRigRef,
   onLapReplay,
   disableMusicIntensity,
   className,
@@ -245,7 +251,13 @@ export function RaceCanvas({
 
       bundle.car.position.set(state.x, 0, state.z)
       bundle.car.rotation.y = state.heading
-      updateCameraRig(rig, state.x, state.z, state.heading)
+      updateCameraRig(
+        rig,
+        state.x,
+        state.z,
+        state.heading,
+        cameraRigRef?.current ?? undefined,
+      )
       bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
       bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
 

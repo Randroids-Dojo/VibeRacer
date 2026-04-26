@@ -3,11 +3,22 @@ import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ACTION_LABELS,
+  CAMERA_DISTANCE_MAX,
+  CAMERA_DISTANCE_MIN,
+  CAMERA_FOLLOW_SPEED_MAX,
+  CAMERA_FOLLOW_SPEED_MIN,
+  CAMERA_HEIGHT_MAX,
+  CAMERA_HEIGHT_MIN,
+  CAMERA_LOOK_AHEAD_MAX,
+  CAMERA_LOOK_AHEAD_MIN,
   CONTROL_ACTIONS,
+  DEFAULT_CAMERA_SETTINGS,
   TOUCH_MODES,
   clearBinding,
+  cloneDefaultCameraSettings,
   formatKeyCode,
   rebindKey,
+  type CameraRigSettings,
   type ControlAction,
   type ControlSettings,
   type TouchMode,
@@ -208,6 +219,21 @@ export function SettingsPane({
     onChange({ ...settings, showGhost: value })
   }
 
+  function setCamera(next: CameraRigSettings) {
+    onChange({ ...settings, camera: next })
+  }
+
+  function resetCamera() {
+    clickSoft()
+    setCamera(cloneDefaultCameraSettings())
+  }
+
+  const cameraIsDefault =
+    settings.camera.height === DEFAULT_CAMERA_SETTINGS.height &&
+    settings.camera.distance === DEFAULT_CAMERA_SETTINGS.distance &&
+    settings.camera.lookAhead === DEFAULT_CAMERA_SETTINGS.lookAhead &&
+    settings.camera.followSpeed === DEFAULT_CAMERA_SETTINGS.followSpeed
+
   function clearSlot(action: ControlAction, slot: number) {
     onChange({
       ...settings,
@@ -404,6 +430,61 @@ export function SettingsPane({
           </div>
         </MenuSection>
 
+        <MenuSection title="Camera">
+          <MenuHint>
+            Tune the trailing chase camera. Higher views see more of the track,
+            lower views feel faster. Look-ahead leans the camera into corners.
+            Follow speed is how snappy the camera tracks the car: lower is
+            looser and more cinematic, higher is locked-on.
+          </MenuHint>
+          <MenuSlider
+            label="Height"
+            value={settings.camera.height}
+            min={CAMERA_HEIGHT_MIN}
+            max={CAMERA_HEIGHT_MAX}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => setCamera({ ...settings.camera, height: v })}
+          />
+          <MenuSlider
+            label="Distance"
+            value={settings.camera.distance}
+            min={CAMERA_DISTANCE_MIN}
+            max={CAMERA_DISTANCE_MAX}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => setCamera({ ...settings.camera, distance: v })}
+          />
+          <MenuSlider
+            label="Look ahead"
+            value={settings.camera.lookAhead}
+            min={CAMERA_LOOK_AHEAD_MIN}
+            max={CAMERA_LOOK_AHEAD_MAX}
+            step={0.1}
+            format={(v) => v.toFixed(1)}
+            onChange={(v) => setCamera({ ...settings.camera, lookAhead: v })}
+          />
+          <MenuSlider
+            label="Follow speed"
+            value={settings.camera.followSpeed}
+            min={CAMERA_FOLLOW_SPEED_MIN}
+            max={CAMERA_FOLLOW_SPEED_MAX}
+            step={0.05}
+            format={(v) => `${v.toFixed(2)}x`}
+            onChange={(v) => setCamera({ ...settings.camera, followSpeed: v })}
+          />
+          <div style={cameraResetRow}>
+            <MenuButton
+              variant="ghost"
+              fullWidth={false}
+              disabled={cameraIsDefault}
+              onClick={resetCamera}
+            >
+              Reset camera
+            </MenuButton>
+          </div>
+        </MenuSection>
+
         <MenuSection title="Tuning">
           <MenuHint>
             The Tuning Lab drives a curated test loop and uses your feedback
@@ -579,4 +660,9 @@ const initialsErr: React.CSSProperties = {
 const initialsOk: React.CSSProperties = {
   color: '#5fe08a',
   fontSize: 12,
+}
+const cameraResetRow: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  marginTop: 4,
 }

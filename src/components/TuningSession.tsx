@@ -30,6 +30,8 @@ import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
@@ -108,6 +110,19 @@ export function TuningSession({
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+  // Mirror the player's chosen camera rig into the lab so the practice loop
+  // matches the view they will race with.
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+    }
+  }
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -264,6 +279,7 @@ export function TuningSession({
             pendingRaceStartRef={pendingRaceStartRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
+            cameraRigRef={cameraRigRef}
             disableMusicIntensity
             style={canvasStyle}
           />

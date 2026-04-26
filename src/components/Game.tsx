@@ -6,6 +6,8 @@ import type { LapCompleteEvent } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
 import {
@@ -162,6 +164,20 @@ function GameSession({
   // canvas every time the toggle flips.
   const showGhostRef = useRef<boolean>(settings.showGhost)
   showGhostRef.current = settings.showGhost
+  // Mirrors the player's camera tunables into the rAF loop the same way.
+  // Recomputed every render from `settings.camera` so a slider tweak in
+  // SettingsPane takes effect on the next frame.
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+    }
+  }
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -512,6 +528,7 @@ function GameSession({
         onHudUpdate={onCanvasHud}
         activeGhostRef={activeGhostRef}
         showGhostRef={showGhostRef}
+        cameraRigRef={cameraRigRef}
         onLapReplay={handleLapReplay}
         style={canvasStyle}
       />

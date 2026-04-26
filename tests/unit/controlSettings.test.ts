@@ -1,11 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
+  CAMERA_DEFAULT_POSITION_LERP,
+  CAMERA_DEFAULT_TARGET_LERP,
+  CAMERA_FOLLOW_SPEED_MAX,
+  CAMERA_FOLLOW_SPEED_MIN,
+  CAMERA_HEIGHT_MAX,
+  CAMERA_HEIGHT_MIN,
   CONTROL_SETTINGS_STORAGE_KEY,
+  DEFAULT_CAMERA_SETTINGS,
   DEFAULT_CONTROL_SETTINGS,
   DEFAULT_KEY_BINDINGS,
   actionForCode,
+  cameraLerpsFor,
   clearBinding,
   cloneBindings,
+  cloneDefaultCameraSettings,
   cloneDefaultSettings,
   formatKeyCode,
   rebindKey,
@@ -157,5 +166,97 @@ describe('localStorage round-trip', () => {
       touchMode: 'single',
     })
     expect(readStoredControlSettings().showGhost).toBe(true)
+  })
+
+  it('backfills camera when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+
+  it('round-trips a tweaked camera rig', () => {
+    const custom = cloneDefaultSettings()
+    custom.camera = {
+      height: 4,
+      distance: 18,
+      lookAhead: 8,
+      followSpeed: 1.3,
+    }
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().camera).toEqual(custom.camera)
+  })
+
+  it('falls back to defaults when stored camera values are out of range', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      camera: {
+        // Off-the-rails values would otherwise produce a renderer underground
+        // shot or a no-follow camera. Reject the whole payload back to defaults.
+        height: -50,
+        distance: 9999,
+        lookAhead: -3,
+        followSpeed: 12,
+      },
+    })
+    expect(readStoredControlSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+})
+
+describe('camera defaults', () => {
+  it('cloneDefaultCameraSettings returns a fresh copy', () => {
+    const a = cloneDefaultCameraSettings()
+    a.height = 1
+    expect(cloneDefaultCameraSettings()).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+
+  it('default ControlSettings carries the default camera rig', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+    expect(cloneDefaultSettings().camera).toEqual(DEFAULT_CAMERA_SETTINGS)
+  })
+
+  it('defaults sit inside the slider ranges', () => {
+    expect(DEFAULT_CAMERA_SETTINGS.height).toBeGreaterThanOrEqual(
+      CAMERA_HEIGHT_MIN,
+    )
+    expect(DEFAULT_CAMERA_SETTINGS.height).toBeLessThanOrEqual(CAMERA_HEIGHT_MAX)
+  })
+})
+
+describe('cameraLerpsFor', () => {
+  it('matches the legacy lerps at followSpeed = 1', () => {
+    const out = cameraLerpsFor(1)
+    expect(out.positionLerp).toBeCloseTo(CAMERA_DEFAULT_POSITION_LERP, 6)
+    expect(out.targetLerp).toBeCloseTo(CAMERA_DEFAULT_TARGET_LERP, 6)
+  })
+
+  it('scales linearly with followSpeed', () => {
+    const slow = cameraLerpsFor(0.5)
+    expect(slow.positionLerp).toBeCloseTo(CAMERA_DEFAULT_POSITION_LERP * 0.5, 6)
+    expect(slow.targetLerp).toBeCloseTo(CAMERA_DEFAULT_TARGET_LERP * 0.5, 6)
+    const fast = cameraLerpsFor(1.5)
+    expect(fast.positionLerp).toBeCloseTo(CAMERA_DEFAULT_POSITION_LERP * 1.5, 6)
+    expect(fast.targetLerp).toBeCloseTo(CAMERA_DEFAULT_TARGET_LERP * 1.5, 6)
+  })
+
+  it('clamps inputs to the supported range', () => {
+    expect(cameraLerpsFor(-1)).toEqual(cameraLerpsFor(CAMERA_FOLLOW_SPEED_MIN))
+    expect(cameraLerpsFor(99)).toEqual(cameraLerpsFor(CAMERA_FOLLOW_SPEED_MAX))
+  })
+
+  it('keeps both lerps in [0, 1]', () => {
+    for (const s of [
+      CAMERA_FOLLOW_SPEED_MIN,
+      1,
+      CAMERA_FOLLOW_SPEED_MAX,
+    ]) {
+      const { positionLerp, targetLerp } = cameraLerpsFor(s)
+      expect(positionLerp).toBeGreaterThan(0)
+      expect(positionLerp).toBeLessThanOrEqual(1)
+      expect(targetLerp).toBeGreaterThan(0)
+      expect(targetLerp).toBeLessThanOrEqual(1)
+    }
   })
 })
