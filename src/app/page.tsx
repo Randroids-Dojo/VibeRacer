@@ -19,6 +19,7 @@ import { MostPlayed } from '@/components/MostPlayed'
 import { MedalCabinet } from '@/components/MedalCabinet'
 import { TrophyCase } from '@/components/TrophyCase'
 import { DailyChallenge } from '@/components/DailyChallenge'
+import { DailyStreak } from '@/components/DailyStreak'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -52,6 +53,8 @@ export default async function HomePage() {
           </Link>
 
           <DailyChallenge />
+
+          <DailyStreak />
 
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Go to any track</div>

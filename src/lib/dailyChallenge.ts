@@ -24,27 +24,16 @@ import {
   loadRecentTrackPreviewsSafe,
   type RecentTrackPreview,
 } from './recentTracks'
+import { dateKeyForUtc } from './dateKeys'
+
+// Re-export the shared date-key helper so existing callers keep working
+// without an extra import path. The actual implementation lives in
+// `src/lib/dateKeys.ts` so client components can pull it in without
+// dragging the server-only KV code in this file.
+export { dateKeyForUtc }
 
 const FNV_OFFSET_BASIS_32 = 0x811c9dc5
 const FNV_PRIME_32 = 0x01000193
-
-/**
- * Pull "YYYY-MM-DD" out of an epoch-millis value, in UTC. UTC is intentional:
- * a player in Sydney and a player in San Francisco should see the same daily
- * challenge so a shared link does not surprise the recipient with a different
- * featured track.
- */
-export function dateKeyForUtc(nowMs: number): string {
-  if (typeof nowMs !== 'number' || !Number.isFinite(nowMs)) {
-    return dateKeyForUtc(Date.now())
-  }
-  const d = new Date(nowMs)
-  if (Number.isNaN(d.getTime())) return dateKeyForUtc(Date.now())
-  const yyyy = d.getUTCFullYear()
-  const mm = String(d.getUTCMonth() + 1).padStart(2, '0')
-  const dd = String(d.getUTCDate()).padStart(2, '0')
-  return `${yyyy}-${mm}-${dd}`
-}
 
 /**
  * Stable 32-bit FNV-1a hash. Returns 0 for empty / non-string input so

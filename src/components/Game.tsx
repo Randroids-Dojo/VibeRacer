@@ -99,6 +99,8 @@ import {
   recordSlugVisit,
   writeAchievements,
 } from '@/lib/achievements'
+import { recordDailyStreakDay } from '@/lib/dailyStreakStorage'
+import { dateKeyForUtc } from '@/lib/dateKeys'
 import { medalForTime } from '@/game/medals'
 import { writeMedalForTrack } from '@/lib/medalCabinet'
 import type { CheckpointHit } from '@/lib/schemas'
@@ -1951,6 +1953,12 @@ function GameSession({
     trackStatsRef.current = nextStats
     setTrackStats(nextStats)
     writeTrackStats(slug, versionHash, nextStats)
+
+    // Bookmark today's UTC date for the daily-streak widget on the home
+    // page. Idempotent: a duplicate write is a no-op so multiple laps in
+    // the same UTC day add nothing to the stored history. The streak is
+    // intentionally cross-track so any completed lap counts.
+    recordDailyStreakDay(dateKeyForUtc(Date.now()))
 
     // Evaluate achievements against the freshly-updated state. The evaluator
     // is pure and runs on every lap; the unlock helper merges only the ids
