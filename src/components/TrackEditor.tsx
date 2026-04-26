@@ -12,6 +12,7 @@ import {
 } from '@/lib/lighting'
 import { WEATHER_LABELS, WEATHER_NAMES, type Weather } from '@/lib/weather'
 import { sanitizeTrackMood } from '@/game/trackMood'
+import { recordMyTrack } from '@/lib/myTracks'
 import {
   getBounds,
   getStartExitDir,
@@ -514,6 +515,11 @@ export function TrackEditor({
         return
       }
       const okBody = (await res.json()) as { versionHash: string }
+      // Record this slug in the local "tracks I built" log so the home page
+      // surfaces it under "Tracks you built". Defensive: a thrown writer
+      // (quota etc.) is swallowed inside recordMyTrack so the post-save
+      // navigation always proceeds.
+      recordMyTrack(slug)
       router.push(`/${slug}?v=${okBody.versionHash}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed')

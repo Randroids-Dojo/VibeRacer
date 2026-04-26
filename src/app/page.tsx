@@ -12,6 +12,7 @@ import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { MyPbs } from '@/components/MyPbs'
+import { MyTracks } from '@/components/MyTracks'
 import { LifetimeStats } from '@/components/LifetimeStats'
 import { DailyChallenge } from '@/components/DailyChallenge'
 
@@ -59,6 +60,8 @@ export default async function HomePage() {
             </div>
             <RecentTrackList items={items} />
           </div>
+
+          <MyTracks />
 
           <MyPbs />
 
