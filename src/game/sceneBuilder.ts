@@ -1,18 +1,24 @@
 import {
   AmbientLight,
+  BoxGeometry,
   BufferAttribute,
   BufferGeometry,
   Color,
+  DataTexture,
   DirectionalLight,
   Group,
   type Material,
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  NearestFilter,
   type Object3D,
   PerspectiveCamera,
   PlaneGeometry,
+  RGBAFormat,
   Scene,
+  type Texture,
+  UnsignedByteType,
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
@@ -35,6 +41,21 @@ import {
   getLightingPreset,
   type TimeOfDay,
 } from '@/lib/lighting'
+import {
+  FINISH_GATE_BANNER_DEPTH,
+  FINISH_GATE_BANNER_HEIGHT,
+  FINISH_GATE_BANNER_OVERHANG,
+  FINISH_GATE_POLE_HEIGHT,
+  FINISH_GATE_POLE_INSET,
+  FINISH_GATE_POLE_THICKNESS,
+  FINISH_STRIPE_CHECK_COLUMNS,
+  FINISH_STRIPE_CHECK_ROWS,
+  FINISH_STRIPE_DEPTH,
+  FINISH_TEXTURE_PIXELS_PER_SQUARE,
+  buildCheckerTexturePixels,
+  computeGatePolePositions,
+  gatePoleSeparation,
+} from './finishLine'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -514,13 +535,87 @@ export function buildScene(path: TrackPath): SceneBundle {
   // the player's stored preference is on the next frame.
   setTimeOfDay(DEFAULT_TIME_OF_DAY)
 
-  const stripeGeom = new PlaneGeometry(TRACK_WIDTH, 1.2)
-  const stripeMat = new MeshStandardMaterial({ color: 0xffffff })
+  // Checkered start / finish stripe. Uses a procedurally-generated DataTexture
+  // so we don't ship a binary asset and the unit tests can pin the exact
+  // pixel layout. NearestFilter keeps the squares crisp regardless of camera
+  // distance.
+  const checker = buildCheckerTexturePixels(
+    FINISH_STRIPE_CHECK_COLUMNS,
+    FINISH_STRIPE_CHECK_ROWS,
+    FINISH_TEXTURE_PIXELS_PER_SQUARE,
+  )
+  const checkerTexture = new DataTexture(
+    checker.pixels,
+    checker.width,
+    checker.height,
+    RGBAFormat,
+    UnsignedByteType,
+  )
+  checkerTexture.magFilter = NearestFilter
+  checkerTexture.minFilter = NearestFilter
+  checkerTexture.needsUpdate = true
+  const stripeGeom = new PlaneGeometry(TRACK_WIDTH, FINISH_STRIPE_DEPTH)
+  const stripeMat = new MeshStandardMaterial({
+    map: checkerTexture,
+    roughness: 0.85,
+  })
   const stripe = new Mesh(stripeGeom, stripeMat)
   stripe.rotation.x = -Math.PI / 2
   stripe.rotation.z = path.finishLine.heading - Math.PI / 2
   stripe.position.set(path.finishLine.position.x, 0.02, path.finishLine.position.z)
   scene.add(stripe)
+
+  // Overhead gate: two side poles plus a horizontal banner spanning between
+  // them. The banner reuses the same checkered texture so the gate reads as a
+  // single coherent finish-line landmark from any approach angle.
+  const polePositions = computeGatePolePositions(
+    path.finishLine.position.x,
+    path.finishLine.position.z,
+    path.finishLine.heading,
+    TRACK_WIDTH / 2,
+    FINISH_GATE_POLE_INSET,
+  )
+  const poleMat = new MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 })
+  const poleGeom = new BoxGeometry(
+    FINISH_GATE_POLE_THICKNESS,
+    FINISH_GATE_POLE_HEIGHT,
+    FINISH_GATE_POLE_THICKNESS,
+  )
+  for (const p of [polePositions.left, polePositions.right]) {
+    const pole = new Mesh(poleGeom, poleMat)
+    pole.position.set(p.x, FINISH_GATE_POLE_HEIGHT / 2, p.z)
+    scene.add(pole)
+  }
+
+  // Banner: oriented so its long axis spans pole-to-pole and its face turns
+  // toward the approaching driver. Width = pole separation + a little extra
+  // overhang on each side. Height matches FINISH_GATE_BANNER_HEIGHT. Depth
+  // is the banner's thickness (along travel direction) so the back face is
+  // visible to the driver who has already passed the gate.
+  const bannerSpan = gatePoleSeparation(polePositions) + FINISH_GATE_BANNER_OVERHANG * 2
+  const bannerGeom = new BoxGeometry(
+    bannerSpan,
+    FINISH_GATE_BANNER_HEIGHT,
+    FINISH_GATE_BANNER_DEPTH,
+  )
+  const bannerCheckerTexture = checkerTexture.clone() as Texture
+  bannerCheckerTexture.needsUpdate = true
+  const bannerMat = new MeshStandardMaterial({
+    map: bannerCheckerTexture,
+    roughness: 0.7,
+  })
+  const banner = new Mesh(bannerGeom, bannerMat)
+  banner.position.set(
+    path.finishLine.position.x,
+    FINISH_GATE_POLE_HEIGHT - FINISH_GATE_BANNER_HEIGHT / 2,
+    path.finishLine.position.z,
+  )
+  // Default banner long-axis is +X. Rotate around +Y so it spans from one
+  // pole to the other. Heading 0 means travel along +X (poles on +/- Z), so
+  // the banner needs to turn 90 degrees from default to span Z. The general
+  // formula is `heading + PI/2` (perpendicular to travel).
+  banner.rotation.y = path.finishLine.heading + Math.PI / 2
+  scene.add(banner)
 
   const { car, setPaint: setCarPaint, cancel: cancelCar } = buildCar()
   scene.add(car)
@@ -548,6 +643,10 @@ export function buildScene(path: TrackPath): SceneBundle {
     })
     geoms.forEach((g) => g.dispose())
     mats.forEach((m) => m.dispose())
+    // Procedural finish-line textures live on materials picked up by the
+    // traversal but the traversal does not free GPU texture memory.
+    checkerTexture.dispose()
+    bannerCheckerTexture.dispose()
   }
 
   return { scene, camera, car, setCarPaint, setTimeOfDay, skidMarks, dispose }
