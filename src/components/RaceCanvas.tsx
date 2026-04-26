@@ -55,6 +55,11 @@ import {
   skidMarkPeakAlpha,
 } from '@/game/skidMarks'
 import {
+  puffIntensity,
+  puffPeakAlpha,
+  shouldSpawnTireSmoke,
+} from '@/game/tireSmoke'
+import {
   driftIntensity,
   initDriftSession,
   stepDriftSession,
@@ -139,6 +144,12 @@ export interface RaceCanvasProps {
   // slides. Polled each frame so a Settings flip takes effect without
   // rebuilding the renderer. Default behavior when omitted: enabled.
   showSkidMarksRef?: MutableRefObject<boolean>
+  // Toggle the soft white tire-smoke puffs that pop off the rear wheels
+  // during hard slides and braking. Polled each frame so a Settings flip
+  // takes effect without rebuilding the renderer. Existing puffs in flight
+  // continue to fade naturally even after a flip-off so the toggle does not
+  // snap a visible cloud away mid-corner. Default when omitted: enabled.
+  showTireSmokeRef?: MutableRefObject<boolean>
   // Toggle the alternating red / white kerbs at the inside of every corner.
   // Polled each frame so a Settings flip takes effect without rebuilding the
   // scene. Default behavior when omitted: enabled.
@@ -226,6 +237,7 @@ export function RaceCanvas({
   timeOfDayRef,
   weatherRef,
   showSkidMarksRef,
+  showTireSmokeRef,
   showKerbsRef,
   showSceneryRef,
   showRacingLineRef,
@@ -514,6 +526,7 @@ export function RaceCanvas({
     let lastTs = performance.now()
     let lastHudTs = 0
     let lastSkidSpawnTs = -Infinity
+    let lastTireSmokeSpawnTs = -Infinity
     let running = true
     let prevHud: RaceCanvasHud | null = null
     let prevOnTrack = true
@@ -567,9 +580,11 @@ export function RaceCanvas({
         if (speedOutRef) speedOutRef.current = 0
         resetRecording()
         bundle.skidMarks.clear()
+        bundle.tireSmoke.clear()
         bundle.rain.reset()
         bundle.snow.reset()
         lastSkidSpawnTs = -Infinity
+        lastTireSmokeSpawnTs = -Infinity
         renderer.render(bundle.scene, bundle.camera)
         pendingResetRef.current = false
         pendingRaceStartRef.current = null
@@ -615,7 +630,9 @@ export function RaceCanvas({
         // the fresh attempt starts on a clean track surface.
         resetRecording()
         bundle.skidMarks.clear()
+        bundle.tireSmoke.clear()
         lastSkidSpawnTs = -Infinity
+        lastTireSmokeSpawnTs = -Infinity
         pendingLapResetRef.current = false
         // Discard accumulated pause shift: we just reseeded raceStartMs to
         // the frame timestamp so any pending shift is irrelevant and would
@@ -834,6 +851,34 @@ export function RaceCanvas({
           )
           lastSkidSpawnTs = ts
         }
+        // Tire smoke puffs: a separate spawn decision because the brake-only
+        // case (hard straight-line stop) should puff smoke even when the
+        // skid-mark decision says no (no steering deflection). Same paired
+        // rear-wheel placement as the skid layer, but the puffs rise + fade
+        // off the road so the effect reads as volumetric rather than a streak.
+        const showTireSmoke = showTireSmokeRef?.current ?? true
+        const smokeIntensity = puffIntensity(
+          skidSpeedAbs,
+          paramsRef.current.maxSpeed,
+          skidSteerAbs,
+          brakingNow ? 1 : 0,
+          state.onTrack,
+        )
+        const smokeDecision = shouldSpawnTireSmoke(
+          smokeIntensity,
+          skidSpeedAbs,
+          ts - lastTireSmokeSpawnTs,
+        )
+        if (smokeDecision.spawn && showTireSmoke) {
+          bundle.tireSmoke.spawn(
+            state.x,
+            state.z,
+            state.heading,
+            puffPeakAlpha(smokeIntensity),
+            ts,
+          )
+          lastTireSmokeSpawnTs = ts
+        }
         // Drift scoring: independent of the skid spawn decision (we want a
         // continuous score, not just one tick per spawn). Uses the same
         // input shape so the audio cue and the score stay in sync.
@@ -868,6 +913,11 @@ export function RaceCanvas({
         driftSession = initDriftSession()
       }
       bundle.skidMarks.tick(ts)
+      // Tire smoke puffs share the same per-frame fade pass shape as the
+      // skid mark layer, only the puff layer also advances each puff's
+      // rise + scale. Cheap when nothing is active (slot-loop short-circuits
+      // on the inactive flag) so dry coasting costs nothing.
+      bundle.tireSmoke.tick(ts)
 
       // Rain particles. The layer's `tick` short-circuits when hidden so dry
       // weather costs nothing. The camera position is the follow point so the

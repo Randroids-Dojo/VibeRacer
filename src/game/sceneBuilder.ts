@@ -29,6 +29,8 @@ import {
   RGBAFormat,
   Scene,
   SphereGeometry,
+  Sprite,
+  SpriteMaterial,
   type Texture,
   UnsignedByteType,
 } from 'three'
@@ -47,6 +49,14 @@ import {
   skidMarkAlpha,
   skidMarkPeakAlpha,
 } from './skidMarks'
+import {
+  TIRE_SMOKE_BASE_Y,
+  TIRE_SMOKE_POOL_SIZE,
+  nextTireSmokeIndex,
+  puffAlpha,
+  puffRise,
+  puffScale,
+} from './tireSmoke'
 import {
   DEFAULT_TIME_OF_DAY,
   SUN_DISTANCE,
@@ -193,6 +203,12 @@ export interface SceneBundle {
   // each frame and clear it on a full reset, without needing to reach into
   // the scene graph.
   skidMarks: SkidMarkLayer
+  // Tire smoke puff pool. Soft white camera-facing sprites that puff up off
+  // the rear wheels during hard slides and braking, then rise and fade. The
+  // rAF loop calls `spawn` when its puff intensity gates pass and `tick` each
+  // frame to advance ages; `clear` empties the pool on a full Restart so the
+  // fresh race starts on a clean scene.
+  tireSmoke: TireSmokeLayer
   // Inside-corner kerb tiles (the alternating red / white curb stones at the
   // apex of every turn). Exposed so the rAF loop can poll a Settings toggle
   // and flip visibility without rebuilding any geometry.
@@ -868,6 +884,214 @@ export function buildSkidMarkLayer(
 // Re-export the pool helpers so RaceCanvas can reference the constants
 // without reaching across modules.
 export { skidMarkPeakAlpha }
+
+// Tire smoke puff layer: a fixed pool of soft white camera-facing sprites
+// recycled in a ring buffer. Each spawn places two puffs (one per rear wheel)
+// at the same world position the skid mark layer uses, then the puff rises
+// and fades over its lifetime. Camera-facing sprites avoid having to author
+// per-frame billboard math; the SpriteMaterial renders the texture as if it
+// always faces the camera, which reads as volumetric smoke from any angle.
+export interface TireSmokeLayer {
+  group: Group
+  spawn: (
+    x: number,
+    z: number,
+    heading: number,
+    peakAlpha: number,
+    nowMs: number,
+  ) => void
+  tick: (nowMs: number) => void
+  clear: () => void
+  dispose: () => void
+}
+
+interface TireSmokeSlot {
+  sprite: Sprite
+  mat: SpriteMaterial
+  spawnedAt: number
+  peak: number
+  baseX: number
+  baseZ: number
+  active: boolean
+}
+
+// Build an alpha-feathered RGBA byte array used as the puff sprite texture.
+// Soft circular falloff so the sprite reads as a fluffy round cloud rather
+// than a hard square. Pure helper exported for unit testing without a WebGL
+// context.
+export function buildTireSmokePuffSprite(size: number): Uint8Array {
+  if (!Number.isFinite(size) || size <= 0) {
+    return new Uint8Array(0)
+  }
+  const px = Math.floor(size)
+  const data = new Uint8Array(px * px * 4)
+  const center = (px - 1) / 2
+  const radius = px / 2
+  for (let y = 0; y < px; y++) {
+    for (let x = 0; x < px; x++) {
+      const dx = x - center
+      const dy = y - center
+      const dist = Math.sqrt(dx * dx + dy * dy)
+      // Soft cosine-style falloff. At the center alpha is full; at the
+      // radius edge alpha is zero. Squared falloff hides the hard sprite
+      // boundary and reads as a soft puff edge.
+      const t = Math.max(0, 1 - dist / radius)
+      const alpha = Math.round(255 * t * t)
+      const idx = (y * px + x) * 4
+      // White RGB; the alpha channel does the visible work.
+      data[idx + 0] = 255
+      data[idx + 1] = 255
+      data[idx + 2] = 255
+      data[idx + 3] = alpha
+    }
+  }
+  return data
+}
+
+export function buildTireSmokeLayer(
+  poolSize = TIRE_SMOKE_POOL_SIZE,
+): TireSmokeLayer {
+  const group = new Group()
+
+  // Procedural soft round texture so no binary asset ships. 32x32 is plenty
+  // for a sprite that scales up to a couple world units at most. NearestFilter
+  // would alias the soft edge, so we let the default linear filter handle it.
+  const SPRITE_PX = 32
+  const spritePixels = buildTireSmokePuffSprite(SPRITE_PX)
+  const spriteTex = new DataTexture(
+    spritePixels,
+    SPRITE_PX,
+    SPRITE_PX,
+    RGBAFormat,
+    UnsignedByteType,
+  )
+  spriteTex.needsUpdate = true
+
+  const slots: TireSmokeSlot[] = []
+  for (let i = 0; i < poolSize; i++) {
+    const mat = new SpriteMaterial({
+      map: spriteTex,
+      // Soft warm white reads as tire smoke against most asphalts. Slightly
+      // cooler than pure white so it reads as smoke rather than a paper puff.
+      color: 0xe8e8ec,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      // Normal blending (not additive) so the puff actually obscures what is
+      // behind it rather than glowing through a dark scene like a flare. A
+      // little additive bleed on top of dark asphalt would be fine but normal
+      // blending reads more like a real cloud.
+    })
+    const sprite = new Sprite(mat)
+    sprite.scale.set(1, 1, 1)
+    sprite.visible = false
+    group.add(sprite)
+    slots.push({
+      sprite,
+      mat,
+      spawnedAt: 0,
+      peak: 0,
+      baseX: 0,
+      baseZ: 0,
+      active: false,
+    })
+  }
+
+  // Two slots per spawn (one puff per rear wheel). Track them via a single
+  // ring index that advances by 2 each spawn.
+  let writeIdx = 0
+
+  function placeSlot(
+    slot: TireSmokeSlot,
+    x: number,
+    z: number,
+    peak: number,
+    nowMs: number,
+  ) {
+    slot.baseX = x
+    slot.baseZ = z
+    slot.spawnedAt = nowMs
+    slot.peak = peak
+    slot.active = true
+    slot.mat.opacity = peak
+    slot.sprite.position.set(x, TIRE_SMOKE_BASE_Y, z)
+    slot.sprite.scale.setScalar(0.7) // matches TIRE_SMOKE_START_SCALE
+    slot.sprite.visible = peak > 0
+  }
+
+  return {
+    group,
+    spawn(x, z, heading, peakAlpha, nowMs) {
+      if (peakAlpha <= 0) return
+      // Same rear-axle math as the skid mark layer so the puffs land exactly
+      // behind the wheels, paired stripes of smoke chasing the paired stripes
+      // of mark.
+      const cosH = Math.cos(heading)
+      const sinH = -Math.sin(heading)
+      const backX = -cosH * 1.4
+      const backZ = -sinH * 1.4
+      const rightX = -sinH
+      const rightZ = cosH
+      const baseX = x + backX
+      const baseZ = z + backZ
+      const offset = 1.05
+      const leftSlot = slots[writeIdx]
+      const rightSlot = slots[(writeIdx + 1) % poolSize]
+      placeSlot(
+        leftSlot,
+        baseX + rightX * -offset,
+        baseZ + rightZ * -offset,
+        peakAlpha,
+        nowMs,
+      )
+      placeSlot(
+        rightSlot,
+        baseX + rightX * offset,
+        baseZ + rightZ * offset,
+        peakAlpha,
+        nowMs,
+      )
+      writeIdx = nextTireSmokeIndex(
+        nextTireSmokeIndex(writeIdx, poolSize),
+        poolSize,
+      )
+    },
+    tick(nowMs) {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i]
+        if (!s.active) continue
+        const age = nowMs - s.spawnedAt
+        const a = puffAlpha(age, s.peak)
+        if (a <= 0) {
+          s.active = false
+          s.sprite.visible = false
+          s.mat.opacity = 0
+          continue
+        }
+        s.mat.opacity = a
+        const scale = puffScale(age)
+        s.sprite.scale.set(scale, scale, 1)
+        const rise = puffRise(age)
+        s.sprite.position.set(s.baseX, TIRE_SMOKE_BASE_Y + rise, s.baseZ)
+      }
+    },
+    clear() {
+      for (let i = 0; i < slots.length; i++) {
+        const s = slots[i]
+        s.active = false
+        s.sprite.visible = false
+        s.mat.opacity = 0
+      }
+      writeIdx = 0
+    },
+    dispose() {
+      for (let i = 0; i < slots.length; i++) {
+        slots[i].mat.dispose()
+      }
+      spriteTex.dispose()
+    },
+  }
+}
 
 // Inside-corner kerb layer. Each tile is a flat colored quad laid along the
 // inner edge of a corner's centerline arc. Tiles alternate red and white so
@@ -1677,6 +1901,9 @@ export function buildScene(path: TrackPath): SceneBundle {
   const skidMarks = buildSkidMarkLayer()
   scene.add(skidMarks.group)
 
+  const tireSmoke = buildTireSmokeLayer()
+  scene.add(tireSmoke.group)
+
   const kerbs = buildKerbLayer(path)
   scene.add(kerbs.group)
 
@@ -1702,10 +1929,11 @@ export function buildScene(path: TrackPath): SceneBundle {
 
   const dispose = () => {
     cancelCar()
-    // The skid mark layer's materials and shared geometry are picked up by
-    // the traversal below (the group sits inside `scene` and dedupes the
-    // shared geometry through `Set` semantics on dispose). Calling
-    // `skidMarks.dispose()` here would double-dispose the same resources.
+    // The skid mark and tire smoke layers' materials and shared geometry
+    // (or sprite texture) are picked up by the traversal below (each group
+    // sits inside `scene` and dedupes the shared resources through `Set`
+    // semantics on dispose). Calling `skidMarks.dispose()` or
+    // `tireSmoke.dispose()` here would double-dispose the same resources.
     const mats = new Set<Material>()
     const geoms = new Set<BufferGeometry>()
     scene.traverse((obj) => {
@@ -1721,6 +1949,10 @@ export function buildScene(path: TrackPath): SceneBundle {
     // traversal but the traversal does not free GPU texture memory.
     checkerTexture.dispose()
     bannerCheckerTexture.dispose()
+    // Tire smoke owns a procedurally-generated puff texture shared across
+    // every sprite in its pool; the traversal frees the SpriteMaterials but
+    // not the bound texture, so the layer's own dispose handles that.
+    tireSmoke.dispose()
   }
 
   return {
@@ -1734,6 +1966,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     setTimeOfDay,
     setWeather,
     skidMarks,
+    tireSmoke,
     kerbs,
     scenery,
     racingLine,

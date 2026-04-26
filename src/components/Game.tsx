@@ -410,6 +410,10 @@ function GameSession({
   // does not snap a visible streak away mid-corner.
   const showSkidMarksRef = useRef<boolean>(settings.showSkidMarks)
   showSkidMarksRef.current = settings.showSkidMarks
+  // Mirrors settings.showTireSmoke into the rAF loop. Existing puffs keep
+  // fading after a flip-off, same idea as skid marks.
+  const showTireSmokeRef = useRef<boolean>(settings.showTireSmoke)
+  showTireSmokeRef.current = settings.showTireSmoke
   // Mirrors settings.showRearview into the rAF loop so the second renderer
   // can short-circuit its draw call when the mirror is hidden. The canvas
   // itself stays mounted (and CSS-hidden) so a flip back on resumes the pass
@@ -1635,6 +1639,7 @@ function GameSession({
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}
+        showTireSmokeRef={showTireSmokeRef}
         showKerbsRef={showKerbsRef}
         showSceneryRef={showSceneryRef}
         showRacingLineRef={showRacingLineRef}

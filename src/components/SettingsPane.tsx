@@ -378,6 +378,10 @@ export function SettingsPane({
     onChange({ ...settings, showSkidMarks: value })
   }
 
+  function setShowTireSmoke(value: boolean) {
+    onChange({ ...settings, showTireSmoke: value })
+  }
+
   function setShowSpeedometer(value: boolean) {
     onChange({ ...settings, showSpeedometer: value })
   }
@@ -833,6 +837,23 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showSkidMarks}
                 onChange={setShowSkidMarks}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Tire smoke</div>
+            <MenuHint>
+              Soft white puffs that pop off the rear wheels during hard
+              slides and braking, then rise and fade. Pairs with the dark
+              skid trail without competing with it. Turn off for a cleaner
+              cornering scene.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show tire smoke</div>
+              <MenuToggle
+                value={settings.showTireSmoke}
+                onChange={setShowTireSmoke}
               />
             </div>
           </div>

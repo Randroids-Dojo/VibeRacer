@@ -173,6 +173,13 @@ export interface ControlSettings {
   // Cheap to render (a fixed-size pool of fading quads) so default on; the
   // toggle is here for users who want a fully clean track surface.
   showSkidMarks: boolean
+  // Toggle the soft white tire-smoke puffs that pop off the rear wheels
+  // during hard slides and braking. Volumetric (camera-facing sprites that
+  // rise + fade in under a second) so the cue reads alongside the dark skid
+  // trail without competing with it. Cheap to render (a fixed pool of soft
+  // sprites) so default on; the toggle is here for users who want a clean
+  // track with no atmospheric particles.
+  showTireSmoke: boolean
   // Toggle the bottom-center speedometer overlay. Default on. The chosen
   // unit is independent of the toggle: turning the readout off keeps the
   // unit choice for whenever the player turns it back on.
@@ -269,6 +276,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   ghostSource: DEFAULT_GHOST_SOURCE,
   showMinimap: true,
   showSkidMarks: true,
+  showTireSmoke: true,
   showSpeedometer: true,
   speedUnit: DEFAULT_SPEED_UNIT,
   showRearview: true,
@@ -346,6 +354,10 @@ const ControlSettingsSchema = z.object({
   // Skid marks toggle landed later still; default on so legacy payloads
   // start showing them automatically without losing any other choices.
   showSkidMarks: z.boolean().default(true),
+  // Tire smoke landed after skid marks. Default on so legacy stored payloads
+  // start seeing the soft puffs automatically without losing any other
+  // choices; players who want a clean cornering scene can flip this off.
+  showTireSmoke: z.boolean().default(true),
   // Speedometer landed later. Default on so existing players see the new
   // overlay on their next race; the unit choice backfills to mph.
   showSpeedometer: z.boolean().default(true),
@@ -416,6 +428,7 @@ export function cloneDefaultSettings(): ControlSettings {
     ghostSource: DEFAULT_CONTROL_SETTINGS.ghostSource,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
+    showTireSmoke: DEFAULT_CONTROL_SETTINGS.showTireSmoke,
     showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,

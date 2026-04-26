@@ -282,6 +282,29 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showSkidMarks).toBe(true)
   })
 
+  it('defaults showTireSmoke to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showTireSmoke).toBe(true)
+    expect(cloneDefaultSettings().showTireSmoke).toBe(true)
+  })
+
+  it('round-trips a disabled showTireSmoke flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showTireSmoke = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showTireSmoke when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+    })
+    expect(readStoredControlSettings().showTireSmoke).toBe(true)
+  })
+
   it('defaults showRearview to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showRearview).toBe(true)
     expect(cloneDefaultSettings().showRearview).toBe(true)
