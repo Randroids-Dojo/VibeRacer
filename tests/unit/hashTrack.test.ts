@@ -30,6 +30,25 @@ describe('hashTrack', () => {
   it('returns 64 hex chars', () => {
     expect(hashTrack([a, b, c])).toMatch(/^[a-f0-9]{64}$/)
   })
+
+  it('preserves legacy hash when checkpointCount equals piece count', () => {
+    const legacy = hashTrack([a, b, c])
+    expect(hashTrack([a, b, c], 3)).toBe(legacy)
+    expect(hashTrack([a, b, c], undefined)).toBe(legacy)
+  })
+
+  it('produces a different hash when checkpointCount differs from piece count', () => {
+    const legacy = hashTrack([a, b, c])
+    const overridden = hashTrack([a, b, c], 3)
+    const oval: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 0, col: 1, rotation: 0 },
+      { type: 'straight', row: 1, col: 1, rotation: 0 },
+      { type: 'right90', row: 1, col: 0, rotation: 0 },
+    ]
+    expect(hashTrack(oval, 3)).not.toBe(hashTrack(oval))
+    expect(legacy).toBe(overridden)
+  })
 })
 
 describe('canonicalizePieces', () => {

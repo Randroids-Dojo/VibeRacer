@@ -72,6 +72,39 @@ describe('PUT /api/track/[slug]', () => {
     expect(res.status).toBe(401)
   })
 
+  it('persists checkpointCount and uses it in the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'cp-slug'
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: DEFAULT_TRACK_PIECES, checkpointCount: 4 }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(hashTrack(DEFAULT_TRACK_PIECES, 4))
+    expect(putBody.versionHash).not.toBe(hashTrack(DEFAULT_TRACK_PIECES))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: { pieces: Piece[]; checkpointCount?: number }
+    }
+    expect(getBody.track.checkpointCount).toBe(4)
+  })
+
+  it('rejects a checkpointCount above the piece count', async () => {
+    const { PUT } = await import('@/app/api/track/[slug]/route')
+    const req = new NextRequest('http://test/api/track/bad-cp', {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: squarePieces, checkpointCount: 99 }),
+    })
+    const res = await PUT(req, { params: Promise.resolve({ slug: 'bad-cp' }) })
+    expect(res.status).toBe(400)
+  })
+
   it('returns 503 without leaking the underlying error when storage throws', async () => {
     const { PUT } = await import('@/app/api/track/[slug]/route')
     const setSpy = vi

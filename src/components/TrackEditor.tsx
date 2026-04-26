@@ -2,7 +2,7 @@
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece } from '@/lib/schemas'
-import { MAX_PIECES_PER_TRACK } from '@/lib/schemas'
+import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import {
@@ -16,16 +16,28 @@ import {
 interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
+  initialCheckpointCount?: number
 }
 
 const CELL = 56
 const PAD_CELLS = 2
 
-export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
+export function TrackEditor({
+  slug,
+  initialPieces,
+  initialCheckpointCount,
+}: TrackEditorProps) {
   const router = useRouter()
   const [pieces, setPieces] = useState<Piece[]>(initialPieces)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  // null = "default" (one CP per piece). Number = explicit override.
+  const [checkpointCount, setCheckpointCount] = useState<number | null>(
+    initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length
+      ? initialCheckpointCount
+      : null,
+  )
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -103,27 +115,51 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
     setError(null)
   }
 
+  // Clamp the override whenever piece count drops below it.
+  const cpMax = pieces.length
+  const cpMin = Math.min(MIN_CHECKPOINT_COUNT, cpMax)
+  const effectiveCp =
+    checkpointCount === null
+      ? cpMax
+      : Math.max(cpMin, Math.min(cpMax, checkpointCount))
+  const cpInputDisabled = cpMax < MIN_CHECKPOINT_COUNT
+
+  function onCpChange(raw: string) {
+    if (raw === '') {
+      setCheckpointCount(null)
+      return
+    }
+    const n = Number(raw)
+    if (!Number.isFinite(n)) return
+    const clamped = Math.max(cpMin, Math.min(cpMax, Math.round(n)))
+    setCheckpointCount(clamped === cpMax ? null : clamped)
+  }
+
   async function save() {
     if (!validation.ok || saving) return
     setSaving(true)
     setError(null)
     try {
+      const reqBody: { pieces: Piece[]; checkpointCount?: number } = { pieces }
+      if (checkpointCount !== null && effectiveCp !== cpMax) {
+        reqBody.checkpointCount = effectiveCp
+      }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ pieces }),
+        body: JSON.stringify(reqBody),
       })
       if (!res.ok) {
-        const body = (await res.json().catch(() => ({}))) as {
+        const errBody = (await res.json().catch(() => ({}))) as {
           error?: string
           reason?: string
         }
-        setError(body.reason || body.error || `save failed (${res.status})`)
+        setError(errBody.reason || errBody.error || `save failed (${res.status})`)
         setSaving(false)
         return
       }
-      const body = (await res.json()) as { versionHash: string }
-      router.push(`/${slug}?v=${body.versionHash}`)
+      const okBody = (await res.json()) as { versionHash: string }
+      router.push(`/${slug}?v=${okBody.versionHash}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed')
       setSaving(false)
@@ -191,6 +227,21 @@ export function TrackEditor({ slug, initialPieces }: TrackEditorProps) {
       <div style={footer}>
         <div style={status}>
           <span>{pieces.length} / {MAX_PIECES_PER_TRACK} pieces</span>
+          <label style={cpLabel}>
+            <span>Checkpoints</span>
+            <input
+              type="number"
+              min={cpMin}
+              max={cpMax}
+              value={effectiveCp}
+              disabled={cpInputDisabled}
+              onChange={(e) => onCpChange(e.target.value)}
+              style={cpInput}
+            />
+            <span style={cpHint}>
+              {checkpointCount === null ? 'default' : `of ${cpMax}`}
+            </span>
+          </label>
           <span style={{ color: validation.ok ? '#6ee787' : '#ffb86b' }}>
             {validation.ok ? 'valid closed loop' : (validation.reason ?? 'invalid')}
           </span>
@@ -395,6 +446,27 @@ const status: React.CSSProperties = {
 const buttons: React.CSSProperties = {
   display: 'flex',
   gap: 10,
+}
+const cpLabel: React.CSSProperties = {
+  display: 'inline-flex',
+  gap: 6,
+  alignItems: 'center',
+  fontSize: 13,
+  opacity: 0.9,
+}
+const cpInput: React.CSSProperties = {
+  width: 56,
+  background: '#162233',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '4px 6px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+}
+const cpHint: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.6,
 }
 const btnPrimary: React.CSSProperties = {
   border: 'none',

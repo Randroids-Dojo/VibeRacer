@@ -10,17 +10,35 @@ export function canonicalizePieces(pieces: Piece[]): Piece[] {
   })
 }
 
-export function canonicalTrackJson(pieces: Piece[]): string {
-  return JSON.stringify(
-    canonicalizePieces(pieces).map((p) => ({
-      type: p.type,
-      row: p.row,
-      col: p.col,
-      rotation: p.rotation,
-    })),
-  )
+// Only emit the field when it differs from the legacy default (one CP per
+// piece). This preserves the hash of every track stored before the field
+// existed.
+function effectiveCheckpointCount(
+  pieces: Piece[],
+  checkpointCount: number | undefined,
+): number | null {
+  if (checkpointCount === undefined) return null
+  if (checkpointCount === pieces.length) return null
+  return checkpointCount
 }
 
-export function hashTrack(pieces: Piece[]): string {
-  return createHash('sha256').update(canonicalTrackJson(pieces)).digest('hex')
+export function canonicalTrackJson(
+  pieces: Piece[],
+  checkpointCount?: number,
+): string {
+  const canonical = canonicalizePieces(pieces).map((p) => ({
+    type: p.type,
+    row: p.row,
+    col: p.col,
+    rotation: p.rotation,
+  }))
+  const cp = effectiveCheckpointCount(pieces, checkpointCount)
+  if (cp === null) return JSON.stringify(canonical)
+  return JSON.stringify({ pieces: canonical, checkpointCount: cp })
+}
+
+export function hashTrack(pieces: Piece[], checkpointCount?: number): string {
+  return createHash('sha256')
+    .update(canonicalTrackJson(pieces, checkpointCount))
+    .digest('hex')
 }

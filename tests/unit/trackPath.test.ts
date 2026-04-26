@@ -4,6 +4,7 @@ import {
   CELL_SIZE,
   TRACK_WIDTH,
   buildTrackPath,
+  computeCpTriggerPieceIdx,
   distanceToCenterline,
 } from '@/game/trackPath'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
@@ -112,5 +113,51 @@ describe('OrderedPiece.arcCenter', () => {
 describe('TRACK_WIDTH fits inside the cell', () => {
   it('leaves non-zero inner radius for corner annulus', () => {
     expect(CELL_SIZE / 2 - TRACK_WIDTH / 2).toBeGreaterThan(0)
+  })
+})
+
+describe('computeCpTriggerPieceIdx', () => {
+  it('matches one-CP-per-piece when K equals piece count', () => {
+    const M = 8
+    const idx = computeCpTriggerPieceIdx(M)
+    expect(idx).toEqual([1, 2, 3, 4, 5, 6, 7, 0])
+  })
+
+  it('distributes 4 CPs evenly across an 8-piece loop', () => {
+    expect(computeCpTriggerPieceIdx(8, 4)).toEqual([2, 4, 6, 0])
+  })
+
+  it('always lands the final CP on piece 0', () => {
+    for (const M of [6, 8, 12, 13]) {
+      for (let K = 3; K <= M; K++) {
+        const idx = computeCpTriggerPieceIdx(M, K)
+        expect(idx.length).toBe(K)
+        expect(idx[K - 1]).toBe(0)
+      }
+    }
+  })
+
+  it('keeps intermediate trigger pieces strictly inside the loop', () => {
+    for (const M of [6, 8, 12, 13]) {
+      for (let K = 3; K < M; K++) {
+        const idx = computeCpTriggerPieceIdx(M, K)
+        for (let k = 0; k < K - 1; k++) {
+          expect(idx[k]).toBeGreaterThan(0)
+          expect(idx[k]).toBeLessThan(M)
+        }
+      }
+    }
+  })
+})
+
+describe('buildTrackPath cpTriggerPieceIdx', () => {
+  it('defaults to one CP per piece when checkpointCount is omitted', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES)
+    expect(path.cpTriggerPieceIdx.length).toBe(DEFAULT_TRACK_PIECES.length)
+  })
+
+  it('honors checkpointCount when supplied', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES, 4)
+    expect(path.cpTriggerPieceIdx).toEqual([2, 4, 6, 0])
   })
 })

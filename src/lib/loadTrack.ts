@@ -9,7 +9,12 @@ const DEFAULT_TRACK = {
 }
 
 export type LoadTrackResult =
-  | { kind: 'ok'; pieces: Piece[]; versionHash: string }
+  | {
+      kind: 'ok'
+      pieces: Piece[]
+      versionHash: string
+      checkpointCount?: number
+    }
   | { kind: 'fresh' }
   | { kind: 'notFound' }
 
@@ -40,6 +45,7 @@ export async function loadTrack(
           kind: 'ok',
           pieces: parsed.data.pieces as Piece[],
           versionHash: targetHash,
+          checkpointCount: parsed.data.checkpointCount,
         }
       }
       // A specific-version miss must not fall through to latest.

@@ -48,6 +48,7 @@ interface GameProps {
   slug: string
   versionHash: string
   pieces: Piece[]
+  checkpointCount?: number
   initialRecord: OverallRecord | null
 }
 
@@ -93,6 +94,7 @@ function GameSession({
   slug,
   versionHash,
   pieces,
+  checkpointCount,
   initials,
   initialRecord,
 }: SessionProps) {
@@ -410,6 +412,7 @@ function GameSession({
       <TitleMusic />
       <RaceCanvas
         pieces={pieces}
+        checkpointCount={checkpointCount}
         paramsRef={paramsRef}
         keys={keys}
         pausedRef={pausedRef}

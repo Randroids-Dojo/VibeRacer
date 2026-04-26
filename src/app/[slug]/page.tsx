@@ -47,7 +47,7 @@ export default async function SlugPage(ctx: {
     const recent = await loadRecentTracksSafe(slug)
     return <SlugLanding slug={slug} recent={recent} />
   }
-  const { pieces, versionHash } = loaded
+  const { pieces, versionHash, checkpointCount } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
 
   return (
@@ -55,6 +55,7 @@ export default async function SlugPage(ctx: {
       slug={slug}
       versionHash={versionHash}
       pieces={pieces}
+      checkpointCount={checkpointCount}
       initialRecord={overallRecord}
     />
   )

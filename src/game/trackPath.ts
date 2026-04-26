@@ -49,6 +49,26 @@ export interface TrackPath {
   cellToOrderIdx: Map<string, number>
   spawn: { position: Vec3; heading: number }
   finishLine: { position: Vec3; heading: number }
+  // Path-order index of the piece whose entry triggers checkpoint k. The last
+  // entry is always 0 (lap completes when the car re-enters the start piece).
+  cpTriggerPieceIdx: number[]
+}
+
+// K checkpoints distributed evenly across M pieces in path order. The k-th CP
+// fires when the car enters piece round((k+1) * M / K) % M, so the K-th CP
+// always lands on piece 0 (lap complete). When K === M this matches the
+// pre-feature behavior of one CP per piece.
+export function computeCpTriggerPieceIdx(
+  pieceCount: number,
+  checkpointCount?: number,
+): number[] {
+  const K = checkpointCount ?? pieceCount
+  const M = pieceCount
+  const out: number[] = []
+  for (let k = 0; k < K; k++) {
+    out.push(Math.round(((k + 1) * M) / K) % M)
+  }
+  return out
 }
 
 export function cellCenter(row: number, col: number): Vec3 {
@@ -97,7 +117,10 @@ function computeArcCenter(
   return { cx: center.x + e1.dx + e2.dx, cz: center.z + e1.dz + e2.dz }
 }
 
-export function buildTrackPath(pieces: Piece[]): TrackPath {
+export function buildTrackPath(
+  pieces: Piece[],
+  checkpointCount?: number,
+): TrackPath {
   if (pieces.length === 0) {
     throw new Error('empty pieces')
   }
@@ -154,7 +177,12 @@ export function buildTrackPath(pieces: Piece[]): TrackPath {
   const spawn = pointAlongStartPiece(order[0], SPAWN_INSET)
   const finishLine = pointAlongStartPiece(order[0], FINISH_LINE_INSET)
 
-  return { order, cellToOrderIdx, spawn, finishLine }
+  const cpTriggerPieceIdx = computeCpTriggerPieceIdx(
+    order.length,
+    checkpointCount,
+  )
+
+  return { order, cellToOrderIdx, spawn, finishLine, cpTriggerPieceIdx }
 }
 
 export function samplePieceAt(
