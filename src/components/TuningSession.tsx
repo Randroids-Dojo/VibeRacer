@@ -75,8 +75,9 @@ export function TuningSession({
   const keys = useKeyboard(settings.keyBindings)
   // Gamepad polling shares the same KeyInput ref so analog axes feed straight
   // into RaceCanvas. The Tuning Lab has no pause concept, so the toggle
-  // callback is a no-op.
-  useGamepad(keys)
+  // callback is a no-op. The user's saved bindings are applied here as well so
+  // a controller rebind in Settings carries into the lab.
+  useGamepad(keys, undefined, settings.gamepadBindings)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [params, setParams] = useState<CarParams>(initialParams)

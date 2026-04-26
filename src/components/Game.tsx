@@ -424,7 +424,7 @@ function GameSession({
     if (pausedRef.current) resume()
     else pause()
   }, [phase, pause, resume])
-  useGamepad(keys, handlePadPause)
+  useGamepad(keys, handlePadPause, settings.gamepadBindings)
   useEffect(() => {
     let raf = 0
     function check() {

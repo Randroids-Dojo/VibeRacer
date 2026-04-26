@@ -9,14 +9,22 @@ import {
   CONTROL_SETTINGS_STORAGE_KEY,
   DEFAULT_CAMERA_SETTINGS,
   DEFAULT_CONTROL_SETTINGS,
+  DEFAULT_GAMEPAD_BINDINGS,
   DEFAULT_KEY_BINDINGS,
+  GAMEPAD_BUTTON_MAX_INDEX,
   actionForCode,
   cameraLerpsFor,
   clearBinding,
+  clearGamepadBinding,
   cloneBindings,
   cloneDefaultCameraSettings,
+  cloneDefaultGamepadBindings,
   cloneDefaultSettings,
+  cloneGamepadBindings,
+  formatGamepadButton,
   formatKeyCode,
+  gamepadActionForIndex,
+  rebindGamepadButton,
   rebindKey,
   readStoredControlSettings,
   writeStoredControlSettings,
@@ -376,5 +384,181 @@ describe('cameraLerpsFor', () => {
       expect(targetLerp).toBeGreaterThan(0)
       expect(targetLerp).toBeLessThanOrEqual(1)
     }
+  })
+})
+
+describe('gamepad bindings', () => {
+  it('default bindings carry the expected analog + fallback indices', () => {
+    expect(DEFAULT_GAMEPAD_BINDINGS.forward).toEqual([7, 0])
+    expect(DEFAULT_GAMEPAD_BINDINGS.backward).toEqual([6, 1])
+    expect(DEFAULT_GAMEPAD_BINDINGS.handbrake).toEqual([5, 2])
+    expect(DEFAULT_GAMEPAD_BINDINGS.pause).toEqual([9])
+  })
+
+  it('cloneDefaultGamepadBindings returns a fresh copy', () => {
+    const a = cloneDefaultGamepadBindings()
+    a.forward.push(99)
+    expect(cloneDefaultGamepadBindings().forward).toEqual(
+      DEFAULT_GAMEPAD_BINDINGS.forward,
+    )
+  })
+
+  it('cloneGamepadBindings deep-copies the lists', () => {
+    const original = DEFAULT_GAMEPAD_BINDINGS
+    const clone = cloneGamepadBindings(original)
+    clone.handbrake.push(11)
+    expect(original.handbrake).toEqual([5, 2])
+  })
+
+  it('default settings carry the default gamepad bindings', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.gamepadBindings).toEqual(
+      DEFAULT_GAMEPAD_BINDINGS,
+    )
+    expect(cloneDefaultSettings().gamepadBindings).toEqual(
+      DEFAULT_GAMEPAD_BINDINGS,
+    )
+  })
+
+  it('gamepadActionForIndex resolves defaults', () => {
+    expect(gamepadActionForIndex(DEFAULT_GAMEPAD_BINDINGS, 7)).toBe('forward')
+    expect(gamepadActionForIndex(DEFAULT_GAMEPAD_BINDINGS, 6)).toBe('backward')
+    expect(gamepadActionForIndex(DEFAULT_GAMEPAD_BINDINGS, 5)).toBe('handbrake')
+    expect(gamepadActionForIndex(DEFAULT_GAMEPAD_BINDINGS, 9)).toBe('pause')
+    expect(gamepadActionForIndex(DEFAULT_GAMEPAD_BINDINGS, 12)).toBeNull()
+  })
+
+  it('rebindGamepadButton transfers an index from one action to another', () => {
+    const next = rebindGamepadButton(
+      DEFAULT_GAMEPAD_BINDINGS,
+      'handbrake',
+      0,
+      7, // RT, currently bound to forward
+    )
+    expect(next.handbrake[0]).toBe(7)
+    expect(next.forward).not.toContain(7)
+    expect(gamepadActionForIndex(next, 7)).toBe('handbrake')
+  })
+
+  it('rebindGamepadButton extends the slot list when binding past length', () => {
+    const empty = {
+      forward: [] as number[],
+      backward: [] as number[],
+      handbrake: [] as number[],
+      pause: [] as number[],
+    }
+    const next = rebindGamepadButton(empty, 'pause', 1, 8)
+    expect(next.pause).toEqual([8])
+  })
+
+  it('rebindGamepadButton does not mutate the input', () => {
+    const before = cloneGamepadBindings(DEFAULT_GAMEPAD_BINDINGS)
+    rebindGamepadButton(DEFAULT_GAMEPAD_BINDINGS, 'forward', 0, 3)
+    expect(DEFAULT_GAMEPAD_BINDINGS).toEqual(before)
+  })
+
+  it('clearGamepadBinding removes the slot at the given index', () => {
+    const next = clearGamepadBinding(DEFAULT_GAMEPAD_BINDINGS, 'forward', 0)
+    expect(next.forward).toEqual([0])
+  })
+
+  it('clearGamepadBinding is a no-op for an out-of-range slot', () => {
+    const next = clearGamepadBinding(DEFAULT_GAMEPAD_BINDINGS, 'pause', 5)
+    expect(next.pause).toEqual([9])
+  })
+
+  it.each([
+    [0, 'A / Cross'],
+    [1, 'B / Circle'],
+    [4, 'LB'],
+    [5, 'RB'],
+    [6, 'LT'],
+    [7, 'RT'],
+    [9, 'Start'],
+    [14, 'Dpad left'],
+    [15, 'Dpad right'],
+  ])('formats button %i as %s', (idx, label) => {
+    expect(formatGamepadButton(idx)).toBe(label)
+  })
+
+  it('formats unknown indices with a fallback label', () => {
+    expect(formatGamepadButton(99)).toBe('Button 99')
+  })
+
+  it('GAMEPAD_BUTTON_MAX_INDEX is 16 (Standard layout cap)', () => {
+    expect(GAMEPAD_BUTTON_MAX_INDEX).toBe(16)
+  })
+})
+
+describe('gamepad bindings storage round-trip', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow = {
+      localStorage: {
+        getItem: (k: string) => (k in store ? store[k] : null),
+        setItem: (k: string, v: string) => {
+          store[k] = v
+        },
+        removeItem: (k: string) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('round-trips a rebound pause button', () => {
+    const custom = cloneDefaultSettings()
+    custom.gamepadBindings = rebindGamepadButton(
+      custom.gamepadBindings,
+      'pause',
+      0,
+      8, // Back / Select
+    )
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().gamepadBindings.pause).toEqual([8])
+  })
+
+  it('backfills gamepadBindings when reading legacy storage that omits them', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      speedUnit: 'mph',
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    expect(readStoredControlSettings().gamepadBindings).toEqual(
+      DEFAULT_GAMEPAD_BINDINGS,
+    )
+  })
+
+  it('falls back to defaults when stored gamepadBindings have an out-of-range index', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      gamepadBindings: {
+        forward: [42], // invalid
+        backward: [6],
+        handbrake: [5],
+        pause: [9],
+      },
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
 })

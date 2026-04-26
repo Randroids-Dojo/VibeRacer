@@ -18,6 +18,40 @@ export const CONTROL_ACTIONS = [
 ] as const
 export type ControlAction = (typeof CONTROL_ACTIONS)[number]
 
+// Gamepad actions are a smaller set than keyboard actions: steering stays on
+// the analog stick + dpad and is not user-rebindable here, so the rebindable
+// actions are just the discrete buttons that drive throttle, brake, handbrake,
+// and pause. Each action holds a list of W3C Standard Gamepad button indices
+// (0..16), and the gamepad helper looks at the analog `value` of every bound
+// button so triggers (analog) and face buttons (digital) feel identical at the
+// physics layer.
+export const GAMEPAD_ACTIONS = [
+  'forward',
+  'backward',
+  'handbrake',
+  'pause',
+] as const
+export type GamepadAction = (typeof GAMEPAD_ACTIONS)[number]
+
+export type GamepadBindings = Record<GamepadAction, number[]>
+
+// W3C Standard Gamepad layout. Indices 0..16 are well-defined; we accept
+// anything in range so future remap UIs can grow if browsers ever ship more
+// indices. Source: https://w3c.github.io/gamepad/#remapping
+export const GAMEPAD_BUTTON_MAX_INDEX = 16
+
+export const DEFAULT_GAMEPAD_BINDINGS: GamepadBindings = {
+  // RT (analog forward) plus A (digital fallback so D-input pads with no
+  // analog triggers still drive forward at full throttle).
+  forward: [7, 0],
+  // LT (analog brake / reverse) plus B (digital fallback).
+  backward: [6, 1],
+  // RB primary, X face button as a thumb-friendly alt.
+  handbrake: [5, 2],
+  // Start / Options.
+  pause: [9],
+}
+
 export const TOUCH_MODES = ['dual', 'single'] as const
 export type TouchMode = (typeof TOUCH_MODES)[number]
 
@@ -81,6 +115,10 @@ export interface ControlSettings {
   // Stored as a string so the Settings UI can compare directly against the
   // palette in `src/lib/carPaint.ts`.
   carPaint: string | null
+  // User-customizable gamepad button bindings. Steering is fixed (left stick
+  // X plus dpad 14/15); these cover the discrete buttons that drive throttle,
+  // brake, handbrake, and pause.
+  gamepadBindings: GamepadBindings
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -101,6 +139,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   speedUnit: DEFAULT_SPEED_UNIT,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
+  gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -113,6 +152,19 @@ const KeyBindingsSchema = z.object({
   left: z.array(KeyCodeSchema),
   right: z.array(KeyCodeSchema),
   handbrake: z.array(KeyCodeSchema),
+})
+
+const GamepadButtonIndexSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(GAMEPAD_BUTTON_MAX_INDEX)
+
+const GamepadBindingsSchema = z.object({
+  forward: z.array(GamepadButtonIndexSchema),
+  backward: z.array(GamepadButtonIndexSchema),
+  handbrake: z.array(GamepadButtonIndexSchema),
+  pause: z.array(GamepadButtonIndexSchema),
 })
 
 const CameraRigSettingsSchema = z.object({
@@ -147,6 +199,10 @@ const ControlSettingsSchema = z.object({
   camera: CameraRigSettingsSchema.default(DEFAULT_CAMERA_SETTINGS),
   // Car paint also landed later. Null = stock colormap from the GLB.
   carPaint: CarPaintSettingSchema.default(null),
+  // Gamepad bindings landed after the original settings shape; backfill from
+  // defaults when reading legacy localStorage payloads so existing controller
+  // users keep the same bindings they had before this feature shipped.
+  gamepadBindings: GamepadBindingsSchema.default(DEFAULT_GAMEPAD_BINDINGS),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -164,7 +220,70 @@ export function cloneDefaultSettings(): ControlSettings {
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
+    gamepadBindings: cloneDefaultGamepadBindings(),
   }
+}
+
+export function cloneDefaultGamepadBindings(): GamepadBindings {
+  return {
+    forward: [...DEFAULT_GAMEPAD_BINDINGS.forward],
+    backward: [...DEFAULT_GAMEPAD_BINDINGS.backward],
+    handbrake: [...DEFAULT_GAMEPAD_BINDINGS.handbrake],
+    pause: [...DEFAULT_GAMEPAD_BINDINGS.pause],
+  }
+}
+
+export function cloneGamepadBindings(b: GamepadBindings): GamepadBindings {
+  return {
+    forward: [...b.forward],
+    backward: [...b.backward],
+    handbrake: [...b.handbrake],
+    pause: [...b.pause],
+  }
+}
+
+// Replace any prior assignment of `index` (across all actions) and assign it
+// to `target` at `slot`. Each button index maps to at most one action across
+// the whole binding map. Returns a fresh GamepadBindings object.
+export function rebindGamepadButton(
+  bindings: GamepadBindings,
+  target: GamepadAction,
+  slot: number,
+  index: number,
+): GamepadBindings {
+  const next = cloneGamepadBindings(bindings)
+  for (const action of GAMEPAD_ACTIONS) {
+    next[action] = next[action].filter((b) => b !== index)
+  }
+  const list = next[target]
+  while (list.length <= slot) list.push(-1)
+  list[slot] = index
+  next[target] = list.filter((b) => b >= 0)
+  return next
+}
+
+export function clearGamepadBinding(
+  bindings: GamepadBindings,
+  target: GamepadAction,
+  slot: number,
+): GamepadBindings {
+  const next = cloneGamepadBindings(bindings)
+  if (slot >= 0 && slot < next[target].length) {
+    next[target] = next[target].filter((_, i) => i !== slot)
+  }
+  return next
+}
+
+// Reverse-lookup: which action (if any) is currently bound to `index`. First
+// match wins, mirroring `actionForCode` for keyboard.
+export function gamepadActionForIndex(
+  bindings: GamepadBindings,
+  index: number,
+): GamepadAction | null {
+  for (const action of GAMEPAD_ACTIONS) {
+    if (bindings[action].includes(index)) return action
+  }
+  return null
 }
 
 // Map the two-knob `followSpeed` slider onto sceneBuilder's positionLerp +
@@ -346,4 +465,55 @@ export const ACTION_LABELS: Record<ControlAction, string> = {
   left: 'Steer left',
   right: 'Steer right',
   handbrake: 'Handbrake',
+}
+
+export const GAMEPAD_ACTION_LABELS: Record<GamepadAction, string> = {
+  forward: 'Accelerate',
+  backward: 'Brake / reverse',
+  handbrake: 'Handbrake',
+  pause: 'Pause',
+}
+
+// Friendly label for a Standard Gamepad button index. Names follow Xbox
+// conventions because that is the layout most browser docs assume; PlayStation
+// and Switch users will recognize the position even when the glyph differs.
+export function formatGamepadButton(index: number): string {
+  switch (index) {
+    case 0:
+      return 'A / Cross'
+    case 1:
+      return 'B / Circle'
+    case 2:
+      return 'X / Square'
+    case 3:
+      return 'Y / Triangle'
+    case 4:
+      return 'LB'
+    case 5:
+      return 'RB'
+    case 6:
+      return 'LT'
+    case 7:
+      return 'RT'
+    case 8:
+      return 'Back / Select'
+    case 9:
+      return 'Start'
+    case 10:
+      return 'L3 (stick)'
+    case 11:
+      return 'R3 (stick)'
+    case 12:
+      return 'Dpad up'
+    case 13:
+      return 'Dpad down'
+    case 14:
+      return 'Dpad left'
+    case 15:
+      return 'Dpad right'
+    case 16:
+      return 'Home'
+    default:
+      return `Button ${index}`
+  }
 }

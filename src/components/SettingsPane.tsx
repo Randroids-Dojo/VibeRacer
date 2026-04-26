@@ -13,14 +13,20 @@ import {
   CAMERA_LOOK_AHEAD_MIN,
   CONTROL_ACTIONS,
   DEFAULT_CAMERA_SETTINGS,
+  GAMEPAD_ACTIONS,
+  GAMEPAD_ACTION_LABELS,
   TOUCH_MODES,
   clearBinding,
+  clearGamepadBinding,
   cloneDefaultCameraSettings,
+  formatGamepadButton,
   formatKeyCode,
+  rebindGamepadButton,
   rebindKey,
   type CameraRigSettings,
   type ControlAction,
   type ControlSettings,
+  type GamepadAction,
   type TouchMode,
 } from '@/lib/controlSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
@@ -56,6 +62,11 @@ interface CaptureTarget {
   slot: number
 }
 
+interface PadCaptureTarget {
+  action: GamepadAction
+  slot: number
+}
+
 export function SettingsPane({
   settings,
   onChange,
@@ -65,6 +76,7 @@ export function SettingsPane({
 }: SettingsPaneProps) {
   const router = useRouter()
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
+  const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
   const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
@@ -213,6 +225,87 @@ export function SettingsPane({
     return () => window.removeEventListener('keydown', onKey, true)
   }, [capture, settings, onChange])
 
+  // Gamepad capture flow. Esc cancels (handled by the keyboard listener wired
+  // into capture above is keyboard-only, so we add a parallel keydown here).
+  // We poll the Gamepad API on rAF and accept the next button that crosses a
+  // press threshold. To avoid binding the same button twice in a row when the
+  // user taps then holds, we start "armed" only once every previously held
+  // button has been released; only fresh presses count.
+  useEffect(() => {
+    if (!padCapture) return
+    const target = padCapture
+    if (typeof window === 'undefined') return
+    if (typeof navigator === 'undefined' || !navigator.getGamepads) return
+
+    let raf = 0
+    // Indices held at capture-start are ignored until released, so a still-held
+    // RT does not immediately rebind the slot the user just clicked.
+    let armed = new Set<number>()
+    let initialized = false
+
+    function snapshotPressed(): Set<number> {
+      const pads = navigator.getGamepads()
+      const out = new Set<number>()
+      for (let i = 0; i < pads.length; i++) {
+        const p = pads[i]
+        if (!p || !p.connected) continue
+        for (let b = 0; b < p.buttons.length; b++) {
+          const btn = p.buttons[b]
+          if (!btn) continue
+          const value = typeof btn.value === 'number' ? btn.value : btn.pressed ? 1 : 0
+          if (btn.pressed || value >= 0.5) out.add(b)
+        }
+        break
+      }
+      return out
+    }
+
+    function poll() {
+      const pressed = snapshotPressed()
+      if (!initialized) {
+        // First sample: anything currently held is parked until released.
+        armed = pressed
+        initialized = true
+        raf = requestAnimationFrame(poll)
+        return
+      }
+      // Drop indices the user has released so they become available again.
+      for (const i of Array.from(armed)) {
+        if (!pressed.has(i)) armed.delete(i)
+      }
+      // First fresh press (not in `armed`) wins.
+      for (const i of pressed) {
+        if (armed.has(i)) continue
+        onChange({
+          ...settings,
+          gamepadBindings: rebindGamepadButton(
+            settings.gamepadBindings,
+            target.action,
+            target.slot,
+            i,
+          ),
+        })
+        setPadCapture(null)
+        return
+      }
+      raf = requestAnimationFrame(poll)
+    }
+
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') {
+        e.preventDefault()
+        setPadCapture(null)
+      }
+    }
+
+    raf = requestAnimationFrame(poll)
+    window.addEventListener('keydown', onKey, true)
+    return () => {
+      cancelAnimationFrame(raf)
+      window.removeEventListener('keydown', onKey, true)
+    }
+  }, [padCapture, settings, onChange])
+
   function setTouchMode(mode: TouchMode) {
     onChange({ ...settings, touchMode: mode })
   }
@@ -265,11 +358,23 @@ export function SettingsPane({
     })
   }
 
+  function clearPadSlot(action: GamepadAction, slot: number) {
+    onChange({
+      ...settings,
+      gamepadBindings: clearGamepadBinding(
+        settings.gamepadBindings,
+        action,
+        slot,
+      ),
+    })
+  }
+
   function resetAll() {
     clickSoft()
     onReset()
     resetAudio()
     setCapture(null)
+    setPadCapture(null)
   }
 
   return (
@@ -378,7 +483,10 @@ export function SettingsPane({
                                   : 'unbound'
                             }
                             highlighted={isCapturing}
-                            onClick={() => setCapture({ action, slot })}
+                            onClick={() => {
+                              if (padCapture) setPadCapture(null)
+                              setCapture({ action, slot })
+                            }}
                             onClear={
                               code && !isCapturing
                                 ? () => clearSlot(action, slot)
@@ -418,10 +526,9 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Gamepad</div>
             <MenuHint>
-              Plug in a controller and the game uses the right trigger for
-              gas, the left trigger for brake / reverse, the left stick for
-              steering, the right shoulder for handbrake, and Start to pause.
-              The bindings are not yet remappable.
+              Steering stays on the left stick (and dpad). Click a slot, then
+              press the controller button you want.
+              {padCapture ? ' Press Esc to cancel.' : ''}
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Status</div>
@@ -435,6 +542,42 @@ export function SettingsPane({
                   ? `Detected: ${truncatePadId(pad.id)}`
                   : 'No controller detected'}
               </div>
+            </div>
+            <div style={bindingTable}>
+              {GAMEPAD_ACTIONS.map((action) => (
+                <div key={action} style={bindingRow}>
+                  <div style={bindingLabel}>{GAMEPAD_ACTION_LABELS[action]}</div>
+                  <div style={bindingSlots}>
+                    {[0, 1].map((slot) => {
+                      const idx = settings.gamepadBindings[action][slot]
+                      const isCapturing =
+                        padCapture?.action === action && padCapture.slot === slot
+                      return (
+                        <KeySlot
+                          key={slot}
+                          label={
+                            isCapturing
+                              ? 'press a button'
+                              : typeof idx === 'number'
+                                ? formatGamepadButton(idx)
+                                : 'unbound'
+                          }
+                          highlighted={isCapturing}
+                          onClick={() => {
+                            if (capture) setCapture(null)
+                            setPadCapture({ action, slot })
+                          }}
+                          onClear={
+                            typeof idx === 'number' && !isCapturing
+                              ? () => clearPadSlot(action, slot)
+                              : undefined
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
             </div>
           </div>
 

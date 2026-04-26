@@ -3,8 +3,13 @@ import { useEffect, useRef, useState } from 'react'
 import {
   gamepadIsActive,
   gamepadToInput,
+  pauseHeld,
   type GamepadSnapshot,
 } from '@/game/gamepadInput'
+import {
+  DEFAULT_GAMEPAD_BINDINGS,
+  type GamepadBindings,
+} from '@/lib/controlSettings'
 import type { KeyInput } from './useKeyboard'
 
 // Polls the Gamepad API on rAF and writes both boolean keys (so the keyboard
@@ -23,6 +28,7 @@ import type { KeyInput } from './useKeyboard'
 export function useGamepad(
   keys: { current: KeyInput },
   onPauseToggle?: () => void,
+  bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
 ): { connected: boolean; padId: string | null } {
   const [info, setInfo] = useState<{ connected: boolean; padId: string | null }>({
     connected: false,
@@ -30,6 +36,11 @@ export function useGamepad(
   })
   const onPauseToggleRef = useRef(onPauseToggle)
   onPauseToggleRef.current = onPauseToggle
+  // Bindings are read each frame off the ref, so a Settings tweak takes effect
+  // without retearing the rAF loop. Without the ref, the rebound effect would
+  // restart polling on every binding change.
+  const bindingsRef = useRef<GamepadBindings>(bindings)
+  bindingsRef.current = bindings
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -81,8 +92,11 @@ export function useGamepad(
         axes: pad.axes,
         buttons: pad.buttons,
       }
-      const input = gamepadToInput(snapshot, prevStartPressed)
-      prevStartPressed = !!pad.buttons[9]?.pressed
+      const activeBindings = bindingsRef.current
+      const input = gamepadToInput(snapshot, prevStartPressed, activeBindings)
+      // Track "any pause-bound button held" rather than just button 9 so a
+      // user who rebinds pause to Select still gets correct rising-edge logic.
+      prevStartPressed = pauseHeld(snapshot, activeBindings)
 
       if (input.pausePressed && onPauseToggleRef.current) {
         onPauseToggleRef.current()
