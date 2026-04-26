@@ -15,6 +15,7 @@ import { MyPbs } from '@/components/MyPbs'
 import { MyTracks } from '@/components/MyTracks'
 import { FavoriteTracks } from '@/components/FavoriteTracks'
 import { LifetimeStats } from '@/components/LifetimeStats'
+import { MostPlayed } from '@/components/MostPlayed'
 import { MedalCabinet } from '@/components/MedalCabinet'
 import { DailyChallenge } from '@/components/DailyChallenge'
 
@@ -68,6 +69,8 @@ export default async function HomePage() {
           <MyTracks />
 
           <MyPbs />
+
+          <MostPlayed />
 
           <LifetimeStats />
 
