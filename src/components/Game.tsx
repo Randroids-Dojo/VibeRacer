@@ -128,6 +128,11 @@ import {
   type ChallengePayload,
 } from '@/lib/challenge'
 import {
+  formatRivalBannerLabel,
+  isValidNonce,
+  type RivalSelection,
+} from '@/lib/rivalGhost'
+import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
@@ -864,6 +869,10 @@ function GameSession({
     // restart and re-resolves activeGhostRef from the player's source pick;
     // for 'lastLap' that resolves to null until a fresh lap completes.
     lastLapReplayRef.current = null
+    // A rival pick is a within-session affordance: the player picked it from
+    // the leaderboard for this exact run. Restart abandons that intent so
+    // the next race resolves the ghost from the player's normal source pick.
+    setRival(null)
     if (toastTimerRef.current) {
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
@@ -1112,6 +1121,84 @@ function GameSession({
     setFavorited(isFavoriteTrack(next, slug))
   }, [slug])
 
+  // Rival ghost. The leaderboard's per-row "Chase" button hands a
+  // RivalSelection here; we fetch the matching replay and swap activeGhostRef
+  // + nameplate over to it. The pick persists for the rest of the session
+  // (including across paused / resumed laps) until the player either taps
+  // "Cancel chase", taps Restart, or navigates Exit. A non-null `rival`
+  // suppresses the regular ghost-source-effect rewrites so a freshly recorded
+  // PB does not yank the ghost away from the rival mid-session. The friend-
+  // challenge banner already owns the cyan top-center slot so a rival uses
+  // a slightly lower banner that does not collide.
+  const [rival, setRival] = useState<RivalSelection | null>(null)
+  const rivalRef = useRef<RivalSelection | null>(null)
+  rivalRef.current = rival
+
+  const handleChaseRival = useCallback(
+    (selection: RivalSelection) => {
+      if (!isValidNonce(selection.nonce)) return
+      const params = new URLSearchParams({
+        slug,
+        v: versionHash,
+        nonce: selection.nonce,
+      })
+      // Mark the rival immediately so the leaderboard row flips to the
+      // CHASING pill on the next render even before the network resolves.
+      // The renderer keeps painting the previous ghost until the replay
+      // arrives, so the player sees no visual gap.
+      setRival(selection)
+      setPauseView('menu')
+      fetch(`/api/replay/byNonce?${params.toString()}`)
+        .then(async (res) => {
+          if (!res.ok) return
+          const body = await res.json().catch(() => null)
+          const parsed = ReplaySchema.safeParse(body)
+          if (!parsed.success) return
+          // Only mount the new ghost when the player is still chasing this
+          // rival; a rapid Cancel chase before the replay resolves should
+          // leave the previous ghost in place.
+          if (rivalRef.current?.nonce !== selection.nonce) return
+          activeGhostRef.current = parsed.data
+          activeGhostMetaRef.current = {
+            initials: selection.initials,
+            lapTimeMs: selection.lapTimeMs,
+          }
+        })
+        .catch(() => {
+          // Best-effort. If the rival's replay cannot be fetched (404 from a
+          // legacy lap that predates the replay storage path) we keep the
+          // previous ghost on screen and leave the CHASING pill visible so
+          // the player understands why they did not get a new target. The
+          // banner makes the chase explicit even if the ghost path itself
+          // never updates.
+        })
+    },
+    [slug, versionHash],
+  )
+
+  const handleCancelChase = useCallback(() => {
+    if (rivalRef.current === null) return
+    setRival(null)
+    // Re-resolve the active ghost from the player's normal source pick so the
+    // next finish-line cross immediately races whichever ghost the regular
+    // flow would have shown. Mirrors the no-rival branch of the regular
+    // ghost-resolution effect.
+    const local = readLocalBestReplay(slug, versionHash)
+    const source = ghostSourceRef.current
+    activeGhostRef.current = pickGhostReplay(
+      source,
+      local,
+      null,
+      lastLapReplayRef.current,
+    )
+    activeGhostMetaRef.current = pickGhostMeta(
+      source,
+      localPbMetaRef.current,
+      topGhostMetaRef.current,
+      lastLapMetaRef.current,
+    )
+  }, [slug, versionHash])
+
   useEffect(() => {
     // Resolve the initial ghost based on the player's source preference:
     //   auto: prefer the local PB replay; fall back to leaderboard top.
@@ -1125,31 +1212,35 @@ function GameSession({
     let cancelled = false
     const local = readLocalBestReplay(slug, versionHash)
     const source = settings.ghostSource
-    // Apply the local-only resolution immediately so the player sees a ghost
-    // (or nothing) on the first frame without waiting on the network. Pass
-    // the live lastLap ref so re-running this effect after a source switch
-    // mid-session immediately picks up the existing recorded lap.
-    activeGhostRef.current = pickGhostReplay(
-      source,
-      local,
-      null,
-      lastLapReplayRef.current,
-    )
-    // Seed local PB meta from the in-scope replay's lap time + the player's
-    // initials. The replay already carries `lapTimeMs` so we never need to
-    // double-look-up the on-disk PB tile here.
+    // Always refresh the per-source meta refs so a Cancel chase later in the
+    // session restores the right plate without a second disk read. The
+    // active ghost ref + meta ref are only rewritten when no rival is being
+    // chased; otherwise the rival ghost stays on screen until the player
+    // either hits Cancel chase or Restart.
     localPbMetaRef.current = local
       ? { initials, lapTimeMs: local.lapTimeMs }
       : null
-    // Resolve the initial nameplate meta synchronously alongside the replay
-    // so the plate paints with the right identity on the very first frame
-    // when the source is 'pb' / 'lastLap' / 'auto' and a local PB exists.
-    activeGhostMetaRef.current = pickGhostMeta(
-      source,
-      localPbMetaRef.current,
-      topGhostMetaRef.current,
-      lastLapMetaRef.current,
-    )
+    if (rivalRef.current === null) {
+      // Apply the local-only resolution immediately so the player sees a ghost
+      // (or nothing) on the first frame without waiting on the network. Pass
+      // the live lastLap ref so re-running this effect after a source switch
+      // mid-session immediately picks up the existing recorded lap.
+      activeGhostRef.current = pickGhostReplay(
+        source,
+        local,
+        null,
+        lastLapReplayRef.current,
+      )
+      // Resolve the initial nameplate meta synchronously alongside the replay
+      // so the plate paints with the right identity on the very first frame
+      // when the source is 'pb' / 'lastLap' / 'auto' and a local PB exists.
+      activeGhostMetaRef.current = pickGhostMeta(
+        source,
+        localPbMetaRef.current,
+        topGhostMetaRef.current,
+        lastLapMetaRef.current,
+      )
+    }
     if (!ghostSourceNeedsTopFetch(source)) {
       return () => {
         cancelled = true
@@ -1166,12 +1257,6 @@ function GameSession({
         // Recompute against the freshly fetched top in case a PB lap landed
         // between the initial paint and the network resolve.
         const fresh = readLocalBestReplay(slug, versionHash)
-        activeGhostRef.current = pickGhostReplay(
-          source,
-          fresh,
-          parsed.data,
-          lastLapReplayRef.current,
-        )
         // Pull the optional `initials` field off the raw response (the
         // server adds it from the leaderboard top member; an empty board
         // returns null). Falls back to "???" so the plate never reads
@@ -1189,12 +1274,24 @@ function GameSession({
         localPbMetaRef.current = fresh
           ? { initials, lapTimeMs: fresh.lapTimeMs }
           : null
-        activeGhostMetaRef.current = pickGhostMeta(
-          source,
-          localPbMetaRef.current,
-          topGhostMetaRef.current,
-          lastLapMetaRef.current,
-        )
+        // Same rival-respect rule as the synchronous branch above: if the
+        // player is mid-chase, do not yank the ghost away on the network
+        // resolve. The rival ghost was already mounted by handleChaseRival
+        // and stays put until Cancel chase or Restart.
+        if (rivalRef.current === null) {
+          activeGhostRef.current = pickGhostReplay(
+            source,
+            fresh,
+            parsed.data,
+            lastLapReplayRef.current,
+          )
+          activeGhostMetaRef.current = pickGhostMeta(
+            source,
+            localPbMetaRef.current,
+            topGhostMetaRef.current,
+            lastLapMetaRef.current,
+          )
+        }
       })
       .catch(() => {
         // Best-effort; absent ghost is a non-fatal degradation.
@@ -1401,8 +1498,14 @@ function GameSession({
     lastLapMetaRef.current = { initials, lapTimeMs: replay.lapTimeMs }
     // When the player picked the lastLap ghost source, swap the active ghost
     // immediately so the next lap races against this latest attempt. Skip the
-    // swap in friend-challenge mode where the friend's ghost takes priority.
-    if (challenge === null && ghostSourceRef.current === 'lastLap') {
+    // swap in friend-challenge mode (the friend's ghost takes priority) and
+    // in rival-chase mode (the picked rival ghost stays on screen until the
+    // player taps Cancel chase or Restart).
+    if (
+      challenge === null &&
+      rivalRef.current === null &&
+      ghostSourceRef.current === 'lastLap'
+    ) {
       activeGhostRef.current = replay
       activeGhostMetaRef.current = lastLapMetaRef.current
     }
@@ -1577,7 +1680,13 @@ function GameSession({
           // leaderboard #1 even after a personal best; 'auto' and 'pb' swap
           // to the freshly recorded PB so the next lap chases the player's
           // own best path.
-          if (challenge === null) {
+          // Mid-chase: keep the rival ghost on screen across PB laps so the
+          // player can keep racing the same target after improving their own
+          // best. localPbMetaRef is still kept fresh so a Cancel chase
+          // immediately falls back to the right plate.
+          const newPbMeta: GhostMeta = { initials, lapTimeMs: lapMs }
+          localPbMetaRef.current = newPbMeta
+          if (challenge === null && rivalRef.current === null) {
             activeGhostRef.current = pickGhostAfterPb(
               ghostSourceRef.current,
               pending,
@@ -1588,8 +1697,6 @@ function GameSession({
             // time) on the next finish-line cross. 'top' keeps showing
             // the leaderboard top's identity; 'lastLap' is handled by
             // handleLapReplay (the canonical writer for that source).
-            const newPbMeta: GhostMeta = { initials, lapTimeMs: lapMs }
-            localPbMetaRef.current = newPbMeta
             activeGhostMetaRef.current = pickGhostMetaAfterPb(
               ghostSourceRef.current,
               newPbMeta,
@@ -2017,6 +2124,11 @@ function GameSession({
             ? { from: challenge.from, targetMs: challenge.timeMs }
             : null
         }
+        rivalLabel={
+          rival && phase === 'racing' && !paused
+            ? formatRivalBannerLabel(rival)
+            : null
+        }
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">
@@ -2093,6 +2205,9 @@ function GameSession({
                 applyTuning(p)
                 setPauseView('menu')
               }}
+              onChaseRival={handleChaseRival}
+              activeRivalNonce={rival?.nonce ?? null}
+              onCancelChase={handleCancelChase}
             />
           ) : pauseView === 'lapHistory' ? (
             <LapHistory

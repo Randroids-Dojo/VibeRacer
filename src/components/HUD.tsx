@@ -84,6 +84,13 @@ interface HudProps {
   // the top of the screen naming the sender and target lap time so the
   // recipient knows what they are racing for. null hides the banner.
   challenge: { from: string; targetMs: number } | null
+  // Rival-chase banner. Populated when the player picked a leaderboard entry
+  // to chase via the per-row Chase button. The HUD pins this banner just
+  // below the friend-challenge slot so both can coexist if the player opens
+  // a challenge URL and then picks a different rival to chase mid-session.
+  // The string is pre-formatted by `formatRivalBannerLabel` upstream so the
+  // HUD does not have to know the rival shape. null hides the banner.
+  rivalLabel?: string | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -414,6 +421,18 @@ export function HUD(props: HudProps) {
           </span>
         </div>
       ) : null}
+      {props.rivalLabel ? (
+        <div
+          style={{
+            ...rivalBanner,
+            top: props.challenge ? 132 : 92,
+          }}
+          role="status"
+          aria-live="polite"
+        >
+          {props.rivalLabel}
+        </div>
+      ) : null}
       {props.wrongWay ? (
         <div style={wrongWayBanner} role="alert" aria-live="assertive">
           <span style={wrongWayArrow} aria-hidden>
@@ -578,6 +597,31 @@ const challengeBannerTime: React.CSSProperties = {
   fontFamily: 'monospace',
   fontVariantNumeric: 'tabular-nums',
   letterSpacing: 0,
+}
+// Rival banner. Same cyan color family as the friend-challenge banner so the
+// player understands "the cyan ghost is the picked rival", but slightly
+// brighter and with a tabular-numerals time so the rank + initials + lap
+// time read as a single compact row.
+const rivalBanner: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  transform: 'translateX(-50%)',
+  padding: '6px 16px',
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  borderRadius: 999,
+  background: 'rgba(8, 32, 48, 0.78)',
+  border: '1.5px solid rgba(120, 220, 255, 0.7)',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+  color: '#cdf2ff',
+  fontSize: 13,
+  fontWeight: 800,
+  letterSpacing: 1.4,
+  pointerEvents: 'none',
+  textTransform: 'uppercase',
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
 }
 const toastStyle: React.CSSProperties = {
   position: 'absolute',

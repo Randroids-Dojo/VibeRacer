@@ -16,6 +16,7 @@ import {
   type SortDirection,
 } from '@/lib/leaderboard'
 import { useClickSfx } from '@/hooks/useClickSfx'
+import { shouldOfferChase, type RivalSelection } from '@/lib/rivalGhost'
 
 interface LeaderboardProps {
   slug: string
@@ -24,8 +25,27 @@ interface LeaderboardProps {
   // Optional: when provided, the "Try this setup" button on a board entry
   // applies that entry's tuning to the player's setup and closes the board.
   onApplyTuning?: (params: CarParams) => void
+  // Optional: when provided, the "Chase" button on each entry hands the
+  // selected rival to the parent (typically Game.tsx), which fetches the
+  // matching replay and swaps it in as the active ghost. The leaderboard
+  // closes itself after a successful pick so the player drops straight back
+  // into the race.
+  onChaseRival?: (rival: RivalSelection) => void
+  // The rival currently being chased (if any), so the matching row can show
+  // a "CHASING" pill in place of the Chase button. Lets the player toggle
+  // back to the auto / pb / lastLap source via a Cancel chase action.
+  activeRivalNonce?: string | null
+  // Cancels the rival chase and returns the renderer to the player's stored
+  // ghost source. Wired to the "Cancel chase" affordance that surfaces
+  // alongside the Chase column header when a rival is active.
+  onCancelChase?: () => void
 }
 
+// Local entry shape mirrors LeaderboardEntry but treats `nonce` as nullable so
+// a response from a previous deploy that has not yet shipped the field still
+// parses cleanly. shouldOfferChase rejects any entry whose nonce is missing or
+// malformed, so a stale member value just hides the Chase button instead of
+// poisoning the row.
 interface Entry {
   rank: number
   initials: string
@@ -34,10 +54,18 @@ interface Entry {
   isMe: boolean
   tuning: CarParams | null
   inputMode: InputMode | null
+  nonce: string | null
 }
 
+// Raw shape coming back from `/api/leaderboard`. Nonce is optional so a
+// response from a previous deploy (no nonce field on entries yet) parses
+// cleanly; the loader normalizes the value to `string | null` before storing
+// in board state.
+interface RawLeaderboardEntry extends Omit<Entry, 'nonce'> {
+  nonce?: string | null
+}
 interface LeaderboardApiResponse {
-  entries: Entry[]
+  entries: RawLeaderboardEntry[]
   meBestRank: number | null
 }
 
@@ -78,6 +106,9 @@ export function Leaderboard({
   versionHash,
   onBack,
   onApplyTuning,
+  onChaseRival,
+  activeRivalNonce,
+  onCancelChase,
 }: LeaderboardProps) {
   const router = useRouter()
   const [selectedHash, setSelectedHash] = useState<string>(versionHash)
@@ -142,9 +173,17 @@ export function Leaderboard({
         if (!res.ok) throw new Error(`status ${res.status}`)
         const body = (await res.json()) as LeaderboardApiResponse
         if (cancelled) return
+        // Normalize the optional `nonce` field so a stale server response
+        // (deploy that predates the field) lands in our `Entry` shape with
+        // an explicit null instead of `undefined`. shouldOfferChase rejects
+        // null nonces, so the affected rows just hide the Chase button.
+        const entries: Entry[] = body.entries.map((raw) => ({
+          ...raw,
+          nonce: typeof raw.nonce === 'string' ? raw.nonce : null,
+        }))
         setBoard({
           kind: 'ready',
-          entries: body.entries,
+          entries,
           meBestRank: body.meBestRank,
         })
       } catch (e) {
@@ -328,28 +367,81 @@ export function Leaderboard({
                 direction={sortDirection}
                 onSort={handleSort}
               />
+              <div style={{ ...cell, ...chaseCell }}>
+                {typeof activeRivalNonce === 'string' && onCancelChase ? (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      clickSort()
+                      onCancelChase()
+                    }}
+                    style={cancelChaseBtnStyle}
+                    title="Stop chasing the rival ghost and restore your normal ghost source"
+                  >
+                    Cancel chase
+                  </button>
+                ) : (
+                  <span style={chaseHeaderLabel}>RIVAL</span>
+                )}
+              </div>
             </div>
             <div style={scrollArea}>
-              {sortedEntries.map((e) => (
-                <div
-                  key={`${e.rank}-${e.ts}`}
-                  style={{ ...row, ...(e.isMe ? meRow : null) }}
-                >
-                  <div style={{ ...cell, ...rankCell }}>{e.rank}</div>
-                  <div style={{ ...cell, ...inputCell }}>
-                    <InputModeIcon mode={e.inputMode} />
+              {sortedEntries.map((e) => {
+                const offerChase =
+                  Boolean(onChaseRival) &&
+                  shouldOfferChase({
+                    isMe: e.isMe,
+                    nonce: e.nonce ?? null,
+                  })
+                const isActiveRival =
+                  typeof activeRivalNonce === 'string' &&
+                  e.nonce === activeRivalNonce
+                return (
+                  <div
+                    key={`${e.rank}-${e.ts}`}
+                    style={{ ...row, ...(e.isMe ? meRow : null) }}
+                  >
+                    <div style={{ ...cell, ...rankCell }}>{e.rank}</div>
+                    <div style={{ ...cell, ...inputCell }}>
+                      <InputModeIcon mode={e.inputMode} />
+                    </div>
+                    <div style={{ ...cell, ...initialsCell }}>
+                      <span>{e.initials}</span>
+                      {e.isMe ? <span style={meBadge}>you</span> : null}
+                      <SetupChip entry={e} onView={() => setSetupForEntry(e)} />
+                    </div>
+                    <div style={{ ...cell, ...timeCell, fontFamily: 'monospace' }}>
+                      {formatLapTime(e.lapTimeMs)}
+                    </div>
+                    <div style={{ ...cell, ...dateCell }}>{formatDate(e.ts)}</div>
+                    <div style={{ ...cell, ...chaseCell }}>
+                      {isActiveRival ? (
+                        <span style={chasingPillStyle} title="Currently chasing this rival">
+                          CHASING
+                        </span>
+                      ) : offerChase && e.nonce ? (
+                        <button
+                          type="button"
+                          onClick={() => {
+                            if (!onChaseRival || !e.nonce) return
+                            clickConfirm()
+                            onChaseRival({
+                              nonce: e.nonce,
+                              initials: e.initials,
+                              lapTimeMs: e.lapTimeMs,
+                              rank: e.rank,
+                            })
+                          }}
+                          style={chaseBtnStyle}
+                          title={`Race against ${e.initials}'s lap as your ghost`}
+                        >
+                          Chase
+                        </button>
+                      ) : null}
+                    </div>
                   </div>
-                  <div style={{ ...cell, ...initialsCell }}>
-                    <span>{e.initials}</span>
-                    {e.isMe ? <span style={meBadge}>you</span> : null}
-                    <SetupChip entry={e} onView={() => setSetupForEntry(e)} />
-                  </div>
-                  <div style={{ ...cell, ...timeCell, fontFamily: 'monospace' }}>
-                    {formatLapTime(e.lapTimeMs)}
-                  </div>
-                  <div style={{ ...cell, ...dateCell }}>{formatDate(e.ts)}</div>
-                </div>
-              ))}
+                )
+              })}
             </div>
             {board.meBestRank !== null ? (
               <div style={footer}>Your best on this track: #{board.meBestRank}</div>
@@ -748,6 +840,57 @@ const inputCell: React.CSSProperties = { width: 24, justifyContent: 'center' }
 const initialsCell: React.CSSProperties = { flex: 1, gap: 6 }
 const timeCell: React.CSSProperties = { width: 100 }
 const dateCell: React.CSSProperties = { width: 88, opacity: 0.65, fontSize: 12 }
+// Right-most column. Holds either the per-row Chase button, the CHASING pill
+// for the active rival row, or the Cancel chase shortcut in the header. Sized
+// to fit the longest of those affordances without wrapping at the default
+// panel width.
+const chaseCell: React.CSSProperties = {
+  width: 70,
+  justifyContent: 'flex-end',
+}
+const chaseHeaderLabel: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 1.3,
+  opacity: 0.5,
+  paddingRight: 4,
+}
+const chaseBtnStyle: React.CSSProperties = {
+  background: 'rgba(120, 220, 255, 0.16)',
+  color: '#7fe6ff',
+  border: '1px solid rgba(120, 220, 255, 0.5)',
+  borderRadius: 4,
+  padding: '2px 8px',
+  fontSize: 11,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  textTransform: 'uppercase',
+}
+const chasingPillStyle: React.CSSProperties = {
+  background: '#7fe6ff',
+  color: '#0c2530',
+  border: 'none',
+  borderRadius: 4,
+  padding: '2px 8px',
+  fontSize: 10,
+  fontWeight: 800,
+  letterSpacing: 0.8,
+  fontFamily: 'inherit',
+}
+const cancelChaseBtnStyle: React.CSSProperties = {
+  background: 'transparent',
+  color: '#cdf2ff',
+  border: '1px solid rgba(120, 220, 255, 0.45)',
+  borderRadius: 4,
+  padding: '2px 6px',
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  textTransform: 'uppercase',
+}
 const meBadge: React.CSSProperties = {
   fontSize: 10,
   background: '#ff6b35',

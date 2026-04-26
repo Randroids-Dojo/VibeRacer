@@ -21,6 +21,13 @@ export interface LeaderboardEntry {
   // null, in which case the UI shows a dim placeholder.
   tuning: CarParams | null
   inputMode: InputMode | null
+  // Per-lap nonce (the same id stored in the composite leaderboard member).
+  // Surfaced so the client can request the lap's recorded replay via
+  // `GET /api/replay/byNonce` and race it as a rival ghost. Stays just a
+  // string at this level so a hostile / hand-edited member can never crash
+  // the renderer. Nullable so a future migration that drops the field on a
+  // single-row corruption does not require a full data wipe.
+  nonce: string | null
 }
 
 // Sort keys exposed in the leaderboard column headers. The server always
@@ -194,6 +201,7 @@ export async function readLeaderboard(
       isMe,
       tuning: meta.tuning,
       inputMode: meta.inputMode,
+      nonce: parsed.nonce,
     })
   }
 

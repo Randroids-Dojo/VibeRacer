@@ -118,6 +118,21 @@ describe('GET /api/leaderboard', () => {
     expect(body.meBestRank).toBeNull()
   })
 
+  it('surfaces the per-lap nonce so the client can fetch the rival replay', async () => {
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'a'.repeat(32))
+    await seedLap('BBB', racerB, 2500, 1_700_000_000_100, 'b'.repeat(32))
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash }))
+    const body = (await res.json()) as {
+      entries: Array<{ initials: string; nonce: string }>
+    }
+    const a = body.entries.find((e) => e.initials === 'AAA')
+    const b = body.entries.find((e) => e.initials === 'BBB')
+    expect(a?.nonce).toBe('a'.repeat(32))
+    expect(b?.nonce).toBe('b'.repeat(32))
+  })
+
   it('attaches tuning + inputMode from lap meta and tolerates absence', async () => {
     const { DEFAULT_CAR_PARAMS } = await import('@/game/physics')
     const tuned = { ...DEFAULT_CAR_PARAMS, accel: 24, maxSpeed: 30 }

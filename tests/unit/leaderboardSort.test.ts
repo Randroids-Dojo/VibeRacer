@@ -19,6 +19,7 @@ function entry(
     isMe: false,
     tuning: null,
     inputMode: null,
+    nonce: 'a'.repeat(32),
   }
 }
 
