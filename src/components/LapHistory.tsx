@@ -1,11 +1,12 @@
 'use client'
 
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import {
   formatLapDelta,
   summarizeHistory,
   type LapHistoryEntry,
 } from '@/game/lapHistory'
+import type { SectorDuration } from '@/game/optimalLap'
 import {
   buildLapChartGeometry,
   pointsToPolyline,
@@ -30,6 +31,11 @@ interface LapHistoryProps {
   // Player's local PB on this slug + version. Drives the highlight on the
   // matching entry plus the summary header value.
   bestAllTimeMs: number | null
+  // Per-sector all-time bests on this slug + version. When a lap's sector
+  // duration matches the corresponding all-time best, the sector chip in the
+  // expanded breakdown gets a star so the player can see at a glance which
+  // sectors of a specific lap were optimal-run material.
+  bestSectors: readonly SectorDuration[]
   onBack: () => void
 }
 
@@ -42,10 +48,49 @@ function formatLapTime(ms: number): string {
   return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
 }
 
-export function LapHistory({ entries, bestAllTimeMs, onBack }: LapHistoryProps) {
+export function LapHistory({
+  entries,
+  bestAllTimeMs,
+  bestSectors,
+  onBack,
+}: LapHistoryProps) {
   const stats = useMemo(() => summarizeHistory(entries), [entries])
   // Walk newest-first so the freshest lap sits at the top of the scroll.
   const ordered = useMemo(() => [...entries].reverse(), [entries])
+  // Tracks which lap rows are expanded into a sector breakdown. Multi-select
+  // by design: the player may want to compare two laps' sector tables at the
+  // same time. Resets on unmount (tied to the pause overlay's lifecycle).
+  const [expanded, setExpanded] = useState<ReadonlySet<number>>(() => new Set())
+  const bestSectorById = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const s of bestSectors) {
+      if (Number.isFinite(s.durationMs) && s.durationMs > 0) {
+        map.set(s.cpId, s.durationMs)
+      }
+    }
+    return map
+  }, [bestSectors])
+  const fastestSectorByCpId = useMemo(() => {
+    const map = new Map<number, number>()
+    for (const entry of entries) {
+      for (const s of entry.sectors) {
+        if (!Number.isFinite(s.durationMs) || s.durationMs <= 0) continue
+        const prev = map.get(s.cpId)
+        if (prev === undefined || s.durationMs < prev) {
+          map.set(s.cpId, s.durationMs)
+        }
+      }
+    }
+    return map
+  }, [entries])
+  function toggleExpanded(lapNumber: number) {
+    setExpanded((prev) => {
+      const next = new Set(prev)
+      if (next.has(lapNumber)) next.delete(lapNumber)
+      else next.add(lapNumber)
+      return next
+    })
+  }
   // Geometry runs over the original chronological order (oldest -> newest)
   // so the line reads left-to-right as the session progressed. Only built
   // once per history-change so React re-renders on unrelated state are cheap.
@@ -148,6 +193,10 @@ export function LapHistory({ entries, bestAllTimeMs, onBack }: LapHistoryProps) 
                 isCurrentBest={
                   bestAllTimeMs !== null && entry.lapTimeMs === bestAllTimeMs
                 }
+                isExpanded={expanded.has(entry.lapNumber)}
+                onToggle={() => toggleExpanded(entry.lapNumber)}
+                bestSectorById={bestSectorById}
+                fastestSectorInSessionByCpId={fastestSectorByCpId}
               />
             ))}
           </div>
@@ -201,9 +250,17 @@ function SummaryStat({ label, value }: { label: string; value: string }) {
 function LapRow({
   entry,
   isCurrentBest,
+  isExpanded,
+  onToggle,
+  bestSectorById,
+  fastestSectorInSessionByCpId,
 }: {
   entry: LapHistoryEntry
   isCurrentBest: boolean
+  isExpanded: boolean
+  onToggle: () => void
+  bestSectorById: ReadonlyMap<number, number>
+  fastestSectorInSessionByCpId: ReadonlyMap<number, number>
 }) {
   const deltaText =
     entry.deltaVsPbMs !== null ? formatLapDelta(entry.deltaVsPbMs) : ''
@@ -216,71 +273,249 @@ function LapRow({
   const accentBorder = isCurrentBest
     ? `1px solid ${menuTheme.accentBg}`
     : '1px solid transparent'
+  const hasSectors = entry.sectors.length > 0
   return (
     <div
       style={{
-        display: 'grid',
-        gridTemplateColumns: '52px 1fr auto auto',
-        alignItems: 'center',
-        gap: 8,
-        padding: '6px 8px',
         borderRadius: 6,
         background: isCurrentBest
           ? 'rgba(255, 107, 53, 0.10)'
           : menuTheme.panelBg,
         border: accentBorder,
+        overflow: 'hidden',
       }}
     >
-      <div
+      <button
+        type="button"
+        onClick={hasSectors ? onToggle : undefined}
+        disabled={!hasSectors}
+        aria-expanded={hasSectors ? isExpanded : undefined}
+        aria-label={
+          hasSectors
+            ? `Lap ${entry.lapNumber}, ${formatLapTime(entry.lapTimeMs)}, click to ${
+                isExpanded ? 'collapse' : 'expand'
+              } sector breakdown`
+            : `Lap ${entry.lapNumber}, ${formatLapTime(entry.lapTimeMs)}`
+        }
         style={{
-          fontSize: 11,
-          letterSpacing: 1.2,
-          color: menuTheme.textMuted,
-          textTransform: 'uppercase',
+          all: 'unset',
+          width: '100%',
+          boxSizing: 'border-box',
+          display: 'grid',
+          gridTemplateColumns: '20px 52px 1fr auto auto',
+          alignItems: 'center',
+          gap: 8,
+          padding: '6px 8px',
+          cursor: hasSectors ? 'pointer' : 'default',
         }}
       >
-        Lap {entry.lapNumber}
-      </div>
-      <div
-        style={{
-          fontFamily: 'monospace',
-          fontSize: 14,
-          color: menuTheme.textPrimary,
-          fontWeight: 600,
-        }}
-      >
-        {formatLapTime(entry.lapTimeMs)}
-      </div>
-      {entry.isPb ? (
         <div
           style={{
-            fontSize: 10,
+            fontSize: 12,
+            color: menuTheme.textMuted,
+            textAlign: 'center',
+            opacity: hasSectors ? 1 : 0.3,
+            transform: isExpanded ? 'rotate(90deg)' : 'rotate(0deg)',
+            transition: 'transform 120ms ease',
+          }}
+          aria-hidden
+        >
+          ▶
+        </div>
+        <div
+          style={{
+            fontSize: 11,
             letterSpacing: 1.2,
-            background: menuTheme.accentBg,
-            color: menuTheme.accentText,
-            borderRadius: 4,
-            padding: '2px 6px',
-            fontWeight: 800,
+            color: menuTheme.textMuted,
+            textTransform: 'uppercase',
           }}
         >
-          PB
+          Lap {entry.lapNumber}
         </div>
-      ) : (
-        <div />
-      )}
-      <div
-        style={{
-          fontFamily: 'monospace',
-          fontSize: 12,
-          color: deltaColor,
-          minWidth: 60,
-          textAlign: 'right',
-        }}
-      >
-        {deltaText || '--'}
-      </div>
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 14,
+            color: menuTheme.textPrimary,
+            fontWeight: 600,
+          }}
+        >
+          {formatLapTime(entry.lapTimeMs)}
+        </div>
+        {entry.isPb ? (
+          <div
+            style={{
+              fontSize: 10,
+              letterSpacing: 1.2,
+              background: menuTheme.accentBg,
+              color: menuTheme.accentText,
+              borderRadius: 4,
+              padding: '2px 6px',
+              fontWeight: 800,
+            }}
+          >
+            PB
+          </div>
+        ) : (
+          <div />
+        )}
+        <div
+          style={{
+            fontFamily: 'monospace',
+            fontSize: 12,
+            color: deltaColor,
+            minWidth: 60,
+            textAlign: 'right',
+          }}
+        >
+          {deltaText || '--'}
+        </div>
+      </button>
+      {hasSectors && isExpanded ? (
+        <SectorBreakdown
+          sectors={entry.sectors}
+          bestSectorById={bestSectorById}
+          fastestSectorInSessionByCpId={fastestSectorInSessionByCpId}
+        />
+      ) : null}
     </div>
   )
+}
+
+function SectorBreakdown({
+  sectors,
+  bestSectorById,
+  fastestSectorInSessionByCpId,
+}: {
+  sectors: readonly SectorDuration[]
+  bestSectorById: ReadonlyMap<number, number>
+  fastestSectorInSessionByCpId: ReadonlyMap<number, number>
+}) {
+  return (
+    <div
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        padding: '6px 8px 8px 28px',
+        borderTop: `1px solid ${menuTheme.panelBorder}`,
+        background: menuTheme.inputBg,
+      }}
+      aria-label="Sector breakdown"
+    >
+      {sectors.map((s, idx) => {
+        const sectorBest = bestSectorById.get(s.cpId)
+        const sessionBest = fastestSectorInSessionByCpId.get(s.cpId)
+        const isAllTimeBest =
+          sectorBest !== undefined && s.durationMs === sectorBest
+        const isSessionBest =
+          !isAllTimeBest &&
+          sessionBest !== undefined &&
+          s.durationMs === sessionBest
+        const delta =
+          sectorBest !== undefined ? s.durationMs - sectorBest : null
+        const deltaColor =
+          delta === null
+            ? menuTheme.textMuted
+            : delta <= 0
+              ? '#f5c451'
+              : '#ff8a8a'
+        const borderColor = isAllTimeBest
+          ? '#f5c451'
+          : isSessionBest
+            ? '#5fe08a'
+            : menuTheme.panelBorder
+        return (
+          <div
+            key={`${s.cpId}-${idx}`}
+            title={
+              isAllTimeBest
+                ? `Sector ${idx + 1}: matched the all-time best for this checkpoint`
+                : isSessionBest
+                  ? `Sector ${idx + 1}: best of this session for this checkpoint`
+                  : `Sector ${idx + 1}`
+            }
+            style={{
+              display: 'flex',
+              flexDirection: 'column',
+              alignItems: 'center',
+              gap: 2,
+              padding: '4px 8px',
+              borderRadius: 6,
+              border: `1px solid ${borderColor}`,
+              background: menuTheme.panelBg,
+              minWidth: 64,
+            }}
+          >
+            <div
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: 4,
+                fontSize: 9,
+                letterSpacing: 1.2,
+                color: menuTheme.textMuted,
+                textTransform: 'uppercase',
+              }}
+            >
+              <span>S{idx + 1}</span>
+              {isAllTimeBest ? (
+                <span style={{ color: '#f5c451' }} aria-hidden>
+                  ★
+                </span>
+              ) : isSessionBest ? (
+                <span style={{ color: '#5fe08a' }} aria-hidden>
+                  ●
+                </span>
+              ) : null}
+            </div>
+            <div
+              style={{
+                fontFamily: 'monospace',
+                fontSize: 12,
+                fontWeight: 700,
+                color: menuTheme.textPrimary,
+              }}
+            >
+              {formatSectorTime(s.durationMs)}
+            </div>
+            {delta !== null ? (
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  color: deltaColor,
+                }}
+              >
+                {formatLapDelta(delta)}
+              </div>
+            ) : (
+              <div
+                style={{
+                  fontFamily: 'monospace',
+                  fontSize: 10,
+                  color: menuTheme.textMuted,
+                }}
+              >
+                --
+              </div>
+            )}
+          </div>
+        )
+      })}
+    </div>
+  )
+}
+
+// Sector durations are typically sub-15 seconds so the leading minute slot is
+// noise. Format as `S.mmm` (zero-padded millis) so a long sector reads cleanly
+// up through 99 seconds.
+function formatSectorTime(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) return '--.---'
+  const total = Math.max(0, Math.round(ms))
+  const seconds = Math.floor(total / 1000)
+  const millis = total % 1000
+  return `${seconds}.${String(millis).padStart(3, '0')}`
 }
 
 interface LapChartProps {

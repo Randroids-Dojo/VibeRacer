@@ -11,6 +11,7 @@ function makeEntry(overrides: Partial<LapHistoryEntry> = {}): LapHistoryEntry {
     lapTimeMs: 18000,
     deltaVsPbMs: null,
     isPb: false,
+    sectors: [],
     ...overrides,
   }
 }
@@ -216,8 +217,8 @@ describe('pointsToPolyline', () => {
   it('joins point coordinates with a comma plus space separator', () => {
     const geom = buildLapChartGeometry(
       [
-        { lapNumber: 1, lapTimeMs: 18000, deltaVsPbMs: null, isPb: false },
-        { lapNumber: 2, lapTimeMs: 17000, deltaVsPbMs: null, isPb: false },
+        { lapNumber: 1, lapTimeMs: 18000, deltaVsPbMs: null, isPb: false, sectors: [] },
+        { lapNumber: 2, lapTimeMs: 17000, deltaVsPbMs: null, isPb: false, sectors: [] },
       ],
       { width: 100, height: 60, padY: 0 },
     )
@@ -227,9 +228,9 @@ describe('pointsToPolyline', () => {
   it('rounds coordinates to two decimals', () => {
     const geom = buildLapChartGeometry(
       [
-        { lapNumber: 1, lapTimeMs: 18000, deltaVsPbMs: null, isPb: false },
-        { lapNumber: 2, lapTimeMs: 17789, deltaVsPbMs: null, isPb: false },
-        { lapNumber: 3, lapTimeMs: 17500, deltaVsPbMs: null, isPb: false },
+        { lapNumber: 1, lapTimeMs: 18000, deltaVsPbMs: null, isPb: false, sectors: [] },
+        { lapNumber: 2, lapTimeMs: 17789, deltaVsPbMs: null, isPb: false, sectors: [] },
+        { lapNumber: 3, lapTimeMs: 17500, deltaVsPbMs: null, isPb: false, sectors: [] },
       ],
       { width: 100, height: 60, padY: 0 },
     )

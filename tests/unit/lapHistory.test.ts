@@ -19,6 +19,7 @@ describe('makeLapEntry', () => {
       lapTimeMs: 18420,
       deltaVsPbMs: null,
       isPb: false,
+      sectors: [],
     })
   })
 
@@ -30,6 +31,7 @@ describe('makeLapEntry', () => {
     })
     expect(entry.deltaVsPbMs).toBe(-500)
     expect(entry.isPb).toBe(true)
+    expect(entry.sectors).toEqual([])
   })
 
   it('marks the lap as a PB on an exact tie (delta is zero)', () => {
@@ -51,12 +53,72 @@ describe('makeLapEntry', () => {
     expect(entry.deltaVsPbMs).toBe(250)
     expect(entry.isPb).toBe(false)
   })
+
+  it('carries the provided sectors through onto the entry', () => {
+    const entry = makeLapEntry({
+      lapNumber: 1,
+      lapTimeMs: 18000,
+      priorBestAllTimeMs: null,
+      sectors: [
+        { cpId: 0, durationMs: 4000 },
+        { cpId: 1, durationMs: 5000 },
+        { cpId: 2, durationMs: 9000 },
+      ],
+    })
+    expect(entry.sectors).toEqual([
+      { cpId: 0, durationMs: 4000 },
+      { cpId: 1, durationMs: 5000 },
+      { cpId: 2, durationMs: 9000 },
+    ])
+  })
+
+  it('drops sectors with non-finite or non-positive durations', () => {
+    const entry = makeLapEntry({
+      lapNumber: 1,
+      lapTimeMs: 18000,
+      priorBestAllTimeMs: null,
+      sectors: [
+        { cpId: 0, durationMs: 4000 },
+        { cpId: 1, durationMs: 0 },
+        { cpId: 2, durationMs: -100 },
+        { cpId: 3, durationMs: NaN },
+        { cpId: 4, durationMs: Infinity },
+        { cpId: 5, durationMs: 7000 },
+      ],
+    })
+    expect(entry.sectors).toEqual([
+      { cpId: 0, durationMs: 4000 },
+      { cpId: 5, durationMs: 7000 },
+    ])
+  })
+
+  it('defensively copies the sectors array so caller mutations do not leak', () => {
+    const sectors = [
+      { cpId: 0, durationMs: 4000 },
+      { cpId: 1, durationMs: 5000 },
+    ]
+    const entry = makeLapEntry({
+      lapNumber: 1,
+      lapTimeMs: 18000,
+      priorBestAllTimeMs: null,
+      sectors,
+    })
+    sectors[0].durationMs = 9999
+    expect(entry.sectors[0].durationMs).toBe(4000)
+    expect(entry.sectors).not.toBe(sectors)
+  })
 })
 
 describe('appendLap', () => {
   it('returns a new array preserving prior entries', () => {
     const initial: LapHistoryEntry[] = [
-      { lapNumber: 1, lapTimeMs: 18000, deltaVsPbMs: null, isPb: false },
+      {
+        lapNumber: 1,
+        lapTimeMs: 18000,
+        deltaVsPbMs: null,
+        isPb: false,
+        sectors: [],
+      },
     ]
     const next = appendLap(initial, {
       lapNumber: 2,
@@ -72,6 +134,7 @@ describe('appendLap', () => {
       lapTimeMs: 17500,
       deltaVsPbMs: -500,
       isPb: true,
+      sectors: [],
     })
   })
 
@@ -140,9 +203,27 @@ describe('summarizeHistory', () => {
 
   it('computes count, best, average, and total across entries', () => {
     const history: LapHistoryEntry[] = [
-      { lapNumber: 1, lapTimeMs: 20000, deltaVsPbMs: null, isPb: false },
-      { lapNumber: 2, lapTimeMs: 18000, deltaVsPbMs: -2000, isPb: true },
-      { lapNumber: 3, lapTimeMs: 22000, deltaVsPbMs: 4000, isPb: false },
+      {
+        lapNumber: 1,
+        lapTimeMs: 20000,
+        deltaVsPbMs: null,
+        isPb: false,
+        sectors: [],
+      },
+      {
+        lapNumber: 2,
+        lapTimeMs: 18000,
+        deltaVsPbMs: -2000,
+        isPb: true,
+        sectors: [],
+      },
+      {
+        lapNumber: 3,
+        lapTimeMs: 22000,
+        deltaVsPbMs: 4000,
+        isPb: false,
+        sectors: [],
+      },
     ]
     expect(summarizeHistory(history)).toEqual({
       count: 3,
@@ -154,7 +235,13 @@ describe('summarizeHistory', () => {
 
   it('handles a single-entry history without divide-by-zero', () => {
     const history: LapHistoryEntry[] = [
-      { lapNumber: 1, lapTimeMs: 18420, deltaVsPbMs: null, isPb: false },
+      {
+        lapNumber: 1,
+        lapTimeMs: 18420,
+        deltaVsPbMs: null,
+        isPb: false,
+        sectors: [],
+      },
     ]
     expect(summarizeHistory(history)).toEqual({
       count: 1,

@@ -856,6 +856,10 @@ function GameSession({
           lapNumber: event.lapNumber,
           lapTimeMs: lapMs,
           priorBestAllTimeMs: prev.bestAllTimeMs,
+          // Carry the lap's per-sector durations into the history entry so the
+          // Laps pane can expand the row into a sector breakdown without
+          // going back to the raw checkpoint hits.
+          sectors: lapSectors,
         }),
       )
       if (isNewRecord) {
@@ -1156,6 +1160,7 @@ function GameSession({
             <LapHistory
               entries={lapHistory}
               bestAllTimeMs={hud.bestAllTimeMs}
+              bestSectors={bestSectorsRef.current ?? []}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'tuning' ? (

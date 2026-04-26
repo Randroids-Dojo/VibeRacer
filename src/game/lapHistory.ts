@@ -1,3 +1,5 @@
+import type { SectorDuration } from './optimalLap'
+
 /**
  * Session-scoped lap history. Pure helpers so the data model and formatting
  * stay testable without React or DOM. The Game session owns one
@@ -10,6 +12,12 @@
  * (so the entry IS the new PB, captured before the PB was rewritten); positive
  * means the lap was slower. `null` means there was no PB to compare to (first
  * lap, or the slug + version PB had never been set).
+ *
+ * `sectors` holds the per-checkpoint durations for the lap, in checkpoint
+ * order. Empty when the lap completed without any captured hits (defensive,
+ * should not happen on a valid lap). Used by the Laps pane to expand a row
+ * into a sector breakdown so players can see WHERE they lost or gained time
+ * inside a single lap.
  */
 export interface LapHistoryEntry {
   lapNumber: number
@@ -20,6 +28,11 @@ export interface LapHistoryEntry {
   // True when this lap matched or beat the prior PB at completion time.
   // Always false when `deltaVsPbMs` is null (no comparison reference yet).
   isPb: boolean
+  // Per-sector durations in lap order. Carried so the Laps pane can show a
+  // sector breakdown without going back to the raw checkpoint hits. Defaults
+  // to an empty array when the caller does not pass sectors (legacy callers
+  // and degenerate / hit-less laps).
+  sectors: SectorDuration[]
 }
 
 export interface AppendLapInputs {
@@ -27,6 +40,10 @@ export interface AppendLapInputs {
   lapTimeMs: number
   // Local PB BEFORE this lap was applied. Pass null when no PB existed yet.
   priorBestAllTimeMs: number | null
+  // Per-sector durations for the just-completed lap. Optional so existing
+  // callers and tests that only care about the lap-time fields keep working;
+  // omitted defaults to an empty array.
+  sectors?: readonly SectorDuration[]
 }
 
 /**
@@ -47,9 +64,26 @@ export function appendLap(
  * do not have to allocate an array.
  */
 export function makeLapEntry(inputs: AppendLapInputs): LapHistoryEntry {
-  const { lapNumber, lapTimeMs, priorBestAllTimeMs } = inputs
+  const { lapNumber, lapTimeMs, priorBestAllTimeMs, sectors } = inputs
+  // Defensive copy so a caller's mutable buffer does not leak into the
+  // history array. Filter out any non-finite or non-positive durations so the
+  // breakdown UI never has to render garbage rows.
+  const safeSectors: SectorDuration[] = []
+  if (sectors) {
+    for (const s of sectors) {
+      if (Number.isFinite(s.durationMs) && s.durationMs > 0) {
+        safeSectors.push({ cpId: s.cpId, durationMs: s.durationMs })
+      }
+    }
+  }
   if (priorBestAllTimeMs === null) {
-    return { lapNumber, lapTimeMs, deltaVsPbMs: null, isPb: false }
+    return {
+      lapNumber,
+      lapTimeMs,
+      deltaVsPbMs: null,
+      isPb: false,
+      sectors: safeSectors,
+    }
   }
   const deltaVsPbMs = lapTimeMs - priorBestAllTimeMs
   return {
@@ -57,6 +91,7 @@ export function makeLapEntry(inputs: AppendLapInputs): LapHistoryEntry {
     lapTimeMs,
     deltaVsPbMs,
     isPb: deltaVsPbMs <= 0,
+    sectors: safeSectors,
   }
 }
 
