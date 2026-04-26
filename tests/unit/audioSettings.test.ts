@@ -100,4 +100,31 @@ describe('localStorage round-trip', () => {
     writeStoredAudioSettings(custom)
     expect(readStoredAudioSettings()).toEqual(custom)
   })
+
+  it('defaults musicPerTrack to true on a fresh defaults object', () => {
+    expect(DEFAULT_AUDIO_SETTINGS.musicPerTrack).toBe(true)
+  })
+
+  it('round-trips musicPerTrack: false', () => {
+    const custom = cloneDefaultAudioSettings()
+    custom.musicPerTrack = false
+    writeStoredAudioSettings(custom)
+    expect(readStoredAudioSettings().musicPerTrack).toBe(false)
+  })
+
+  it('backfills musicPerTrack to true when the field is missing from a legacy stored payload', () => {
+    // Write a legacy payload (no musicPerTrack field).
+    store[AUDIO_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      musicEnabled: true,
+      sfxEnabled: true,
+      musicVolume: 0.6,
+      sfxVolume: 0.5,
+    })
+    const read = readStoredAudioSettings()
+    expect(read.musicPerTrack).toBe(true)
+    // Other fields survive the backfill.
+    expect(read.musicEnabled).toBe(true)
+    expect(read.musicVolume).toBeCloseTo(0.6, 6)
+    expect(read.sfxVolume).toBeCloseTo(0.5, 6)
+  })
 })

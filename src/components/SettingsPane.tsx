@@ -530,6 +530,22 @@ export function SettingsPane({
             disabled={!audio.sfxEnabled}
             onChange={(v) => setAudio({ ...audio, sfxVolume: v })}
           />
+          <div style={subSection}>
+            <div style={subTitle}>Per-track flavor</div>
+            <MenuHint>
+              Nudges the in-game music&apos;s root key, scale, and tempo from
+              a stable hash of the current track slug so each track has its
+              own sound. Turn off for the same loop on every track.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Per-track flavor</div>
+              <MenuToggle
+                value={audio.musicPerTrack}
+                disabled={!audio.musicEnabled}
+                onChange={(v) => setAudio({ ...audio, musicPerTrack: v })}
+              />
+            </div>
+          </div>
         </MenuSection>
 
         <MenuSection title="Controls">

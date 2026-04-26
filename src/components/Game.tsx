@@ -107,7 +107,13 @@ import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
+  setMusicPersonalization,
 } from '@/game/music'
+import {
+  NEUTRAL_PERSONALIZATION,
+  personalizeForSlug,
+} from '@/game/musicPersonalization'
+import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
   playLapStinger,
   playPbFanfare,
@@ -254,12 +260,24 @@ function GameSession({
 }: SessionProps) {
   const router = useRouter()
   const { settings, setSettings, resetSettings } = useControlSettings()
+  const { settings: audioSettings } = useAudioSettings()
   const {
     params: tuning,
     setParams: setTuning,
     applyParams: applyTuning,
     resetParams: resetTuning,
   } = useTuning(slug)
+  // Apply per-slug music personalization. The music engine treats this as
+  // idempotent (a no-op when the value matches the active one) so the effect
+  // can safely re-fire on every dependency change. Falls back to the neutral
+  // tweak when the player turned the feature off in Settings; the game track
+  // will sound exactly like the legacy G-minor / 140-BPM loop in that case.
+  useEffect(() => {
+    const next = audioSettings.musicPerTrack
+      ? personalizeForSlug(slug)
+      : { ...NEUTRAL_PERSONALIZATION }
+    setMusicPersonalization(next)
+  }, [slug, audioSettings.musicPerTrack])
   const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)

@@ -701,7 +701,7 @@ Pure Web Audio API. No Tone.js. One shared `AudioContext`, procedural synth voic
 Three named tracks live in one engine (`src/game/music.ts`) and share the scheduler. Each track owns a step counter, pattern, and per-track `GainNode` so tracks can overlap during a crossfade.
 
 - **Title:** cartoony pentatonic loop in C major at 128 BPM. Mounts via `<TitleMusic />` on the home page and slug-landing page. Starts on the first pointerdown/keydown to satisfy browser autoplay policies; a one-shot document-level listener inside `music.ts` handles the retry.
-- **Game:** driving minor-key loop in G minor at a configured 140 BPM. Crossfades in from title at race start over 3 seconds. Tempo ramps with car speed (70% to 100% of configured BPM, so 98 to 140 BPM). Voice volumes, drums, and a counter-melody fade in above intensity thresholds so low-speed driving sounds sparse and floored-it sounds full.
+- **Game:** driving minor-key loop in G minor at a configured 140 BPM. Crossfades in from title at race start over 3 seconds. Tempo ramps with car speed (70% to 100% of configured BPM, so 98 to 140 BPM). Voice volumes, drums, and a counter-melody fade in above intensity thresholds so low-speed driving sounds sparse and floored-it sounds full. The root key, scale flavor, and tempo are nudged from a stable per-slug hash when the player has the "Per-track flavor" toggle on (default on); turning it off plays the same loop on every track.
 - **Pause:** slow, very quiet sine pad in C major at 68 BPM. Crossfades in when the player pauses, crossfades back to game on resume, and crossfades to title on restart. All pause/resume transitions are 0.8 seconds.
 
 ### Scheduler notes
@@ -717,6 +717,7 @@ Three named tracks live in one engine (`src/game/music.ts`) and share the schedu
 - `src/components/TitleMusic.tsx` is a null-rendering client component that calls `startTitleMusic` on mount and `stopMusic` on unmount. Mounted in `src/app/page.tsx`, `src/components/SlugLanding.tsx`, and inside `Game.tsx` (so the countdown still has title music before the race-start crossfade).
 - `src/components/Game.tsx` drives the transitions: `crossfadeTo('pause')` on pause, `crossfadeTo('game')` on resume, `crossfadeTo('title')` on restart, and `crossfadeTo('game', RACE_START_CROSSFADE_SEC)` when countdown ends. The rAF loop calls `setGameIntensity(|speed| / DEFAULT_CAR_PARAMS.maxSpeed)` each frame.
 - Tests: `tests/unit/music.test.ts` pins `midiFreq`, `scaleDeg` (wrap, octave shift, negative degrees), and the four canonical scale constants.
+- Per-track music personalization: live. Pure helpers in `src/game/musicPersonalization.ts` (`slugMusicSeed` 32-bit FNV-1a hash of the slug, `personalizeForSlug` picks `{rootMidiOffset, scaleFlavor, bpmOffset}` from three menus indexed off the seed via different primes so the choices do not move in lockstep, plus `NEUTRAL_PERSONALIZATION`, `personalizationEquals`, and the published `ROOT_OFFSETS` (-5..+7 inside one octave so the music stays in the same audible register), `SCALE_FLAVORS` (`minor` / `dorian` / `pentatonic`), and `BPM_OFFSETS` (-12..+16 so the slowest possible BPM after the 70%-tempo intensity ramp still sits well above the 40 BPM floor) menus). The empty / non-string slug short-circuits to the neutral tweak so the legacy hardcoded G-minor / 140-BPM game loop is preserved exactly. `music.ts` gained `setMusicPersonalization(p | null)`: idempotent (no-op when the value matches the active one) and, when the game track is already live, mutates `rootMidi` / `scale` / `baseStepDur` in place plus reseeds `stepDur` from the new base so a current intensity does not linger at the old tempo. Title and pause tracks are unaffected. `AudioSettings` gained a `musicPerTrack: boolean` field with default `true` and a backfill default for legacy stored payloads. `Game.tsx` reads the toggle through `useAudioSettings` and runs a `useEffect([slug, audioSettings.musicPerTrack])` that calls `setMusicPersonalization(personalizeForSlug(slug))` when the toggle is on or `setMusicPersonalization(NEUTRAL_PERSONALIZATION)` when off, so the next race (or a slug change without remount) picks up the new flavor without restarting the audio engine. Settings UI: a new "Per-track flavor" sub-section in the Audio block with a single MenuToggle (disabled when music is muted entirely) plus a hint explaining what the toggle does. Tests: `tests/unit/musicPersonalization.test.ts` covers neutral identity, menu-bound invariants, deterministic seed, defensive non-string seed, single-character sensitivity, fresh-object isolation, menu membership, slug-to-tweak determinism, and cross-slug fingerprint variety. `tests/unit/audioSettings.test.ts` adds default-true, round-trip-disabled, and legacy backfill (omitted in stored payload) coverage for the new `musicPerTrack` field.
 
 ### SFX
 
@@ -731,10 +732,10 @@ Three named tracks live in one engine (`src/game/music.ts`) and share the schedu
 
 All SFX share one `AudioContext` and master `GainNode` with the music scheduler via `src/game/audioEngine.ts`. The shared module owns the singleton, the autoplay first-gesture handler, and the keyed noise-buffer cache (`'snare'`, `'hat'`, `'skid'`, `'rumble'`). Pure helpers (`droneFreqHz`, `droneFilterHz`, `droneVolume`, `skidIntensity`, `uiClickEnvelope`) live in `audio.ts` and are unit-tested in `tests/unit/audio.test.ts` against a minimal AudioContext stub.
 
-### Stretch: personalization (later)
+### Stretch: personalization
 
-- Hash the slug or player initials to perturb music parameters (scale, tempo, lead pattern, bass pattern).
-- Explicitly called out as "later" in Section 18. Not v1.
+- Slug-driven scale / tempo / root-key tweaks: live (see "Per-track music personalization" in the Build log above).
+- Initials-driven perturbation and per-pattern (lead / bass) variations remain on the wishlist; the existing seed could fold initials in alongside the slug.
 
 ---
 
@@ -932,7 +933,7 @@ These are steps the user performs in external dashboards. Every step is mandator
 Not v1. Listed so agents know not to scope-creep into them without approval.
 
 - Car customization beyond the v1 paint palette: decals, liveries, and multiple body shapes.
-- Music personalization (hash slug or initials to perturb music parameters).
+- Music personalization: slug-driven landed (see Section 13). Initials-driven perturbation and per-pattern lead / bass variations remain stretch.
 - More track pieces (ramps, banked turns, jumps, 45-degree turns).
 - Friend challenges (tap to race a ghost from a link).
 - Per-slug weather or time-of-day overrides (the global Settings picks both today; this would let a track author bake in a default mood).

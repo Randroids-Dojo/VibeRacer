@@ -15,6 +15,12 @@ import {
   getOrMakeNoiseBuffer,
   type AudioEngine,
 } from './audioEngine'
+import {
+  NEUTRAL_PERSONALIZATION,
+  personalizationEquals,
+  type MusicPersonalization,
+  type ScaleFlavor,
+} from './musicPersonalization'
 
 const LOOKAHEAD_SEC = 0.12
 const SCHEDULE_INTERVAL_MS = 50
@@ -62,9 +68,26 @@ interface MusicSystem {
   audio: AudioEngine
   schedulerHandle: ReturnType<typeof setTimeout> | null
   tracks: Map<TrackName, Track>
+  // Active per-slug personalization for the game track. Only the game track
+  // is personalized today; title and pause use their fixed configs.
+  personalization: MusicPersonalization
 }
 
 let system: MusicSystem | null = null
+
+// Map a personalization scale-flavor name to the SCALES table entry. Kept
+// here rather than in `musicPersonalization.ts` so the personalization
+// module stays a pure value object with no audio dependency.
+function scaleForFlavor(flavor: ScaleFlavor): readonly number[] {
+  switch (flavor) {
+    case 'minor':
+      return SCALES.minor
+    case 'dorian':
+      return SCALES.dorian
+    case 'pentatonic':
+      return SCALES.pentatonic
+  }
+}
 
 export function midiFreq(midi: number): number {
   return 440 * Math.pow(2, (midi - 69) / 12)
@@ -102,6 +125,7 @@ function getSystem(): MusicSystem | null {
     audio,
     schedulerHandle: null,
     tracks: new Map(),
+    personalization: { ...NEUTRAL_PERSONALIZATION },
   }
   return system
 }
@@ -361,20 +385,44 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
   const gain = s.audio.ctx.createGain()
   gain.gain.value = 0
   gain.connect(s.audio.musicBus)
-  const stepDur = 60 / cfg.bpm / 4
+  const personalized =
+    name === 'game'
+      ? applyPersonalizationToConfig(cfg, s.personalization)
+      : { rootMidi: cfg.rootMidi, scale: cfg.scale, bpm: cfg.bpm }
+  const stepDur = 60 / personalized.bpm / 4
   return {
     name,
     step: 0,
     nextTime: s.audio.ctx.currentTime + 0.05,
     baseStepDur: stepDur,
     stepDur,
-    rootMidi: cfg.rootMidi,
-    scale: cfg.scale,
+    rootMidi: personalized.rootMidi,
+    scale: personalized.scale,
     playStep: cfg.playStep,
     gain,
     targetGain: cfg.targetGain,
     intensity: 0,
     pruneHandle: null,
+  }
+}
+
+interface ResolvedTrackParams {
+  rootMidi: number
+  scale: readonly number[]
+  bpm: number
+}
+
+function applyPersonalizationToConfig(
+  cfg: TrackConfig,
+  p: MusicPersonalization,
+): ResolvedTrackParams {
+  return {
+    rootMidi: cfg.rootMidi + p.rootMidiOffset,
+    scale: scaleForFlavor(p.scaleFlavor),
+    // Keep the resulting BPM positive even if a hand-rolled personalization
+    // hands in a wild offset; the floor matches the lowest a 70%-tempo
+    // intensity ramp would push the slowest BPM in BPM_OFFSETS to.
+    bpm: Math.max(40, cfg.bpm + p.bpmOffset),
   }
 }
 
@@ -473,6 +521,35 @@ export function setGameIntensity(intensity: number): void {
   const clamped = Math.max(0, Math.min(1, intensity))
   if (Math.abs(clamped - track.intensity) < INTENSITY_EPSILON) return
   track.intensity = clamped
+}
+
+/**
+ * Apply a per-slug music personalization to the game track. Idempotent;
+ * a no-op when the new value matches the active one. When the game track is
+ * already live, mutates rootMidi / scale / baseStepDur in place so the next
+ * scheduled step uses the new flavor without rebuilding the gain node or
+ * interrupting the crossfade. Title and pause tracks are unaffected.
+ *
+ * Pass null (or omit) to fall back to the neutral personalization.
+ */
+export function setMusicPersonalization(
+  next: MusicPersonalization | null,
+): void {
+  const s = getSystem()
+  if (!s) return
+  const target = next ?? { ...NEUTRAL_PERSONALIZATION }
+  if (personalizationEquals(s.personalization, target)) return
+  s.personalization = target
+  const live = s.tracks.get('game')
+  if (!live) return
+  const cfg = TRACK_CONFIG.game
+  const resolved = applyPersonalizationToConfig(cfg, target)
+  live.rootMidi = resolved.rootMidi
+  live.scale = resolved.scale
+  live.baseStepDur = 60 / resolved.bpm / 4
+  // Re-seed stepDur from the new base so a current intensity does not
+  // linger at the old tempo until the next updateTempo() call.
+  updateTempo(live)
 }
 
 /** Fade out all tracks. Each track auto-prunes after its fade completes. */
