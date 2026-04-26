@@ -12,6 +12,7 @@ import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { MyPbs } from '@/components/MyPbs'
+import { LifetimeStats } from '@/components/LifetimeStats'
 import { DailyChallenge } from '@/components/DailyChallenge'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
@@ -60,6 +61,8 @@ export default async function HomePage() {
           </div>
 
           <MyPbs />
+
+          <LifetimeStats />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
