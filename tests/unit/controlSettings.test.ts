@@ -243,6 +243,30 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showSkidMarks).toBe(true)
   })
 
+  it('defaults showRearview to true', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showRearview).toBe(true)
+    expect(cloneDefaultSettings().showRearview).toBe(true)
+  })
+
+  it('round-trips a disabled showRearview flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showRearview = false
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showRearview when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+    })
+    expect(readStoredControlSettings().showRearview).toBe(true)
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

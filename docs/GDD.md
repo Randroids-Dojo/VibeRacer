@@ -295,7 +295,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB and a projected final lap time at each checkpoint), top-down minimap card, pause button, skid mark trail, invalid-lap handling, and a wrong-way warning banner are all live.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB and a projected final lap time at each checkpoint), top-down minimap card, top-center rear-view mirror inset, pause button, skid mark trail, invalid-lap handling, and a wrong-way warning banner are all live.
 
 ### Build log
 
@@ -333,6 +333,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Pause button (always visible on touch devices).
 - Minimap (bottom-right, top-down, toggleable in Settings).
 - Speedometer (bottom-center, swept needle plus numeric readout, toggleable in Settings).
+- Rear-view mirror (top-center inset, second WebGL pass into a small canvas, toggleable in Settings).
 
 ### Minimap
 
@@ -359,6 +360,14 @@ A bottom-center HUD card shows the player's live speed as a swept needle plus a 
 Pure helpers live in `src/lib/speedometer.ts` (`SPEED_UNITS`, `SpeedUnitSchema`, `convertSpeed`, `formatSpeed`, `unitLabel`, `speedFraction`, plus `MPS_TO_MPH` and `MPS_TO_KMH` constants). The integrator's world units are treated as meters for display so the stock `maxSpeed = 26` reads as ~58 mph or ~94 km/h. Negative speeds (reverse) collapse to their absolute value for the numeric readout and clamp to zero for the gauge needle. `formatSpeed` rounds mph and km/h to whole numbers and prints raw u/s with one decimal so the tuning unit stays useful.
 
 `src/components/Speedometer.tsx` owns its own rAF loop and writes the SVG needle's `transform` attribute and the readout's `textContent` directly so the 60 Hz update never sends React re-renders into the rest of the HUD tree. `RaceCanvas.tsx` writes the live signed speed into `speedOutRef` every frame; `Game.tsx` owns the ref alongside a `maxSpeedRef` mirroring `tuning.maxSpeed` so a slider tweak in TuningPanel reshapes the dial range immediately. The Speedometer is only mounted during the `racing` phase and unmounts on pause so it does not collide with the pause overlay. Tests: `tests/unit/speedometer.test.ts` covers unit enumeration, schema validation, conversion constants, format rounding, reverse magnitude, defensive non-finite handling, and `speedFraction` clamping with bad max-speed inputs. Toggle and unit coverage in `tests/unit/controlSettings.test.ts` (default, round-trip, legacy backfill, malformed-unit rejection).
+
+### Rear-view mirror
+
+A small panoramic inset at the top-center of the viewport renders the same 3D scene from a backward-facing camera so the player can see the ghost car (or anything else) behind them while racing. Toggleable from the Settings pane (`showRearview: boolean` in `ControlSettings`, default on, persisted via the existing `viberacer.controls` localStorage key); the canvas stays mounted with `display: none` when off so a flip back resumes the pass without rebuilding the second WebGL context.
+
+`Game.tsx` owns a stable `rearviewCanvasRef` that survives pause / resume and a `showRearviewRef` that mirrors the Settings toggle into the rAF loop. `RaceCanvas.tsx` lazily creates a second `WebGLRenderer` bound to the parent's canvas the first frame the ref resolves; the rear pass renders the same `Scene` (track, car, ghost, skid marks, lighting) through a separate `PerspectiveCamera` placed `1.2` units in front of the car at height `2.4`, looking back along the negative heading axis. A per-frame `syncRearSize` short-circuits when the canvas size has not changed so the renderer's `setSize` is a no-op when the inset CSS is stable. The pass itself short-circuits whenever `showRearviewRef.current` is false so a hidden mirror costs nothing per frame. The renderer is disposed on unmount alongside the main renderer.
+
+Layout: the inset is positioned `top: 8`, centered horizontally, sized `min(280px, 38vw) by min(70px, 9.5vw)` so it scales cleanly from phones to desktop. Higher `zIndex: 12` than the HUD (10) so any HUD blocks that wrap into the same band sit underneath the mirror. The canvas is only `display: block` during the `racing` phase and outside of pause so it never collides with the pause overlay or the countdown banner. Coverage in `tests/unit/controlSettings.test.ts` (default value, round-trip, legacy backfill).
 
 ### Live split delta vs PB
 

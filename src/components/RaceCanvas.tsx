@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
-import { WebGLRenderer } from 'three'
+import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
 import { buildTrackPath, worldToCell } from '@/game/trackPath'
 import { cellKey } from '@/game/track'
@@ -100,6 +100,16 @@ export interface RaceCanvasProps {
   // slides. Polled each frame so a Settings flip takes effect without
   // rebuilding the renderer. Default behavior when omitted: enabled.
   showSkidMarksRef?: MutableRefObject<boolean>
+  // Optional second canvas the renderer draws a backward-facing pass into
+  // every frame. The parent owns the canvas DOM element so the layout (and
+  // a CSS-driven show/hide) stays inside the React tree. The backward pass
+  // shares the same scene + car + ghost as the main view; it just uses a
+  // separate renderer + PerspectiveCamera positioned behind the car.
+  rearviewCanvasRef?: MutableRefObject<HTMLCanvasElement | null>
+  // Toggle the rear-view rendering loop without remounting the renderer.
+  // The pass short-circuits when the ref is false so a hidden mirror does
+  // not pay the per-frame draw cost.
+  showRearviewRef?: MutableRefObject<boolean>
   // Pose targets the rAF loop writes the player's current world pose into
   // every frame so peripheral overlays (the minimap, future telemetry) can
   // read it without re-rendering React 60 times per second. Optional so the
@@ -144,6 +154,8 @@ export function RaceCanvas({
   carPaintRef,
   timeOfDayRef,
   showSkidMarksRef,
+  rearviewCanvasRef,
+  showRearviewRef,
   carPoseOutRef,
   ghostPoseOutRef,
   speedOutRef,
@@ -207,6 +219,37 @@ export function RaceCanvas({
     }
     resize()
     window.addEventListener('resize', resize)
+
+    // Optional rear-view pass. The renderer is created lazily once the parent
+    // canvas ref resolves and shares the same scene as the main view; only the
+    // camera differs (placed at the car looking backward). Both renderers are
+    // disposed on unmount. The pass is a no-op when the ref is null or when
+    // showRearviewRef is false, so a hidden mirror costs nothing per frame.
+    let rearRenderer: WebGLRenderer | null = null
+    const rearCamera = new PerspectiveCamera(80, 4, 0.1, 2000)
+    let lastRearW = 0
+    let lastRearH = 0
+    function ensureRearRenderer(): WebGLRenderer | null {
+      const el = rearviewCanvasRef?.current ?? null
+      if (!el) return null
+      if (rearRenderer) return rearRenderer
+      rearRenderer = new WebGLRenderer({ canvas: el, antialias: true })
+      rearRenderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+      return rearRenderer
+    }
+    function syncRearSize(r: WebGLRenderer) {
+      const el = rearviewCanvasRef?.current
+      if (!el) return
+      const w = el.clientWidth
+      const h = el.clientHeight
+      if (w === 0 || h === 0) return
+      if (w === lastRearW && h === lastRearH) return
+      lastRearW = w
+      lastRearH = h
+      r.setSize(w, h, false)
+      rearCamera.aspect = w / h
+      rearCamera.updateProjectionMatrix()
+    }
 
     // Apply FOV from the camera rig ref each frame, but only call
     // updateProjectionMatrix when the value actually changes. The PerspectiveCamera
@@ -547,6 +590,42 @@ export function RaceCanvas({
 
       renderer.render(bundle.scene, bundle.camera)
 
+      // Rear-view pass: same scene, camera placed at the car looking backward.
+      // Skipped during countdown (state.raceStartMs === null) and when the
+      // Settings toggle is off so a hidden mirror does not pay the per-frame
+      // draw cost. Cheap; one render call, no extra scene traversal.
+      const showRearview = showRearviewRef?.current ?? true
+      if (
+        showRearview &&
+        state.raceStartMs !== null &&
+        rearviewCanvasRef?.current
+      ) {
+        const r = ensureRearRenderer()
+        if (r) {
+          syncRearSize(r)
+          // Position: in front of the car, slightly above, looking backward
+          // along its forward axis. Front offset stays small enough that the
+          // car body never enters the mirror frame; the look-at sits well
+          // behind the car so the player sees the road and any chasing ghost.
+          const cx = Math.cos(state.heading)
+          const sz = -Math.sin(state.heading)
+          const FRONT_OFFSET = 1.2
+          const HEIGHT = 2.4
+          const LOOK_BEHIND = 14
+          rearCamera.position.set(
+            state.x + cx * FRONT_OFFSET,
+            HEIGHT,
+            state.z + sz * FRONT_OFFSET,
+          )
+          rearCamera.lookAt(
+            state.x - cx * LOOK_BEHIND,
+            1.2,
+            state.z - sz * LOOK_BEHIND,
+          )
+          r.render(bundle.scene, rearCamera)
+        }
+      }
+
       if (!disableMusicRef.current) {
         setGameIntensity(Math.abs(state.speed) / paramsRef.current.maxSpeed)
         const racing = state.raceStartMs !== null
@@ -630,6 +709,10 @@ export function RaceCanvas({
       bundle.scene.remove(ghostMesh)
       bundle.dispose()
       renderer.dispose()
+      if (rearRenderer) {
+        rearRenderer.dispose()
+        rearRenderer = null
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pieces, checkpointCount])

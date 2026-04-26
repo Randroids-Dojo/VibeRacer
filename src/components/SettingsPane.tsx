@@ -335,6 +335,10 @@ export function SettingsPane({
     onChange({ ...settings, showSpeedometer: value })
   }
 
+  function setShowRearview(value: boolean) {
+    onChange({ ...settings, showRearview: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -669,6 +673,22 @@ export function SettingsPane({
                   {unitLabel(unit)}
                 </MenuButton>
               ))}
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Rear-view mirror</div>
+            <MenuHint>
+              Top-center inset that shows what is behind you. Handy for
+              keeping an eye on the ghost car. Turn off for a fully clean
+              forward view.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show rear-view</div>
+              <MenuToggle
+                value={settings.showRearview}
+                onChange={setShowRearview}
+              />
             </div>
           </div>
         </MenuSection>

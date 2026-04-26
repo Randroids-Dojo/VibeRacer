@@ -219,6 +219,16 @@ function GameSession({
   // does not snap a visible streak away mid-corner.
   const showSkidMarksRef = useRef<boolean>(settings.showSkidMarks)
   showSkidMarksRef.current = settings.showSkidMarks
+  // Mirrors settings.showRearview into the rAF loop so the second renderer
+  // can short-circuit its draw call when the mirror is hidden. The canvas
+  // itself stays mounted (and CSS-hidden) so a flip back on resumes the pass
+  // without rebuilding the second WebGL context.
+  const showRearviewRef = useRef<boolean>(settings.showRearview)
+  showRearviewRef.current = settings.showRearview
+  // Stable canvas ref the rear-view pass renders into. Held here at the
+  // Game.tsx level so the inset survives across pause / resume without
+  // retearing the renderer.
+  const rearviewCanvasRef = useRef<HTMLCanvasElement | null>(null)
   // Mirrors the chosen time-of-day preset into the rAF loop. Same poll-and-set
   // pattern as carPaintRef: the renderer reads it each frame and reapplies the
   // sky / ambient / sun preset whenever the value changes.
@@ -760,12 +770,25 @@ function GameSession({
         carPaintRef={carPaintRef}
         timeOfDayRef={timeOfDayRef}
         showSkidMarksRef={showSkidMarksRef}
+        rearviewCanvasRef={rearviewCanvasRef}
+        showRearviewRef={showRearviewRef}
         carPoseOutRef={minimapCarPoseRef}
         ghostPoseOutRef={minimapGhostPoseRef}
         speedOutRef={speedRef}
         onLapReplay={handleLapReplay}
         onCheckpointHit={handleCheckpointHit}
         style={canvasStyle}
+      />
+      <canvas
+        ref={rearviewCanvasRef}
+        aria-hidden
+        style={{
+          ...rearviewStyle,
+          display:
+            settings.showRearview && phase === 'racing' && !paused
+              ? 'block'
+              : 'none',
+        }}
       />
       {settings.showMinimap ? (
         <Minimap
@@ -898,6 +921,25 @@ const canvasStyle: React.CSSProperties = {
   display: 'block',
   width: '100%',
   height: '100%',
+}
+// Rear-view mirror inset. Sits at the top-center, scaled with viewport width
+// so the strip reads on phones without overwhelming the HUD on a desktop.
+// 4:1 aspect ratio matches a stretched panoramic mirror you would see in a
+// real car. Higher z-index than the HUD so the inset sits cleanly on top of
+// the HUD top-row blocks if they ever wrap into the same band.
+const rearviewStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  width: 'min(280px, 38vw)',
+  height: 'min(70px, 9.5vw)',
+  borderRadius: 10,
+  border: '2px solid rgba(0,0,0,0.55)',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.45)',
+  background: '#000',
+  pointerEvents: 'none',
+  zIndex: 12,
 }
 const loading: React.CSSProperties = {
   position: 'fixed',
