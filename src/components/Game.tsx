@@ -41,6 +41,7 @@ import {
 } from '@/game/splits'
 import { Leaderboard } from './Leaderboard'
 import { LapHistory } from './LapHistory'
+import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
@@ -225,6 +226,12 @@ function GameSession({
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
+  // Confetti celebration trigger. `kind` flips on a PB / RECORD lap and stays
+  // set so the overlay keeps simulating until its particles expire; the
+  // monotonic `key` makes back-to-back PBs spawn a fresh batch even when the
+  // kind is unchanged.
+  const [confettiKind, setConfettiKind] = useState<ConfettiKind | null>(null)
+  const [confettiKey, setConfettiKey] = useState(0)
   // Session-scoped lap log. Reset on Restart so a fresh race starts clean.
   // The local PB on disk persists across restarts; this list does not.
   const [lapHistory, setLapHistory] = useState<LapHistoryEntry[]>([])
@@ -308,6 +315,7 @@ function GameSession({
     silenceAllSfx(0.05)
     setPaused(false)
     setLapHistory([])
+    setConfettiKind(null)
     setHud((prev) => ({
       ...prev,
       currentMs: 0,
@@ -553,6 +561,10 @@ function GameSession({
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
     else playLapStinger()
+    if (outcome === 'record' || outcome === 'pb') {
+      setConfettiKind(outcome)
+      setConfettiKey((k) => k + 1)
+    }
     if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
     toastTimerRef.current = setTimeout(() => {
       setHud((prev) => ({ ...prev, toast: null, toastKind: null }))
@@ -660,6 +672,7 @@ function GameSession({
           unit={settings.speedUnit}
         />
       ) : null}
+      <ConfettiOverlay kind={confettiKind} triggerKey={confettiKey} />
       <HUD
         currentMs={hud.currentMs}
         lastLapMs={hud.lastLapMs}
