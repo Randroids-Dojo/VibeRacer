@@ -4,6 +4,7 @@ import { buildTrackThumbnail } from '@/lib/trackThumbnail'
 import { formatLapTime } from '@/lib/share'
 import type { TopTime } from '@/lib/recentTracks'
 import { TrackThumbnail } from './TrackThumbnail'
+import { TrackDifficultyBadge } from './TrackDifficultyBadge'
 
 export interface RecentTrackListItem {
   slug: string
@@ -60,7 +61,12 @@ export function RecentTrackList({ items }: Props) {
                     </span>
                   ) : null}
                 </span>
-                <span style={labelStyle}>{item.label}</span>
+                <span style={metaRowStyle}>
+                  <span style={labelStyle}>{item.label}</span>
+                  {item.pieces ? (
+                    <TrackDifficultyBadge pieces={item.pieces} size="sm" />
+                  ) : null}
+                </span>
               </span>
             </Link>
           </li>
@@ -133,6 +139,15 @@ const labelStyle: React.CSSProperties = {
   fontSize: 11,
   opacity: 0.6,
   fontFamily: 'monospace',
+}
+// Bottom meta row pairs the timestamp / sample label with the difficulty
+// badge so the two pieces of secondary info share one line. Wrap allows the
+// pieces to drop to a second line on a narrow card without overflowing.
+const metaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  flexWrap: 'wrap',
 }
 // The top-time badge sits at the right edge of the slug row. Two stacked
 // monospace pieces (initials in gold, time in plain mono) so the eye can

@@ -1,6 +1,8 @@
 'use client'
 
+import type { Piece } from '@/lib/schemas'
 import { MenuButton, MenuOverlay, MenuPanel, MenuTitle } from './MenuUI'
+import { TrackDifficultyBadge } from './TrackDifficultyBadge'
 
 interface PauseMenuProps {
   onResume: () => void
@@ -56,6 +58,11 @@ interface PauseMenuProps {
   // looks different from their own picks. Omit / pass null when no track
   // mood is active.
   trackMoodLabel?: string | null
+  // Pieces of the active track. When provided we surface a small difficulty
+  // badge under the PAUSED title so the player can see at a glance how
+  // technical the layout they are on actually is. Optional so the pause menu
+  // stays renderable when the host has no piece info handy (legacy callers).
+  pieces?: Piece[] | null
   onExit: () => void
 }
 
@@ -85,12 +92,25 @@ export function PauseMenu({
   onToggleFavorite,
   isFavorite,
   trackMoodLabel,
+  pieces,
   onExit,
 }: PauseMenuProps) {
   return (
     <MenuOverlay zIndex={100}>
       <MenuPanel>
         <MenuTitle>PAUSED</MenuTitle>
+        {pieces && pieces.length > 0 ? (
+          <div
+            style={{
+              display: 'flex',
+              justifyContent: 'center',
+              marginTop: -4,
+              marginBottom: 6,
+            }}
+          >
+            <TrackDifficultyBadge pieces={pieces} size="md" />
+          </div>
+        ) : null}
         <MenuButton variant="primary" click="confirm" onClick={onResume}>
           Resume
         </MenuButton>

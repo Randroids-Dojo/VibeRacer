@@ -2424,6 +2424,7 @@ function GameSession({
               onToggleFavorite={handleToggleFavorite}
               isFavorite={favorited}
               trackMoodLabel={trackMoodLabel}
+              pieces={pieces}
               onExit={handleExitClick}
             />
           ) : pauseView === 'leaderboard' ? (
