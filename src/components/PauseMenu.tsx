@@ -5,6 +5,11 @@ import { MenuButton, MenuOverlay, MenuPanel, MenuTitle } from './MenuUI'
 interface PauseMenuProps {
   onResume: () => void
   onRestart: () => void
+  // Restart only the current lap. Preserves session PB, lap count, and lap
+  // history; abandons the in-flight checkpoint progress and resets the lap
+  // timer. Renders only when the player has a lap in progress (no point
+  // restarting an empty lap on the first frame).
+  onRestartLap: () => void
   onEditTrack: () => void
   onLeaderboards: () => void
   onLapHistory: () => void
@@ -21,6 +26,7 @@ interface PauseMenuProps {
 export function PauseMenu({
   onResume,
   onRestart,
+  onRestartLap,
   onEditTrack,
   onLeaderboards,
   onLapHistory,
@@ -37,6 +43,9 @@ export function PauseMenu({
         <MenuTitle>PAUSED</MenuTitle>
         <MenuButton variant="primary" click="confirm" onClick={onResume}>
           Resume
+        </MenuButton>
+        <MenuButton click="confirm" onClick={onRestartLap}>
+          Restart Lap
         </MenuButton>
         <MenuButton click="confirm" onClick={onRestart}>
           Restart

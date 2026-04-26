@@ -155,6 +155,11 @@ function GameSession({
   const submittingRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
   const pendingResetRef = useRef(false)
+  // Mid-race "restart this lap" pulse. The rAF loop in RaceCanvas drains it
+  // by teleporting the car back to spawn and zeroing the in-flight lap. Lap
+  // count, session PB, lap history, and toast state are preserved, so this is
+  // a much lighter-weight reset than `pendingResetRef`.
+  const pendingLapResetRef = useRef(false)
   const pausedRef = useRef(false)
   const pauseStartTsRef = useRef<number | null>(null)
   const resumeShiftRef = useRef(0)
@@ -330,6 +335,39 @@ function GameSession({
     setPhase('countdown')
   }, [])
 
+  // Internal lap-reset pulse. Drops the in-flight replay buffer and the
+  // pending live-split tile, then arms the canvas-side ref so the next rAF
+  // frame teleports the car to spawn and reseeds the lap timer. Caller is
+  // responsible for the gating (countdown / pause); see `restartLap` and the
+  // pause-menu handler.
+  const armLapReset = useCallback(() => {
+    pendingLapResetRef.current = true
+    pendingReplayForSubmitRef.current = null
+    if (splitClearTimerRef.current) {
+      clearTimeout(splitClearTimerRef.current)
+      splitClearTimerRef.current = null
+    }
+    setHud((prev) => ({
+      ...prev,
+      currentMs: 0,
+      onTrack: true,
+      splitDelta: null,
+    }))
+  }, [])
+
+  // Restart only the current lap. The car teleports back to spawn, the lap
+  // timer zeroes, the in-flight checkpoint progress is discarded, and the
+  // pending replay buffer is dropped (so the abandoned lap never gets posted
+  // to the leaderboard). Lap counter, session PB, on-disk PB, lap history,
+  // and the live toast / split tile are preserved. Available only while the
+  // race is in flight (not during the countdown), and short-circuits while
+  // paused so a stray R press in the pause menu does not leak through.
+  const restartLap = useCallback(() => {
+    if (phase !== 'racing') return
+    if (pausedRef.current) return
+    armLapReset()
+  }, [phase, armLapReset])
+
   const exitToTitle = useCallback(() => {
     router.push('/')
   }, [router])
@@ -456,6 +494,33 @@ function GameSession({
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
   }, [phase, pause, resume])
+
+  // One-shot keyboard listener for the restartLap action. Reads the current
+  // bindings via a ref so a Settings remap takes effect without re-binding.
+  const restartLapBindingsRef = useRef<string[]>(settings.keyBindings.restartLap)
+  restartLapBindingsRef.current = settings.keyBindings.restartLap
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      // Skip when typing in an input (initials, feedback textarea, etc.).
+      const target = e.target
+      if (target instanceof HTMLElement) {
+        if (
+          target.isContentEditable ||
+          target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.tagName === 'SELECT'
+        ) {
+          return
+        }
+      }
+      if (e.repeat) return
+      if (!restartLapBindingsRef.current.includes(e.code)) return
+      e.preventDefault()
+      restartLap()
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [restartLap])
 
   useEffect(() => {
     return () => {
@@ -642,6 +707,7 @@ function GameSession({
         pausedRef={pausedRef}
         resumeShiftRef={resumeShiftRef}
         pendingResetRef={pendingResetRef}
+        pendingLapResetRef={pendingLapResetRef}
         pendingRaceStartRef={pendingRaceStartRef}
         onLapComplete={handleLapComplete}
         onHudUpdate={onCanvasHud}
@@ -714,6 +780,13 @@ function GameSession({
             <PauseMenu
               onResume={resume}
               onRestart={restart}
+              onRestartLap={() => {
+                // Resume first so the rAF loop processes the pulse next
+                // frame (`restartLap` itself bails when paused). Then arm
+                // the lap-reset state.
+                resume()
+                armLapReset()
+              }}
               onEditTrack={editTrack}
               onLeaderboards={() => setPauseView('leaderboard')}
               onLapHistory={() => setPauseView('lapHistory')}

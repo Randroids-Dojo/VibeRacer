@@ -24,6 +24,7 @@ import {
   formatGamepadButton,
   formatKeyCode,
   gamepadActionForIndex,
+  isContinuousAction,
   rebindGamepadButton,
   rebindKey,
   readStoredControlSettings,
@@ -39,9 +40,29 @@ describe('actionForCode', () => {
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'Space')).toBe('handbrake')
   })
 
+  it('resolves the default restartLap binding to KeyR', () => {
+    expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyR')).toBe('restartLap')
+  })
+
   it('returns null for unbound codes', () => {
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyZ')).toBeNull()
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'Tab')).toBeNull()
+  })
+})
+
+describe('isContinuousAction', () => {
+  it('classifies the five driving actions as continuous (held-down)', () => {
+    expect(isContinuousAction('forward')).toBe(true)
+    expect(isContinuousAction('backward')).toBe(true)
+    expect(isContinuousAction('left')).toBe(true)
+    expect(isContinuousAction('right')).toBe(true)
+    expect(isContinuousAction('handbrake')).toBe(true)
+  })
+
+  it('classifies restartLap as a one-shot (not continuous)', () => {
+    // useKeyboard skips one-shot actions so KeyInput stays clean. Game.tsx
+    // wires its own keydown listener for restartLap.
+    expect(isContinuousAction('restartLap')).toBe(false)
   })
 })
 
@@ -71,6 +92,7 @@ describe('rebindKey', () => {
       left: [],
       right: [],
       handbrake: [],
+      restartLap: [],
     }
     const next = rebindKey(empty, 'forward', 1, 'KeyT')
     expect(next.forward).toEqual(['KeyT'])
@@ -560,5 +582,41 @@ describe('gamepad bindings storage round-trip', () => {
       },
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
+
+  it('defaults restartLap to KeyR', () => {
+    expect(DEFAULT_KEY_BINDINGS.restartLap).toEqual(['KeyR'])
+    expect(cloneDefaultSettings().keyBindings.restartLap).toEqual(['KeyR'])
+  })
+
+  it('round-trips a remapped restartLap binding', () => {
+    const custom = cloneDefaultSettings()
+    custom.keyBindings = rebindKey(custom.keyBindings, 'restartLap', 0, 'KeyT')
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().keyBindings.restartLap).toEqual(['KeyT'])
+  })
+
+  it('backfills restartLap when reading legacy storage that omits it', () => {
+    // Legacy keyBindings shape: pre-restartLap, only the five continuous
+    // actions. The schema should slot in the default R binding rather than
+    // rejecting the entire payload.
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      keyBindings: {
+        forward: ['KeyW', 'ArrowUp'],
+        backward: ['KeyS', 'ArrowDown'],
+        left: ['KeyA', 'ArrowLeft'],
+        right: ['KeyD', 'ArrowRight'],
+        handbrake: ['Space'],
+      },
+    })
+    expect(readStoredControlSettings().keyBindings.restartLap).toEqual(['KeyR'])
+  })
+
+  it('lets the player clear the restartLap binding entirely', () => {
+    const custom = cloneDefaultSettings()
+    custom.keyBindings = clearBinding(custom.keyBindings, 'restartLap', 0)
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().keyBindings.restartLap).toEqual([])
   })
 })

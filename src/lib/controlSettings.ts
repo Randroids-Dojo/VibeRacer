@@ -15,8 +15,29 @@ export const CONTROL_ACTIONS = [
   'left',
   'right',
   'handbrake',
+  'restartLap',
 ] as const
 export type ControlAction = (typeof CONTROL_ACTIONS)[number]
+
+// Subset of CONTROL_ACTIONS that the game loop reads as held-down booleans
+// (forward, brake, steer, handbrake). The remaining actions are one-shots
+// that fire on the rising edge of a keydown and are handled by their own
+// listener (Game.tsx for restartLap). useKeyboard only writes booleans for
+// the continuous set so a one-shot binding never pollutes KeyInput.
+export const CONTINUOUS_CONTROL_ACTIONS = [
+  'forward',
+  'backward',
+  'left',
+  'right',
+  'handbrake',
+] as const
+export type ContinuousControlAction = (typeof CONTINUOUS_CONTROL_ACTIONS)[number]
+
+export function isContinuousAction(
+  action: ControlAction,
+): action is ContinuousControlAction {
+  return (CONTINUOUS_CONTROL_ACTIONS as readonly string[]).includes(action)
+}
 
 // Gamepad actions are a smaller set than keyboard actions: steering stays on
 // the analog stick + dpad and is not user-rebindable here, so the rebindable
@@ -127,6 +148,11 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
+  // R restarts only the current lap. Convenient for time-trial runs where the
+  // player botches a corner and wants a fresh attempt without the full
+  // countdown of a session restart. Lap counter, session PB, and lap history
+  // are preserved.
+  restartLap: ['KeyR'],
 }
 
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
@@ -152,6 +178,9 @@ const KeyBindingsSchema = z.object({
   left: z.array(KeyCodeSchema),
   right: z.array(KeyCodeSchema),
   handbrake: z.array(KeyCodeSchema),
+  // restartLap landed after the original control set. Backfill the default R
+  // binding for legacy stored payloads so the upgrade is opt-out, not opt-in.
+  restartLap: z.array(KeyCodeSchema).default(['KeyR']),
 })
 
 const GamepadButtonIndexSchema = z
@@ -320,6 +349,7 @@ export function cloneDefaultBindings(): KeyBindings {
     left: [...DEFAULT_KEY_BINDINGS.left],
     right: [...DEFAULT_KEY_BINDINGS.right],
     handbrake: [...DEFAULT_KEY_BINDINGS.handbrake],
+    restartLap: [...DEFAULT_KEY_BINDINGS.restartLap],
   }
 }
 
@@ -374,6 +404,7 @@ export function cloneBindings(bindings: KeyBindings): KeyBindings {
     left: [...bindings.left],
     right: [...bindings.right],
     handbrake: [...bindings.handbrake],
+    restartLap: [...bindings.restartLap],
   }
 }
 
@@ -465,6 +496,7 @@ export const ACTION_LABELS: Record<ControlAction, string> = {
   left: 'Steer left',
   right: 'Steer right',
   handbrake: 'Handbrake',
+  restartLap: 'Restart lap',
 }
 
 export const GAMEPAD_ACTION_LABELS: Record<GamepadAction, string> = {

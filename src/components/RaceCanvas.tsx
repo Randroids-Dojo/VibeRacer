@@ -58,6 +58,12 @@ export interface RaceCanvasProps {
   resumeShiftRef: MutableRefObject<number>
   pendingResetRef: MutableRefObject<boolean>
   pendingRaceStartRef: MutableRefObject<number | null>
+  // When set, the rAF loop teleports the car back to the spawn point and
+  // restarts the lap timer without touching `lapCount`, the recorded PB, or
+  // the React-side toast / split / history state. Distinct from
+  // `pendingResetRef` (full session restart, replays the countdown) so a
+  // mid-race lap restart does not clobber the running session.
+  pendingLapResetRef?: MutableRefObject<boolean>
   onLapComplete: (event: LapCompleteEvent) => void
   onHudUpdate: (hud: RaceCanvasHud) => void
   // Active ghost replay to render alongside the player. Reading via a ref so
@@ -113,6 +119,7 @@ export function RaceCanvas({
   pausedRef,
   resumeShiftRef,
   pendingResetRef,
+  pendingLapResetRef,
   pendingRaceStartRef,
   onLapComplete,
   onHudUpdate,
@@ -242,6 +249,50 @@ export function RaceCanvas({
         pendingRaceStartRef.current = null
         lastTs = ts
         prevHud = null
+        prevOnTrack = true
+        prevHitsLen = 0
+        raf = requestAnimationFrame(loop)
+        return
+      }
+
+      // Mid-race lap restart: teleport to spawn, zero the in-flight lap, but
+      // preserve `lapCount` and `lastLapTimeMs` so the HUD's session tallies
+      // and the on-disk PB do not get clobbered. The lap timer immediately
+      // restarts at `ts` so the player can re-attempt the same lap without
+      // sitting through the READY-SET-GO countdown.
+      if (pendingLapResetRef?.current) {
+        const fresh = initGameState(path)
+        state = {
+          ...fresh,
+          // Carry the session's tallies forward.
+          lapCount: state.lapCount,
+          lastLapTimeMs: state.lastLapTimeMs,
+          // Race is already in flight, so seed raceStartMs with the current
+          // frame timestamp instead of leaving it null (which would freeze
+          // physics until the next pendingRaceStartRef pulse).
+          raceStartMs: ts,
+        }
+        resetRigFromState()
+        bundle.car.position.set(state.x, 0, state.z)
+        bundle.car.rotation.y = state.heading
+        bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
+        bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+        if (carPoseOutRef) {
+          carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
+        }
+        if (speedOutRef) speedOutRef.current = 0
+        // Drop the in-flight recording buffer so the abandoned partial lap
+        // never leaks into a future submit. Skid trails get cleared too so
+        // the fresh attempt starts on a clean track surface.
+        resetRecording()
+        bundle.skidMarks.clear()
+        lastSkidSpawnTs = -Infinity
+        pendingLapResetRef.current = false
+        // Discard accumulated pause shift: we just reseeded raceStartMs to
+        // the frame timestamp so any pending shift is irrelevant and would
+        // otherwise advance the new lap clock.
+        resumeShiftRef.current = 0
+        lastTs = ts
         prevOnTrack = true
         prevHitsLen = 0
         raf = requestAnimationFrame(loop)
