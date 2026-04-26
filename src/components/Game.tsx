@@ -398,6 +398,11 @@ function GameSession({
   // showGhostRef: RaceCanvas polls this each frame and reapplies on change.
   const carPaintRef = useRef<string | null>(settings.carPaint)
   carPaintRef.current = settings.carPaint
+  // Mirrors the player's racing-number plate setting into the rAF loop.
+  // Same pattern as carPaintRef: the renderer reads it each frame and
+  // redraws the canvas-texture only when the value or colors changed.
+  const racingNumberRef = useRef(settings.racingNumber)
+  racingNumberRef.current = settings.racingNumber
   // Mirrors settings.showSkidMarks into the rAF loop without remounting the
   // canvas. Existing marks keep fading even after a flip-off so the toggle
   // does not snap a visible streak away mid-corner.
@@ -1602,6 +1607,7 @@ function GameSession({
         showGhostRef={showGhostRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
+        racingNumberRef={racingNumberRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}

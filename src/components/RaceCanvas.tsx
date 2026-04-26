@@ -20,6 +20,7 @@ import {
 } from '@/game/sceneBuilder'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
+import type { RacingNumberSetting } from '@/lib/racingNumber'
 import {
   initGameState,
   startRace,
@@ -106,6 +107,10 @@ export interface RaceCanvasProps {
   // changes so a swatch click in the pause menu repaints the car on the
   // next frame.
   carPaintRef?: MutableRefObject<string | null>
+  // Live racing-number plate override from Settings. Polled each frame so a
+  // swatch click in the pause menu redraws the plate on the next frame
+  // without rebuilding the renderer. Setter short-circuits on a no-op.
+  racingNumberRef?: MutableRefObject<RacingNumberSetting | null>
   // Live time-of-day lighting override from Settings. Same poll-and-set
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
   // color, ambient, sun) without rebuilding the renderer.
@@ -199,6 +204,7 @@ export function RaceCanvas({
   showGhostRef,
   cameraRigRef,
   carPaintRef,
+  racingNumberRef,
   timeOfDayRef,
   weatherRef,
   showSkidMarksRef,
@@ -273,6 +279,22 @@ export function RaceCanvas({
       bundle.setCarPaint(next)
     }
     syncPaint()
+
+    // Racing-number plate. Same poll-and-set pattern as the paint setter:
+    // the underlying mesh hook short-circuits its own canvas redraw on a
+    // no-op (string-equality on the value + colors tuple), so calling it
+    // every frame is cheap. We still gate at this layer on a reference
+    // change so the common path is a single pointer compare. The setter is
+    // safe to call before the GLB resolves; the plate is attached to the
+    // outer car group which is always live.
+    let lastRacingNumber: RacingNumberSetting | null | undefined = undefined
+    function syncRacingNumber() {
+      const next = racingNumberRef?.current ?? null
+      if (next === lastRacingNumber) return
+      lastRacingNumber = next
+      if (next !== null) bundle.setRacingNumber(next)
+    }
+    syncRacingNumber()
 
     // Same poll-and-set for the time-of-day lighting preset. The setter is
     // cheap (mutates existing colors / lights in place, no allocation) so
@@ -461,6 +483,8 @@ export function RaceCanvas({
       // Reapply paint when the user picks a new swatch in Settings. Cheap:
       // the setter compares string equality and short-circuits on a no-op.
       syncPaint()
+      // Same idea for the racing-number plate (value + plate / text colors).
+      syncRacingNumber()
       // Same idea for FOV: poll the camera rig ref and call
       // updateProjectionMatrix only when the value changes.
       syncFov()

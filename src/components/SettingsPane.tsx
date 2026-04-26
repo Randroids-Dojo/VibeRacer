@@ -37,6 +37,14 @@ import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import { CAR_PAINTS } from '@/lib/carPaint'
 import {
+  DEFAULT_RACING_NUMBER,
+  RACING_NUMBER_MAX_LENGTH,
+  RACING_NUMBER_PLATE_COLORS,
+  RACING_NUMBER_TEXT_COLORS,
+  sanitizeRacingNumber,
+  type RacingNumberSetting,
+} from '@/lib/racingNumber'
+import {
   TIME_OF_DAY_DESCRIPTIONS,
   TIME_OF_DAY_LABELS,
   TIME_OF_DAY_NAMES,
@@ -390,6 +398,42 @@ export function SettingsPane({
   function setCarPaint(value: string | null) {
     clickSoft()
     onChange({ ...settings, carPaint: value })
+  }
+
+  // Racing number plate setters. The text input mutates `value` without a
+  // sound (so each keystroke does not chirp); enabling / disabling the plate
+  // and picking a color play the soft click for parity with the paint
+  // swatches above.
+  function setRacingNumberEnabled(enabled: boolean) {
+    clickSoft()
+    onChange({ ...settings, racingNumber: { ...settings.racingNumber, enabled } })
+  }
+  function setRacingNumberValue(rawValue: string) {
+    onChange({
+      ...settings,
+      racingNumber: {
+        ...settings.racingNumber,
+        value: sanitizeRacingNumber(rawValue),
+      },
+    })
+  }
+  function setRacingNumberPlateHex(plateHex: string) {
+    clickSoft()
+    onChange({
+      ...settings,
+      racingNumber: { ...settings.racingNumber, plateHex },
+    })
+  }
+  function setRacingNumberTextHex(textHex: string) {
+    clickSoft()
+    onChange({
+      ...settings,
+      racingNumber: { ...settings.racingNumber, textHex },
+    })
+  }
+  function resetRacingNumber() {
+    clickSoft()
+    onChange({ ...settings, racingNumber: { ...DEFAULT_RACING_NUMBER } })
   }
 
   function setTimeOfDay(value: TimeOfDay) {
@@ -887,6 +931,73 @@ export function SettingsPane({
               />
             ))}
           </div>
+        </MenuSection>
+
+        <MenuSection title="Racing number">
+          <MenuHint>
+            Stick a 1 or 2 digit racing number plate on the roof of your car.
+            Pure cosmetic. Nothing else changes.
+          </MenuHint>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+            <span style={{ color: menuTheme.textPrimary }}>Show plate</span>
+            <MenuToggle
+              value={settings.racingNumber.enabled}
+              onChange={setRacingNumberEnabled}
+            />
+          </div>
+          {settings.racingNumber.enabled ? (
+            <>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginTop: 10 }}>
+                <label
+                  htmlFor="racing-number-input"
+                  style={{ color: menuTheme.textPrimary, minWidth: 64 }}
+                >
+                  Number
+                </label>
+                <input
+                  id="racing-number-input"
+                  type="text"
+                  inputMode="numeric"
+                  pattern="[0-9]*"
+                  maxLength={RACING_NUMBER_MAX_LENGTH}
+                  value={settings.racingNumber.value}
+                  onChange={(e) => setRacingNumberValue(e.target.value)}
+                  style={racingNumberInput}
+                  aria-label="Racing number"
+                />
+                <RacingNumberPreview setting={settings.racingNumber} />
+              </div>
+              <MenuHint>Plate color</MenuHint>
+              <div style={paintGrid}>
+                {RACING_NUMBER_PLATE_COLORS.map((sw) => (
+                  <PaintSwatch
+                    key={`plate-${sw.id}`}
+                    label={sw.name}
+                    hex={sw.hex}
+                    selected={settings.racingNumber.plateHex === sw.hex}
+                    onClick={() => setRacingNumberPlateHex(sw.hex)}
+                  />
+                ))}
+              </div>
+              <MenuHint>Number color</MenuHint>
+              <div style={paintGrid}>
+                {RACING_NUMBER_TEXT_COLORS.map((sw) => (
+                  <PaintSwatch
+                    key={`text-${sw.id}`}
+                    label={sw.name}
+                    hex={sw.hex}
+                    selected={settings.racingNumber.textHex === sw.hex}
+                    onClick={() => setRacingNumberTextHex(sw.hex)}
+                  />
+                ))}
+              </div>
+              <div style={{ marginTop: 8 }}>
+                <MenuButton variant="ghost" onClick={resetRacingNumber}>
+                  Reset plate
+                </MenuButton>
+              </div>
+            </>
+          ) : null}
         </MenuSection>
 
         <MenuSection title="Time of day">
@@ -1529,4 +1640,47 @@ const swatchLabel: React.CSSProperties = {
   fontWeight: 600,
   letterSpacing: 0.4,
   textTransform: 'uppercase',
+}
+
+const racingNumberInput: React.CSSProperties = {
+  flex: 1,
+  fontFamily: 'monospace',
+  fontSize: 22,
+  textAlign: 'center',
+  letterSpacing: 4,
+  padding: '6px 10px',
+  background: menuTheme.inputBg,
+  color: 'white',
+  border: `2px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  outline: 'none',
+  width: 92,
+}
+
+// Mini live preview of the plate so the player can see their picks before
+// they leave Settings. Renders the same plate-on-border-with-text shape the
+// 3D mesh uses, but in DOM so it costs nothing per frame.
+function RacingNumberPreview({ setting }: { setting: RacingNumberSetting }) {
+  return (
+    <span
+      aria-label={`Plate preview: ${setting.value}`}
+      style={{
+        display: 'inline-flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        width: 56,
+        height: 56,
+        borderRadius: 8,
+        background: setting.plateHex,
+        color: setting.textHex,
+        border: '2px solid #000',
+        fontFamily: '"Helvetica Neue", "Arial Black", Arial, sans-serif',
+        fontWeight: 800,
+        fontSize: setting.value.length === 1 ? 30 : 22,
+        letterSpacing: 1,
+      }}
+    >
+      {setting.value}
+    </span>
+  )
 }

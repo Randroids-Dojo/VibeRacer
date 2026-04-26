@@ -4,6 +4,7 @@ import {
   BoxGeometry,
   BufferAttribute,
   BufferGeometry,
+  CanvasTexture,
   Color,
   ConeGeometry,
   CylinderGeometry,
@@ -109,6 +110,10 @@ import {
   buildScenery,
   type SceneryItem,
 } from './scenery'
+import {
+  drawRacingNumberToCanvas,
+  type RacingNumberSetting,
+} from '@/lib/racingNumber'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -133,6 +138,12 @@ export interface SceneBundle {
   // loading: the requested paint is buffered and applied as soon as the
   // mesh appears.
   setCarPaint: (paintHex: string | null) => void
+  // Apply the player's racing-number plate setting to the car. When
+  // `enabled` is false the plate hides; otherwise the renderer redraws the
+  // CanvasTexture (only when the value or colors changed) and shows the
+  // plate. Cheap on no-op (single string compare); the rAF loop can poll-
+  // and-set every frame without churning the GPU.
+  setRacingNumber: (setting: RacingNumberSetting) => void
   // Apply a time-of-day lighting preset by name. Updates the sky color, the
   // ground material color, the ambient light, and the sun's color, intensity,
   // and direction in place. Cheap; no allocation per call so the rAF loop can
@@ -310,17 +321,130 @@ function buildCarFrame(
   return { car: outer, cancel: () => { cancelled = true } }
 }
 
-// Player car with a paint hook. The Kenney race car GLB exposes the body as
-// a single mesh node named "body" sharing the colormap atlas with the
-// wheels. To recolor only the chassis we clone the material on the body
-// node, drop the `.map` reference (the body region of the atlas is solid
-// red, so dropping it gives a clean unicolor repaint), and tint to the
-// requested hex. `null` restores the original shared material so wheels
-// stay in the same family. The setter is exposed so live Settings updates
+// Player car with a paint + racing-number hook. The Kenney race car GLB
+// exposes the body as a single mesh node named "body" sharing the colormap
+// atlas with the wheels. To recolor only the chassis we clone the material
+// on the body node, drop the `.map` reference (the body region of the atlas
+// is solid red, so dropping it gives a clean unicolor repaint), and tint to
+// the requested hex. `null` restores the original shared material so wheels
+// stay in the same family. The setters are exposed so live Settings updates
 // can reach the renderer without rebuilding the scene.
+
+// Texture resolution for the racing-number plate. 256 is enough for a 1-2
+// digit number to stay crisp under the chase camera without paying for a
+// large GPU upload on every settings tweak.
+export const RACING_NUMBER_TEXTURE_SIZE = 256
+
+// World-space dimensions of the plate mesh on the car's roof. The plate is
+// square so the texture maps 1:1; height is in y above the car's pivot.
+export const RACING_NUMBER_PLATE_SIZE = 1.6
+export const RACING_NUMBER_PLATE_HEIGHT_Y = 1.55
+
+function buildRacingNumberPlate(): {
+  group: Group
+  apply: (setting: RacingNumberSetting) => void
+  dispose: () => void
+} {
+  const group = new Group()
+  // Lift to the roof; the GLB's roof sits ~1.2 world units above the chassis
+  // pivot after the inner-group scale, so 1.55 puts the plate cleanly above
+  // it without z-fighting the body mesh.
+  group.position.y = RACING_NUMBER_PLATE_HEIGHT_Y
+  // Default hidden so a fresh load with the toggle off costs nothing.
+  group.visible = false
+
+  // Detect SSR / no-canvas environments (Vitest's jsdom does not implement
+  // 2D canvas). When unavailable we keep the plate hidden and skip every
+  // draw; the schema-validated settings still round-trip cleanly.
+  const hasCanvas =
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function'
+
+  let canvas: HTMLCanvasElement | null = null
+  let ctx: CanvasRenderingContext2D | null = null
+  let texture: CanvasTexture | null = null
+  let mesh: Mesh | null = null
+  let material: MeshBasicMaterial | null = null
+  // Cache the last applied tuple so a no-op call (same settings, fired by
+  // the rAF loop's poll-and-set) is a single string compare instead of a
+  // canvas redraw + GPU upload.
+  let lastKey: string | null = null
+
+  function ensureMesh() {
+    if (mesh || !hasCanvas) return
+    canvas = document.createElement('canvas')
+    canvas.width = RACING_NUMBER_TEXTURE_SIZE
+    canvas.height = RACING_NUMBER_TEXTURE_SIZE
+    ctx = canvas.getContext('2d')
+    if (!ctx) {
+      canvas = null
+      return
+    }
+    texture = new CanvasTexture(canvas)
+    // Crisp scale-down so the plate stays readable when the chase camera is
+    // far away.
+    texture.minFilter = NearestFilter
+    texture.magFilter = NearestFilter
+    texture.anisotropy = 1
+    material = new MeshBasicMaterial({ map: texture, transparent: false })
+    const geom = new PlaneGeometry(
+      RACING_NUMBER_PLATE_SIZE,
+      RACING_NUMBER_PLATE_SIZE,
+    )
+    mesh = new Mesh(geom, material)
+    // Lay flat (texture faces +Y so a top-down camera reads it). The Kenney
+    // chassis points its forward to world +X; orient the plate so the
+    // number reads upright when viewed from the trailing chase camera by
+    // rotating it so its texture's +X aligns with the car's forward (+X in
+    // world space at heading 0).
+    mesh.rotation.x = -Math.PI / 2
+    mesh.rotation.z = -Math.PI / 2
+    group.add(mesh)
+  }
+
+  function apply(setting: RacingNumberSetting) {
+    if (!setting.enabled) {
+      group.visible = false
+      lastKey = null
+      return
+    }
+    const key = `${setting.value}|${setting.plateHex}|${setting.textHex}`
+    if (key === lastKey && mesh) {
+      group.visible = true
+      return
+    }
+    ensureMesh()
+    if (!ctx || !texture) {
+      // jsdom or canvas-less environment: stay hidden so we never reference
+      // a half-initialized mesh.
+      group.visible = false
+      return
+    }
+    drawRacingNumberToCanvas(
+      ctx,
+      RACING_NUMBER_TEXTURE_SIZE,
+      setting.value,
+      setting.plateHex,
+      setting.textHex,
+    )
+    texture.needsUpdate = true
+    group.visible = true
+    lastKey = key
+  }
+
+  function dispose() {
+    if (texture) texture.dispose()
+    if (material) material.dispose()
+    if (mesh) mesh.geometry.dispose()
+  }
+
+  return { group, apply, dispose }
+}
+
 function buildCar(): {
   car: Group
   setPaint: (hex: string | null) => void
+  setRacingNumber: (setting: RacingNumberSetting) => void
   cancel: () => void
 } {
   let bodyMesh: Mesh | null = null
@@ -349,6 +473,8 @@ function buildCar(): {
     bodyMesh.material = paintMaterial
   }
 
+  const plate = buildRacingNumberPlate()
+
   const { car, cancel: cancelLoad } = buildCarFrame((clone) => {
     clone.traverse((obj) => {
       if (bodyMesh) return
@@ -364,6 +490,9 @@ function buildCar(): {
     })
     applyPaint(pendingHex)
   })
+  // Attach the plate to the OUTER car group so it inherits the heading
+  // rotation but not the inner GLB's yaw / scale tweaks.
+  car.add(plate.group)
 
   return {
     car,
@@ -371,10 +500,12 @@ function buildCar(): {
       pendingHex = hex
       applyPaint(hex)
     },
+    setRacingNumber: plate.apply,
     cancel: () => {
       cancelLoad()
       paintMaterial?.dispose()
       paintMaterial = null
+      plate.dispose()
     },
   }
 }
@@ -1337,7 +1468,12 @@ export function buildScene(path: TrackPath): SceneBundle {
   banner.rotation.y = path.finishLine.heading + Math.PI / 2
   scene.add(banner)
 
-  const { car, setPaint: setCarPaint, cancel: cancelCar } = buildCar()
+  const {
+    car,
+    setPaint: setCarPaint,
+    setRacingNumber,
+    cancel: cancelCar,
+  } = buildCar()
   scene.add(car)
 
   const skidMarks = buildSkidMarkLayer()
@@ -1394,6 +1530,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     camera,
     car,
     setCarPaint,
+    setRacingNumber,
     setTimeOfDay,
     setWeather,
     skidMarks,

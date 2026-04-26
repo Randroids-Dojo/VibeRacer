@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { CarPaintSettingSchema } from './carPaint'
 import {
+  DEFAULT_RACING_NUMBER,
+  RacingNumberSettingSchema,
+  type RacingNumberSetting,
+} from './racingNumber'
+import {
   DEFAULT_TIME_OF_DAY,
   TimeOfDaySchema,
   type TimeOfDay,
@@ -192,6 +197,12 @@ export interface ControlSettings {
   // Stored as a string so the Settings UI can compare directly against the
   // palette in `src/lib/carPaint.ts`.
   carPaint: string | null
+  // Racing number plate decal mounted on the car's roof. When `enabled` is
+  // true the renderer attaches a small flat plate showing `value` (a 1-2
+  // digit string) drawn in `textHex` on a `plateHex` background. Default off
+  // so legacy stored payloads keep the exact car silhouette they had on
+  // upgrade. Pure cosmetic. Defaults documented in `src/lib/racingNumber.ts`.
+  racingNumber: RacingNumberSetting
   // User-customizable gamepad button bindings. Steering is fixed (left stick
   // X plus dpad 14/15); these cover the discrete buttons that drive throttle,
   // brake, handbrake, and pause.
@@ -243,6 +254,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showRacingLine: false,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
+  racingNumber: DEFAULT_RACING_NUMBER,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
   timeOfDay: DEFAULT_TIME_OF_DAY,
   weather: DEFAULT_WEATHER,
@@ -335,6 +347,11 @@ const ControlSettingsSchema = z.object({
   camera: CameraRigSettingsSchema.default(DEFAULT_CAMERA_SETTINGS),
   // Car paint also landed later. Null = stock colormap from the GLB.
   carPaint: CarPaintSettingSchema.default(null),
+  // Racing number plate landed after car paint. Default-disabled so legacy
+  // stored payloads keep the exact car they had on upgrade; the rest of the
+  // sub-fields backfill from the racingNumber default so a player who flips
+  // `enabled` once in Settings sees a well-formed plate immediately.
+  racingNumber: RacingNumberSettingSchema.default(DEFAULT_RACING_NUMBER),
   // Gamepad bindings landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing controller
   // users keep the same bindings they had before this feature shipped.
@@ -373,6 +390,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showRacingLine: DEFAULT_CONTROL_SETTINGS.showRacingLine,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
+    racingNumber: { ...DEFAULT_RACING_NUMBER },
     gamepadBindings: cloneDefaultGamepadBindings(),
     timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
     weather: DEFAULT_CONTROL_SETTINGS.weather,

@@ -535,6 +535,74 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
 
+  it('defaults racingNumber to disabled with the default value and palette colors', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.racingNumber.enabled).toBe(false)
+    expect(DEFAULT_CONTROL_SETTINGS.racingNumber.value).toBe('7')
+    expect(DEFAULT_CONTROL_SETTINGS.racingNumber.plateHex).toBe('#ffffff')
+    expect(DEFAULT_CONTROL_SETTINGS.racingNumber.textHex).toBe('#1a1a1a')
+    expect(cloneDefaultSettings().racingNumber).toEqual(
+      DEFAULT_CONTROL_SETTINGS.racingNumber,
+    )
+  })
+
+  it('cloneDefaultSettings returns an isolated racingNumber object', () => {
+    const a = cloneDefaultSettings()
+    const b = cloneDefaultSettings()
+    expect(a.racingNumber).not.toBe(b.racingNumber)
+    a.racingNumber.value = '88'
+    expect(b.racingNumber.value).toBe('7')
+  })
+
+  it('round-trips an enabled racingNumber with a custom value and colors', () => {
+    const custom = cloneDefaultSettings()
+    custom.racingNumber = {
+      enabled: true,
+      value: '42',
+      plateHex: '#3b6cf4',
+      textHex: '#ffffff',
+    }
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills racingNumber when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    const out = readStoredControlSettings()
+    expect(out.racingNumber).toEqual(DEFAULT_CONTROL_SETTINGS.racingNumber)
+  })
+
+  it('falls back to defaults when stored racingNumber value is malformed', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      racingNumber: {
+        enabled: true,
+        value: 'abc',
+        plateHex: '#ffffff',
+        textHex: '#1a1a1a',
+      },
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
+
+  it('falls back to defaults when stored racingNumber plate hex is malformed', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      racingNumber: {
+        enabled: true,
+        value: '7',
+        plateHex: 'red',
+        textHex: '#1a1a1a',
+      },
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
+
   it('defaults showSpeedometer to true and speedUnit to mph', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showSpeedometer).toBe(true)
     expect(DEFAULT_CONTROL_SETTINGS.speedUnit).toBe('mph')

@@ -135,6 +135,10 @@ export function TuningSession({
   // Same idea for car paint: the lab car wears the player's chosen color.
   const carPaintRef = useRef<string | null>(settings.carPaint)
   carPaintRef.current = settings.carPaint
+  // And the racing-number plate, so the lab car wears the player's chosen
+  // plate decal too.
+  const racingNumberRef = useRef(settings.racingNumber)
+  racingNumberRef.current = settings.racingNumber
   // And the time-of-day lighting preset, so the lab matches the race scene.
   const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
   timeOfDayRef.current = settings.timeOfDay
@@ -320,6 +324,7 @@ export function TuningSession({
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
+            racingNumberRef={racingNumberRef}
             timeOfDayRef={timeOfDayRef}
             weatherRef={weatherRef}
             disableMusicIntensity
