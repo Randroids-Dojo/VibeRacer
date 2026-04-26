@@ -100,6 +100,8 @@ import { LapHistory } from './LapHistory'
 import { HowToPlay } from './HowToPlay'
 import { PhotoMode } from './PhotoMode'
 import { ConfettiOverlay, type ConfettiKind } from './ConfettiOverlay'
+import { SessionSummary } from './SessionSummary'
+import { summarizeSession } from '@/game/sessionSummary'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
@@ -272,6 +274,7 @@ type PauseView =
   | 'achievements'
   | 'howToPlay'
   | 'photo'
+  | 'sessionSummary'
 
 function GameSession({
   slug,
@@ -320,6 +323,22 @@ function GameSession({
   const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
+  // Wall-clock timestamp at session mount. Drives the "Time on page" row in
+  // the end-of-session summary. Survives Restart and Restart Lap so the
+  // counter measures how long the player has been on the page across
+  // restarts; only a navigation away (which unmounts the component) reseeds
+  // it. `Date.now()` rather than `performance.now()` so a brief tab sleep
+  // does not undercount the session.
+  const sessionStartedAtRef = useRef<number>(Date.now())
+  // Player's all-time PB on this (slug, version) AT MOUNT, before any laps
+  // were recorded this session. Drives the "Vs PB" tile in the end-of-session
+  // summary so the player sees how their session best compared to the bar
+  // they walked in with (rather than the post-session bar they may have
+  // already moved). Updated on slug / version change so a navigation between
+  // tracks resets the comparison reference cleanly.
+  const sessionPriorPbRef = useRef<number | null>(
+    readLocalBest(slug, versionHash),
+  )
   const pendingRaceStartRef = useRef<number | null>(null)
   const pendingResetRef = useRef(false)
   // Mid-race "restart this lap" pulse. The rAF loop in RaceCanvas drains it
@@ -628,6 +647,10 @@ function GameSession({
   useEffect(() => {
     pbSplitsRef.current = readLocalBestSplits(slug, versionHash)
     pbLapMsRef.current = readLocalBest(slug, versionHash)
+    // Reseed the session prior-PB reference when the player navigates to a
+    // different slug or version so the end-of-session summary's "Vs PB"
+    // tile compares against the correct starting bar.
+    sessionPriorPbRef.current = readLocalBest(slug, versionHash)
     const freshSectors = readLocalBestSectors(slug, versionHash)
     bestSectorsRef.current = freshSectors
     // Same idea for the drift PB and the optimal lap: a fresh slug load
@@ -824,6 +847,19 @@ function GameSession({
   const exitToTitle = useCallback(() => {
     router.push('/')
   }, [router])
+
+  // Pause-menu Exit handler. When the player has at least one completed lap
+  // we route through the SessionSummary pane so they get a satisfying
+  // wrap-up of the session before leaving. With no laps there is nothing to
+  // summarize, so we route straight out (this also keeps the "instant exit"
+  // feel for a player who paused immediately and changed their mind).
+  const handleExitClick = useCallback(() => {
+    if (lapHistory.length > 0) {
+      setPauseView('sessionSummary')
+      return
+    }
+    exitToTitle()
+  }, [lapHistory.length, exitToTitle])
 
   const editTrack = useCallback(() => {
     router.push(`/${slug}/edit`)
@@ -1703,7 +1739,7 @@ function GameSession({
               challengeAvailable={lastSubmit !== null}
               challengeLabel={challengeLabel ?? undefined}
               trackMoodLabel={trackMoodLabel}
-              onExit={exitToTitle}
+              onExit={handleExitClick}
             />
           ) : pauseView === 'leaderboard' ? (
             <Leaderboard
@@ -1755,6 +1791,26 @@ function GameSession({
               slug={slug}
               captureRef={captureScreenshotRef}
               onClose={() => setPauseView('menu')}
+            />
+          ) : pauseView === 'sessionSummary' ? (
+            <SessionSummary
+              stats={summarizeSession({
+                history: lapHistory,
+                priorAllTimeMs: sessionPriorPbRef.current,
+                driftBest: hud.driftLapBest,
+                sessionDurationMs: Date.now() - sessionStartedAtRef.current,
+              })}
+              slug={slug}
+              onBack={() => setPauseView('menu')}
+              onRaceAgain={() => {
+                setPauseView('menu')
+                restart()
+              }}
+              onExit={exitToTitle}
+              onShare={() => {
+                void handleShare()
+              }}
+              shareLabel={shareLabel ?? undefined}
             />
           ) : (
             <SettingsPane
