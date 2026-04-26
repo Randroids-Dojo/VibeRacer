@@ -29,7 +29,15 @@ import {
   writeLocalBest,
   readLocalBestReplay,
   writeLocalBestReplay,
+  readLocalBestSplits,
+  writeLocalBestSplits,
 } from '@/lib/localBest'
+import type { CheckpointHit } from '@/lib/schemas'
+import {
+  SPLIT_DISPLAY_MS,
+  computeSplitDeltaForLastHit,
+  type SplitDelta,
+} from '@/game/splits'
 import { Leaderboard } from './Leaderboard'
 import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
@@ -117,6 +125,7 @@ interface HudState {
   onTrack: boolean
   toast: string | null
   toastKind: ToastKind | null
+  splitDelta: SplitDelta | null
 }
 
 type PauseView = 'menu' | 'leaderboard' | 'settings' | 'tuning'
@@ -194,6 +203,12 @@ function GameSession({
   // that mounts / unmounts the Minimap does not lose the live position.
   const minimapCarPoseRef = useRef<MinimapPose | null>(null)
   const minimapGhostPoseRef = useRef<MinimapPose | null>(null)
+  // PB checkpoint splits. Loaded once on mount and overwritten each time the
+  // player posts a new all-time PB so the live "delta vs PB" tile always
+  // compares against the freshest reference. A ref (not state) so updates do
+  // not re-render the canvas.
+  const pbSplitsRef = useRef<CheckpointHit[] | null>(null)
+  const splitClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const [phase, setPhase] = useState<Phase>('countdown')
   const [paused, setPaused] = useState(false)
@@ -208,7 +223,15 @@ function GameSession({
     onTrack: true,
     toast: null,
     toastKind: null,
+    splitDelta: null,
   }))
+
+  // Hydrate the PB-splits ref on mount / slug change. Stored alongside the
+  // local PB lap time so a fresh page load shows a delta tile from the very
+  // first checkpoint of the new race.
+  useEffect(() => {
+    pbSplitsRef.current = readLocalBestSplits(slug, versionHash)
+  }, [slug, versionHash])
 
   const onCanvasHud = useCallback((next: RaceCanvasHud) => {
     setHud((prev) => ({
@@ -262,6 +285,10 @@ function GameSession({
       clearTimeout(toastTimerRef.current)
       toastTimerRef.current = null
     }
+    if (splitClearTimerRef.current) {
+      clearTimeout(splitClearTimerRef.current)
+      splitClearTimerRef.current = null
+    }
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     silenceAllSfx(0.05)
     setPaused(false)
@@ -274,6 +301,7 @@ function GameSession({
       onTrack: true,
       toast: null,
       toastKind: null,
+      splitDelta: null,
     }))
     setPhase('countdown')
   }, [])
@@ -408,6 +436,7 @@ function GameSession({
   useEffect(() => {
     return () => {
       if (toastTimerRef.current) clearTimeout(toastTimerRef.current)
+      if (splitClearTimerRef.current) clearTimeout(splitClearTimerRef.current)
       silenceAllSfx(0.05)
     }
   }, [])
@@ -417,6 +446,27 @@ function GameSession({
     // store it. The PB swap happens in handleLapComplete where we know the
     // previous best from React state.
     pendingReplayForSubmitRef.current = replay
+  }
+
+  // Per-checkpoint live split tile. Re-computed each time the player crosses
+  // an in-lap checkpoint by comparing their just-recorded hit against the PB
+  // splits stored from their last all-time PB. The tile auto-clears after
+  // SPLIT_DISPLAY_MS and resets between laps (handleLapComplete clears it).
+  function handleCheckpointHit(hit: CheckpointHit) {
+    const pb = pbSplitsRef.current
+    if (!pb || pb.length === 0) return
+    const out = computeSplitDeltaForLastHit([hit], pb)
+    if (!out) return
+    const generatedAtMs = performance.now()
+    setHud((prev) => ({
+      ...prev,
+      splitDelta: { deltaMs: out.deltaMs, cpId: out.cpId, generatedAtMs },
+    }))
+    if (splitClearTimerRef.current) clearTimeout(splitClearTimerRef.current)
+    splitClearTimerRef.current = setTimeout(() => {
+      setHud((prev) => ({ ...prev, splitDelta: null }))
+      splitClearTimerRef.current = null
+    }, SPLIT_DISPLAY_MS)
   }
 
   function handleLapComplete(event: LapCompleteEvent) {
@@ -429,6 +479,12 @@ function GameSession({
         prev.overallRecord === null || lapMs < prev.overallRecord.lapTimeMs
       if (isAllTimePb) {
         writeLocalBest(slug, versionHash, lapMs)
+        // Capture the lap's checkpoint splits so the next lap's live delta
+        // tile compares against this fresh reference. The hits array carries
+        // {cpId, tMs} pairs in lap order, exactly what the splits helper
+        // expects.
+        writeLocalBestSplits(slug, versionHash, event.hits)
+        pbSplitsRef.current = event.hits
         const pending = pendingReplayForSubmitRef.current
         if (pending) {
           writeLocalBestReplay(slug, versionHash, pending)
@@ -456,8 +512,16 @@ function GameSession({
           : prev.overallRecord,
         toast,
         toastKind,
+        // Reset the per-checkpoint delta tile so the next lap starts clean
+        // rather than freezing on the final checkpoint's value. The first
+        // checkpoint of the new lap will populate it again.
+        splitDelta: null,
       }
     })
+    if (splitClearTimerRef.current) {
+      clearTimeout(splitClearTimerRef.current)
+      splitClearTimerRef.current = null
+    }
     const outcome = outcomeRef.current
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
@@ -550,6 +614,7 @@ function GameSession({
         carPoseOutRef={minimapCarPoseRef}
         ghostPoseOutRef={minimapGhostPoseRef}
         onLapReplay={handleLapReplay}
+        onCheckpointHit={handleCheckpointHit}
         style={canvasStyle}
       />
       {settings.showMinimap ? (
@@ -571,6 +636,8 @@ function GameSession({
         toast={hud.toast}
         toastKind={hud.toastKind}
         initials={initials}
+        splitDeltaMs={hud.splitDelta?.deltaMs ?? null}
+        splitCpId={hud.splitDelta?.cpId ?? null}
       />
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls

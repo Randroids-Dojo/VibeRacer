@@ -17,6 +17,7 @@ import {
   tick,
   type LapCompleteEvent,
 } from '@/game/tick'
+import type { CheckpointHit } from '@/lib/schemas'
 import type { CarParams } from '@/game/physics'
 import type { useKeyboard } from '@/hooks/useKeyboard'
 import { setGameIntensity } from '@/game/music'
@@ -87,6 +88,11 @@ export interface RaceCanvasProps {
   // Fired when the recorder finishes a lap. Game.tsx decides whether to
   // persist the path locally and bundle it into the next /race/submit.
   onLapReplay?: (replay: Replay) => void
+  // Fired the frame the player crosses each in-lap checkpoint (i.e. every
+  // hit that does not also complete the lap). The HUD's split-vs-PB tile
+  // hangs off this so it never has to mirror the full hits array through
+  // React state.
+  onCheckpointHit?: (hit: CheckpointHit) => void
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -115,6 +121,7 @@ export function RaceCanvas({
   carPoseOutRef,
   ghostPoseOutRef,
   onLapReplay,
+  onCheckpointHit,
   disableMusicIntensity,
   className,
   style,
@@ -123,10 +130,12 @@ export function RaceCanvas({
   const onLapCompleteRef = useRef(onLapComplete)
   const onHudUpdateRef = useRef(onHudUpdate)
   const onLapReplayRef = useRef(onLapReplay)
+  const onCheckpointHitRef = useRef(onCheckpointHit)
   const disableMusicRef = useRef(!!disableMusicIntensity)
   onLapCompleteRef.current = onLapComplete
   onHudUpdateRef.current = onHudUpdate
   onLapReplayRef.current = onLapReplay
+  onCheckpointHitRef.current = onCheckpointHit
   disableMusicRef.current = !!disableMusicIntensity
 
   useEffect(() => {
@@ -199,6 +208,7 @@ export function RaceCanvas({
     let prevHud: RaceCanvasHud | null = null
     let prevOnTrack = true
     let droneStarted = false
+    let prevHitsLen = 0
 
     function loop(ts: number) {
       if (!running) return
@@ -228,6 +238,7 @@ export function RaceCanvas({
         lastTs = ts
         prevHud = null
         prevOnTrack = true
+        prevHitsLen = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -294,6 +305,22 @@ export function RaceCanvas({
         paramsRef.current,
       )
       state = result.state
+
+      // Fire the per-checkpoint callback when an in-lap hit is appended this
+      // frame. The lap-complete branch below handles the final hit (it carries
+      // the full lap info and is queued through onLapComplete instead).
+      if (
+        onCheckpointHitRef.current &&
+        !result.lapComplete &&
+        state.hits.length > prevHitsLen
+      ) {
+        // tick.ts only ever appends a single hit per frame, but iterate
+        // defensively in case that ever changes.
+        for (let i = prevHitsLen; i < state.hits.length; i++) {
+          onCheckpointHitRef.current(state.hits[i])
+        }
+      }
+      prevHitsLen = state.hits.length
 
       bundle.car.position.set(state.x, 0, state.z)
       bundle.car.rotation.y = state.heading

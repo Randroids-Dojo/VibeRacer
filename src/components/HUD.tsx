@@ -1,4 +1,5 @@
 'use client'
+import { formatSplitDelta } from '@/game/splits'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -23,6 +24,13 @@ interface HudProps {
   toast: string | null
   toastKind: 'lap' | 'pb' | 'record' | null
   initials: string | null
+  // Live split delta vs the player's local PB at the most recently crossed
+  // checkpoint. Negative = ahead of PB (good, shown green); positive = behind
+  // (slow, shown red). null hides the tile.
+  splitDeltaMs: number | null
+  // The cpId the delta was generated at. Used as a React key so each fresh
+  // checkpoint cross retriggers the pop-in animation.
+  splitCpId: number | null
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -36,6 +44,12 @@ const HUD_ANIMATIONS_CSS = `
   0% { opacity: 0.0 }
   20% { opacity: 1 }
   100% { opacity: 0 }
+}
+@keyframes viberacer-split-pop {
+  0% { transform: translate(-50%, 0) scale(0.85); opacity: 0 }
+  15% { transform: translate(-50%, 0) scale(1.05); opacity: 1 }
+  80% { transform: translate(-50%, 0) scale(1); opacity: 1 }
+  100% { transform: translate(-50%, 0) scale(1); opacity: 0 }
 }
 `
 
@@ -68,6 +82,8 @@ export function HUD(props: HudProps) {
     : '--'
   const celebrate = props.toastKind === 'pb' || props.toastKind === 'record'
   const isRecord = props.toastKind === 'record'
+  const showSplit = props.splitDeltaMs !== null
+  const splitAhead = showSplit && (props.splitDeltaMs ?? 0) < 0
   return (
     <div style={wrap}>
       <style>{HUD_ANIMATIONS_CSS}</style>
@@ -94,6 +110,18 @@ export function HUD(props: HudProps) {
             aria-hidden
           />
         </>
+      ) : null}
+      {showSplit ? (
+        <div
+          key={`split-${props.splitCpId}`}
+          style={splitAhead ? splitTileAhead : splitTileBehind}
+          aria-live="polite"
+        >
+          <div style={splitLabel}>vs PB</div>
+          <div style={splitValue}>
+            {formatSplitDelta(props.splitDeltaMs as number)}
+          </div>
+        </div>
       ) : null}
       {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
     </div>
@@ -199,4 +227,47 @@ const edgeFlashPb: React.CSSProperties = {
 const edgeFlashRecord: React.CSSProperties = {
   ...edgeFlashBase,
   boxShadow: 'inset 0 0 90px rgba(255,200,80,0.85)',
+}
+// Live "delta vs PB" tile. Sits below the top row of stats, centered, so it
+// reads at a glance without competing with the OFF TRACK warning (further
+// down the screen). Pop-in animation runs per cpId via the React key on the
+// container element.
+const splitTileBase: React.CSSProperties = {
+  position: 'absolute',
+  top: 88,
+  left: '50%',
+  transform: 'translate(-50%, 0)',
+  padding: '6px 14px',
+  borderRadius: 8,
+  background: 'rgba(0, 0, 0, 0.55)',
+  border: '1px solid rgba(255, 255, 255, 0.18)',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35)',
+  textAlign: 'center',
+  pointerEvents: 'none',
+  animation: 'viberacer-split-pop 3.5s ease-out forwards',
+  minWidth: 110,
+}
+const splitTileAhead: React.CSSProperties = {
+  ...splitTileBase,
+  color: '#5fe08a',
+  borderColor: 'rgba(95, 224, 138, 0.5)',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35), 0 0 12px rgba(95, 224, 138, 0.35)',
+}
+const splitTileBehind: React.CSSProperties = {
+  ...splitTileBase,
+  color: '#ff7b6e',
+  borderColor: 'rgba(255, 123, 110, 0.5)',
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.35), 0 0 12px rgba(255, 123, 110, 0.35)',
+}
+const splitLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.5,
+  opacity: 0.85,
+  textTransform: 'uppercase',
+}
+const splitValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 'clamp(16px, 4vw, 22px)',
+  fontWeight: 700,
+  lineHeight: 1.1,
 }

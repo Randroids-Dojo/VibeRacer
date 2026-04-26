@@ -291,7 +291,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD, top-down minimap card, pause button, skid mark trail, and invalid-lap handling are all live.
+**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB at each checkpoint), top-down minimap card, pause button, skid mark trail, and invalid-lap handling are all live.
 
 ### Build log
 
@@ -323,6 +323,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - Best lap this session (smaller, beside current).
 - Best-ever for this track version (smaller, persistent; from KV).
 - Lap counter.
+- Live split delta vs local PB (color-coded, pops in at each checkpoint, see below).
 - Pause button (always visible on touch devices).
 - Minimap (bottom-right, top-down, toggleable in Settings).
 
@@ -343,6 +344,16 @@ Pure helpers live in `src/game/skidMarks.ts`. `shouldSpawnSkidMark(intensity, sp
 `buildSkidMarkLayer(poolSize)` in `src/game/sceneBuilder.ts` owns the renderer side: a `Group` of `SKID_MARK_POOL_SIZE = 220` pre-allocated `MeshBasicMaterial` quads sharing one `PlaneGeometry`. Each spawn places two stripes (one per rear wheel) offset perpendicular to the heading by `SKID_MARK_REAR_OFFSET = 1.05` and back along `SKID_MARK_REAR_BACK = 1.4`. `tick(nowMs)` updates per-mark opacity each frame; `clear()` resets the pool on a Restart so a new lap starts on a clean track. The layer's materials and geometry are released through the bundle's existing scene-traversal `dispose` so there is no double-dispose path.
 
 `RaceCanvas.tsx` reads the existing `skidIntensity` heuristic from `audio.ts` to feed the spawn decision and polls `showSkidMarksRef` each frame so a Settings flip lands without rebuilding the renderer. Tests: `tests/unit/skidMarks.test.ts` covers spawn gating (intensity floor, speed floor, interval debounce, custom interval), alpha ramp (peak at age 0, zero at fade end, midpoint linearity, peak clamping, custom fade), peak alpha scaling, and ring-buffer wrap including a custom pool size and the defensive zero-pool case. Toggle coverage in `tests/unit/controlSettings.test.ts` (default, round-trip, legacy backfill).
+
+### Live split delta vs PB
+
+Each time the player crosses an in-lap checkpoint, a small color-coded tile pops in just below the top stat row showing how the current lap compares to the player's local PB at that exact checkpoint. Negative deltas (ahead of PB) render in green; positive deltas (behind) render in red. The tile reads `vs PB` plus a signed `+/-S.mmm` value (e.g. `-0.421`, `+1.034`), pops in with a brief scale animation per cpId, and fades after 3.5 seconds. It also resets between laps so a new lap starts on a clean slate.
+
+Pure helpers live in `src/game/splits.ts` (`computeSplitDeltaForLastHit`, `formatSplitDelta`, `isSplitExpired`, `SPLIT_DISPLAY_MS`). The PB reference splits are stored alongside the local PB lap time in `localStorage` under `viberacer.splits.<slug>.<hash>` and round-trip through `readLocalBestSplits` / `writeLocalBestSplits` in `src/lib/localBest.ts`. They are written every time the lap-complete branch of `Game.tsx` records a fresh all-time PB, so the next lap immediately compares against the freshest reference.
+
+`RaceCanvas` exposes a new optional `onCheckpointHit(hit)` prop that fires once per in-lap checkpoint (the lap-complete checkpoint stays on the existing `onLapComplete` channel because it carries the full lap info). `Game.tsx` consumes the callback, computes the delta, and pushes it through React state into the HUD. Display state (`splitDelta` on `HudState`) is cleared on `restart()` and on every lap completion.
+
+Tests: `tests/unit/splits.test.ts` covers null-PB and empty-current short-circuits, ahead / behind / exact deltas, the multi-hit "use the last entry" case, missing-cpId fallback, formatter sign and zero-pad, NaN / Infinity defensiveness, the 999.5 ms millis-rollover case, and the display window in `isSplitExpired`. `tests/unit/localBest.test.ts` covers null-on-empty, namespacing per slug + hash, malformed-JSON rejection, schema rejection, and quota-exception silence on writes.
 
 ### Endless loop
 
