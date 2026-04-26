@@ -181,6 +181,12 @@ export interface ControlSettings {
   // score and the lap / all-time best blocks; the underlying scoring keeps
   // running so a flip back mid-session still shows the in-progress totals.
   showDrift: boolean
+  // Toggle the racing-line overlay: a thin colored polyline floating just
+  // above the asphalt that traces the active ghost replay (the same source
+  // the ghost car uses, picked by `ghostSource`). Default off because the
+  // line is a coaching aid that not every player wants on screen; the toggle
+  // is here for players who want to study the fast line.
+  showRacingLine: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -228,6 +234,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showKerbs: true,
   showScenery: true,
   showDrift: true,
+  showRacingLine: false,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
@@ -310,6 +317,10 @@ const ControlSettingsSchema = z.object({
   // Drift-score HUD landed after kerbs. Default on so legacy payloads start
   // showing the new readouts automatically without losing any other choices.
   showDrift: z.boolean().default(true),
+  // Racing-line overlay landed after drift. Default OFF (opt-in coaching aid)
+  // so legacy stored payloads keep their existing screen exactly as it was;
+  // players who want the line have to flip it on once in Settings.
+  showRacingLine: z.boolean().default(false),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
@@ -348,6 +359,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
     showScenery: DEFAULT_CONTROL_SETTINGS.showScenery,
     showDrift: DEFAULT_CONTROL_SETTINGS.showDrift,
+    showRacingLine: DEFAULT_CONTROL_SETTINGS.showRacingLine,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     gamepadBindings: cloneDefaultGamepadBindings(),

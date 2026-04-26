@@ -383,6 +383,36 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showDrift).toBe(true)
   })
 
+  it('defaults showRacingLine to false (opt-in coaching aid)', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.showRacingLine).toBe(false)
+    expect(cloneDefaultSettings().showRacingLine).toBe(false)
+  })
+
+  it('round-trips an enabled showRacingLine flag', () => {
+    const custom = cloneDefaultSettings()
+    custom.showRacingLine = true
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills showRacingLine to false when reading legacy storage that omits it', () => {
+    // Legacy payloads that predate the racing-line toggle should keep their
+    // existing screen exactly as it was: opt-in, not opt-out, on upgrade.
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().showRacingLine).toBe(false)
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,

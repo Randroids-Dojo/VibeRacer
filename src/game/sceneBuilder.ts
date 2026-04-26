@@ -10,6 +10,8 @@ import {
   DirectionalLight,
   FogExp2,
   Group,
+  Line,
+  LineBasicMaterial,
   type Material,
   Mesh,
   MeshBasicMaterial,
@@ -67,6 +69,12 @@ import {
 } from './finishLine'
 import { KERB_Y, buildTrackKerbTiles } from './kerbs'
 import {
+  RACING_LINE_COLOR_HEX,
+  RACING_LINE_WIDTH_PX,
+  samplesToPolyline,
+} from './racingLine'
+import type { Replay } from '@/lib/replay'
+import {
   SCENERY_BARRIER_HEX_RED,
   SCENERY_BARRIER_HEX_WHITE,
   buildScenery,
@@ -120,6 +128,12 @@ export interface SceneBundle {
   // barriers at the start gate). Same poll-and-set pattern as kerbs so a
   // Settings toggle can hide everything in O(1).
   scenery: SceneryLayer
+  // Optional racing-line overlay: a thin colored polyline lifted just above
+  // the asphalt that traces the active ghost replay's path. Hidden by
+  // default; the rAF loop polls a Settings ref and feeds the active replay
+  // into `setReplay` whenever the source changes. Designed as a coaching aid
+  // for players who want to see where the leaderboard top time drives.
+  racingLine: RacingLineLayer
   dispose: () => void
 }
 
@@ -715,6 +729,88 @@ export function buildSceneryLayer(path: TrackPath): SceneryLayer {
   }
 }
 
+// Racing-line overlay layer. A single colored polyline floating just above
+// the asphalt that traces the active ghost replay. The overlay rebuilds its
+// geometry whenever a fresh `Replay` arrives (or `null` clears the line) and
+// flips visibility through `setVisible` so a Settings toggle is O(1).
+//
+// The geometry is owned per-replay: rebuilding throws away the old
+// BufferGeometry and creates a new one. This keeps memory bounded (one
+// geometry at a time) at the cost of one allocation per replay swap, which
+// happens at most a handful of times per session (race load, post-PB swap).
+//
+// The renderer uses `LineBasicMaterial`. WebGL ignores `linewidth` on most
+// platforms (it always renders at 1px), so the line will be thin; this is
+// acceptable for a coaching overlay and avoids pulling in `Line2` for a
+// single overlay. A future upgrade can swap to `Line2` without changing the
+// public layer API.
+export interface RacingLineLayer {
+  group: Group
+  setReplay: (replay: Replay | null) => void
+  setVisible: (value: boolean) => void
+  dispose: () => void
+}
+
+export function buildRacingLineLayer(): RacingLineLayer {
+  const group = new Group()
+  // Hidden by default. The rAF loop reads the Settings ref each frame and
+  // flips this; until then we render nothing so a fresh-load with the toggle
+  // off costs zero draw calls.
+  group.visible = false
+  const mat = new LineBasicMaterial({
+    color: RACING_LINE_COLOR_HEX,
+    linewidth: RACING_LINE_WIDTH_PX,
+    transparent: true,
+    opacity: 0.85,
+    // Render the line on top of the road and kerbs without z-fighting. The
+    // line still occludes correctly against the car and ghost (which sit
+    // higher in world Y).
+    depthWrite: false,
+  })
+  let activeReplay: Replay | null = null
+  let activeGeom: BufferGeometry | null = null
+  let activeLine: Line | null = null
+
+  function clearActive() {
+    if (activeLine) {
+      group.remove(activeLine)
+      activeLine = null
+    }
+    if (activeGeom) {
+      activeGeom.dispose()
+      activeGeom = null
+    }
+    activeReplay = null
+  }
+
+  function setReplay(replay: Replay | null) {
+    if (replay === activeReplay) return
+    clearActive()
+    if (!replay) return
+    const verts = samplesToPolyline(replay.samples)
+    if (!verts) return
+    const geom = new BufferGeometry()
+    geom.setAttribute('position', new BufferAttribute(verts, 3))
+    const line = new Line(geom, mat)
+    group.add(line)
+    activeReplay = replay
+    activeGeom = geom
+    activeLine = line
+  }
+
+  return {
+    group,
+    setReplay,
+    setVisible(value) {
+      group.visible = value
+    },
+    dispose() {
+      clearActive()
+      mat.dispose()
+    },
+  }
+}
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -921,6 +1017,9 @@ export function buildScene(path: TrackPath): SceneBundle {
   const scenery = buildSceneryLayer(path)
   scene.add(scenery.group)
 
+  const racingLine = buildRacingLineLayer()
+  scene.add(racingLine.group)
+
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
@@ -957,6 +1056,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     skidMarks,
     kerbs,
     scenery,
+    racingLine,
     dispose,
   }
 }

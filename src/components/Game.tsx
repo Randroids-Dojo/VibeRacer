@@ -284,6 +284,13 @@ function GameSession({
   // frame without rebuilding any geometry.
   const showSceneryRef = useRef<boolean>(settings.showScenery)
   showSceneryRef.current = settings.showScenery
+  // Mirrors settings.showRacingLine into the rAF loop so a flip in Settings
+  // shows (or hides) the racing-line overlay on the next frame. The line
+  // itself is sourced from `activeGhostRef`: there is no separate refresh
+  // for the geometry because the layer rebuilds on its own when the replay
+  // reference changes.
+  const showRacingLineRef = useRef<boolean>(settings.showRacingLine)
+  showRacingLineRef.current = settings.showRacingLine
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -1038,6 +1045,7 @@ function GameSession({
         showSkidMarksRef={showSkidMarksRef}
         showKerbsRef={showKerbsRef}
         showSceneryRef={showSceneryRef}
+        showRacingLineRef={showRacingLineRef}
         rearviewCanvasRef={rearviewCanvasRef}
         showRearviewRef={showRearviewRef}
         carPoseOutRef={minimapCarPoseRef}

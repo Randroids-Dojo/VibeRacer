@@ -378,6 +378,10 @@ export function SettingsPane({
     onChange({ ...settings, showDrift: value })
   }
 
+  function setShowRacingLine(value: boolean) {
+    onChange({ ...settings, showRacingLine: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -688,6 +692,22 @@ export function SettingsPane({
                 ? 'No ghost will appear during the race.'
                 : GHOST_SOURCE_DESCRIPTIONS[settings.ghostSource]}
             </MenuHint>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Racing line</div>
+            <MenuHint>
+              Thin cyan line floating just above the road that traces the same
+              recorded lap as the ghost car. Use it as a coaching aid to study
+              the fast line without needing the ghost on screen.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show racing line</div>
+              <MenuToggle
+                value={settings.showRacingLine}
+                onChange={setShowRacingLine}
+              />
+            </div>
           </div>
 
           <div style={subSection}>

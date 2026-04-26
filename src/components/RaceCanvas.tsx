@@ -126,6 +126,11 @@ export interface RaceCanvasProps {
   // so a Settings flip takes effect without rebuilding the scene. Default
   // behavior when omitted: enabled.
   showSceneryRef?: MutableRefObject<boolean>
+  // Toggle the racing-line overlay (a thin colored polyline floating above
+  // the road that traces the active ghost replay). Polled each frame so a
+  // Settings flip takes effect without rebuilding the scene. The line itself
+  // is sourced from `activeGhostRef`. Default when omitted: disabled.
+  showRacingLineRef?: MutableRefObject<boolean>
   // Optional second canvas the renderer draws a backward-facing pass into
   // every frame. The parent owns the canvas DOM element so the layout (and
   // a CSS-driven show/hide) stays inside the React tree. The backward pass
@@ -188,6 +193,7 @@ export function RaceCanvas({
   showSkidMarksRef,
   showKerbsRef,
   showSceneryRef,
+  showRacingLineRef,
   rearviewCanvasRef,
   showRearviewRef,
   carPoseOutRef,
@@ -284,6 +290,32 @@ export function RaceCanvas({
       bundle.scenery.setVisible(next)
     }
     syncScenery()
+
+    // Racing-line overlay. Two refs feed this layer: the visibility toggle
+    // (Settings) and the active replay source (the same ref the ghost car
+    // reads). Both checks short-circuit on equality so the per-frame cost is
+    // two pointer / boolean compares on the cached values until something
+    // actually changes. Visible defaults to false because the racing line is
+    // an opt-in coaching aid; if no replay is loaded yet we also keep the
+    // line hidden until one resolves.
+    let lastShowRacingLine: boolean | undefined = undefined
+    let lastRacingLineReplay: Replay | null | undefined = undefined
+    function syncRacingLine() {
+      const wantVisible = showRacingLineRef?.current ?? false
+      const replay = activeGhostRef?.current ?? null
+      if (replay !== lastRacingLineReplay) {
+        lastRacingLineReplay = replay
+        bundle.racingLine.setReplay(replay)
+      }
+      // Hide the layer entirely when the player turned the toggle off OR
+      // when no replay is available so an empty group does not flash on.
+      const effectiveVisible = wantVisible && replay !== null
+      if (effectiveVisible !== lastShowRacingLine) {
+        lastShowRacingLine = effectiveVisible
+        bundle.racingLine.setVisible(effectiveVisible)
+      }
+    }
+    syncRacingLine()
 
     function resize() {
       const el = canvasRef.current
@@ -406,6 +438,8 @@ export function RaceCanvas({
       syncKerbs()
       // And the trackside scenery visibility.
       syncScenery()
+      // And the racing-line overlay (visibility + replay source).
+      syncRacingLine()
 
       if (pendingResetRef.current) {
         state = initGameState(path)
