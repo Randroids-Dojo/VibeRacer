@@ -100,6 +100,10 @@ export interface RaceCanvasProps {
   // slides. Polled each frame so a Settings flip takes effect without
   // rebuilding the renderer. Default behavior when omitted: enabled.
   showSkidMarksRef?: MutableRefObject<boolean>
+  // Toggle the alternating red / white kerbs at the inside of every corner.
+  // Polled each frame so a Settings flip takes effect without rebuilding the
+  // scene. Default behavior when omitted: enabled.
+  showKerbsRef?: MutableRefObject<boolean>
   // Optional second canvas the renderer draws a backward-facing pass into
   // every frame. The parent owns the canvas DOM element so the layout (and
   // a CSS-driven show/hide) stays inside the React tree. The backward pass
@@ -154,6 +158,7 @@ export function RaceCanvas({
   carPaintRef,
   timeOfDayRef,
   showSkidMarksRef,
+  showKerbsRef,
   rearviewCanvasRef,
   showRearviewRef,
   carPoseOutRef,
@@ -209,6 +214,19 @@ export function RaceCanvas({
       if (next !== null) bundle.setTimeOfDay(next)
     }
     syncTimeOfDay()
+
+    // Same poll-and-set for the inside-corner kerb visibility. The setter just
+    // flips the parent group's visibility flag, which is O(1) and free per
+    // frame; we still short-circuit on equality so the common path is a single
+    // pointer compare and a boolean check.
+    let lastShowKerbs: boolean | undefined = undefined
+    function syncKerbs() {
+      const next = showKerbsRef?.current ?? true
+      if (next === lastShowKerbs) return
+      lastShowKerbs = next
+      bundle.kerbs.setVisible(next)
+    }
+    syncKerbs()
 
     function resize() {
       const el = canvasRef.current
@@ -318,6 +336,8 @@ export function RaceCanvas({
       syncFov()
       // And the time-of-day lighting preset.
       syncTimeOfDay()
+      // And the inside-corner kerb visibility.
+      syncKerbs()
 
       if (pendingResetRef.current) {
         state = initGameState(path)

@@ -225,6 +225,11 @@ function GameSession({
   // without rebuilding the second WebGL context.
   const showRearviewRef = useRef<boolean>(settings.showRearview)
   showRearviewRef.current = settings.showRearview
+  // Mirrors settings.showKerbs into the rAF loop so a flip in Settings hides
+  // (or shows) the inside-corner kerbs on the next frame without rebuilding
+  // any geometry.
+  const showKerbsRef = useRef<boolean>(settings.showKerbs)
+  showKerbsRef.current = settings.showKerbs
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -770,6 +775,7 @@ function GameSession({
         carPaintRef={carPaintRef}
         timeOfDayRef={timeOfDayRef}
         showSkidMarksRef={showSkidMarksRef}
+        showKerbsRef={showKerbsRef}
         rearviewCanvasRef={rearviewCanvasRef}
         showRearviewRef={showRearviewRef}
         carPoseOutRef={minimapCarPoseRef}

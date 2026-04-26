@@ -151,6 +151,10 @@ export interface ControlSettings {
   // backward-facing camera in a small inset so the player can see the ghost
   // (or anything else behind them) while racing. Default on.
   showRearview: boolean
+  // Toggle the alternating red / white kerbs at the inside of every corner.
+  // Cheap to render (a couple of materials shared across every tile) so
+  // default on; the toggle is here for users who want a pure-asphalt look.
+  showKerbs: boolean
   camera: CameraRigSettings
   // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
   // Stored as a string so the Settings UI can compare directly against the
@@ -189,6 +193,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   showSpeedometer: true,
   speedUnit: DEFAULT_SPEED_UNIT,
   showRearview: true,
+  showKerbs: true,
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
@@ -255,6 +260,9 @@ const ControlSettingsSchema = z.object({
   // Rear-view mirror landed later still. Default on so legacy players see
   // the inset on their next race without having to dig into Settings.
   showRearview: z.boolean().default(true),
+  // Kerbs landed later still. Default on so legacy stored payloads start
+  // showing the curb stones automatically without losing any other choices.
+  showKerbs: z.boolean().default(true),
   speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
   // Camera tunables landed after the original settings shape; backfill from
   // defaults when reading legacy localStorage payloads so existing users do
@@ -285,6 +293,7 @@ export function cloneDefaultSettings(): ControlSettings {
     showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
     speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
     showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,
+    showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     gamepadBindings: cloneDefaultGamepadBindings(),

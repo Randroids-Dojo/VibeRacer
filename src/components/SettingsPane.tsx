@@ -339,6 +339,10 @@ export function SettingsPane({
     onChange({ ...settings, showRearview: value })
   }
 
+  function setShowKerbs(value: boolean) {
+    onChange({ ...settings, showKerbs: value })
+  }
+
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -643,6 +647,22 @@ export function SettingsPane({
               <MenuToggle
                 value={settings.showSkidMarks}
                 onChange={setShowSkidMarks}
+              />
+            </div>
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Kerbs</div>
+            <MenuHint>
+              Alternating red and white curb stones along the inside of every
+              corner. Helps mark the apex at a glance. Turn off for a pure
+              asphalt look.
+            </MenuHint>
+            <div style={audioRow}>
+              <div style={audioLabel}>Show kerbs</div>
+              <MenuToggle
+                value={settings.showKerbs}
+                onChange={setShowKerbs}
               />
             </div>
           </div>

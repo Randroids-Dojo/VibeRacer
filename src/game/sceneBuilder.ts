@@ -56,6 +56,7 @@ import {
   computeGatePolePositions,
   gatePoleSeparation,
 } from './finishLine'
+import { KERB_Y, buildTrackKerbTiles } from './kerbs'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -89,6 +90,10 @@ export interface SceneBundle {
   // each frame and clear it on a full reset, without needing to reach into
   // the scene graph.
   skidMarks: SkidMarkLayer
+  // Inside-corner kerb tiles (the alternating red / white curb stones at the
+  // apex of every turn). Exposed so the rAF loop can poll a Settings toggle
+  // and flip visibility without rebuilding any geometry.
+  kerbs: KerbLayer
   dispose: () => void
 }
 
@@ -458,6 +463,85 @@ export function buildSkidMarkLayer(
 // without reaching across modules.
 export { skidMarkPeakAlpha }
 
+// Inside-corner kerb layer. Each tile is a flat colored quad laid along the
+// inner edge of a corner's centerline arc. Tiles alternate red and white so
+// the kerb reads as a classic racing curb stone strip at the apex.
+//
+// One material is created per unique color (red and white), shared across every
+// tile of that color, so disposing the layer releases at most two materials
+// regardless of how many corners the track has. Geometry is also one shared
+// PlaneGeometry sized to the per-tile length / depth from `KerbTile.length`
+// and `KerbTile.depth` (which are uniform across all tiles in a given corner
+// because we use a constant tile count per 90 degrees).
+//
+// The layer's `setVisible(value)` flag flips the parent group's visibility so
+// the rAF loop can toggle kerbs in response to a Settings change in O(1)
+// without touching individual meshes.
+export interface KerbLayer {
+  group: Group
+  setVisible: (value: boolean) => void
+  dispose: () => void
+}
+
+// Slight dimensional shrink so adjacent tiles of opposite color do not bleed
+// into each other when the alternating pattern lands at extreme camera
+// distances. Visual only; the math in kerbs.ts uses the unscaled tile length
+// for arc-flush spacing.
+const KERB_TILE_RENDER_SCALE = 0.96
+
+export function buildKerbLayer(path: TrackPath): KerbLayer {
+  const group = new Group()
+  const tiles = buildTrackKerbTiles(path)
+  // Cache one material per unique color across the whole track. The kerb
+  // palette only has two colors so this collapses to at most two materials.
+  const matCache = new Map<number, MeshBasicMaterial>()
+  const geomCache = new Map<string, PlaneGeometry>()
+  for (const tile of tiles) {
+    let mat = matCache.get(tile.colorHex)
+    if (!mat) {
+      mat = new MeshBasicMaterial({
+        color: tile.colorHex,
+        // Flat shading so the kerb reads as paint regardless of sun direction.
+        // BasicMaterial ignores lights, so the color stays vivid in every
+        // time-of-day preset (which is what classic kerb stones look like).
+      })
+      matCache.set(tile.colorHex, mat)
+    }
+    // Per-corner the tile dims are constant; cache geometry by their string
+    // key so we share one geometry per (length, depth) pair.
+    const geomKey = `${tile.length.toFixed(4)}|${tile.depth.toFixed(4)}`
+    let geom = geomCache.get(geomKey)
+    if (!geom) {
+      geom = new PlaneGeometry(
+        tile.length * KERB_TILE_RENDER_SCALE,
+        tile.depth * KERB_TILE_RENDER_SCALE,
+      )
+      geomCache.set(geomKey, geom)
+    }
+    const mesh = new Mesh(geom, mat)
+    // PlaneGeometry sits in the XY plane by default. Lay it flat (XZ) by
+    // rotating -90 degrees about +X. After this, the plane's local +X axis
+    // still points along world +X (length axis), local +Y points along world
+    // -Z (depth axis), and local +Z now points along world +Y. With Three's
+    // default Euler XYZ order, a non-zero rotation.z applied AFTER rotation.x
+    // therefore rotates about object-local +Z = world +Y, which is exactly the
+    // yaw we want to align the tile's length axis with the tangent direction.
+    mesh.rotation.set(-Math.PI / 2, 0, tile.rotationY)
+    mesh.position.set(tile.x, KERB_Y, tile.z)
+    group.add(mesh)
+  }
+  return {
+    group,
+    setVisible(value) {
+      group.visible = value
+    },
+    dispose() {
+      for (const mat of matCache.values()) mat.dispose()
+      for (const geom of geomCache.values()) geom.dispose()
+    },
+  }
+}
+
 // Ghost variant of the player car: same GLB clone, but every material is
 // swapped for a translucent cyan tint so it reads as a recording rather than
 // another vehicle. Returned `dispose` releases the override material.
@@ -623,6 +707,9 @@ export function buildScene(path: TrackPath): SceneBundle {
   const skidMarks = buildSkidMarkLayer()
   scene.add(skidMarks.group)
 
+  const kerbs = buildKerbLayer(path)
+  scene.add(kerbs.group)
+
   const camera = new PerspectiveCamera(70, 1, 0.1, 2000)
   camera.position.set(0, 10, 20)
 
@@ -649,7 +736,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     bannerCheckerTexture.dispose()
   }
 
-  return { scene, camera, car, setCarPaint, setTimeOfDay, skidMarks, dispose }
+  return { scene, camera, car, setCarPaint, setTimeOfDay, skidMarks, kerbs, dispose }
 }
 
 export interface CameraRigParams {
