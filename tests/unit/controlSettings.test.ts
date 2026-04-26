@@ -200,6 +200,45 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().showGhost).toBe(true)
   })
 
+  it('defaults ghostSource to auto so legacy behavior is preserved', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.ghostSource).toBe('auto')
+    expect(cloneDefaultSettings().ghostSource).toBe('auto')
+  })
+
+  it('round-trips a non-default ghostSource', () => {
+    const custom = cloneDefaultSettings()
+    custom.ghostSource = 'top'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('round-trips ghostSource = pb', () => {
+    const custom = cloneDefaultSettings()
+    custom.ghostSource = 'pb'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().ghostSource).toBe('pb')
+  })
+
+  it('backfills ghostSource when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+    })
+    expect(readStoredControlSettings().ghostSource).toBe('auto')
+  })
+
+  it('falls back to defaults when stored ghostSource is unknown', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      ghostSource: 'unknown',
+    })
+    // Schema rejection: the whole payload falls back to defaults rather than
+    // partially applying with a bogus enum value.
+    expect(readStoredControlSettings().ghostSource).toBe('auto')
+  })
+
   it('defaults showMinimap to true', () => {
     expect(DEFAULT_CONTROL_SETTINGS.showMinimap).toBe(true)
     expect(cloneDefaultSettings().showMinimap).toBe(true)

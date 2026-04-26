@@ -60,6 +60,12 @@ import {
 } from '@/lib/cameraPresets'
 import { SPEED_UNITS, unitLabel, type SpeedUnit } from '@/lib/speedometer'
 import {
+  GHOST_SOURCES,
+  GHOST_SOURCE_DESCRIPTIONS,
+  GHOST_SOURCE_LABELS,
+  type GhostSource,
+} from '@/lib/ghostSource'
+import {
   MenuButton,
   MenuHeader,
   MenuHint,
@@ -334,8 +340,14 @@ export function SettingsPane({
     onChange({ ...settings, touchMode: mode })
   }
 
-  function setShowGhost(value: boolean) {
-    onChange({ ...settings, showGhost: value })
+  function setGhostSource(value: GhostSource) {
+    clickSoft()
+    onChange({ ...settings, ghostSource: value, showGhost: true })
+  }
+
+  function setGhostOff() {
+    clickSoft()
+    onChange({ ...settings, showGhost: false })
   }
 
   function setShowMinimap(value: boolean) {
@@ -645,16 +657,37 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Ghost car</div>
             <MenuHint>
-              Race a translucent car that drives the fastest known lap on this
-              track. Switches to your own path once you set a personal best.
+              Race a translucent car that drives a recorded lap. Pick whose
+              lap to chase. Off hides the ghost entirely.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show ghost</div>
-              <MenuToggle
-                value={settings.showGhost}
-                onChange={setShowGhost}
-              />
+            <div style={touchToggleRow}>
+              <MenuButton
+                variant={!settings.showGhost ? 'primary' : 'secondary'}
+                onClick={setGhostOff}
+                title="Hide the ghost car entirely."
+              >
+                Off
+              </MenuButton>
+              {GHOST_SOURCES.map((source) => {
+                const active =
+                  settings.showGhost && settings.ghostSource === source
+                return (
+                  <MenuButton
+                    key={source}
+                    variant={active ? 'primary' : 'secondary'}
+                    onClick={() => setGhostSource(source)}
+                    title={GHOST_SOURCE_DESCRIPTIONS[source]}
+                  >
+                    {GHOST_SOURCE_LABELS[source]}
+                  </MenuButton>
+                )
+              })}
             </div>
+            <MenuHint>
+              {!settings.showGhost
+                ? 'No ghost will appear during the race.'
+                : GHOST_SOURCE_DESCRIPTIONS[settings.ghostSource]}
+            </MenuHint>
           </div>
 
           <div style={subSection}>

@@ -64,6 +64,11 @@ import type { CarParams } from '@/game/physics'
 import type { InputMode } from '@/lib/tuningSettings'
 import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
+  ghostSourceNeedsTopFetch,
+  pickGhostAfterPb,
+  pickGhostReplay,
+} from '@/lib/ghostSource'
+import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
@@ -234,6 +239,11 @@ function GameSession({
   // canvas every time the toggle flips.
   const showGhostRef = useRef<boolean>(settings.showGhost)
   showGhostRef.current = settings.showGhost
+  // Mirrors settings.ghostSource so the post-PB ghost swap inside
+  // handleLapComplete reads the current preference even though the closure
+  // captured a stale value at mount time.
+  const ghostSourceRef = useRef(settings.ghostSource)
+  ghostSourceRef.current = settings.ghostSource
   // Mirrors the player's camera tunables into the rAF loop the same way.
   // Recomputed every render from `settings.camera` so a slider tweak in
   // SettingsPane takes effect on the next frame.
@@ -582,15 +592,22 @@ function GameSession({
   }, [])
 
   useEffect(() => {
-    // Resolve the initial ghost: prefer the player's local PB replay, fall
-    // back to whatever the server reports as the leaderboard's top recording
-    // for this track. Once set, this ref is updated only on personal-best
-    // laps (see handleLapComplete).
+    // Resolve the initial ghost based on the player's source preference:
+    //   auto: prefer the local PB replay; fall back to leaderboard top.
+    //   top:  always show the leaderboard top recording.
+    //   pb:   only show the local PB; do not fall back to top.
+    // Once set, this ref is updated only on personal-best laps (see
+    // handleLapComplete) so a swap mid-race waits for a clean lap boundary.
     let cancelled = false
     const local = readLocalBestReplay(slug, versionHash)
-    if (local) {
-      activeGhostRef.current = local
-      return
+    const source = settings.ghostSource
+    // Apply the local-only resolution immediately so the player sees a ghost
+    // (or nothing) on the first frame without waiting on the network.
+    activeGhostRef.current = pickGhostReplay(source, local, null)
+    if (!ghostSourceNeedsTopFetch(source)) {
+      return () => {
+        cancelled = true
+      }
     }
     fetch(
       `/api/replay/top?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
@@ -599,9 +616,11 @@ function GameSession({
         if (!res.ok) return
         const body = await res.json().catch(() => null)
         const parsed = ReplaySchema.safeParse(body)
-        if (!cancelled && parsed.success) {
-          activeGhostRef.current = parsed.data
-        }
+        if (cancelled || !parsed.success) return
+        // Recompute against the freshly fetched top in case a PB lap landed
+        // between the initial paint and the network resolve.
+        const fresh = readLocalBestReplay(slug, versionHash)
+        activeGhostRef.current = pickGhostReplay(source, fresh, parsed.data)
       })
       .catch(() => {
         // Best-effort; absent ghost is a non-fatal degradation.
@@ -609,7 +628,7 @@ function GameSession({
     return () => {
       cancelled = true
     }
-  }, [slug, versionHash])
+  }, [slug, versionHash, settings.ghostSource])
 
   useEffect(() => {
     function onKeyDown() {
@@ -839,7 +858,15 @@ function GameSession({
         const pending = pendingReplayForSubmitRef.current
         if (pending) {
           writeLocalBestReplay(slug, versionHash, pending)
-          activeGhostRef.current = pending
+          // Honor the player's source preference: 'top' keeps chasing the
+          // leaderboard #1 even after a personal best, 'auto' and 'pb' swap
+          // to the freshly recorded PB so the next lap chases the player's
+          // own best path.
+          activeGhostRef.current = pickGhostAfterPb(
+            ghostSourceRef.current,
+            pending,
+            activeGhostRef.current,
+          )
         }
       }
       const toastKind: ToastKind = isNewRecord

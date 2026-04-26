@@ -15,6 +15,11 @@ import {
   SpeedUnitSchema,
   type SpeedUnit,
 } from './speedometer'
+import {
+  DEFAULT_GHOST_SOURCE,
+  GhostSourceSchema,
+  type GhostSource,
+} from './ghostSource'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -139,6 +144,12 @@ export interface ControlSettings {
   keyBindings: KeyBindings
   touchMode: TouchMode
   showGhost: boolean
+  // Which ghost to surface when `showGhost` is true: 'auto' (legacy: PB if
+  // the player has one, else leaderboard top), 'top' (always the leaderboard
+  // top, even after the player's PB beats it), or 'pb' (only the player's
+  // PB, no fallback to top). Setting `showGhost: false` hides the ghost
+  // regardless of source.
+  ghostSource: GhostSource
   // Toggle the bottom-right top-down minimap card. Default on for new users
   // (cheap render, useful on unfamiliar tracks); turning it off hides the
   // card entirely with no other side effects.
@@ -208,6 +219,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
   touchMode: 'single',
   showGhost: true,
+  ghostSource: DEFAULT_GHOST_SOURCE,
   showMinimap: true,
   showSkidMarks: true,
   showSpeedometer: true,
@@ -271,6 +283,11 @@ const ControlSettingsSchema = z.object({
   // Older stored settings predate this flag; default it on so existing users
   // see the ghost on their next race without having to dig into Settings.
   showGhost: z.boolean().default(true),
+  // Ghost-source picker landed after `showGhost`. Default 'auto' matches the
+  // legacy resolution (local PB if present, else leaderboard top) so legacy
+  // payloads keep their existing behavior on the next race without having to
+  // open Settings.
+  ghostSource: GhostSourceSchema.default(DEFAULT_GHOST_SOURCE),
   // Minimap toggle landed after the original settings shape. Default on for
   // legacy stored payloads so the upgrade is opt-out, not opt-in.
   showMinimap: z.boolean().default(true),
@@ -322,6 +339,7 @@ export function cloneDefaultSettings(): ControlSettings {
     keyBindings: cloneDefaultBindings(),
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
+    ghostSource: DEFAULT_CONTROL_SETTINGS.ghostSource,
     showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
     showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
     showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
