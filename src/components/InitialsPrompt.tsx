@@ -1,20 +1,21 @@
 'use client'
 import { useState, useEffect, useRef } from 'react'
 import { InitialsSchema } from '@/lib/schemas'
+import {
+  INITIALS_EVENT,
+  INITIALS_STORAGE_KEY,
+  readStoredInitials,
+  writeStoredInitials,
+} from '@/lib/initials'
 import { MenuButton, MenuOverlay, MenuPanel } from './MenuUI'
 
-export const INITIALS_STORAGE_KEY = 'viberacer.initials'
-
-export function readStoredInitials(): string | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(INITIALS_STORAGE_KEY)
-  if (!raw) return null
-  const parsed = InitialsSchema.safeParse(raw)
-  return parsed.success ? parsed.data : null
-}
-
-export function writeStoredInitials(value: string): void {
-  window.localStorage.setItem(INITIALS_STORAGE_KEY, value)
+// Re-export the storage helpers so existing imports (`@/components/InitialsPrompt`)
+// keep working. New consumers should import from `@/lib/initials` directly.
+export {
+  INITIALS_EVENT,
+  INITIALS_STORAGE_KEY,
+  readStoredInitials,
+  writeStoredInitials,
 }
 
 export function InitialsPrompt({

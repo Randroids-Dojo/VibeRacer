@@ -6,7 +6,12 @@ import type { LapCompleteEvent } from '@/game/tick'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { useTuning } from '@/hooks/useTuning'
-import { InitialsPrompt, readStoredInitials } from './InitialsPrompt'
+import { InitialsPrompt } from './InitialsPrompt'
+import {
+  INITIALS_EVENT,
+  INITIALS_STORAGE_KEY,
+  readStoredInitials,
+} from '@/lib/initials'
 import { Countdown } from './Countdown'
 import { HUD } from './HUD'
 import { PauseMenu } from './PauseMenu'
@@ -57,6 +62,27 @@ export function Game(props: GameProps) {
 
   useEffect(() => {
     setInitials(readStoredInitials())
+  }, [])
+
+  // Mirror the InitialsPrompt module's INITIALS_EVENT and the browser's
+  // `storage` event so editing initials in Settings (or in another tab)
+  // updates the HUD live without restarting the race.
+  useEffect(() => {
+    function onCustom(e: Event) {
+      const detail = (e as CustomEvent<string>).detail
+      if (typeof detail === 'string') setInitials(detail)
+      else setInitials(readStoredInitials())
+    }
+    function onStorage(e: StorageEvent) {
+      if (e.key !== INITIALS_STORAGE_KEY) return
+      setInitials(readStoredInitials())
+    }
+    window.addEventListener(INITIALS_EVENT, onCustom)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener(INITIALS_EVENT, onCustom)
+      window.removeEventListener('storage', onStorage)
+    }
   }, [])
 
   if (initials === undefined) {

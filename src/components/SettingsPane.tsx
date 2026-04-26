@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ACTION_LABELS,
@@ -14,6 +14,8 @@ import {
 } from '@/lib/controlSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
+import { InitialsSchema } from '@/lib/schemas'
+import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import {
   MenuButton,
   MenuHeader,
@@ -59,6 +61,52 @@ export function SettingsPane({
     setSettings: setAudio,
     resetSettings: resetAudio,
   } = useAudioSettings()
+  // Identity: editable inline. Hydrated from localStorage on mount; saving
+  // dispatches the INITIALS_EVENT (via writeStoredInitials) so the HUD picks
+  // up the new tag on the next frame without a page reload. Mid-race edits
+  // affect future laps only; historical leaderboard entries are immutable.
+  const [storedInitials, setStoredInitials] = useState<string>('')
+  const [initialsDraft, setInitialsDraft] = useState<string>('')
+  const [initialsError, setInitialsError] = useState<string | null>(null)
+  const [initialsSaved, setInitialsSaved] = useState<boolean>(false)
+  const initialsSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
+  useEffect(() => {
+    const current = readStoredInitials() ?? ''
+    setStoredInitials(current)
+    setInitialsDraft(current)
+  }, [])
+  useEffect(() => {
+    return () => {
+      if (initialsSavedTimerRef.current) {
+        clearTimeout(initialsSavedTimerRef.current)
+      }
+    }
+  }, [])
+
+  function saveInitials() {
+    const parsed = InitialsSchema.safeParse(initialsDraft)
+    if (!parsed.success) {
+      setInitialsError('3 letters, A to Z only.')
+      return
+    }
+    writeStoredInitials(parsed.data)
+    setStoredInitials(parsed.data)
+    setInitialsDraft(parsed.data)
+    setInitialsError(null)
+    setInitialsSaved(true)
+    if (initialsSavedTimerRef.current) {
+      clearTimeout(initialsSavedTimerRef.current)
+    }
+    initialsSavedTimerRef.current = setTimeout(() => {
+      setInitialsSaved(false)
+      initialsSavedTimerRef.current = null
+    }, 1500)
+  }
+
+  const initialsDirty =
+    initialsDraft.length === 3 && initialsDraft !== storedInitials
 
   function openTuningLab() {
     if (inRace && !window.confirm('Leave the race to open the Tuning Lab?')) {
@@ -142,6 +190,50 @@ export function SettingsPane({
     <MenuOverlay zIndex={110}>
       <MenuPanel width="wide">
         <MenuHeader title="SETTINGS" onClose={onClose} />
+
+        <MenuSection title="Identity">
+          <MenuHint>
+            Three letters tag your lap times on the leaderboards. Editing
+            them only affects future laps. Past entries keep their old tag.
+          </MenuHint>
+          <div style={initialsRow}>
+            <input
+              value={initialsDraft}
+              maxLength={3}
+              onChange={(e) => {
+                setInitialsDraft(
+                  e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
+                )
+                setInitialsError(null)
+                setInitialsSaved(false)
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && initialsDirty) {
+                  e.preventDefault()
+                  saveInitials()
+                }
+              }}
+              autoComplete="off"
+              spellCheck={false}
+              aria-label="Initials"
+              style={initialsInput}
+            />
+            <MenuButton
+              variant="primary"
+              click="confirm"
+              fullWidth={false}
+              disabled={!initialsDirty}
+              onClick={saveInitials}
+            >
+              Save
+            </MenuButton>
+          </div>
+          {initialsError ? (
+            <div style={initialsErr}>{initialsError}</div>
+          ) : initialsSaved ? (
+            <div style={initialsOk}>Saved.</div>
+          ) : null}
+        </MenuSection>
 
         <MenuSection title="Audio">
           <div style={audioRow}>
@@ -391,4 +483,31 @@ const footer: React.CSSProperties = {
   justifyContent: 'space-between',
   gap: 8,
   marginTop: 4,
+}
+const initialsRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+}
+const initialsInput: React.CSSProperties = {
+  flex: 1,
+  fontFamily: 'monospace',
+  fontSize: 28,
+  textAlign: 'center',
+  letterSpacing: 8,
+  padding: '6px 10px',
+  background: menuTheme.inputBg,
+  color: 'white',
+  border: `2px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  outline: 'none',
+  textTransform: 'uppercase',
+}
+const initialsErr: React.CSSProperties = {
+  color: '#ffb3b3',
+  fontSize: 12,
+}
+const initialsOk: React.CSSProperties = {
+  color: '#5fe08a',
+  fontSize: 12,
 }

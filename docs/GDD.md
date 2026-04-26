@@ -15,7 +15,7 @@
 | 4 | Controls | partial (keyboard WASD/arrows/space + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad pending) |
 | 5 | Vehicle | partial (arcade integrator + off-track drag; Kenney model + raycast per wheel pending) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with cycle-on-click placement, live validation, and save to `PUT /api/track/[slug]`) |
-| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + Settings pane on home and pause menu live; initials editing in Settings pending) |
+| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + Settings pane on home and pause menu live, with inline initials editing in the Settings pane) |
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, per-track configurable checkpoint count, lap detection, invalid-lap reset, and the full HUD all live) |
 | 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings ship; Settings pane is now live for keyboard remap and dual / single touch mode) |
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
@@ -107,7 +107,8 @@ Trailing third-person camera, Forza Horizon style.
 - Settings UI: `src/components/SettingsPane.tsx` is a modal pane. The keyboard section detects `(any-pointer: fine)`; the touch section detects `(any-pointer: coarse)` (with `navigator.maxTouchPoints` fallback). Each action shows two slot buttons. Click a slot then press a key to bind. Reassigning a code that was already bound elsewhere transfers it. Reset to defaults is one click. Esc cancels capture.
 - Wiring: `src/components/SettingsLauncher.tsx` exposes the Settings button on the home page (`src/app/page.tsx`). The pause menu (`src/components/PauseMenu.tsx`) gains a Settings entry that switches `pauseView` to `'settings'` in `Game.tsx`.
 - Tests: `tests/unit/controlSettings.test.ts` covers default-binding lookup, rebind transfers across actions, immutability of inputs, slot growth past current length, clear bounds, key-code formatting, and the localStorage round-trip (defaults on missing or malformed payloads).
-- **Not yet landed.** Q/E shifter keys, gamepad, initials editing in Settings.
+- Initials editing: live. The Settings pane (`SettingsPane`) renders an "Identity" section with the current initials in an inline 3-letter input (uppercase A-Z, same `InitialsSchema` validation as the first-visit prompt). Saving calls `writeStoredInitials(value)` from `src/lib/initials.ts`, which writes the localStorage key `viberacer.initials` and dispatches a `viberacer:initials-changed` CustomEvent. `Game` subscribes to that event plus the cross-tab `storage` event so the HUD's RACER block reflects the new tag on the next frame without restarting the race. Mid-race edits affect future laps only; historical leaderboard entries keep their old tag (per `§7` and `§11`).
+- **Not yet landed.** Q/E shifter keys, gamepad.
 
 ### Keyboard (defaults, remappable in Settings)
 
@@ -277,7 +278,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 - `?v=<hash>` deep-link handling: live. `src/app/[slug]/page.tsx` reads `searchParams.v`, validates through `VersionHashSchema`, and loads that specific version from KV (`track:<slug>:version:<hash>`). Missing or invalid hashes call `notFound()`. The overall-record seeded into the HUD is also scoped to the requested version so history browsing shows correct top times.
 - Per-slug create-or-load prompt: live via `SlugLanding`. `src/lib/recentTracks.ts::readRecentTracks(kv, limit, excludeSlug?)` reads `track:index` newest-first (`zrange` with `rev: true, withScores: true`), rejects members that fail `SlugSchema`, and returns typed `{slug, updatedAt}` entries. Unit coverage in `tests/unit/recentTracks.test.ts`.
 - Home page: `src/app/page.tsx` is now an async RSC. Primary CTA renamed from `Play default track` to `Play at /start` so it stays truthful when `/start` has no saved track (it lands on `SlugLanding` in that case, same as any other fresh slug). Below the CTA a `RECENT` section reuses `readRecentTracks` to show up to ten recently-updated slugs with their date; when the KV index is empty (or KV env vars are missing in local dev), the section falls back to the `/oval` and `/sandbox` sample slugs so the page still has somewhere to click.
-- **Not yet landed.** Settings screen to edit initials.
+- Settings-screen initials editing: live. `SettingsPane` renders an Identity section with the current initials in an inline 3-letter input. Saving routes through `writeStoredInitials` in `src/lib/initials.ts`, which broadcasts a `viberacer:initials-changed` CustomEvent so `Game` can refresh the HUD's RACER block in-place.
 
 ---
 
