@@ -23,6 +23,15 @@ import {
   withPieceRotated,
 } from '@/game/editor'
 import {
+  canRedo,
+  canUndo,
+  createHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+  type EditorHistory,
+} from '@/game/editorHistory'
+import {
   ZOOM_DEFAULT,
   ZOOM_MAX,
   ZOOM_MIN,
@@ -82,7 +91,26 @@ export function TrackEditor({
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
-  const [pieces, setPieces] = useState<Piece[]>(initialPieces)
+  const [history, setHistory] = useState<EditorHistory<Piece[]>>(() =>
+    createHistory(initialPieces),
+  )
+  const pieces = history.present
+  // Wraps a piece-array transformer so each keystroke records one undo
+  // step. Reference-equal returns from the transformer are no-ops in
+  // `pushHistory`, so an idempotent edit (e.g. erasing an empty cell)
+  // does not pollute the past stack with duplicates.
+  const setPieces = useCallback(
+    (next: Piece[] | ((prev: Piece[]) => Piece[])) => {
+      setHistory((prev) => {
+        const value =
+          typeof next === 'function'
+            ? (next as (p: Piece[]) => Piece[])(prev.present)
+            : next
+        return pushHistory(prev, value)
+      })
+    },
+    [],
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // null = "default" (one CP per piece). Number = explicit override.
@@ -180,7 +208,7 @@ export function TrackEditor({
       return next
     })
     if (err !== null) setError(null)
-  }, [])
+  }, [setPieces])
 
   function selectTool(next: Tool) {
     // Only piece tools have a rotation; tapping the same erase or start
@@ -200,7 +228,7 @@ export function TrackEditor({
       key === sk ? reverseStartDirection(prev) : moveStartTo(prev, row, col),
     )
     if (err !== null) setError(null)
-  }, [])
+  }, [setPieces])
 
   function cellFromEvent(e: React.MouseEvent<SVGSVGElement>): { row: number; col: number } | null {
     const target = (e.target as Element).closest('[data-row]') as SVGElement | null
@@ -381,6 +409,55 @@ export function TrackEditor({
     setPieces([])
     setError(null)
   }
+
+  const undoEdit = useCallback(() => {
+    setHistory((prev) => undoHistory(prev))
+    setError(null)
+  }, [])
+
+  const redoEdit = useCallback(() => {
+    setHistory((prev) => redoHistory(prev))
+    setError(null)
+  }, [])
+
+  const undoAvailable = canUndo(history)
+  const redoAvailable = canRedo(history)
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z = redo, also
+  // Ctrl/Cmd+Y = redo for Windows muscle memory. Ignored when typing in an
+  // input or select so the checkpoint number field and mood pickers behave
+  // normally.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as Element | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          (target as HTMLElement).isContentEditable
+        ) {
+          return
+        }
+      }
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          if (canRedo(history)) redoEdit()
+        } else {
+          if (canUndo(history)) undoEdit()
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault()
+        if (canRedo(history)) redoEdit()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [history, redoEdit, undoEdit])
 
   // Clamp the override whenever piece count drops below it.
   const cpMax = pieces.length
@@ -731,6 +808,24 @@ export function TrackEditor({
         </div>
         <div style={buttons}>
           <button onClick={cancel} style={btnGhost}>Cancel</button>
+          <button
+            onClick={undoEdit}
+            style={btnGhost}
+            disabled={!undoAvailable}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            Undo
+          </button>
+          <button
+            onClick={redoEdit}
+            style={btnGhost}
+            disabled={!redoAvailable}
+            title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+            aria-label="Redo"
+          >
+            Redo
+          </button>
           <button
             onClick={reverseDirection}
             style={btnGhost}
