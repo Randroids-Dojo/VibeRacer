@@ -3,43 +3,49 @@ import { buildTrackPath, getStartExitDir } from './trackPath'
 
 export { getStartExitDir }
 
-const PIECE_TYPES: PieceType[] = ['straight', 'left90', 'right90']
 const ROTATIONS: Rotation[] = [0, 90, 180, 270]
 
-export type CellSlot = Pick<Piece, 'type' | 'rotation'>
-
-export function cycleCell(current: CellSlot | null): CellSlot | null {
-  if (current === null) {
-    return { type: 'straight', rotation: 0 }
-  }
-  const rotIdx = ROTATIONS.indexOf(current.rotation)
-  if (rotIdx < ROTATIONS.length - 1) {
-    return { type: current.type, rotation: ROTATIONS[rotIdx + 1] }
-  }
-  const typeIdx = PIECE_TYPES.indexOf(current.type)
-  if (typeIdx < PIECE_TYPES.length - 1) {
-    return { type: PIECE_TYPES[typeIdx + 1], rotation: 0 }
-  }
-  return null
+export function nextRotation(current: Rotation): Rotation {
+  const idx = ROTATIONS.indexOf(current)
+  return ROTATIONS[(idx + 1) % ROTATIONS.length]
 }
 
-export function withCellCycled(
+export function withPiecePlaced(
+  pieces: Piece[],
+  row: number,
+  col: number,
+  type: PieceType,
+  rotation: Rotation,
+): Piece[] {
+  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  const updated: Piece = { row, col, type, rotation }
+  if (idx === -1) return [...pieces, updated]
+  const copy = pieces.slice()
+  copy[idx] = updated
+  return copy
+}
+
+export function withPieceRotated(
   pieces: Piece[],
   row: number,
   col: number,
 ): Piece[] {
   const idx = pieces.findIndex((p) => p.row === row && p.col === col)
-  const current = idx === -1 ? null : { type: pieces[idx].type, rotation: pieces[idx].rotation }
-  const next = cycleCell(current)
-
-  if (next === null) {
-    return pieces.filter((_, i) => i !== idx)
-  }
-  const updated: Piece = { row, col, type: next.type, rotation: next.rotation }
-  if (idx === -1) return [...pieces, updated]
+  if (idx === -1) return pieces
+  const cur = pieces[idx]
   const copy = pieces.slice()
-  copy[idx] = updated
+  copy[idx] = { ...cur, rotation: nextRotation(cur.rotation) }
   return copy
+}
+
+export function withPieceRemoved(
+  pieces: Piece[],
+  row: number,
+  col: number,
+): Piece[] {
+  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  if (idx === -1) return pieces
+  return pieces.filter((_, i) => i !== idx)
 }
 
 export function moveStartTo(

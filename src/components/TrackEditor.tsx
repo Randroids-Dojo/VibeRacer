@@ -1,7 +1,7 @@
 'use client'
 import { memo, useCallback, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece } from '@/lib/schemas'
+import type { Piece, PieceType, Rotation } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
@@ -9,9 +9,21 @@ import {
   getBounds,
   getStartExitDir,
   moveStartTo,
+  nextRotation,
   reverseStartDirection,
-  withCellCycled,
+  withPiecePlaced,
+  withPieceRemoved,
+  withPieceRotated,
 } from '@/game/editor'
+
+type Tool = 'erase' | PieceType
+const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90']
+const TOOL_LABELS: Record<Tool, string> = {
+  erase: 'Erase',
+  straight: 'Straight',
+  left90: 'Left turn',
+  right90: 'Right turn',
+}
 
 interface TrackEditorProps {
   slug: string
@@ -42,6 +54,8 @@ export function TrackEditor({
     initialCheckpointCount !== undefined &&
       initialCheckpointCount !== initialPieces.length,
   )
+  const [tool, setTool] = useState<Tool>('straight')
+  const [toolRotation, setToolRotation] = useState<Rotation>(0)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -65,17 +79,37 @@ export function TrackEditor({
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
-  const latestRef = useRef({ cellMap, startKey, error })
-  latestRef.current = { cellMap, startKey, error }
+  const latestRef = useRef({ cellMap, startKey, error, tool, toolRotation })
+  latestRef.current = { cellMap, startKey, error, tool, toolRotation }
 
-  const cycleAt = useCallback((row: number, col: number) => {
+  const applyTool = useCallback((row: number, col: number) => {
+    const { tool: t, toolRotation: tr, cellMap: cm, error: err } = latestRef.current
+    const key = cellKey(row, col)
+    const existing = cm.get(key)
     setPieces((prev) => {
-      const next = withCellCycled(prev, row, col)
+      if (t === 'erase') {
+        return existing ? withPieceRemoved(prev, row, col) : prev
+      }
+      // Tapping an existing matching piece rotates it in place. Tapping
+      // empty or a different piece stamps the selected tool at its current
+      // rotation.
+      if (existing && existing.type === t) {
+        return withPieceRotated(prev, row, col)
+      }
+      const next = withPiecePlaced(prev, row, col, t, tr)
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
-    if (latestRef.current.error !== null) setError(null)
+    if (err !== null) setError(null)
   }, [])
+
+  function selectTool(next: Tool) {
+    if (next === tool && next !== 'erase') {
+      setToolRotation((r) => nextRotation(r))
+      return
+    }
+    setTool(next)
+  }
 
   const setStartOrReverse = useCallback((row: number, col: number) => {
     const key = cellKey(row, col)
@@ -98,8 +132,8 @@ export function TrackEditor({
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const cell = cellFromEvent(e)
-    if (cell) cycleAt(cell.row, cell.col)
-  }, [cycleAt])
+    if (cell) applyTool(cell.row, cell.col)
+  }, [applyTool])
 
   const handleSvgContextMenu = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     const cell = cellFromEvent(e)
@@ -184,10 +218,50 @@ export function TrackEditor({
       <div style={header}>
         <div style={titleStyle}>Track editor: /{slug}</div>
         <div style={hint}>
-          Click a cell to cycle piece and rotation. Right-click (or long-press
-          on touch) a piece to make it the start. Reverse direction with the
-          button below.
+          Pick a tool below, then tap a cell to place it. Tap the selected
+          tool again to rotate it. Tap a placed piece to rotate it in place.
+          Right-click (or long-press on touch) a piece to make it the start.
         </div>
+      </div>
+
+      <div style={paletteBar} role="toolbar" aria-label="Piece palette">
+        {(['erase', ...PIECE_TOOLS] as Tool[]).map((t) => {
+          const selected = t === tool
+          return (
+            <button
+              key={t}
+              type="button"
+              onClick={() => selectTool(t)}
+              style={selected ? toolBtnSelected : toolBtnIdle}
+              aria-pressed={selected}
+              aria-label={
+                selected && t !== 'erase'
+                  ? `${TOOL_LABELS[t]}, tap again to rotate`
+                  : TOOL_LABELS[t]
+              }
+            >
+              <svg width={36} height={36} viewBox={`0 0 ${CELL} ${CELL}`}>
+                {t === 'erase' ? (
+                  <EraseGlyph />
+                ) : (
+                  <PieceGlyph
+                    piece={{ type: t, row: 0, col: 0, rotation: toolRotation }}
+                  />
+                )}
+              </svg>
+              <span style={toolBtnLabel}>{TOOL_LABELS[t]}</span>
+            </button>
+          )
+        })}
+        {tool !== 'erase' ? (
+          <span style={paletteHint}>
+            Rotation {toolRotation}°. Tap the tile again to spin it.
+          </span>
+        ) : (
+          <span style={paletteHint}>
+            Tap a placed piece to remove it.
+          </span>
+        )}
       </div>
 
       <div style={gridWrap}>
@@ -375,6 +449,25 @@ const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }
   )
 })
 
+function EraseGlyph() {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  const r = CELL * 0.32
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <circle cx={cx} cy={cy} r={r} stroke="#ff6b6b" strokeWidth={4} fill="none" />
+      <line
+        x1={cx - r * 0.7}
+        y1={cy - r * 0.7}
+        x2={cx + r * 0.7}
+        y2={cy + r * 0.7}
+        stroke="#ff6b6b"
+        strokeWidth={4}
+      />
+    </g>
+  )
+}
+
 function PieceGlyph({ piece }: { piece: Piece }) {
   const cx = CELL / 2
   const cy = CELL / 2
@@ -470,6 +563,48 @@ const hint: React.CSSProperties = {
   fontSize: 12,
   opacity: 0.65,
   marginTop: 4,
+}
+const paletteBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 16px',
+  borderBottom: '1px solid #1f2b3d',
+  background: '#111a28',
+  flexWrap: 'wrap',
+}
+const toolBtnBase: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 4,
+  padding: '6px 8px',
+  borderRadius: 8,
+  background: 'transparent',
+  border: '1px solid #2b3a50',
+  color: 'white',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  minWidth: 64,
+}
+const toolBtnIdle: React.CSSProperties = {
+  ...toolBtnBase,
+}
+const toolBtnSelected: React.CSSProperties = {
+  ...toolBtnBase,
+  background: '#1f2b3d',
+  borderColor: '#ff6b35',
+  boxShadow: '0 0 0 1px #ff6b35 inset',
+}
+const toolBtnLabel: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 0.5,
+  opacity: 0.85,
+}
+const paletteHint: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.6,
+  marginLeft: 'auto',
 }
 const gridWrap: React.CSSProperties = {
   flex: 1,
