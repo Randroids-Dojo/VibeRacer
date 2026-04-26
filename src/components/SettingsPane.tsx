@@ -44,6 +44,13 @@ import {
   type TimeOfDay,
 } from '@/lib/lighting'
 import {
+  WEATHER_DESCRIPTIONS,
+  WEATHER_LABELS,
+  WEATHER_NAMES,
+  getWeatherPreset,
+  type Weather,
+} from '@/lib/weather'
+import {
   CAMERA_PRESET_DESCRIPTIONS,
   CAMERA_PRESET_LABELS,
   CAMERA_PRESET_NAMES,
@@ -372,6 +379,11 @@ export function SettingsPane({
   function setTimeOfDay(value: TimeOfDay) {
     clickSoft()
     onChange({ ...settings, timeOfDay: value })
+  }
+
+  function setWeather(value: Weather) {
+    clickSoft()
+    onChange({ ...settings, weather: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -818,6 +830,30 @@ export function SettingsPane({
           </div>
         </MenuSection>
 
+        <MenuSection title="Weather">
+          <MenuHint>
+            Layer fog and a softer sky on top of the time-of-day skin. Foggy
+            cuts visibility down to the next corner. Default is Clear, which
+            matches the original look.
+          </MenuHint>
+          <div style={paintGrid}>
+            {WEATHER_NAMES.map((name) => {
+              const preset = getWeatherPreset(name)
+              return (
+                <WeatherSwatch
+                  key={name}
+                  label={WEATHER_LABELS[name]}
+                  description={WEATHER_DESCRIPTIONS[name]}
+                  fogHex={preset.fogColor}
+                  fogDensity={preset.fogDensity}
+                  selected={settings.weather === name}
+                  onClick={() => setWeather(name)}
+                />
+              )
+            })}
+          </div>
+        </MenuSection>
+
         <MenuSection title="Camera">
           <MenuHint>
             Tune the trailing chase camera. Higher views see more of the track,
@@ -1017,6 +1053,86 @@ function TimeOfDaySwatch({
           borderRadius: 8,
         }}
       />
+      <span style={swatchLabel}>{label}</span>
+    </button>
+  )
+}
+
+function WeatherSwatch({
+  label,
+  description,
+  fogHex,
+  fogDensity,
+  selected,
+  onClick,
+}: {
+  label: string
+  description: string
+  // Three.js color int (0xRRGGBB) for the fog tint.
+  fogHex: number
+  // Preset density. Drives the swatch's haze opacity so 'foggy' visibly
+  // reads as denser than 'cloudy' at a glance without needing a number.
+  fogDensity: number
+  selected: boolean
+  onClick: () => void
+}) {
+  // Sky band on top, road silhouette on the bottom. A semi-transparent fog
+  // overlay sits in front, with opacity scaled by the preset density so the
+  // 'clear' chip is unobstructed and 'foggy' is mostly grey.
+  const fog = '#' + fogHex.toString(16).padStart(6, '0')
+  // Map density 0..0.04 onto opacity 0..0.85. Hand-tuned so the swatch reads
+  // proportionally to how much the preset actually obscures the scene.
+  const fogOpacity = Math.min(0.85, fogDensity * 22)
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...swatchBtn,
+        borderColor: selected ? '#ffb74d' : '#3a3a3a',
+        boxShadow: selected ? '0 0 0 2px rgba(255,183,77,0.35)' : 'none',
+      }}
+      title={description}
+      aria-label={`Weather: ${label}. ${description}`}
+      aria-pressed={selected}
+    >
+      <span
+        style={{
+          ...swatchChip,
+          borderRadius: 8,
+          position: 'relative',
+          overflow: 'hidden',
+          // Sky on top, ground on bottom: hardcoded hexes so every weather
+          // chip shares the same base scene and the fog is the only thing
+          // changing chip-to-chip.
+          background:
+            'linear-gradient(180deg, #9ad8ff 0%, #9ad8ff 55%, #6fb26f 55%, #6fb26f 100%)',
+        }}
+      >
+        {/* A small dark "road bend" silhouette so the fog has something to
+            obscure visually. Pure decoration; the visible difference between
+            chips is the fog overlay above. */}
+        <span
+          style={{
+            position: 'absolute',
+            left: '20%',
+            right: '20%',
+            bottom: '12%',
+            height: 6,
+            background: '#2b2b2b',
+            borderRadius: 3,
+            opacity: 0.7,
+          }}
+        />
+        {/* Fog overlay. Opacity scales with density so chips read in order. */}
+        <span
+          style={{
+            position: 'absolute',
+            inset: 0,
+            background: fog,
+            opacity: fogOpacity,
+          }}
+        />
+      </span>
       <span style={swatchLabel}>{label}</span>
     </button>
   )

@@ -32,6 +32,7 @@ import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
+import type { Weather } from '@/lib/weather'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
@@ -137,6 +138,10 @@ export function TuningSession({
   // And the time-of-day lighting preset, so the lab matches the race scene.
   const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
   timeOfDayRef.current = settings.timeOfDay
+  // And the weather preset, so the lab gets the same fog / sky tint as the
+  // race scene.
+  const weatherRef = useRef<Weather | null>(settings.weather)
+  weatherRef.current = settings.weather
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -316,6 +321,7 @@ export function TuningSession({
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
             timeOfDayRef={timeOfDayRef}
+            weatherRef={weatherRef}
             disableMusicIntensity
             style={canvasStyle}
           />

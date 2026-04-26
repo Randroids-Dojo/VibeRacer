@@ -6,6 +6,11 @@ import {
   type TimeOfDay,
 } from './lighting'
 import {
+  DEFAULT_WEATHER,
+  WeatherSchema,
+  type Weather,
+} from './weather'
+import {
   DEFAULT_SPEED_UNIT,
   SpeedUnitSchema,
   type SpeedUnit,
@@ -179,6 +184,11 @@ export interface ControlSettings {
   // original hardcoded scene exactly so users who never open Settings see no
   // change.
   timeOfDay: TimeOfDay
+  // Visual weather skin for the scene: layers exponential fog, a sky tint,
+  // and ambient / sun multipliers on top of the time-of-day preset. Pure
+  // cosmetic. Default 'clear' is a no-op (zero fog density, identity
+  // multipliers) so users who never open Settings see no change.
+  weather: Weather
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -210,6 +220,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   carPaint: null,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
   timeOfDay: DEFAULT_TIME_OF_DAY,
+  weather: DEFAULT_WEATHER,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -296,6 +307,10 @@ const ControlSettingsSchema = z.object({
   // Time of day landed later still. Default to noon for legacy stored payloads
   // so users see the exact scene they had before this feature shipped.
   timeOfDay: TimeOfDaySchema.default(DEFAULT_TIME_OF_DAY),
+  // Weather landed after time-of-day. Default to clear (zero fog, identity
+  // multipliers) for legacy stored payloads so users see the exact scene they
+  // had before this feature shipped.
+  weather: WeatherSchema.default(DEFAULT_WEATHER),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -319,6 +334,7 @@ export function cloneDefaultSettings(): ControlSettings {
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     gamepadBindings: cloneDefaultGamepadBindings(),
     timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
+    weather: DEFAULT_CONTROL_SETTINGS.weather,
   }
 }
 

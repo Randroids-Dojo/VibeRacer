@@ -19,6 +19,7 @@ import {
   type CameraRigState,
 } from '@/game/sceneBuilder'
 import type { TimeOfDay } from '@/lib/lighting'
+import type { Weather } from '@/lib/weather'
 import {
   initGameState,
   startRace,
@@ -109,6 +110,10 @@ export interface RaceCanvasProps {
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
   // color, ambient, sun) without rebuilding the renderer.
   timeOfDayRef?: MutableRefObject<TimeOfDay | null>
+  // Live weather override from Settings. Polled each frame so a swatch click
+  // in the pause menu reskins fog density, sky tint, and ambient / sun
+  // multipliers on the next frame without rebuilding the renderer.
+  weatherRef?: MutableRefObject<Weather | null>
   // Toggle the dark skid-mark trail laid behind the rear wheels during
   // slides. Polled each frame so a Settings flip takes effect without
   // rebuilding the renderer. Default behavior when omitted: enabled.
@@ -179,6 +184,7 @@ export function RaceCanvas({
   cameraRigRef,
   carPaintRef,
   timeOfDayRef,
+  weatherRef,
   showSkidMarksRef,
   showKerbsRef,
   showSceneryRef,
@@ -240,6 +246,19 @@ export function RaceCanvas({
       if (next !== null) bundle.setTimeOfDay(next)
     }
     syncTimeOfDay()
+
+    // Same poll-and-set for the weather preset. The setter mutates the
+    // existing FogExp2 plus the sky / lights in place; 'clear' is a no-op at
+    // the renderer level (zero fog density) so the cost of leaving it on the
+    // default is exactly the cost of having no weather feature at all.
+    let lastWeather: Weather | null | undefined = undefined
+    function syncWeather() {
+      const next = weatherRef?.current ?? null
+      if (next === lastWeather) return
+      lastWeather = next
+      if (next !== null) bundle.setWeather(next)
+    }
+    syncWeather()
 
     // Same poll-and-set for the inside-corner kerb visibility. The setter just
     // flips the parent group's visibility flag, which is O(1) and free per
@@ -381,6 +400,8 @@ export function RaceCanvas({
       syncFov()
       // And the time-of-day lighting preset.
       syncTimeOfDay()
+      // And the weather preset (fog density + sky tint + intensity multipliers).
+      syncWeather()
       // And the inside-corner kerb visibility.
       syncKerbs()
       // And the trackside scenery visibility.

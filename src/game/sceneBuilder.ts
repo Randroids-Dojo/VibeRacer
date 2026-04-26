@@ -8,6 +8,7 @@ import {
   CylinderGeometry,
   DataTexture,
   DirectionalLight,
+  FogExp2,
   Group,
   type Material,
   Mesh,
@@ -43,6 +44,12 @@ import {
   getLightingPreset,
   type TimeOfDay,
 } from '@/lib/lighting'
+import {
+  DEFAULT_WEATHER,
+  getWeatherPreset,
+  mixColorHex,
+  type Weather,
+} from '@/lib/weather'
 import {
   FINISH_GATE_BANNER_DEPTH,
   FINISH_GATE_BANNER_HEIGHT,
@@ -94,6 +101,13 @@ export interface SceneBundle {
   // and direction in place. Cheap; no allocation per call so the rAF loop can
   // poll-and-set every frame without churn.
   setTimeOfDay: (name: TimeOfDay) => void
+  // Apply a weather preset by name. Updates the scene's exponential fog
+  // density and color, mixes the time-of-day sky color toward the fog color
+  // by the preset's tint factor, and scales the time-of-day ambient and sun
+  // intensities by the preset's multipliers. Cheap; no allocation per call
+  // so the rAF loop can poll-and-set every frame without churn. Composes
+  // with `setTimeOfDay`: callers should set time-of-day first, then weather.
+  setWeather: (name: Weather) => void
   // Skid mark pool. Exposed on the bundle so the rAF loop can spawn into it
   // each frame and clear it on a full reset, without needing to reach into
   // the scene graph.
@@ -742,6 +756,11 @@ export function buildScene(path: TrackPath): SceneBundle {
   sun.position.set(80, 160, 60)
   scene.add(sun)
 
+  // Exponential fog. Starts at zero density (preset 'clear' is a no-op) so the
+  // legacy scene matches exactly. Color is updated in-place by `setWeather`.
+  const fog = new FogExp2(0xffffff, 0)
+  scene.fog = fog
+
   const trackMat = new MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 })
   for (const op of path.order) {
     const mesh = new Mesh(pieceGeometry(op), trackMat)
@@ -756,27 +775,57 @@ export function buildScene(path: TrackPath): SceneBundle {
   ground.position.set(center.x, -0.02, center.z)
   scene.add(ground)
 
-  // Apply a lighting preset to the existing lights / materials. Reused from
-  // the rAF loop's poll-and-set so a Settings flip skins the scene without
-  // rebuilding any geometry.
-  function setTimeOfDay(name: TimeOfDay) {
-    const preset = getLightingPreset(name)
-    skyBackground.setHex(preset.skyColor)
-    groundMat.color.setHex(preset.groundColor)
-    ambient.color.setHex(preset.ambientColor)
-    ambient.intensity = preset.ambientIntensity
-    sun.color.setHex(preset.sunColor)
-    sun.intensity = preset.sunIntensity
-    sun.position.set(
-      preset.sunDirection.x * SUN_DISTANCE,
-      preset.sunDirection.y * SUN_DISTANCE,
-      preset.sunDirection.z * SUN_DISTANCE,
+  // Track the active time-of-day and weather names so each setter can
+  // recompute the combined effect (sky tint, ambient / sun multipliers) from
+  // the latest pair without recomputing the lighting preset twice. Both
+  // setters short-circuit on a no-op via the rAF poll-and-set callers.
+  let activeTimeOfDay: TimeOfDay = DEFAULT_TIME_OF_DAY
+  let activeWeather: Weather = DEFAULT_WEATHER
+
+  // Combined apply: read both presets and write the final color / intensity
+  // values into the existing lights, sky, and fog. Splitting time-of-day and
+  // weather setters out front keeps the public API tidy; both call this
+  // helper internally so the math lives in one place.
+  function applyTimeAndWeather() {
+    const lighting = getLightingPreset(activeTimeOfDay)
+    const weather = getWeatherPreset(activeWeather)
+    // Sky: time-of-day picks the base color, weather mixes it toward the fog
+    // color so the horizon blends instead of showing a hard cutoff.
+    skyBackground.setHex(
+      mixColorHex(lighting.skyColor, weather.fogColor, weather.skyTintMix),
     )
+    groundMat.color.setHex(lighting.groundColor)
+    // Lights: time-of-day picks the color and base intensity; weather scales
+    // the intensity (overcast skies have no harsh shadows, ambient lifts to
+    // keep the road readable).
+    ambient.color.setHex(lighting.ambientColor)
+    ambient.intensity = lighting.ambientIntensity * weather.ambientMultiplier
+    sun.color.setHex(lighting.sunColor)
+    sun.intensity = lighting.sunIntensity * weather.sunMultiplier
+    sun.position.set(
+      lighting.sunDirection.x * SUN_DISTANCE,
+      lighting.sunDirection.y * SUN_DISTANCE,
+      lighting.sunDirection.z * SUN_DISTANCE,
+    )
+    // Fog: weather picks density and color. Density 0 makes FogExp2 a no-op
+    // so 'clear' costs nothing per frame.
+    fog.density = weather.fogDensity
+    fog.color.setHex(weather.fogColor)
   }
-  // Seed with the default so the first paint matches the legacy hardcoded
+
+  function setTimeOfDay(name: TimeOfDay) {
+    activeTimeOfDay = name
+    applyTimeAndWeather()
+  }
+
+  function setWeather(name: Weather) {
+    activeWeather = name
+    applyTimeAndWeather()
+  }
+  // Seed with the defaults so the first paint matches the legacy hardcoded
   // scene exactly. The renderer's poll-and-set will overwrite with whatever
-  // the player's stored preference is on the next frame.
-  setTimeOfDay(DEFAULT_TIME_OF_DAY)
+  // the player's stored preferences are on the next frame.
+  applyTimeAndWeather()
 
   // Checkered start / finish stripe. Uses a procedurally-generated DataTexture
   // so we don't ship a binary asset and the unit tests can pin the exact
@@ -904,6 +953,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     car,
     setCarPaint,
     setTimeOfDay,
+    setWeather,
     skidMarks,
     kerbs,
     scenery,
