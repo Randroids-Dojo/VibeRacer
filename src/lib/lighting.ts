@@ -5,12 +5,18 @@ import { z } from 'zod'
 // the scene without re-instantiating the renderer or any meshes. Pure data so
 // it round-trips through localStorage and unit tests cleanly.
 //
-// The four presets cover the obvious arcade-racer moods (bright day, golden
-// hour, dawn, night) without exploding into a tunable color picker. Defaults
-// stay 'noon' so users who never open Settings see exactly the scene they
-// always have.
+// The six presets cover a full day cycle (dawn, morning, noon, sunset, dusk,
+// night) without exploding into a tunable color picker. Defaults stay 'noon'
+// so users who never open Settings see exactly the scene they always have.
 
-export const TIME_OF_DAY_NAMES = ['noon', 'morning', 'sunset', 'night'] as const
+export const TIME_OF_DAY_NAMES = [
+  'noon',
+  'morning',
+  'sunset',
+  'night',
+  'dawn',
+  'dusk',
+] as const
 export type TimeOfDay = (typeof TIME_OF_DAY_NAMES)[number]
 
 export const DEFAULT_TIME_OF_DAY: TimeOfDay = 'noon'
@@ -24,6 +30,8 @@ export const TIME_OF_DAY_LABELS: Record<TimeOfDay, string> = {
   morning: 'Morning',
   sunset: 'Sunset',
   night: 'Night',
+  dawn: 'Dawn',
+  dusk: 'Dusk',
 }
 
 // A short blurb shown beneath the swatch so the player knows what they are
@@ -33,6 +41,8 @@ export const TIME_OF_DAY_DESCRIPTIONS: Record<TimeOfDay, string> = {
   morning: 'Soft cool light from the east. Long shadows.',
   sunset: 'Warm orange light low in the west. Pink sky.',
   night: 'Cool moonlight under a deep blue sky.',
+  dawn: 'Cool predawn glow with the sun about to rise in the east.',
+  dusk: 'Soft purple twilight after sunset, sun gone in the west.',
 }
 
 export interface LightingPreset {
@@ -98,6 +108,36 @@ const RAW_PRESETS: Record<TimeOfDay, LightingPreset> = {
     sunColor: 0xb6c8ff,
     sunIntensity: 0.55,
     sunDirection: { x: 40, y: 180, z: -40 },
+  },
+  dawn: {
+    // Pale lavender sky brightening to peach near the horizon, cool dewy
+    // ground, soft pink sun rising low in the east. Brighter than night but
+    // dimmer than morning, with a noticeably warmer-cool gradient than the
+    // straight blue of morning.
+    skyColor: 0xc8b8d8,
+    groundColor: 0x4f6058,
+    ambientColor: 0xa098b8,
+    ambientIntensity: 0.45,
+    sunColor: 0xffc8b0,
+    sunIntensity: 0.65,
+    // Sun very low in the east, slightly south of the equator. Even shallower
+    // than morning so shadows stretch longer.
+    sunDirection: { x: 160, y: 30, z: 20 },
+  },
+  dusk: {
+    // Deep purple-blue sky after sunset, cool muted ground, very low warm sun
+    // already below the horizon casting a soft amber glow from the west. The
+    // step between sunset and night, when the streetlights would just be
+    // coming on.
+    skyColor: 0x4a3a6a,
+    groundColor: 0x3a4250,
+    ambientColor: 0x7868a8,
+    ambientIntensity: 0.45,
+    sunColor: 0xff9070,
+    sunIntensity: 0.5,
+    // Sun low in the west, just below the equator so the angle is shallow and
+    // the warm tint reads as the last glow of sunset.
+    sunDirection: { x: -150, y: 25, z: 10 },
   },
 }
 

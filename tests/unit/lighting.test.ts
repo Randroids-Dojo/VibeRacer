@@ -46,7 +46,7 @@ describe('TimeOfDaySchema', () => {
   })
 
   it('rejects unknown strings', () => {
-    expect(() => TimeOfDaySchema.parse('dusk')).toThrow()
+    expect(() => TimeOfDaySchema.parse('overcast')).toThrow()
     expect(() => TimeOfDaySchema.parse('')).toThrow()
     expect(() => TimeOfDaySchema.parse(123)).toThrow()
   })
@@ -60,7 +60,7 @@ describe('isTimeOfDay', () => {
   })
 
   it('returns false for unknown values', () => {
-    expect(isTimeOfDay('dusk')).toBe(false)
+    expect(isTimeOfDay('overcast')).toBe(false)
     expect(isTimeOfDay(null)).toBe(false)
     expect(isTimeOfDay(undefined)).toBe(false)
     expect(isTimeOfDay(0)).toBe(false)
@@ -125,7 +125,7 @@ describe('getLightingPreset', () => {
   it('falls back to the default preset for an unknown name (defensive)', () => {
     // The signature is typed, but JS callers can sneak through. Falling back
     // beats throwing in a code path that runs every frame.
-    const bogus = getLightingPreset('dusk' as never)
+    const bogus = getLightingPreset('overcast' as never)
     const fallback = getLightingPreset(DEFAULT_TIME_OF_DAY)
     expect(bogus.skyColor).toBe(fallback.skyColor)
     expect(bogus.sunIntensity).toBe(fallback.sunIntensity)
@@ -138,6 +138,47 @@ describe('getLightingPreset', () => {
     const b = getLightingPreset('noon')
     expect(b.sunIntensity).not.toBe(0)
     expect(b.sunDirection.x).not.toBe(999)
+  })
+})
+
+describe('dawn and dusk presets', () => {
+  it('dawn is in the canonical names list', () => {
+    expect((TIME_OF_DAY_NAMES as readonly string[]).includes('dawn')).toBe(true)
+  })
+
+  it('dusk is in the canonical names list', () => {
+    expect((TIME_OF_DAY_NAMES as readonly string[]).includes('dusk')).toBe(true)
+  })
+
+  it('dawn sun comes from the east (positive X) and is low (small Y)', () => {
+    const d = getLightingPreset('dawn').sunDirection
+    expect(d.x).toBeGreaterThan(0)
+    expect(d.y).toBeGreaterThan(0)
+    expect(d.y).toBeLessThan(d.x)
+  })
+
+  it('dusk sun comes from the west (negative X) and is low (small Y)', () => {
+    const d = getLightingPreset('dusk').sunDirection
+    expect(d.x).toBeLessThan(0)
+    expect(d.y).toBeGreaterThan(0)
+    // Use absolute value of x since dusk x is negative.
+    expect(d.y).toBeLessThan(Math.abs(d.x))
+  })
+
+  it('dawn sits between night and morning brightness', () => {
+    const dawn = getLightingPreset('dawn')
+    const morning = getLightingPreset('morning')
+    const night = getLightingPreset('night')
+    expect(dawn.sunIntensity).toBeGreaterThan(night.sunIntensity)
+    expect(dawn.sunIntensity).toBeLessThan(morning.sunIntensity)
+  })
+
+  it('dusk sits between sunset and night brightness', () => {
+    const dusk = getLightingPreset('dusk')
+    const sunset = getLightingPreset('sunset')
+    const night = getLightingPreset('night')
+    expect(dusk.sunIntensity).toBeLessThan(sunset.sunIntensity)
+    expect(dusk.sunIntensity).toBeLessThanOrEqual(night.sunIntensity * 1.1)
   })
 })
 

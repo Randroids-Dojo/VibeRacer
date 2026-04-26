@@ -95,7 +95,14 @@ describe('TIME_OF_DAY_CYCLE_ORDER', () => {
   })
 
   it('mirrors a real day so the visual pacing feels natural', () => {
-    expect(TIME_OF_DAY_CYCLE_ORDER).toEqual(['noon', 'morning', 'sunset', 'night'])
+    expect(TIME_OF_DAY_CYCLE_ORDER).toEqual([
+      'noon',
+      'sunset',
+      'dusk',
+      'night',
+      'dawn',
+      'morning',
+    ])
   })
 })
 
@@ -140,9 +147,11 @@ describe('isTimeOfDayCycleMode', () => {
 describe('cycleIndexFor', () => {
   it('returns the canonical index for every preset in the rotation', () => {
     expect(cycleIndexFor('noon')).toBe(0)
-    expect(cycleIndexFor('morning')).toBe(1)
-    expect(cycleIndexFor('sunset')).toBe(2)
+    expect(cycleIndexFor('sunset')).toBe(1)
+    expect(cycleIndexFor('dusk')).toBe(2)
     expect(cycleIndexFor('night')).toBe(3)
+    expect(cycleIndexFor('dawn')).toBe(4)
+    expect(cycleIndexFor('morning')).toBe(5)
   })
 
   it('falls back to 0 (noon) for null / undefined', () => {
@@ -165,14 +174,20 @@ describe('activeTimeOfDayAt', () => {
   it("'fast' rotates one step every fast period from noon", () => {
     const period = TIME_OF_DAY_CYCLE_PERIOD_MS.fast
     const start = 1_000
-    expect(activeTimeOfDayAt(start, start + period, 'fast', 'noon')).toBe('morning')
+    expect(activeTimeOfDayAt(start, start + period, 'fast', 'noon')).toBe('sunset')
     expect(activeTimeOfDayAt(start, start + 2 * period, 'fast', 'noon')).toBe(
-      'sunset',
+      'dusk',
     )
     expect(activeTimeOfDayAt(start, start + 3 * period, 'fast', 'noon')).toBe(
       'night',
     )
     expect(activeTimeOfDayAt(start, start + 4 * period, 'fast', 'noon')).toBe(
+      'dawn',
+    )
+    expect(activeTimeOfDayAt(start, start + 5 * period, 'fast', 'noon')).toBe(
+      'morning',
+    )
+    expect(activeTimeOfDayAt(start, start + 6 * period, 'fast', 'noon')).toBe(
       'noon',
     )
   })
@@ -180,11 +195,12 @@ describe('activeTimeOfDayAt', () => {
   it("'slow' rotates one step every slow period from a non-noon base", () => {
     const period = TIME_OF_DAY_CYCLE_PERIOD_MS.slow
     const start = 5_000
+    // sunset is index 1, so +1 step lands on dusk (index 2).
     expect(activeTimeOfDayAt(start, start + period, 'slow', 'sunset')).toBe(
-      'night',
+      'dusk',
     )
     expect(activeTimeOfDayAt(start, start + 2 * period, 'slow', 'sunset')).toBe(
-      'noon',
+      'night',
     )
   })
 
@@ -192,10 +208,10 @@ describe('activeTimeOfDayAt', () => {
     const period = TIME_OF_DAY_CYCLE_PERIOD_MS.fast
     const start = 0
     expect(activeTimeOfDayAt(start, period - 1, 'fast', 'noon')).toBe('noon')
-    expect(activeTimeOfDayAt(start, period, 'fast', 'noon')).toBe('morning')
-    expect(activeTimeOfDayAt(start, period + 1, 'fast', 'noon')).toBe('morning')
+    expect(activeTimeOfDayAt(start, period, 'fast', 'noon')).toBe('sunset')
+    expect(activeTimeOfDayAt(start, period + 1, 'fast', 'noon')).toBe('sunset')
     expect(activeTimeOfDayAt(start, 2 * period - 1, 'fast', 'noon')).toBe(
-      'morning',
+      'sunset',
     )
   })
 

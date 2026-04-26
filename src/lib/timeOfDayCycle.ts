@@ -35,8 +35,8 @@ export const TIME_OF_DAY_CYCLE_LABELS: Record<TimeOfDayCycleMode, string> = {
 // will land.
 export const TIME_OF_DAY_CYCLE_DESCRIPTIONS: Record<TimeOfDayCycleMode, string> = {
   off: 'Hold the picked time of day for the whole session.',
-  slow: 'Rotate noon to morning to sunset to night every 5 minutes.',
-  fast: 'Rotate noon to morning to sunset to night every 60 seconds.',
+  slow: 'Rotate through a full day cycle every 5 minutes.',
+  fast: 'Rotate through a full day cycle every 60 seconds.',
 }
 
 // Per-mode dwell time in ms. 'fast' is a brisk demo cadence so a single race
@@ -50,16 +50,19 @@ export const TIME_OF_DAY_CYCLE_PERIOD_MS: Record<TimeOfDayCycleMode, number> = {
   fast: 60 * 1000,
 }
 
-// Fixed rotation order: noon -> morning -> sunset -> night -> back to noon.
-// Mirrors a real day so the visual pacing feels natural even without
-// crossfade. Keeping the order separate from `TIME_OF_DAY_NAMES` (which is
-// the canonical schema enum) means a future schema reorder cannot accidentally
-// scramble the rotation.
+// Fixed rotation order: a full day cycle starting at noon. From midday the
+// sun rolls to sunset, fades through dusk, drops to night, lifts through dawn,
+// brightens through morning, and lands back at noon. Mirrors a real day so
+// the visual pacing feels natural even without crossfade. Keeping the order
+// separate from `TIME_OF_DAY_NAMES` (which is the canonical schema enum)
+// means a future schema reorder cannot accidentally scramble the rotation.
 export const TIME_OF_DAY_CYCLE_ORDER: readonly TimeOfDay[] = [
   'noon',
-  'morning',
   'sunset',
+  'dusk',
   'night',
+  'dawn',
+  'morning',
 ] as const
 
 // Index of `name` in the rotation. Returns 0 when the input is unknown so a

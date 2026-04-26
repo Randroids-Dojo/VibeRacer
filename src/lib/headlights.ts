@@ -31,7 +31,7 @@ export const HEADLIGHT_MODE_LABELS: Record<HeadlightMode, string> = {
 
 export const HEADLIGHT_MODE_DESCRIPTIONS: Record<HeadlightMode, string> = {
   off: 'Headlights stay dark.',
-  auto: 'Headlights turn on at sunset, at night, and in foggy or snowy weather.',
+  auto: 'Headlights turn on around dawn, sunset, dusk, at night, and in foggy or snowy weather.',
   on: 'Headlights always glow, even at noon.',
 }
 
@@ -48,7 +48,7 @@ export function isHeadlightMode(value: unknown): value is HeadlightMode {
 // rebuilding any geometry.
 //
 // The auto rule covers the obvious cases where real headlights help:
-//   - sunset and night for low ambient light;
+//   - dawn, sunset, dusk, and night for low ambient light;
 //   - foggy / snowy / rainy weather for low visibility.
 // Morning and noon under clear / cloudy sky stay dark on auto.
 export function shouldHeadlightsBeOn(
@@ -59,7 +59,14 @@ export function shouldHeadlightsBeOn(
   if (mode === 'off') return false
   if (mode === 'on') return true
   // auto
-  if (timeOfDay === 'sunset' || timeOfDay === 'night') return true
+  if (
+    timeOfDay === 'dawn' ||
+    timeOfDay === 'sunset' ||
+    timeOfDay === 'dusk' ||
+    timeOfDay === 'night'
+  ) {
+    return true
+  }
   if (weather === 'foggy' || weather === 'snowy' || weather === 'rainy') return true
   return false
 }

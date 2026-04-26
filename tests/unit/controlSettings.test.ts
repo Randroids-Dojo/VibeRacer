@@ -902,7 +902,7 @@ describe('localStorage round-trip', () => {
   it('falls back to defaults when stored timeOfDay is unknown', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       ...cloneDefaultSettings(),
-      timeOfDay: 'dusk',
+      timeOfDay: 'overcast',
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })

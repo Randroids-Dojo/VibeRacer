@@ -102,6 +102,18 @@ describe('shouldHeadlightsBeOn', () => {
     }
   })
 
+  it("'auto' lights up at dawn under any weather", () => {
+    for (const w of WEATHER_NAMES) {
+      expect(shouldHeadlightsBeOn('auto', 'dawn', w)).toBe(true)
+    }
+  })
+
+  it("'auto' lights up at dusk under any weather", () => {
+    for (const w of WEATHER_NAMES) {
+      expect(shouldHeadlightsBeOn('auto', 'dusk', w)).toBe(true)
+    }
+  })
+
   it("'auto' lights up in foggy weather even at noon", () => {
     expect(shouldHeadlightsBeOn('auto', 'noon', 'foggy')).toBe(true)
   })
