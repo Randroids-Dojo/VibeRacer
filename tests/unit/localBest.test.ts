@@ -9,6 +9,10 @@ import {
   readLocalBestSplits,
   readLocalBestReaction,
   readLifetimeBestReaction,
+  readLocalBestTopSpeed,
+  readLifetimeBestTopSpeed,
+  writeLocalBestTopSpeed,
+  writeLifetimeBestTopSpeed,
   readTrackStats,
   writeLastSubmit,
   writeLocalBestDrift,
@@ -836,5 +840,181 @@ describe('local best leaderboard rank storage', () => {
     expect(() =>
       writeLocalBestRank('oval', HASH, { rank: 3, boardSize: 47 }),
     ).not.toThrow()
+  })
+})
+
+describe('local best top speed storage (per-slug)', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+  const HASH = 'a'.repeat(64)
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no top speed is stored', () => {
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('round-trips a stored top speed', () => {
+    writeLocalBestTopSpeed('oval', HASH, 25.4)
+    expect(readLocalBestTopSpeed('oval', HASH)).toBe(25.4)
+  })
+
+  it('namespaces by slug + version hash', () => {
+    writeLocalBestTopSpeed('oval', HASH, 25)
+    writeLocalBestTopSpeed('oval', 'b'.repeat(64), 30)
+    writeLocalBestTopSpeed('hairpin', HASH, 18)
+    expect(readLocalBestTopSpeed('oval', HASH)).toBe(25)
+    expect(readLocalBestTopSpeed('oval', 'b'.repeat(64))).toBe(30)
+    expect(readLocalBestTopSpeed('hairpin', HASH)).toBe(18)
+    expect(readLocalBestTopSpeed('sandbox', HASH)).toBeNull()
+  })
+
+  it('rounds fractional values to one decimal on write', () => {
+    writeLocalBestTopSpeed('oval', HASH, 25.67)
+    expect(readLocalBestTopSpeed('oval', HASH)).toBe(25.7)
+  })
+
+  it('refuses to persist a non-finite or non-positive value', () => {
+    writeLocalBestTopSpeed('oval', HASH, Number.NaN)
+    writeLocalBestTopSpeed('oval', HASH, Number.POSITIVE_INFINITY)
+    writeLocalBestTopSpeed('oval', HASH, 0)
+    writeLocalBestTopSpeed('oval', HASH, -3)
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('refuses to persist absurdly large values', () => {
+    writeLocalBestTopSpeed('oval', HASH, 500)
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited non-numeric payload', () => {
+    store['viberacer.bestTopSpeed.oval.' + HASH] = 'not a number'
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited zero or negative payload', () => {
+    store['viberacer.bestTopSpeed.oval.' + HASH] = '0'
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+    store['viberacer.bestTopSpeed.oval.' + HASH] = '-5'
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('returns null for a hand-edited absurdly-large payload', () => {
+    store['viberacer.bestTopSpeed.oval.' + HASH] = '500'
+    expect(readLocalBestTopSpeed('oval', HASH)).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeLocalBestTopSpeed('oval', HASH, 25)).not.toThrow()
+  })
+})
+
+describe('lifetime best top speed storage (single key, all tracks)', () => {
+  const originalWindow = (globalThis as { window?: unknown }).window
+  let store: Record<string, string>
+
+  beforeEach(() => {
+    store = {}
+    const fakeWindow: FakeWindow = {
+      localStorage: {
+        getItem: (k) => (k in store ? store[k] : null),
+        setItem: (k, v) => {
+          store[k] = v
+        },
+        removeItem: (k) => {
+          delete store[k]
+        },
+        clear: () => {
+          store = {}
+        },
+      },
+    }
+    ;(globalThis as { window?: unknown }).window = fakeWindow
+  })
+
+  afterEach(() => {
+    if (originalWindow === undefined) {
+      delete (globalThis as { window?: unknown }).window
+    } else {
+      ;(globalThis as { window?: unknown }).window = originalWindow
+    }
+  })
+
+  it('returns null when no lifetime top speed is stored', () => {
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+  })
+
+  it('round-trips a stored lifetime best', () => {
+    writeLifetimeBestTopSpeed(28.4)
+    expect(readLifetimeBestTopSpeed()).toBe(28.4)
+  })
+
+  it('uses a single key (no slug namespace)', () => {
+    writeLifetimeBestTopSpeed(28)
+    expect(readLifetimeBestTopSpeed()).toBe(28)
+    expect(store['viberacer.bestTopSpeedLifetime']).toBe('28')
+  })
+
+  it('rounds fractional values on write', () => {
+    writeLifetimeBestTopSpeed(28.67)
+    expect(readLifetimeBestTopSpeed()).toBe(28.7)
+  })
+
+  it('refuses to persist a non-finite or non-positive value', () => {
+    writeLifetimeBestTopSpeed(Number.NaN)
+    writeLifetimeBestTopSpeed(0)
+    writeLifetimeBestTopSpeed(-1)
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+  })
+
+  it('refuses to persist absurdly large values', () => {
+    writeLifetimeBestTopSpeed(500)
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+  })
+
+  it('returns null for a hand-edited corrupt payload', () => {
+    store['viberacer.bestTopSpeedLifetime'] = 'oops'
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+    store['viberacer.bestTopSpeedLifetime'] = '0'
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+    store['viberacer.bestTopSpeedLifetime'] = '500'
+    expect(readLifetimeBestTopSpeed()).toBeNull()
+  })
+
+  it('does not throw when localStorage.setItem rejects', () => {
+    ;(globalThis as { window?: { localStorage: { setItem: unknown } } }).window!
+      .localStorage.setItem = () => {
+      throw new Error('quota exceeded')
+    }
+    expect(() => writeLifetimeBestTopSpeed(25)).not.toThrow()
   })
 })

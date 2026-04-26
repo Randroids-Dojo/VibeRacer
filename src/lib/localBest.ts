@@ -48,11 +48,29 @@ function bestRankKey(slug: string, versionHash: string): string {
   return `viberacer.bestRank.${slug}.${versionHash}`
 }
 
+function topSpeedBestKey(slug: string, versionHash: string): string {
+  return `viberacer.bestTopSpeed.${slug}.${versionHash}`
+}
+
 // Lifetime best across every (slug, version). The per-track key tracks "best
 // reaction time on this layout" so a player can chase tier upgrades on a
 // familiar track; the lifetime key tracks "best reaction time anywhere" so a
 // player who hops between layouts has a single bar to beat.
 const REACTION_TIME_LIFETIME_KEY = 'viberacer.bestReactionLifetime'
+
+// Lifetime best top speed across every (slug, version). One number, one key,
+// no slug namespace. Lets the home page and the in-race HUD chip surface a
+// single "fastest you've ever gone" the player can chase on any track. The
+// per-track key (above) tracks the per-layout PB so a familiar oval and a
+// brand-new sandbox each carry their own headline number.
+const TOP_SPEED_LIFETIME_KEY = 'viberacer.bestTopSpeedLifetime'
+
+// Cap a stored top speed at a comfortably-above-stock-tuning ceiling so a
+// hand-edited blob can never seed an absurd "infinity / s" PB the gauge
+// cannot show. Mirrors `MAX_REASONABLE_TOP_SPEED_US` in `src/game/topSpeedPb.ts`
+// (kept as a module-private constant so the storage layer does not have to
+// import the game module just for one number).
+const TOP_SPEED_STORAGE_CAP_US = 200
 
 // The nonce of the player's most recent successful submission on this
 // (slug, version), tracked alongside the lap time it represents. Used by the
@@ -472,5 +490,71 @@ export function writeLocalBestRank(
   } catch {
     // Rank persistence is a best-effort UX enhancement. A quota failure
     // should never break the lap-submit flow.
+  }
+}
+
+// Per-(slug, versionHash) best top speed reached on the layout, in raw "us"
+// (world units per second). The Stats pane and the HUD chip both read from
+// here so a fresh page load surfaces the player's true PB instead of resetting
+// to zero each session. Defensive: a corrupt or non-finite stored value reads
+// as null and the writer refuses non-finite / non-positive / absurdly-large
+// numbers so a hand-edited blob can never poison the rest of the flow.
+export function readLocalBestTopSpeed(
+  slug: string,
+  versionHash: string,
+): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(topSpeedBestKey(slug, versionHash))
+  if (!raw) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (n > TOP_SPEED_STORAGE_CAP_US) return null
+  return Math.round(n * 10) / 10
+}
+
+export function writeLocalBestTopSpeed(
+  slug: string,
+  versionHash: string,
+  topSpeedUs: number,
+): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(topSpeedUs) || topSpeedUs <= 0) return
+  if (topSpeedUs > TOP_SPEED_STORAGE_CAP_US) return
+  try {
+    window.localStorage.setItem(
+      topSpeedBestKey(slug, versionHash),
+      String(Math.round(topSpeedUs * 10) / 10),
+    )
+  } catch {
+    // Top-speed persistence is a best-effort UX enhancement. A quota failure
+    // should never break the lap-complete flow.
+  }
+}
+
+// Lifetime best top speed across every (slug, versionHash). One number, one
+// key, no slug namespace. Lets the home page Stats tile and the in-race HUD
+// chip surface a single "fastest you've ever gone" target the player can chase
+// on any track.
+export function readLifetimeBestTopSpeed(): number | null {
+  if (typeof window === 'undefined') return null
+  const raw = window.localStorage.getItem(TOP_SPEED_LIFETIME_KEY)
+  if (!raw) return null
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return null
+  if (n > TOP_SPEED_STORAGE_CAP_US) return null
+  return Math.round(n * 10) / 10
+}
+
+export function writeLifetimeBestTopSpeed(topSpeedUs: number): void {
+  if (typeof window === 'undefined') return
+  if (!Number.isFinite(topSpeedUs) || topSpeedUs <= 0) return
+  if (topSpeedUs > TOP_SPEED_STORAGE_CAP_US) return
+  try {
+    window.localStorage.setItem(
+      TOP_SPEED_LIFETIME_KEY,
+      String(Math.round(topSpeedUs * 10) / 10),
+    )
+  } catch {
+    // Best-effort, never breaks gameplay.
   }
 }

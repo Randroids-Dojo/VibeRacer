@@ -26,6 +26,14 @@ import {
   isLeaderboardRankInfo,
   type LeaderboardRankInfo,
 } from '@/game/leaderboardRank'
+import {
+  TOP_SPEED_TIER_COLORS,
+  TOP_SPEED_TIER_LABELS,
+  classifyTopSpeed,
+  formatTopSpeed,
+  formatTopSpeedDelta,
+} from '@/game/topSpeedPb'
+import { type SpeedUnit } from '@/lib/speedometer'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -128,6 +136,22 @@ interface HudProps {
   // accent that drives the chip border / glow color. null hides the chip
   // (off-track, Settings toggle off, or no path data on file).
   paceNote?: { text: string; accent: string } | null
+  // Top-speed PB celebration chip. Populated for TOP_SPEED_PB_DISPLAY_MS the
+  // moment the live peak beats the player's stored per-track top-speed PB.
+  // null hides the chip. The accent tier is computed against the player's
+  // current `maxSpeed` tuning so a heavily-tuned car still reads as "redline"
+  // when it pins its own ceiling.
+  topSpeedPb?: {
+    topSpeedUs: number
+    priorUs: number | null
+    generatedAtMs: number
+  } | null
+  // The player's current display unit (mph / km/h / us). Threaded into the
+  // top-speed chip so the celebration value matches the gauge below it.
+  speedUnit?: SpeedUnit
+  // The player's current `maxSpeed` tuning. Used to classify the top-speed
+  // PB into a tier accent. Defaults conservatively when omitted.
+  carMaxSpeed?: number
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -419,6 +443,52 @@ function ReactionTimeChip({
   )
 }
 
+// Top-speed PB celebration chip. Sibling of the reaction-time chip: a
+// short-lived "you set a fresh peak" cue that auto-clears after the
+// documented dwell. Accent color tracks the speed-relative tier so a
+// "redline" pin reads hot and a "warm" first PB reads encouraging.
+function TopSpeedPbChip({
+  topSpeedUs,
+  priorUs,
+  generatedAtMs,
+  unit,
+  maxSpeed,
+}: {
+  topSpeedUs: number
+  priorUs: number | null
+  generatedAtMs: number
+  unit: SpeedUnit
+  maxSpeed: number
+}) {
+  const tier = classifyTopSpeed(topSpeedUs, maxSpeed)
+  const accent = TOP_SPEED_TIER_COLORS[tier]
+  const tierLabel = TOP_SPEED_TIER_LABELS[tier].toUpperCase()
+  const valueText = formatTopSpeed(topSpeedUs, unit)
+  const deltaText = formatTopSpeedDelta(topSpeedUs, priorUs, unit)
+  return (
+    <div
+      key={`topspeed-${generatedAtMs}`}
+      style={{
+        ...topSpeedChipStyle,
+        borderColor: hexWithAlpha(accent, 0.6),
+        boxShadow: `0 0 12px ${hexWithAlpha(accent, 0.35)}, 0 4px 12px rgba(0,0,0,0.4)`,
+      }}
+      role="status"
+      aria-live="polite"
+      aria-label={`Top speed ${valueText} ${tierLabel}${deltaText ? ` ${deltaText}` : ' first personal best'}`}
+    >
+      <span style={topSpeedLabelStyle}>TOP SPEED</span>
+      <span style={{ ...topSpeedValueStyle, color: accent }}>{valueText}</span>
+      <span style={{ ...topSpeedTierStyle, color: accent }}>{tierLabel}</span>
+      {deltaText ? (
+        <span style={topSpeedDeltaStyle}>{deltaText}</span>
+      ) : (
+        <span style={topSpeedPbStyle}>FIRST!</span>
+      )}
+    </div>
+  )
+}
+
 // Append an alpha component to a "#rrggbb" color. Returns rgba(r,g,b,a).
 // Returns the original color unchanged when the input is not a 7-char hex.
 function hexWithAlpha(hex: string, alpha: number): string {
@@ -649,6 +719,15 @@ export function HUD(props: HudProps) {
           reactionMs={props.reactionTime.reactionMs}
           isPb={props.reactionTime.isPb}
           generatedAtMs={props.reactionTime.generatedAtMs}
+        />
+      ) : null}
+      {props.topSpeedPb ? (
+        <TopSpeedPbChip
+          topSpeedUs={props.topSpeedPb.topSpeedUs}
+          priorUs={props.topSpeedPb.priorUs}
+          generatedAtMs={props.topSpeedPb.generatedAtMs}
+          unit={props.speedUnit ?? 'mph'}
+          maxSpeed={props.carMaxSpeed ?? 26}
         />
       ) : null}
       {props.paceNote ? (
@@ -1002,6 +1081,73 @@ const reactionTierStyle: React.CSSProperties = {
   letterSpacing: 1.4,
 }
 const reactionPbStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: 1.4,
+  color: '#ffe082',
+  background: 'rgba(255, 224, 130, 0.18)',
+  border: '1px solid rgba(255, 224, 130, 0.6)',
+  borderRadius: 6,
+  padding: '1px 5px',
+  marginLeft: 4,
+}
+// Top-speed PB chip. Same pill-shape as the reaction-time chip but pinned a
+// row below so the two can stack cleanly when both fire on the same lap (a
+// brand-new track race that lands a fresh reaction PB AND a fresh top-speed
+// peak). The top offset lifts the chip just enough that the reaction chip's
+// drop shadow does not overlap.
+const topSpeedChipStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 100,
+  left: '50%',
+  transform: 'translate(-50%, 0)',
+  padding: '5px 12px',
+  borderRadius: 999,
+  background: 'rgba(8, 16, 28, 0.82)',
+  border: '1.5px solid rgba(255, 255, 255, 0.4)',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 8,
+  pointerEvents: 'none',
+  fontFamily: 'system-ui, sans-serif',
+  // Reuses the sector-PB pop animation so the chip lands with the same
+  // celebratory flourish. The unique `key` on the chip retriggers the
+  // animation on every fresh PB so it never feels glued on.
+  animation: 'viberacer-sector-pb-pop 1s ease-out',
+}
+const topSpeedLabelStyle: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.85,
+  fontWeight: 700,
+}
+const topSpeedValueStyle: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 16,
+  fontWeight: 800,
+  lineHeight: 1,
+}
+const topSpeedTierStyle: React.CSSProperties = {
+  fontSize: 11,
+  fontWeight: 800,
+  letterSpacing: 1.4,
+}
+const topSpeedDeltaStyle: React.CSSProperties = {
+  fontSize: 10,
+  fontWeight: 900,
+  letterSpacing: 1.4,
+  color: '#ffe082',
+  background: 'rgba(255, 224, 130, 0.18)',
+  border: '1px solid rgba(255, 224, 130, 0.6)',
+  borderRadius: 6,
+  padding: '1px 5px',
+  marginLeft: 4,
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+}
+const topSpeedPbStyle: React.CSSProperties = {
   fontSize: 10,
   fontWeight: 900,
   letterSpacing: 1.4,

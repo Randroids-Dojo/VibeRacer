@@ -11,6 +11,12 @@ import {
   classifyReactionTime,
   formatReactionTime,
 } from '@/game/reactionTime'
+import {
+  TOP_SPEED_TIER_LABELS,
+  classifyTopSpeed,
+  formatTopSpeed,
+} from '@/game/topSpeedPb'
+import { type SpeedUnit } from '@/lib/speedometer'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
 
 interface TrackStatsPaneProps {
@@ -39,6 +45,20 @@ interface TrackStatsPaneProps {
   // Lifetime best reaction time (ms) across every (slug, version). Null when
   // no reaction has been recorded yet across any track.
   lifetimeBestReactionMs: number | null
+  // Per-track best top speed (raw "us") on this slug + version. Mirrors the
+  // value the HUD top-speed PB watcher writes through `writeLocalBestTopSpeed`.
+  // Null when no qualifying top speed has been recorded yet.
+  bestTopSpeedUs: number | null
+  // Lifetime best top speed across every (slug, version). Null when no
+  // qualifying top speed has been recorded yet on any track.
+  lifetimeBestTopSpeedUs: number | null
+  // Player's display unit for converting the stored "us" value into a
+  // human-readable mph / km/h string. Mirrors the Settings pane choice.
+  speedUnit: SpeedUnit
+  // Player's current `maxSpeed` tuning. Used to classify the per-track top
+  // speed into a tier label (warm / fast / blazing / redline) so the tile
+  // reads as a dial position rather than a bare number.
+  carMaxSpeed: number
   onBack: () => void
 }
 
@@ -50,6 +70,10 @@ export function TrackStatsPane({
   pbStreakLive,
   bestReactionMs,
   lifetimeBestReactionMs,
+  bestTopSpeedUs,
+  lifetimeBestTopSpeedUs,
+  speedUnit,
+  carMaxSpeed,
   onBack,
 }: TrackStatsPaneProps) {
   const safe = stats ?? {
@@ -149,6 +173,30 @@ export function TrackStatsPane({
                 : '--'
             }
             sub="reaction across all tracks"
+          />
+          <StatTile
+            label="Top speed"
+            value={
+              bestTopSpeedUs !== null && bestTopSpeedUs > 0
+                ? formatTopSpeed(bestTopSpeedUs, speedUnit)
+                : '--'
+            }
+            sub={
+              bestTopSpeedUs !== null && bestTopSpeedUs > 0
+                ? TOP_SPEED_TIER_LABELS[
+                    classifyTopSpeed(bestTopSpeedUs, carMaxSpeed)
+                  ].toLowerCase()
+                : 'fastest you have hit here'
+            }
+          />
+          <StatTile
+            label="Top speed (any track)"
+            value={
+              lifetimeBestTopSpeedUs !== null && lifetimeBestTopSpeedUs > 0
+                ? formatTopSpeed(lifetimeBestTopSpeedUs, speedUnit)
+                : '--'
+            }
+            sub="top speed across all tracks"
           />
         </div>
 

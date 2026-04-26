@@ -62,7 +62,16 @@ import {
   writeLifetimeBestReaction,
   readLocalBestRank,
   writeLocalBestRank,
+  readLocalBestTopSpeed,
+  writeLocalBestTopSpeed,
+  readLifetimeBestTopSpeed,
+  writeLifetimeBestTopSpeed,
 } from '@/lib/localBest'
+import {
+  TOP_SPEED_PB_DISPLAY_MS,
+  isTopSpeedPb,
+  sanitizeTopSpeed,
+} from '@/game/topSpeedPb'
 import {
   REACTION_TIME_DISPLAY_MS,
   isReactionPb,
@@ -329,6 +338,18 @@ interface HudState {
   // starts on a clean slate.
   reactionTime: { reactionMs: number; isPb: boolean; generatedAtMs: number } | null
   pbReactionMs: number | null
+  // Top-speed personal-best on this (slug, versionHash), in raw "us" (world
+  // units per second). Loaded from localStorage on mount so the chip in the
+  // Stats pane and the celebration trigger both compare against the player's
+  // true PB from the very first frame. null until the player has logged a
+  // qualifying top speed on this layout.
+  pbTopSpeedUs: number | null
+  // Live top-speed PB celebration. Populated only when the live peak beats
+  // the stored per-track PB by at least TOP_SPEED_PB_MIN_DELTA_US. Auto-clears
+  // after TOP_SPEED_PB_DISPLAY_MS, on lap completion, and on Restart so the
+  // HUD never freezes on a stale celebration. The `generatedAtMs` plus React
+  // key on the HUD chip give back-to-back PB triggers a clean re-pop animation.
+  topSpeedPb: { topSpeedUs: number; priorUs: number | null; generatedAtMs: number } | null
   // Player's best leaderboard placement on this (slug, versionHash). Loaded
   // from localStorage on mount so a recognized layout shows the rank chip
   // immediately, then refreshed on every successful race-submit response so
@@ -716,6 +737,13 @@ function GameSession({
   const reactionTimeClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
     null,
   )
+  // Auto-clear timer for the top-speed PB HUD chip. Same lifecycle as the
+  // reaction-time chip: cleared on a fresh PB so a quick second PB does not
+  // leave a stale fade, and cleared on Restart / slug change so the chip
+  // never lingers across runs.
+  const topSpeedPbClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(
+    null,
+  )
   // Expected sector count for OPTIMAL completeness. Equals the track's
   // checkpoint count (one sector per checkpoint), which defaults to the
   // piece count when no override is set.
@@ -845,6 +873,8 @@ function GameSession({
       ghostGapMs: null,
       reactionTime: null,
       pbReactionMs: readLocalBestReaction(slug, versionHash),
+      pbTopSpeedUs: readLocalBestTopSpeed(slug, versionHash),
+      topSpeedPb: null,
       leaderboardRank: readLocalBestRank(slug, versionHash),
       paceNote: null,
     }
@@ -887,6 +917,11 @@ function GameSession({
       // player has not produced a fresh measurement for this layout yet.
       reactionTime: null,
       pbReactionMs: readLocalBestReaction(slug, versionHash),
+      // Top-speed PB is per (slug, versionHash) too. Reload from disk so a
+      // navigation surfaces the right bar; clear the live celebration chip
+      // since the player has not produced a fresh PB on this layout yet.
+      pbTopSpeedUs: readLocalBestTopSpeed(slug, versionHash),
+      topSpeedPb: null,
       // Leaderboard rank is per (slug, versionHash). Reload from disk so a
       // navigation between layouts surfaces the rank for the new track
       // immediately rather than carrying over the previous slug's chip.
@@ -996,6 +1031,10 @@ function GameSession({
       clearTimeout(reactionTimeClearTimerRef.current)
       reactionTimeClearTimerRef.current = null
     }
+    if (topSpeedPbClearTimerRef.current) {
+      clearTimeout(topSpeedPbClearTimerRef.current)
+      topSpeedPbClearTimerRef.current = null
+    }
     crossfadeTo('title', PAUSE_CROSSFADE_SEC)
     silenceAllSfx(0.05)
     setPaused(false)
@@ -1039,6 +1078,10 @@ function GameSession({
       // countdown. The pb baseline survives (it lives on disk) so the next
       // measurement still grades against the player's all-time best.
       reactionTime: null,
+      // Top-speed PB chip clears so the slot collapses on the post-restart
+      // countdown. The PB baseline survives (it lives on disk and stays in
+      // HudState) so the next peak still grades against the player's true PB.
+      topSpeedPb: null,
       // Pace notes clear so the chip slot collapses cleanly during the
       // post-restart countdown; RaceCanvas repopulates them on the first
       // post-GO HUD tick.
@@ -1617,9 +1660,72 @@ function GameSession({
       if (sectorPbClearTimerRef.current) {
         clearTimeout(sectorPbClearTimerRef.current)
       }
+      if (topSpeedPbClearTimerRef.current) {
+        clearTimeout(topSpeedPbClearTimerRef.current)
+      }
       silenceAllSfx(0.05)
     }
   }, [])
+
+  // Top-speed PB watcher. Polls `topSpeedRef` (which the Speedometer overlay
+  // updates inside its own rAF loop using `updateTopSpeed`) at a calm cadence
+  // so the cost stays well under the rendering budget. When the live peak
+  // beats the player's stored per-track PB by at least the documented delta,
+  // promote the new value, persist to disk, and surface a celebration chip
+  // that auto-clears after TOP_SPEED_PB_DISPLAY_MS. The lifetime PB updates
+  // independently so a fresh layout that does not beat the per-slug PB can
+  // still set a new "fastest you've ever gone" mark.
+  //
+  // Gated on the racing phase so the chip never fires during the countdown
+  // or while paused (the Speedometer's RAF loop also skips its own update
+  // when the canvas is hidden, but the gate here makes the intent explicit).
+  useEffect(() => {
+    if (phase !== 'racing') return
+    if (paused) return
+    let cancelled = false
+    const TOP_SPEED_POLL_MS = 250
+    const interval = window.setInterval(() => {
+      if (cancelled) return
+      const peakUs = topSpeedRef.current
+      const sanitized = sanitizeTopSpeed(peakUs)
+      if (sanitized === null) return
+      // Lifetime first so a brand-new layout still records a fresh lifetime
+      // PB even when it does not beat the per-track value (e.g. the player
+      // has been racing the same long track for months and a faster sandbox
+      // run is what nudges the lifetime mark up).
+      const lifetimePrev = readLifetimeBestTopSpeed()
+      if (isTopSpeedPb(lifetimePrev, sanitized)) {
+        writeLifetimeBestTopSpeed(sanitized)
+      }
+      // Per-track PB. Compare against the value mirrored into HudState so the
+      // celebration chip and the persistent storage stay in lockstep.
+      setHud((prev) => {
+        if (!isTopSpeedPb(prev.pbTopSpeedUs, sanitized)) return prev
+        writeLocalBestTopSpeed(slug, versionHash, sanitized)
+        if (topSpeedPbClearTimerRef.current) {
+          clearTimeout(topSpeedPbClearTimerRef.current)
+          topSpeedPbClearTimerRef.current = null
+        }
+        topSpeedPbClearTimerRef.current = setTimeout(() => {
+          setHud((p) => ({ ...p, topSpeedPb: null }))
+          topSpeedPbClearTimerRef.current = null
+        }, TOP_SPEED_PB_DISPLAY_MS)
+        return {
+          ...prev,
+          pbTopSpeedUs: sanitized,
+          topSpeedPb: {
+            topSpeedUs: sanitized,
+            priorUs: prev.pbTopSpeedUs,
+            generatedAtMs: performance.now(),
+          },
+        }
+      })
+    }, TOP_SPEED_POLL_MS)
+    return () => {
+      cancelled = true
+      window.clearInterval(interval)
+    }
+  }, [phase, paused, slug, versionHash])
 
   function handleLapReplay(replay: Replay) {
     // Always queue the buffered replay for the next submit so the server can
@@ -2369,6 +2475,11 @@ function GameSession({
             ? hud.paceNote
             : null
         }
+        topSpeedPb={
+          phase === 'racing' && !paused ? hud.topSpeedPb : null
+        }
+        speedUnit={settings.speedUnit}
+        carMaxSpeed={tuning.maxSpeed}
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">
@@ -2473,6 +2584,10 @@ function GameSession({
               pbStreakLive={hud.pbStreak}
               bestReactionMs={hud.pbReactionMs}
               lifetimeBestReactionMs={readLifetimeBestReaction()}
+              bestTopSpeedUs={hud.pbTopSpeedUs}
+              lifetimeBestTopSpeedUs={readLifetimeBestTopSpeed()}
+              speedUnit={settings.speedUnit}
+              carMaxSpeed={tuning.maxSpeed}
               onBack={() => setPauseView('menu')}
             />
           ) : pauseView === 'achievements' ? (
