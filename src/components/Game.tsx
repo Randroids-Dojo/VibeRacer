@@ -7,6 +7,7 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { TimeOfDay } from '@/lib/lighting'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
 import { InitialsPrompt } from './InitialsPrompt'
@@ -218,6 +219,11 @@ function GameSession({
   // does not snap a visible streak away mid-corner.
   const showSkidMarksRef = useRef<boolean>(settings.showSkidMarks)
   showSkidMarksRef.current = settings.showSkidMarks
+  // Mirrors the chosen time-of-day preset into the rAF loop. Same poll-and-set
+  // pattern as carPaintRef: the renderer reads it each frame and reapplies the
+  // sky / ambient / sun preset whenever the value changes.
+  const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
+  timeOfDayRef.current = settings.timeOfDay
   // Live pose channel for the minimap. RaceCanvas writes to these refs every
   // frame; the Minimap component reads them in its own rAF loop without going
   // through React state. Keeping the refs alive here means a Settings toggle
@@ -752,6 +758,7 @@ function GameSession({
         showGhostRef={showGhostRef}
         cameraRigRef={cameraRigRef}
         carPaintRef={carPaintRef}
+        timeOfDayRef={timeOfDayRef}
         showSkidMarksRef={showSkidMarksRef}
         carPoseOutRef={minimapCarPoseRef}
         ghostPoseOutRef={minimapGhostPoseRef}

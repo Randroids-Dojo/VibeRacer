@@ -18,6 +18,7 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import type { TimeOfDay } from '@/lib/lighting'
 import {
   initGameState,
   startRace,
@@ -91,6 +92,10 @@ export interface RaceCanvasProps {
   // changes so a swatch click in the pause menu repaints the car on the
   // next frame.
   carPaintRef?: MutableRefObject<string | null>
+  // Live time-of-day lighting override from Settings. Same poll-and-set
+  // pattern: the rAF loop checks for a change and reapplies the preset (sky
+  // color, ambient, sun) without rebuilding the renderer.
+  timeOfDayRef?: MutableRefObject<TimeOfDay | null>
   // Toggle the dark skid-mark trail laid behind the rear wheels during
   // slides. Polled each frame so a Settings flip takes effect without
   // rebuilding the renderer. Default behavior when omitted: enabled.
@@ -137,6 +142,7 @@ export function RaceCanvas({
   showGhostRef,
   cameraRigRef,
   carPaintRef,
+  timeOfDayRef,
   showSkidMarksRef,
   carPoseOutRef,
   ghostPoseOutRef,
@@ -178,6 +184,19 @@ export function RaceCanvas({
       bundle.setCarPaint(next)
     }
     syncPaint()
+
+    // Same poll-and-set for the time-of-day lighting preset. The setter is
+    // cheap (mutates existing colors / lights in place, no allocation) so
+    // calling it on the no-op path is fine; we still short-circuit on string
+    // equality to keep the common case branch-free.
+    let lastTimeOfDay: TimeOfDay | null | undefined = undefined
+    function syncTimeOfDay() {
+      const next = timeOfDayRef?.current ?? null
+      if (next === lastTimeOfDay) return
+      lastTimeOfDay = next
+      if (next !== null) bundle.setTimeOfDay(next)
+    }
+    syncTimeOfDay()
 
     function resize() {
       const el = canvasRef.current
@@ -254,6 +273,8 @@ export function RaceCanvas({
       // Same idea for FOV: poll the camera rig ref and call
       // updateProjectionMatrix only when the value changes.
       syncFov()
+      // And the time-of-day lighting preset.
+      syncTimeOfDay()
 
       if (pendingResetRef.current) {
         state = initGameState(path)

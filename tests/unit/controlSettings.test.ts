@@ -402,6 +402,39 @@ describe('localStorage round-trip', () => {
     })
     expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
   })
+
+  it("defaults timeOfDay to 'noon' (the legacy hardcoded scene)", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.timeOfDay).toBe('noon')
+    expect(cloneDefaultSettings().timeOfDay).toBe('noon')
+  })
+
+  it('round-trips a non-default timeOfDay choice', () => {
+    const custom = cloneDefaultSettings()
+    custom.timeOfDay = 'sunset'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings().timeOfDay).toBe('sunset')
+  })
+
+  it('backfills timeOfDay when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      camera: DEFAULT_CAMERA_SETTINGS,
+      carPaint: null,
+    })
+    expect(readStoredControlSettings().timeOfDay).toBe('noon')
+  })
+
+  it('falls back to defaults when stored timeOfDay is unknown', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      timeOfDay: 'dusk',
+    })
+    expect(readStoredControlSettings()).toEqual(DEFAULT_CONTROL_SETTINGS)
+  })
 })
 
 describe('camera defaults', () => {

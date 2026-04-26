@@ -29,6 +29,12 @@ import {
   skidMarkAlpha,
   skidMarkPeakAlpha,
 } from './skidMarks'
+import {
+  DEFAULT_TIME_OF_DAY,
+  SUN_DISTANCE,
+  getLightingPreset,
+  type TimeOfDay,
+} from '@/lib/lighting'
 
 const CAR_MODEL_URL = '/models/car.glb'
 // Remap model's local +Z forward to world +X (physics heading 0).
@@ -53,6 +59,11 @@ export interface SceneBundle {
   // loading: the requested paint is buffered and applied as soon as the
   // mesh appears.
   setCarPaint: (paintHex: string | null) => void
+  // Apply a time-of-day lighting preset by name. Updates the sky color, the
+  // ground material color, the ambient light, and the sun's color, intensity,
+  // and direction in place. Cheap; no allocation per call so the rAF loop can
+  // poll-and-set every frame without churn.
+  setTimeOfDay: (name: TimeOfDay) => void
   // Skid mark pool. Exposed on the bundle so the rAF loop can spawn into it
   // each frame and clear it on a full reset, without needing to reach into
   // the scene graph.
@@ -454,7 +465,12 @@ export function buildGhostCar(): { ghost: Group; dispose: () => void } {
 
 export function buildScene(path: TrackPath): SceneBundle {
   const scene = new Scene()
-  scene.background = new Color(0x9ad8ff)
+  // Lighting preset is applied through `setTimeOfDay` below, which mutates the
+  // sky color, ambient/sun lights, and ground material in place. Initialize
+  // with a placeholder; the immediate setTimeOfDay call seeds noon so the
+  // first frame matches legacy.
+  const skyBackground = new Color(0x000000)
+  scene.background = skyBackground
 
   const ambient = new AmbientLight(0xffffff, 0.55)
   scene.add(ambient)
@@ -470,13 +486,33 @@ export function buildScene(path: TrackPath): SceneBundle {
   }
 
   const center = trackCenter(path)
-  const ground = new Mesh(
-    new PlaneGeometry(800, 800),
-    new MeshStandardMaterial({ color: 0x6fb26f, roughness: 1.0 }),
-  )
+  const groundMat = new MeshStandardMaterial({ color: 0x6fb26f, roughness: 1.0 })
+  const ground = new Mesh(new PlaneGeometry(800, 800), groundMat)
   ground.rotation.x = -Math.PI / 2
   ground.position.set(center.x, -0.02, center.z)
   scene.add(ground)
+
+  // Apply a lighting preset to the existing lights / materials. Reused from
+  // the rAF loop's poll-and-set so a Settings flip skins the scene without
+  // rebuilding any geometry.
+  function setTimeOfDay(name: TimeOfDay) {
+    const preset = getLightingPreset(name)
+    skyBackground.setHex(preset.skyColor)
+    groundMat.color.setHex(preset.groundColor)
+    ambient.color.setHex(preset.ambientColor)
+    ambient.intensity = preset.ambientIntensity
+    sun.color.setHex(preset.sunColor)
+    sun.intensity = preset.sunIntensity
+    sun.position.set(
+      preset.sunDirection.x * SUN_DISTANCE,
+      preset.sunDirection.y * SUN_DISTANCE,
+      preset.sunDirection.z * SUN_DISTANCE,
+    )
+  }
+  // Seed with the default so the first paint matches the legacy hardcoded
+  // scene exactly. The renderer's poll-and-set will overwrite with whatever
+  // the player's stored preference is on the next frame.
+  setTimeOfDay(DEFAULT_TIME_OF_DAY)
 
   const stripeGeom = new PlaneGeometry(TRACK_WIDTH, 1.2)
   const stripeMat = new MeshStandardMaterial({ color: 0xffffff })
@@ -514,7 +550,7 @@ export function buildScene(path: TrackPath): SceneBundle {
     mats.forEach((m) => m.dispose())
   }
 
-  return { scene, camera, car, setCarPaint, skidMarks, dispose }
+  return { scene, camera, car, setCarPaint, setTimeOfDay, skidMarks, dispose }
 }
 
 export interface CameraRigParams {

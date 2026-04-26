@@ -31,6 +31,7 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { TimeOfDay } from '@/lib/lighting'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
@@ -129,6 +130,9 @@ export function TuningSession({
   // Same idea for car paint: the lab car wears the player's chosen color.
   const carPaintRef = useRef<string | null>(settings.carPaint)
   carPaintRef.current = settings.carPaint
+  // And the time-of-day lighting preset, so the lab matches the race scene.
+  const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
+  timeOfDayRef.current = settings.timeOfDay
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -287,6 +291,7 @@ export function TuningSession({
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
+            timeOfDayRef={timeOfDayRef}
             disableMusicIntensity
             style={canvasStyle}
           />

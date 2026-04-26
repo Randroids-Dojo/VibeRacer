@@ -1,6 +1,11 @@
 import { z } from 'zod'
 import { CarPaintSettingSchema } from './carPaint'
 import {
+  DEFAULT_TIME_OF_DAY,
+  TimeOfDaySchema,
+  type TimeOfDay,
+} from './lighting'
+import {
   DEFAULT_SPEED_UNIT,
   SpeedUnitSchema,
   type SpeedUnit,
@@ -151,6 +156,11 @@ export interface ControlSettings {
   // X plus dpad 14/15); these cover the discrete buttons that drive throttle,
   // brake, handbrake, and pause.
   gamepadBindings: GamepadBindings
+  // Visual time-of-day skin for the scene: tints sky, ground, ambient light,
+  // and sun direction / color. Pure cosmetic. Default 'noon' matches the
+  // original hardcoded scene exactly so users who never open Settings see no
+  // change.
+  timeOfDay: TimeOfDay
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -177,6 +187,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   camera: DEFAULT_CAMERA_SETTINGS,
   carPaint: null,
   gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
+  timeOfDay: DEFAULT_TIME_OF_DAY,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -247,6 +258,9 @@ const ControlSettingsSchema = z.object({
   // defaults when reading legacy localStorage payloads so existing controller
   // users keep the same bindings they had before this feature shipped.
   gamepadBindings: GamepadBindingsSchema.default(DEFAULT_GAMEPAD_BINDINGS),
+  // Time of day landed later still. Default to noon for legacy stored payloads
+  // so users see the exact scene they had before this feature shipped.
+  timeOfDay: TimeOfDaySchema.default(DEFAULT_TIME_OF_DAY),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -265,6 +279,7 @@ export function cloneDefaultSettings(): ControlSettings {
     camera: cloneDefaultCameraSettings(),
     carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
     gamepadBindings: cloneDefaultGamepadBindings(),
+    timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
   }
 }
 

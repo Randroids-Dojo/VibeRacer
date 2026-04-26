@@ -36,6 +36,13 @@ import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import { CAR_PAINTS } from '@/lib/carPaint'
+import {
+  TIME_OF_DAY_DESCRIPTIONS,
+  TIME_OF_DAY_LABELS,
+  TIME_OF_DAY_NAMES,
+  getLightingPreset,
+  type TimeOfDay,
+} from '@/lib/lighting'
 import { SPEED_UNITS, unitLabel, type SpeedUnit } from '@/lib/speedometer'
 import {
   MenuButton,
@@ -336,6 +343,11 @@ export function SettingsPane({
   function setCarPaint(value: string | null) {
     clickSoft()
     onChange({ ...settings, carPaint: value })
+  }
+
+  function setTimeOfDay(value: TimeOfDay) {
+    clickSoft()
+    onChange({ ...settings, timeOfDay: value })
   }
 
   function setCamera(next: CameraRigSettings) {
@@ -685,6 +697,29 @@ export function SettingsPane({
           </div>
         </MenuSection>
 
+        <MenuSection title="Time of day">
+          <MenuHint>
+            Skin the scene with a different lighting preset. The track is
+            unchanged. Default is Noon, which matches the original look.
+          </MenuHint>
+          <div style={paintGrid}>
+            {TIME_OF_DAY_NAMES.map((name) => {
+              const preset = getLightingPreset(name)
+              return (
+                <TimeOfDaySwatch
+                  key={name}
+                  label={TIME_OF_DAY_LABELS[name]}
+                  description={TIME_OF_DAY_DESCRIPTIONS[name]}
+                  skyHex={preset.skyColor}
+                  groundHex={preset.groundColor}
+                  selected={settings.timeOfDay === name}
+                  onClick={() => setTimeOfDay(name)}
+                />
+              )
+            })}
+          </div>
+        </MenuSection>
+
         <MenuSection title="Camera">
           <MenuHint>
             Tune the trailing chase camera. Higher views see more of the track,
@@ -825,6 +860,51 @@ function PaintSwatch({
 
 const STOCK_SWATCH_BG =
   'repeating-conic-gradient(#bbb 0% 25%, #777 0% 50%) 50% / 12px 12px'
+
+function TimeOfDaySwatch({
+  label,
+  description,
+  skyHex,
+  groundHex,
+  selected,
+  onClick,
+}: {
+  label: string
+  description: string
+  // Three.js color ints (0xRRGGBB) so the same value in the lighting preset
+  // can be reused without a parse step.
+  skyHex: number
+  groundHex: number
+  selected: boolean
+  onClick: () => void
+}) {
+  const sky = '#' + skyHex.toString(16).padStart(6, '0')
+  const ground = '#' + groundHex.toString(16).padStart(6, '0')
+  // Half sky, half ground so the swatch reads as a horizon at a glance.
+  const background = `linear-gradient(180deg, ${sky} 0%, ${sky} 55%, ${ground} 55%, ${ground} 100%)`
+  return (
+    <button
+      onClick={onClick}
+      style={{
+        ...swatchBtn,
+        borderColor: selected ? '#ffb74d' : '#3a3a3a',
+        boxShadow: selected ? '0 0 0 2px rgba(255,183,77,0.35)' : 'none',
+      }}
+      title={description}
+      aria-label={`Time of day: ${label}. ${description}`}
+      aria-pressed={selected}
+    >
+      <span
+        style={{
+          ...swatchChip,
+          background,
+          borderRadius: 8,
+        }}
+      />
+      <span style={swatchLabel}>{label}</span>
+    </button>
+  )
+}
 
 function KeySlot({
   label,
