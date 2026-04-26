@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { loadRecentTracksSafe } from '@/lib/recentTracks'
+import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
 import {
   RecentTrackList,
@@ -10,15 +10,25 @@ import { TitleBackground } from '@/components/TitleBackground'
 import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
+import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
+import { MyPbs } from '@/components/MyPbs'
+import { MyTracks } from '@/components/MyTracks'
+import { LifetimeStats } from '@/components/LifetimeStats'
+import { DailyChallenge } from '@/components/DailyChallenge'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
 
 export default async function HomePage() {
-  const recent = await loadRecentTracksSafe()
+  const recent = await loadRecentTrackPreviewsSafe()
   const hasRecent = recent.length > 0
   const items: RecentTrackListItem[] = hasRecent
-    ? recent.map((r) => ({ slug: r.slug, label: formatDate(r.updatedAt) }))
+    ? recent.map((r) => ({
+        slug: r.slug,
+        label: formatDate(r.updatedAt),
+        pieces: r.pieces,
+        topTime: r.topTime,
+      }))
     : SAMPLE_SLUGS.map((slug) => ({ slug, label: 'sample' }))
 
   return (
@@ -37,6 +47,8 @@ export default async function HomePage() {
             Play
           </Link>
 
+          <DailyChallenge />
+
           <div style={sectionStyle}>
             <div style={sectionHeaderStyle}>Go to any track</div>
             <SlugInput />
@@ -49,8 +61,15 @@ export default async function HomePage() {
             <RecentTrackList items={items} />
           </div>
 
+          <MyTracks />
+
+          <MyPbs />
+
+          <LifetimeStats />
+
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
+          <HowToPlayLauncher buttonStyle={settingsBtnStyle} />
         </div>
       </section>
     </main>

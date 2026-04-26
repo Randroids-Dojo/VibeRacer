@@ -5,8 +5,14 @@ import {
   TRIGGER_DEADZONE,
   gamepadIsActive,
   gamepadToInput,
+  pauseHeld,
   type GamepadSnapshot,
 } from '@/game/gamepadInput'
+import {
+  DEFAULT_GAMEPAD_BINDINGS,
+  cloneDefaultGamepadBindings,
+  rebindGamepadButton,
+} from '@/lib/controlSettings'
 
 // Build a minimal Gamepad-like snapshot. Browsers ship arrays of Gamepad
 // buttons with `pressed`/`value`/`touched` fields; the helper only reads
@@ -119,6 +125,84 @@ describe('gamepadToInput', () => {
     expect(first.pausePressed).toBe(true)
     const second = gamepadToInput(held, true)
     expect(second.pausePressed).toBe(false)
+  })
+})
+
+describe('gamepadToInput with custom bindings', () => {
+  it('routes throttle through user-rebound buttons', () => {
+    // Move forward off RT (7) onto LB (4); leave backward on LT (6).
+    const bindings = rebindGamepadButton(
+      cloneDefaultGamepadBindings(),
+      'forward',
+      0,
+      4,
+    )
+    // Pressing the old RT no longer drives forward.
+    const oldRt = gamepadToInput(snapshot({ buttons: { 7: 1 } }), false, bindings)
+    expect(oldRt.axes.throttle).toBe(0)
+    // Pressing the new LB does.
+    const newLb = gamepadToInput(snapshot({ buttons: { 4: 1 } }), false, bindings)
+    expect(newLb.axes.throttle).toBeCloseTo(1, 5)
+    expect(newLb.keys.forward).toBe(true)
+  })
+
+  it('takes the strongest analog read across multi-bound forward buttons', () => {
+    // Default forward = [7, 0]. RT half-pressed plus A (digital, value=1) ->
+    // throttle should snap to 1.0 because A reads max.
+    const out = gamepadToInput(snapshot({ buttons: { 7: 0.5, 0: true } }))
+    expect(out.axes.throttle).toBeCloseTo(1, 5)
+    expect(out.keys.forward).toBe(true)
+  })
+
+  it('routes pause through any user-rebound pause button', () => {
+    const bindings = rebindGamepadButton(
+      cloneDefaultGamepadBindings(),
+      'pause',
+      0,
+      8, // Back / Select
+    )
+    const first = gamepadToInput(snapshot({ buttons: { 8: true } }), false, bindings)
+    expect(first.pausePressed).toBe(true)
+    const second = gamepadToInput(snapshot({ buttons: { 8: true } }), true, bindings)
+    expect(second.pausePressed).toBe(false)
+    // The old Start button (9) no longer triggers pause after rebind.
+    const oldStart = gamepadToInput(snapshot({ buttons: { 9: true } }), false, bindings)
+    expect(oldStart.pausePressed).toBe(false)
+  })
+
+  it('routes handbrake through user-rebound buttons', () => {
+    const bindings = rebindGamepadButton(
+      cloneDefaultGamepadBindings(),
+      'handbrake',
+      0,
+      3, // Y / Triangle
+    )
+    const out = gamepadToInput(snapshot({ buttons: { 3: true } }), false, bindings)
+    expect(out.keys.handbrake).toBe(true)
+    // The old RB (5) is no longer bound (rebind transferred slot 0).
+    const oldRb = gamepadToInput(snapshot({ buttons: { 5: true } }), false, bindings)
+    expect(oldRb.keys.handbrake).toBe(false)
+  })
+})
+
+describe('pauseHeld', () => {
+  it('returns false when no bound pause buttons are held', () => {
+    expect(pauseHeld(snapshot({}))).toBe(false)
+  })
+
+  it('returns true when the default Start button is pressed', () => {
+    expect(pauseHeld(snapshot({ buttons: { 9: true } }))).toBe(true)
+  })
+
+  it('respects custom bindings', () => {
+    const bindings = rebindGamepadButton(
+      cloneDefaultGamepadBindings(),
+      'pause',
+      0,
+      8,
+    )
+    expect(pauseHeld(snapshot({ buttons: { 8: true } }), bindings)).toBe(true)
+    expect(pauseHeld(snapshot({ buttons: { 9: true } }), bindings)).toBe(false)
   })
 })
 

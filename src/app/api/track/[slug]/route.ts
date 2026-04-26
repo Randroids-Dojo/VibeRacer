@@ -101,11 +101,20 @@ export async function PUT(
 
   const hash = hashTrack(track.data.pieces, track.data.checkpointCount)
   const createdAt = new Date().toISOString()
+  // Drop a `mood` object that has no concrete fields so we never persist a
+  // useless empty record into KV.
+  const moodOut =
+    track.data.mood &&
+    (track.data.mood.timeOfDay !== undefined ||
+      track.data.mood.weather !== undefined)
+      ? track.data.mood
+      : undefined
   const version: TrackVersion = {
     pieces: track.data.pieces as Piece[],
     ...(track.data.checkpointCount !== undefined
       ? { checkpointCount: track.data.checkpointCount }
       : {}),
+    ...(moodOut !== undefined ? { mood: moodOut } : {}),
     createdByRacerId: racerId,
     createdAt,
   }

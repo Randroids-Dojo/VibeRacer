@@ -32,6 +32,12 @@ export interface Vec3 {
   z: number
 }
 
+export interface SampledPoint {
+  x: number
+  z: number
+  heading: number
+}
+
 export interface OrderedPiece {
   piece: Piece
   entryDir: Dir
@@ -42,6 +48,10 @@ export interface OrderedPiece {
   // Populated for corners only: the cell corner where the two open edges meet.
   // The corner centerline lies at distance CELL_SIZE/2 from this point.
   arcCenter: { cx: number; cz: number } | null
+  // Populated for pieces with non-analytic centerlines (currently only the
+  // S-curve). Samples are evenly spaced along the path by parameter t in
+  // [0, 1] from entry (samples[0]) to exit (samples[last]).
+  samples: SampledPoint[] | null
 }
 
 export interface TrackPath {
@@ -117,6 +127,183 @@ function computeArcCenter(
   return { cx: center.x + e1.dx + e2.dx, cz: center.z + e1.dz + e2.dz }
 }
 
+// S-curve geometry parameters. Local layout (piece rotation 0): a south to
+// north traversal that weaves right then left then right then left, ending
+// heading north on the centerline.
+//
+// Built from four 90-degree arcs of radius SCURVE_ARC_RADIUS, plus short
+// straight bridges at the entry and exit so the road's outer edge stays
+// inside the cell. With SCURVE_ARC_RADIUS = 3 the eastmost point of the
+// centerline is at x = 2 * radius = 6, so the outer road edge sits at
+// x = 6 + TRACK_WIDTH / 2 = 10 = cell edge.
+//
+// Arc 1 (right, north -> east), Arc 2 (left, east -> north, offset east by
+// 2r), Arc 3 (left, north -> west, weaves to opposite side), Arc 4 (right,
+// west -> north, back to centerline at the exit).
+//
+// Vertical span of the four arcs: 4 * radius = 12. Bridges fill the
+// remaining (CELL_SIZE - 4 * radius) / 2 = 4 units at each end.
+export const SCURVE_ARC_RADIUS = 3
+export const SCURVE_BRIDGE_LENGTH = (CELL_SIZE - 4 * SCURVE_ARC_RADIUS) / 2
+const SCURVE_ARC_LENGTH = SCURVE_ARC_RADIUS * (Math.PI / 2)
+const SCURVE_TOTAL_LENGTH =
+  2 * SCURVE_BRIDGE_LENGTH + 4 * SCURVE_ARC_LENGTH
+export const SCURVE_SAMPLE_COUNT = 49 // 4 arcs * ~12 samples + bridges
+
+// Sample the S-curve centerline in LOCAL coordinates (cell origin at 0, 0,
+// piece rotation 0). Returns SCURVE_SAMPLE_COUNT points evenly spaced by
+// arc length from entry (south edge midpoint) to exit (north edge midpoint).
+// Heading uses the game convention atan2(-dz, dx) so PI/2 means due north.
+export function sampleScurveLocal(): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  for (let i = 0; i < SCURVE_SAMPLE_COUNT; i++) {
+    const s = (i / (SCURVE_SAMPLE_COUNT - 1)) * SCURVE_TOTAL_LENGTH
+    samples.push(scurvePointAtArcLength(s))
+  }
+  return samples
+}
+
+// Mirror image of sampleScurveLocal across the local x = 0 axis. The
+// scurveLeft piece bumps WEST (negative x) at its midpoint instead of east,
+// otherwise sharing the same connectors and arc-length parameterization.
+export function sampleScurveLeftLocal(): SampledPoint[] {
+  return sampleScurveLocal().map((s) => ({
+    x: -s.x,
+    z: s.z,
+    heading: Math.PI - s.heading,
+  }))
+}
+
+// Arc step: parametrize a quarter-circle by t in [0, 1]. (cx, cz) is the
+// arc center, startAngle is the math-frame angle from center to start
+// position, dir = +1 for CCW motion, -1 for CW motion. Returns position and
+// game-heading at parameter t.
+function arcSample(
+  cx: number,
+  cz: number,
+  startAngle: number,
+  dir: 1 | -1,
+  t: number,
+): SampledPoint {
+  const r = SCURVE_ARC_RADIUS
+  const a = startAngle + dir * t * (Math.PI / 2)
+  const x = cx + r * Math.cos(a)
+  const z = cz + r * Math.sin(a)
+  // Tangent for CCW motion is (-sin a, cos a); CW flips both signs.
+  const tx = -dir * Math.sin(a)
+  const tz = dir * Math.cos(a)
+  return { x, z, heading: Math.atan2(-tz, tx) }
+}
+
+function scurvePointAtArcLength(s: number): SampledPoint {
+  // Coordinate frame: +X is east, +Z is south, +Y is up. Headings use the
+  // game's atan2(-z, x) convention, so PI/2 = north (-Z).
+  const r = SCURVE_ARC_RADIUS
+  const halfL = CELL_SIZE / 2
+  const bridge = SCURVE_BRIDGE_LENGTH
+  const arcLen = SCURVE_ARC_LENGTH
+
+  // Entry straight bridge: from (0, halfL) heading north for `bridge` units.
+  if (s <= bridge) {
+    return { x: 0, z: halfL - s, heading: Math.PI / 2 }
+  }
+  s -= bridge
+  const z0 = halfL - bridge // top of arc layout
+
+  // Arc 1: right turn, center east of entry at (r, z0). CCW sweep from
+  // a = PI (west of center) to a = 3*PI/2 (north of center). End:
+  // (r, z0 - r) heading east.
+  if (s <= arcLen) {
+    return arcSample(r, z0, Math.PI, +1, s / arcLen)
+  }
+  s -= arcLen
+
+  // Arc 2: left turn, center north of arc-1 end at (r, z0 - 2r). CW sweep
+  // from a = PI/2 (south of center) to a = 0 (east of center). End:
+  // (2r, z0 - 2r) heading north (offset east by 2r).
+  if (s <= arcLen) {
+    return arcSample(r, z0 - 2 * r, Math.PI / 2, -1, s / arcLen)
+  }
+  s -= arcLen
+
+  // Arc 3: left turn around the SAME center as arc 2 (the path is a smooth
+  // 180-degree CW sweep across the cell's vertical midline). CW sweep from
+  // a = 0 (east of center) to a = -PI/2 (north of center). End:
+  // (r, z0 - 3r) heading west.
+  //
+  // Geometrically arc 2 and arc 3 share a center because the car's heading
+  // and the radius vector both flip 180 degrees across them, so they form
+  // one continuous 180-degree CW sweep.
+  if (s <= arcLen) {
+    return arcSample(r, z0 - 2 * r, 0, -1, s / arcLen)
+  }
+  s -= arcLen
+
+  // Arc 4: right turn, center north of arc-3 end at (r, z0 - 4r). CCW sweep
+  // from a = PI/2 (south of center) to a = PI (west of center). End:
+  // (0, z0 - 4r) heading north.
+  if (s <= arcLen) {
+    return arcSample(r, z0 - 4 * r, Math.PI / 2, +1, s / arcLen)
+  }
+  s -= arcLen
+
+  // Exit straight bridge: from (0, z0 - 4r) heading north for `bridge` units.
+  // With z0 = halfL - bridge and bridge = (CELL_SIZE - 4r)/2, the end z is
+  // halfL - bridge - 4r - bridge = halfL - 2*bridge - 4r = -halfL.
+  return { x: 0, z: z0 - 4 * r - s, heading: Math.PI / 2 }
+}
+
+// Apply piece rotation to a LOCAL sample, then translate to the piece center.
+// Rotation R degrees clockwise (compass-wise) maps local (lx, lz) to
+// (lx cos R - lz sin R, lx sin R + lz cos R) in the global x/z frame, since
+// +Z points south on the top-down map. Heading (atan2(-z, x)) rotates by
+// -R radians.
+export function transformSample(
+  s: SampledPoint,
+  centerX: number,
+  centerZ: number,
+  rotationDeg: number,
+): SampledPoint {
+  const R = (rotationDeg * Math.PI) / 180
+  const cs = Math.cos(R)
+  const sn = Math.sin(R)
+  return {
+    x: centerX + s.x * cs - s.z * sn,
+    z: centerZ + s.x * sn + s.z * cs,
+    heading: s.heading - R,
+  }
+}
+
+// Cached local-frame samples for the S-curves. The right-bend version is
+// computed by sampleScurveLocal(); the left-bend version is its mirror across
+// the local x = 0 axis (negate x and reflect headings: atan2(-z, -x) = pi - h).
+const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
+const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
+
+function buildScurveSamples(
+  piece: Piece,
+  center: Vec3,
+  entryDir: Dir,
+): SampledPoint[] {
+  // The local samples enter at the base south connector (rotation 0). After
+  // rotating the piece, the rotated base entry sits at dir (2 + rot/90) % 4.
+  // If the loop traversal enters from the OPPOSITE end, the car drives the
+  // path in reverse, so flip the sample order and rotate every heading by
+  // 180 degrees so headings still face the direction of travel.
+  const localSamples =
+    piece.type === 'scurveLeft'
+      ? SCURVE_LEFT_LOCAL_SAMPLES
+      : SCURVE_LOCAL_SAMPLES
+  const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
+  const reversed = entryDir !== baseEntryAfterRotation
+  const transformed = localSamples.map((s) =>
+    transformSample(s, center.x, center.z, piece.rotation),
+  )
+  if (!reversed) return transformed
+  const out = transformed.slice().reverse()
+  return out.map((s) => ({ x: s.x, z: s.z, heading: s.heading + Math.PI }))
+}
+
 export function buildTrackPath(
   pieces: Piece[],
   checkpointCount?: number,
@@ -142,7 +329,9 @@ export function buildTrackPath(
     if (seen.has(key)) break
     seen.add(key)
     const center = cellCenter(current.row, current.col)
-    const isCorner = current.type !== 'straight'
+    const isCorner = current.type === 'left90' || current.type === 'right90'
+    const isScurve =
+      current.type === 'scurve' || current.type === 'scurveLeft'
     order.push({
       piece: current,
       entryDir,
@@ -151,6 +340,7 @@ export function buildTrackPath(
       entry: edgeMidpoint(current.row, current.col, entryDir),
       exit: edgeMidpoint(current.row, current.col, exitDir),
       arcCenter: isCorner ? computeArcCenter(center, entryDir, exitDir) : null,
+      samples: isScurve ? buildScurveSamples(current, center, entryDir) : null,
     })
 
     const { dr, dc } = DIR_OFFSETS[exitDir]
@@ -189,6 +379,25 @@ export function samplePieceAt(
   op: OrderedPiece,
   t: number,
 ): { position: Vec3; heading: number } {
+  if (op.samples !== null) {
+    const samples = op.samples
+    const last = samples.length - 1
+    const tc = Math.max(0, Math.min(1, t))
+    const f = tc * last
+    const i = Math.min(last - 1, Math.floor(f))
+    const a = samples[i]
+    const b = samples[i + 1]
+    const k = f - i
+    // Unwrap heading delta into [-pi, pi] before lerping so the S-curve never
+    // pops through 2pi at sample boundaries.
+    let dh = b.heading - a.heading
+    while (dh > Math.PI) dh -= 2 * Math.PI
+    while (dh < -Math.PI) dh += 2 * Math.PI
+    return {
+      position: { x: a.x + (b.x - a.x) * k, y: 0, z: a.z + (b.z - a.z) * k },
+      heading: a.heading + dh * k,
+    }
+  }
   if (op.arcCenter === null) {
     const dx = op.exit.x - op.entry.x
     const dz = op.exit.z - op.entry.z
@@ -222,11 +431,15 @@ function pointAlongStartPiece(
   first: OrderedPiece,
   arcLength: number,
 ): { position: Vec3; heading: number } {
-  const t =
-    first.arcCenter === null
-      ? arcLength / CELL_SIZE
-      : arcLength / CORNER_ARC_LENGTH
-  return samplePieceAt(first, t)
+  let totalLength: number
+  if (first.samples !== null) {
+    totalLength = SCURVE_TOTAL_LENGTH
+  } else if (first.arcCenter === null) {
+    totalLength = CELL_SIZE
+  } else {
+    totalLength = CORNER_ARC_LENGTH
+  }
+  return samplePieceAt(first, arcLength / totalLength)
 }
 
 export function trackCenter(path: TrackPath): { x: number; z: number } {
@@ -253,11 +466,34 @@ export function distanceToCenterline(
   x: number,
   z: number,
 ): number {
+  if (op.samples !== null) {
+    return distanceToPolyline(op.samples, x, z)
+  }
   if (op.arcCenter === null) {
     return distanceToSegment(op.entry, op.exit, x, z)
   }
   const { cx, cz } = op.arcCenter
   return Math.abs(Math.hypot(x - cx, z - cz) - HALF)
+}
+
+function distanceToPolyline(
+  samples: SampledPoint[],
+  x: number,
+  z: number,
+): number {
+  let best = Infinity
+  for (let i = 0; i < samples.length - 1; i++) {
+    const a = samples[i]
+    const b = samples[i + 1]
+    const d = distanceToSegment(
+      { x: a.x, y: 0, z: a.z },
+      { x: b.x, y: 0, z: b.z },
+      x,
+      z,
+    )
+    if (d < best) best = d
+  }
+  return best
 }
 
 function distanceToSegment(a: Vec3, b: Vec3, x: number, z: number): number {

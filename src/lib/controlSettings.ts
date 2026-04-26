@@ -1,4 +1,50 @@
 import { z } from 'zod'
+import { CarPaintSettingSchema } from './carPaint'
+import {
+  DEFAULT_RACING_NUMBER,
+  RacingNumberSettingSchema,
+  type RacingNumberSetting,
+} from './racingNumber'
+import {
+  DEFAULT_TIME_OF_DAY,
+  TimeOfDaySchema,
+  type TimeOfDay,
+} from './lighting'
+import {
+  DEFAULT_WEATHER,
+  WeatherSchema,
+  type Weather,
+} from './weather'
+import {
+  DEFAULT_SPEED_UNIT,
+  SpeedUnitSchema,
+  type SpeedUnit,
+} from './speedometer'
+import {
+  DEFAULT_GHOST_SOURCE,
+  GhostSourceSchema,
+  type GhostSource,
+} from './ghostSource'
+import {
+  DEFAULT_HEADLIGHT_MODE,
+  HeadlightModeSchema,
+  type HeadlightMode,
+} from './headlights'
+import {
+  DEFAULT_BRAKE_LIGHT_MODE,
+  BrakeLightModeSchema,
+  type BrakeLightMode,
+} from './brakeLights'
+import {
+  DEFAULT_HAPTIC_MODE,
+  HapticModeSchema,
+  type HapticMode,
+} from './haptics'
+import {
+  DEFAULT_TIME_OF_DAY_CYCLE,
+  TimeOfDayCycleModeSchema,
+  type TimeOfDayCycleMode,
+} from './timeOfDayCycle'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -9,18 +55,235 @@ export const CONTROL_ACTIONS = [
   'left',
   'right',
   'handbrake',
+  'restartLap',
 ] as const
 export type ControlAction = (typeof CONTROL_ACTIONS)[number]
+
+// Subset of CONTROL_ACTIONS that the game loop reads as held-down booleans
+// (forward, brake, steer, handbrake). The remaining actions are one-shots
+// that fire on the rising edge of a keydown and are handled by their own
+// listener (Game.tsx for restartLap). useKeyboard only writes booleans for
+// the continuous set so a one-shot binding never pollutes KeyInput.
+export const CONTINUOUS_CONTROL_ACTIONS = [
+  'forward',
+  'backward',
+  'left',
+  'right',
+  'handbrake',
+] as const
+export type ContinuousControlAction = (typeof CONTINUOUS_CONTROL_ACTIONS)[number]
+
+export function isContinuousAction(
+  action: ControlAction,
+): action is ContinuousControlAction {
+  return (CONTINUOUS_CONTROL_ACTIONS as readonly string[]).includes(action)
+}
+
+// Gamepad actions are a smaller set than keyboard actions: steering stays on
+// the analog stick + dpad and is not user-rebindable here, so the rebindable
+// actions are just the discrete buttons that drive throttle, brake, handbrake,
+// and pause. Each action holds a list of W3C Standard Gamepad button indices
+// (0..16), and the gamepad helper looks at the analog `value` of every bound
+// button so triggers (analog) and face buttons (digital) feel identical at the
+// physics layer.
+export const GAMEPAD_ACTIONS = [
+  'forward',
+  'backward',
+  'handbrake',
+  'pause',
+] as const
+export type GamepadAction = (typeof GAMEPAD_ACTIONS)[number]
+
+export type GamepadBindings = Record<GamepadAction, number[]>
+
+// W3C Standard Gamepad layout. Indices 0..16 are well-defined; we accept
+// anything in range so future remap UIs can grow if browsers ever ship more
+// indices. Source: https://w3c.github.io/gamepad/#remapping
+export const GAMEPAD_BUTTON_MAX_INDEX = 16
+
+export const DEFAULT_GAMEPAD_BINDINGS: GamepadBindings = {
+  // RT (analog forward) plus A (digital fallback so D-input pads with no
+  // analog triggers still drive forward at full throttle).
+  forward: [7, 0],
+  // LT (analog brake / reverse) plus B (digital fallback).
+  backward: [6, 1],
+  // RB primary, X face button as a thumb-friendly alt.
+  handbrake: [5, 2],
+  // Start / Options.
+  pause: [9],
+}
 
 export const TOUCH_MODES = ['dual', 'single'] as const
 export type TouchMode = (typeof TOUCH_MODES)[number]
 
 export type KeyBindings = Record<ControlAction, string[]>
 
+// Player-tunable camera rig. Mirrors the runtime CameraRigParams in
+// src/game/sceneBuilder.ts, but only the parameters worth surfacing in
+// Settings: how high the camera sits, how far it trails, how far ahead the
+// look-target leans into turns, how snappy the follow is, and the perspective
+// camera's vertical field of view. The two lerp rates are tied together behind
+// a single `followSpeed` so the UI stays a single intuitive slider rather than
+// two fiddly knobs.
+export interface CameraRigSettings {
+  height: number
+  distance: number
+  lookAhead: number
+  followSpeed: number
+  // Vertical field of view in degrees. Lower values zoom in and feel calmer;
+  // higher values widen the view (peripheral vision) and feel faster, at the
+  // cost of more lens distortion at the edges.
+  fov: number
+}
+
+// Slider ranges. Picked so the extremes still produce a usable view: the
+// minimum height (1.5) is roof-cam and the max (14) is helicopter, the
+// trailing distance spans tight chase to wide cinematic, lookAhead 0 (center
+// the car) to 12 (anticipates corners aggressively), and followSpeed 0.4
+// (loose, drifty cam) to 1.6 (snappy, locked-on). Defaults match the legacy
+// hardcoded `DEFAULT_CAMERA_RIG` so users who never touch the panel see the
+// same view they did before.
+export const CAMERA_HEIGHT_MIN = 1.5
+export const CAMERA_HEIGHT_MAX = 14
+export const CAMERA_DISTANCE_MIN = 6
+export const CAMERA_DISTANCE_MAX = 28
+export const CAMERA_LOOK_AHEAD_MIN = 0
+export const CAMERA_LOOK_AHEAD_MAX = 12
+export const CAMERA_FOLLOW_SPEED_MIN = 0.4
+export const CAMERA_FOLLOW_SPEED_MAX = 1.6
+// FOV bounds: 50 is a fairly tight cinematic view, 110 is a fish-eye-leaning
+// wide view that still keeps the chase camera readable. The legacy hardcoded
+// camera shipped with 70 degrees so that stays the default.
+export const CAMERA_FOV_MIN = 50
+export const CAMERA_FOV_MAX = 110
+
+export const DEFAULT_CAMERA_SETTINGS: CameraRigSettings = {
+  height: 6,
+  distance: 14,
+  lookAhead: 6,
+  followSpeed: 1,
+  fov: 70,
+}
+
 export interface ControlSettings {
   keyBindings: KeyBindings
   touchMode: TouchMode
   showGhost: boolean
+  // Which ghost to surface when `showGhost` is true: 'auto' (legacy: PB if
+  // the player has one, else leaderboard top), 'top' (always the leaderboard
+  // top, even after the player's PB beats it), or 'pb' (only the player's
+  // PB, no fallback to top). Setting `showGhost: false` hides the ghost
+  // regardless of source.
+  ghostSource: GhostSource
+  // Toggle the bottom-right top-down minimap card. Default on for new users
+  // (cheap render, useful on unfamiliar tracks); turning it off hides the
+  // card entirely with no other side effects.
+  showMinimap: boolean
+  // Toggle the dark tire trail laid behind the rear wheels during slides.
+  // Cheap to render (a fixed-size pool of fading quads) so default on; the
+  // toggle is here for users who want a fully clean track surface.
+  showSkidMarks: boolean
+  // Toggle the soft white tire-smoke puffs that pop off the rear wheels
+  // during hard slides and braking. Volumetric (camera-facing sprites that
+  // rise + fade in under a second) so the cue reads alongside the dark skid
+  // trail without competing with it. Cheap to render (a fixed pool of soft
+  // sprites) so default on; the toggle is here for users who want a clean
+  // track with no atmospheric particles.
+  showTireSmoke: boolean
+  // Toggle the bottom-center speedometer overlay. Default on. The chosen
+  // unit is independent of the toggle: turning the readout off keeps the
+  // unit choice for whenever the player turns it back on.
+  showSpeedometer: boolean
+  speedUnit: SpeedUnit
+  // Toggle the session top-speed marker drawn as a small tick on the
+  // speedometer dial plus a `PEAK <value>` sub-readout below the live number.
+  // Default on so existing players see the new marker on their next race; the
+  // toggle is here for users who want a clean dial. The peak resets on a full
+  // Restart and on Exit-to-title; Restart Lap and pause keep the running peak.
+  showTopSpeedMarker: boolean
+  // Toggle the top-center rear-view mirror. Renders the same scene from a
+  // backward-facing camera in a small inset so the player can see the ghost
+  // (or anything else behind them) while racing. Default on.
+  showRearview: boolean
+  // Toggle the alternating red / white kerbs at the inside of every corner.
+  // Cheap to render (a couple of materials shared across every tile) so
+  // default on; the toggle is here for users who want a pure-asphalt look.
+  showKerbs: boolean
+  // Toggle the trackside scenery (trees on the grass, traffic cones at the
+  // outside of every corner, red / white barrier blocks framing the start
+  // gate). Cheap to render (a small handful of cached geometries reused
+  // across every prop) so default on; the toggle is here for users who want
+  // a totally clean track and grass field with nothing else on it.
+  showScenery: boolean
+  // Toggle the live drift-score HUD block. Default on. Hides both the live
+  // score and the lap / all-time best blocks; the underlying scoring keeps
+  // running so a flip back mid-session still shows the in-progress totals.
+  showDrift: boolean
+  // Toggle the racing-line overlay: a thin colored polyline floating just
+  // above the asphalt that traces the active ghost replay (the same source
+  // the ghost car uses, picked by `ghostSource`). Default off because the
+  // line is a coaching aid that not every player wants on screen; the toggle
+  // is here for players who want to study the fast line.
+  showRacingLine: boolean
+  camera: CameraRigSettings
+  // Lowercase 7-char hex string (`#rrggbb`) or null for the stock colormap.
+  // Stored as a string so the Settings UI can compare directly against the
+  // palette in `src/lib/carPaint.ts`.
+  carPaint: string | null
+  // Racing number plate decal mounted on the car's roof. When `enabled` is
+  // true the renderer attaches a small flat plate showing `value` (a 1-2
+  // digit string) drawn in `textHex` on a `plateHex` background. Default off
+  // so legacy stored payloads keep the exact car silhouette they had on
+  // upgrade. Pure cosmetic. Defaults documented in `src/lib/racingNumber.ts`.
+  racingNumber: RacingNumberSetting
+  // User-customizable gamepad button bindings. Steering is fixed (left stick
+  // X plus dpad 14/15); these cover the discrete buttons that drive throttle,
+  // brake, handbrake, and pause.
+  gamepadBindings: GamepadBindings
+  // Visual time-of-day skin for the scene: tints sky, ground, ambient light,
+  // and sun direction / color. Pure cosmetic. Default 'noon' matches the
+  // original hardcoded scene exactly so users who never open Settings see no
+  // change.
+  timeOfDay: TimeOfDay
+  // Visual weather skin for the scene: layers exponential fog, a sky tint,
+  // and ambient / sun multipliers on top of the time-of-day preset. Pure
+  // cosmetic. Default 'clear' is a no-op (zero fog density, identity
+  // multipliers) so users who never open Settings see no change.
+  weather: Weather
+  // When true (the default), apply the track author's preferred mood
+  // (timeOfDay / weather baked into the track version) instead of the player's
+  // own picks. The player's `timeOfDay` and `weather` choices remain stored;
+  // turning this off snaps the scene back to those personal picks. Track
+  // authors set the mood from the editor's Advanced panel.
+  respectTrackMood: boolean
+  // Cosmetic headlight lamps + glowing beam cones on the front of the player
+  // car. 'auto' lights them in dim scenes (sunset / night / foggy / snowy /
+  // rainy); 'on' always lights them; 'off' keeps them dark. Pure cosmetic;
+  // never illuminates the road or affects physics. Default 'auto' matches what
+  // a player would expect ("the car turns its lights on at night") so the
+  // upgrade is opt-out, not opt-in.
+  headlights: HeadlightMode
+  // Cosmetic brake lamps + soft red glow on the rear of the player car. 'auto'
+  // glows them while the player is braking (brake key while moving forward,
+  // or handbrake at any time); 'on' always glows them; 'off' keeps them dark.
+  // Pure cosmetic; never affects physics. Most visible from the rear-view
+  // mirror or when chasing the player car. Default 'auto' matches a real car
+  // so the upgrade is opt-out.
+  brakeLights: BrakeLightMode
+  // Haptic feedback (Vibration API) on lap completion, fresh personal best,
+  // and a fresh track-wide record. 'auto' fires only on touch devices (the
+  // buzz is meaningless on a hardwired desktop); 'on' always fires; 'off'
+  // suppresses every buzz. Default 'auto' so phone players opt in by default
+  // and desktop sessions stay quiet.
+  haptics: HapticMode
+  // Auto-rotate the active time-of-day skin through noon -> morning -> sunset
+  // -> night while the player races. Pure cosmetic. Default 'off' so legacy
+  // stored payloads keep their existing screen exactly as it was; players who
+  // want a Forza Horizon-style sky cycle can flip to 'slow' (5 min per skin)
+  // or 'fast' (60s per skin) once. Composes with the static `timeOfDay` pick:
+  // the cycle starts on whichever preset the player picked and rotates from
+  // there so a flip on does not snap to noon mid-race.
+  timeOfDayCycle: TimeOfDayCycleMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -29,12 +292,40 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
+  // R restarts only the current lap. Convenient for time-trial runs where the
+  // player botches a corner and wants a fresh attempt without the full
+  // countdown of a session restart. Lap counter, session PB, and lap history
+  // are preserved.
+  restartLap: ['KeyR'],
 }
 
 export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   keyBindings: DEFAULT_KEY_BINDINGS,
   touchMode: 'single',
   showGhost: true,
+  ghostSource: DEFAULT_GHOST_SOURCE,
+  showMinimap: true,
+  showSkidMarks: true,
+  showTireSmoke: true,
+  showSpeedometer: true,
+  speedUnit: DEFAULT_SPEED_UNIT,
+  showTopSpeedMarker: true,
+  showRearview: true,
+  showKerbs: true,
+  showScenery: true,
+  showDrift: true,
+  showRacingLine: false,
+  camera: DEFAULT_CAMERA_SETTINGS,
+  carPaint: null,
+  racingNumber: DEFAULT_RACING_NUMBER,
+  gamepadBindings: DEFAULT_GAMEPAD_BINDINGS,
+  timeOfDay: DEFAULT_TIME_OF_DAY,
+  weather: DEFAULT_WEATHER,
+  respectTrackMood: true,
+  headlights: DEFAULT_HEADLIGHT_MODE,
+  brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
+  haptics: DEFAULT_HAPTIC_MODE,
+  timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -47,6 +338,36 @@ const KeyBindingsSchema = z.object({
   left: z.array(KeyCodeSchema),
   right: z.array(KeyCodeSchema),
   handbrake: z.array(KeyCodeSchema),
+  // restartLap landed after the original control set. Backfill the default R
+  // binding for legacy stored payloads so the upgrade is opt-out, not opt-in.
+  restartLap: z.array(KeyCodeSchema).default(['KeyR']),
+})
+
+const GamepadButtonIndexSchema = z
+  .number()
+  .int()
+  .min(0)
+  .max(GAMEPAD_BUTTON_MAX_INDEX)
+
+const GamepadBindingsSchema = z.object({
+  forward: z.array(GamepadButtonIndexSchema),
+  backward: z.array(GamepadButtonIndexSchema),
+  handbrake: z.array(GamepadButtonIndexSchema),
+  pause: z.array(GamepadButtonIndexSchema),
+})
+
+const CameraRigSettingsSchema = z.object({
+  height: z.number().min(CAMERA_HEIGHT_MIN).max(CAMERA_HEIGHT_MAX),
+  distance: z.number().min(CAMERA_DISTANCE_MIN).max(CAMERA_DISTANCE_MAX),
+  lookAhead: z.number().min(CAMERA_LOOK_AHEAD_MIN).max(CAMERA_LOOK_AHEAD_MAX),
+  followSpeed: z
+    .number()
+    .min(CAMERA_FOLLOW_SPEED_MIN)
+    .max(CAMERA_FOLLOW_SPEED_MAX),
+  // FOV landed after the original camera shape; backfill from the default so
+  // legacy stored payloads (with the rest of the rig already saved) keep their
+  // tweaks instead of getting reset back to the full default rig.
+  fov: z.number().min(CAMERA_FOV_MIN).max(CAMERA_FOV_MAX).default(70),
 })
 
 const ControlSettingsSchema = z.object({
@@ -55,14 +376,214 @@ const ControlSettingsSchema = z.object({
   // Older stored settings predate this flag; default it on so existing users
   // see the ghost on their next race without having to dig into Settings.
   showGhost: z.boolean().default(true),
+  // Ghost-source picker landed after `showGhost`. Default 'auto' matches the
+  // legacy resolution (local PB if present, else leaderboard top) so legacy
+  // payloads keep their existing behavior on the next race without having to
+  // open Settings.
+  ghostSource: GhostSourceSchema.default(DEFAULT_GHOST_SOURCE),
+  // Minimap toggle landed after the original settings shape. Default on for
+  // legacy stored payloads so the upgrade is opt-out, not opt-in.
+  showMinimap: z.boolean().default(true),
+  // Skid marks toggle landed later still; default on so legacy payloads
+  // start showing them automatically without losing any other choices.
+  showSkidMarks: z.boolean().default(true),
+  // Tire smoke landed after skid marks. Default on so legacy stored payloads
+  // start seeing the soft puffs automatically without losing any other
+  // choices; players who want a clean cornering scene can flip this off.
+  showTireSmoke: z.boolean().default(true),
+  // Speedometer landed later. Default on so existing players see the new
+  // overlay on their next race; the unit choice backfills to mph.
+  showSpeedometer: z.boolean().default(true),
+  // Rear-view mirror landed later still. Default on so legacy players see
+  // the inset on their next race without having to dig into Settings.
+  showRearview: z.boolean().default(true),
+  // Kerbs landed later still. Default on so legacy stored payloads start
+  // showing the curb stones automatically without losing any other choices.
+  showKerbs: z.boolean().default(true),
+  // Trackside scenery landed after kerbs. Default on so legacy payloads start
+  // seeing trees / cones / barriers automatically without losing any other
+  // choices.
+  showScenery: z.boolean().default(true),
+  // Drift-score HUD landed after kerbs. Default on so legacy payloads start
+  // showing the new readouts automatically without losing any other choices.
+  showDrift: z.boolean().default(true),
+  // Racing-line overlay landed after drift. Default OFF (opt-in coaching aid)
+  // so legacy stored payloads keep their existing screen exactly as it was;
+  // players who want the line have to flip it on once in Settings.
+  showRacingLine: z.boolean().default(false),
+  speedUnit: SpeedUnitSchema.default(DEFAULT_SPEED_UNIT),
+  // Top-speed marker landed after the speedometer toggle. Default on so legacy
+  // stored payloads start showing the peak tick on their next race; players
+  // who want a clean dial can flip it off in Settings.
+  showTopSpeedMarker: z.boolean().default(true),
+  // Camera tunables landed after the original settings shape; backfill from
+  // defaults when reading legacy localStorage payloads so existing users do
+  // not see a broken Settings pane.
+  camera: CameraRigSettingsSchema.default(DEFAULT_CAMERA_SETTINGS),
+  // Car paint also landed later. Null = stock colormap from the GLB.
+  carPaint: CarPaintSettingSchema.default(null),
+  // Racing number plate landed after car paint. Default-disabled so legacy
+  // stored payloads keep the exact car they had on upgrade; the rest of the
+  // sub-fields backfill from the racingNumber default so a player who flips
+  // `enabled` once in Settings sees a well-formed plate immediately.
+  racingNumber: RacingNumberSettingSchema.default(DEFAULT_RACING_NUMBER),
+  // Gamepad bindings landed after the original settings shape; backfill from
+  // defaults when reading legacy localStorage payloads so existing controller
+  // users keep the same bindings they had before this feature shipped.
+  gamepadBindings: GamepadBindingsSchema.default(DEFAULT_GAMEPAD_BINDINGS),
+  // Time of day landed later still. Default to noon for legacy stored payloads
+  // so users see the exact scene they had before this feature shipped.
+  timeOfDay: TimeOfDaySchema.default(DEFAULT_TIME_OF_DAY),
+  // Weather landed after time-of-day. Default to clear (zero fog, identity
+  // multipliers) for legacy stored payloads so users see the exact scene they
+  // had before this feature shipped.
+  weather: WeatherSchema.default(DEFAULT_WEATHER),
+  // Track-author mood respect landed after weather. Default true so brand-new
+  // players see the look the track author intended; legacy stored payloads
+  // pick up the same default so the upgrade is opt-out, not opt-in.
+  respectTrackMood: z.boolean().default(true),
+  // Headlights landed after track-mood respect. Default 'auto' so legacy stored
+  // payloads light up the lamps the next time they race a sunset / night /
+  // foggy / snowy / rainy scene without having to dig into Settings; players
+  // who want them off can flip to 'off' once.
+  headlights: HeadlightModeSchema.default(DEFAULT_HEADLIGHT_MODE),
+  // Brake lights landed after headlights. Default 'auto' so legacy stored
+  // payloads start showing red rear lamps while braking on the next race
+  // (matches a real car) without having to dig into Settings.
+  brakeLights: BrakeLightModeSchema.default(DEFAULT_BRAKE_LIGHT_MODE),
+  // Haptics landed after brake lights. Default 'auto' so phone players feel
+  // the buzz on the next race without having to dig into Settings; legacy
+  // stored payloads pick up the same default so the upgrade is opt-out, not
+  // opt-in.
+  haptics: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
+  // Time-of-day auto cycle landed after haptics. Default 'off' so legacy stored
+  // payloads keep their existing screen exactly as it was; players who want a
+  // Forza Horizon-style rotating sky have to flip it on once in Settings.
+  timeOfDayCycle: TimeOfDayCycleModeSchema.default(DEFAULT_TIME_OF_DAY_CYCLE),
 })
+
+export function cloneDefaultCameraSettings(): CameraRigSettings {
+  return { ...DEFAULT_CAMERA_SETTINGS }
+}
 
 export function cloneDefaultSettings(): ControlSettings {
   return {
     keyBindings: cloneDefaultBindings(),
     touchMode: DEFAULT_CONTROL_SETTINGS.touchMode,
     showGhost: DEFAULT_CONTROL_SETTINGS.showGhost,
+    ghostSource: DEFAULT_CONTROL_SETTINGS.ghostSource,
+    showMinimap: DEFAULT_CONTROL_SETTINGS.showMinimap,
+    showSkidMarks: DEFAULT_CONTROL_SETTINGS.showSkidMarks,
+    showTireSmoke: DEFAULT_CONTROL_SETTINGS.showTireSmoke,
+    showSpeedometer: DEFAULT_CONTROL_SETTINGS.showSpeedometer,
+    speedUnit: DEFAULT_CONTROL_SETTINGS.speedUnit,
+    showTopSpeedMarker: DEFAULT_CONTROL_SETTINGS.showTopSpeedMarker,
+    showRearview: DEFAULT_CONTROL_SETTINGS.showRearview,
+    showKerbs: DEFAULT_CONTROL_SETTINGS.showKerbs,
+    showScenery: DEFAULT_CONTROL_SETTINGS.showScenery,
+    showDrift: DEFAULT_CONTROL_SETTINGS.showDrift,
+    showRacingLine: DEFAULT_CONTROL_SETTINGS.showRacingLine,
+    camera: cloneDefaultCameraSettings(),
+    carPaint: DEFAULT_CONTROL_SETTINGS.carPaint,
+    racingNumber: { ...DEFAULT_RACING_NUMBER },
+    gamepadBindings: cloneDefaultGamepadBindings(),
+    timeOfDay: DEFAULT_CONTROL_SETTINGS.timeOfDay,
+    weather: DEFAULT_CONTROL_SETTINGS.weather,
+    respectTrackMood: DEFAULT_CONTROL_SETTINGS.respectTrackMood,
+    headlights: DEFAULT_CONTROL_SETTINGS.headlights,
+    brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
+    haptics: DEFAULT_CONTROL_SETTINGS.haptics,
+    timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
   }
+}
+
+export function cloneDefaultGamepadBindings(): GamepadBindings {
+  return {
+    forward: [...DEFAULT_GAMEPAD_BINDINGS.forward],
+    backward: [...DEFAULT_GAMEPAD_BINDINGS.backward],
+    handbrake: [...DEFAULT_GAMEPAD_BINDINGS.handbrake],
+    pause: [...DEFAULT_GAMEPAD_BINDINGS.pause],
+  }
+}
+
+export function cloneGamepadBindings(b: GamepadBindings): GamepadBindings {
+  return {
+    forward: [...b.forward],
+    backward: [...b.backward],
+    handbrake: [...b.handbrake],
+    pause: [...b.pause],
+  }
+}
+
+// Replace any prior assignment of `index` (across all actions) and assign it
+// to `target` at `slot`. Each button index maps to at most one action across
+// the whole binding map. Returns a fresh GamepadBindings object.
+export function rebindGamepadButton(
+  bindings: GamepadBindings,
+  target: GamepadAction,
+  slot: number,
+  index: number,
+): GamepadBindings {
+  const next = cloneGamepadBindings(bindings)
+  for (const action of GAMEPAD_ACTIONS) {
+    next[action] = next[action].filter((b) => b !== index)
+  }
+  const list = next[target]
+  while (list.length <= slot) list.push(-1)
+  list[slot] = index
+  next[target] = list.filter((b) => b >= 0)
+  return next
+}
+
+export function clearGamepadBinding(
+  bindings: GamepadBindings,
+  target: GamepadAction,
+  slot: number,
+): GamepadBindings {
+  const next = cloneGamepadBindings(bindings)
+  if (slot >= 0 && slot < next[target].length) {
+    next[target] = next[target].filter((_, i) => i !== slot)
+  }
+  return next
+}
+
+// Reverse-lookup: which action (if any) is currently bound to `index`. First
+// match wins, mirroring `actionForCode` for keyboard.
+export function gamepadActionForIndex(
+  bindings: GamepadBindings,
+  index: number,
+): GamepadAction | null {
+  for (const action of GAMEPAD_ACTIONS) {
+    if (bindings[action].includes(index)) return action
+  }
+  return null
+}
+
+// Map the two-knob `followSpeed` slider onto sceneBuilder's positionLerp +
+// targetLerp pair. Defaults: positionLerp 0.12, targetLerp 0.20 at speed 1.0.
+// Linear scaling with `followSpeed` keeps the legacy default exact while
+// letting users push the camera looser or tighter without exposing the two
+// raw knobs.
+export const CAMERA_DEFAULT_POSITION_LERP = 0.12
+export const CAMERA_DEFAULT_TARGET_LERP = 0.2
+export function cameraLerpsFor(followSpeed: number): {
+  positionLerp: number
+  targetLerp: number
+} {
+  const clamped = Math.min(
+    Math.max(followSpeed, CAMERA_FOLLOW_SPEED_MIN),
+    CAMERA_FOLLOW_SPEED_MAX,
+  )
+  return {
+    positionLerp: clamp01(CAMERA_DEFAULT_POSITION_LERP * clamped),
+    targetLerp: clamp01(CAMERA_DEFAULT_TARGET_LERP * clamped),
+  }
+}
+
+function clamp01(x: number): number {
+  if (x < 0) return 0
+  if (x > 1) return 1
+  return x
 }
 
 export function cloneDefaultBindings(): KeyBindings {
@@ -72,6 +593,7 @@ export function cloneDefaultBindings(): KeyBindings {
     left: [...DEFAULT_KEY_BINDINGS.left],
     right: [...DEFAULT_KEY_BINDINGS.right],
     handbrake: [...DEFAULT_KEY_BINDINGS.handbrake],
+    restartLap: [...DEFAULT_KEY_BINDINGS.restartLap],
   }
 }
 
@@ -126,6 +648,7 @@ export function cloneBindings(bindings: KeyBindings): KeyBindings {
     left: [...bindings.left],
     right: [...bindings.right],
     handbrake: [...bindings.handbrake],
+    restartLap: [...bindings.restartLap],
   }
 }
 
@@ -217,4 +740,56 @@ export const ACTION_LABELS: Record<ControlAction, string> = {
   left: 'Steer left',
   right: 'Steer right',
   handbrake: 'Handbrake',
+  restartLap: 'Restart lap',
+}
+
+export const GAMEPAD_ACTION_LABELS: Record<GamepadAction, string> = {
+  forward: 'Accelerate',
+  backward: 'Brake / reverse',
+  handbrake: 'Handbrake',
+  pause: 'Pause',
+}
+
+// Friendly label for a Standard Gamepad button index. Names follow Xbox
+// conventions because that is the layout most browser docs assume; PlayStation
+// and Switch users will recognize the position even when the glyph differs.
+export function formatGamepadButton(index: number): string {
+  switch (index) {
+    case 0:
+      return 'A / Cross'
+    case 1:
+      return 'B / Circle'
+    case 2:
+      return 'X / Square'
+    case 3:
+      return 'Y / Triangle'
+    case 4:
+      return 'LB'
+    case 5:
+      return 'RB'
+    case 6:
+      return 'LT'
+    case 7:
+      return 'RT'
+    case 8:
+      return 'Back / Select'
+    case 9:
+      return 'Start'
+    case 10:
+      return 'L3 (stick)'
+    case 11:
+      return 'R3 (stick)'
+    case 12:
+      return 'Dpad up'
+    case 13:
+      return 'Dpad down'
+    case 14:
+      return 'Dpad left'
+    case 15:
+      return 'Dpad right'
+    case 16:
+      return 'Home'
+    default:
+      return `Button ${index}`
+  }
 }

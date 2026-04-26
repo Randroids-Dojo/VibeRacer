@@ -1,10 +1,18 @@
 'use client'
-import { memo, useCallback, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece, PieceType, Rotation } from '@/lib/schemas'
+import type { Piece, PieceType, Rotation, TrackMood } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
+import {
+  TIME_OF_DAY_LABELS,
+  TIME_OF_DAY_NAMES,
+  type TimeOfDay,
+} from '@/lib/lighting'
+import { WEATHER_LABELS, WEATHER_NAMES, type Weather } from '@/lib/weather'
+import { sanitizeTrackMood } from '@/game/trackMood'
+import { recordMyTrack } from '@/lib/myTracks'
 import {
   getBounds,
   getStartExitDir,
@@ -15,15 +23,43 @@ import {
   withPieceRemoved,
   withPieceRotated,
 } from '@/game/editor'
+import {
+  canRedo,
+  canUndo,
+  createHistory,
+  pushHistory,
+  redoHistory,
+  undoHistory,
+  type EditorHistory,
+} from '@/game/editorHistory'
+import {
+  ZOOM_DEFAULT,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP,
+  clampZoom,
+  distance,
+  fitZoom,
+  pinchZoom,
+  shiftZoomTowardCursor,
+} from '@/game/editorZoom'
 
 type Tool = 'erase' | PieceType | 'start'
-const PIECE_TOOLS: PieceType[] = ['straight', 'left90', 'right90']
+const PIECE_TOOLS: PieceType[] = [
+  'straight',
+  'left90',
+  'right90',
+  'scurve',
+  'scurveLeft',
+]
 const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
   left90: 'Left turn',
   right90: 'Right turn',
+  scurve: 'S-curve (right)',
+  scurveLeft: 'S-curve (left)',
   start: 'Set start',
 }
 
@@ -31,6 +67,10 @@ interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
   initialCheckpointCount?: number
+  // Optional baked-in author mood (timeOfDay / weather) to seed the editor's
+  // pickers with. Both fields are optional inside the mood. Undefined when
+  // the loaded track has no mood (legacy or never set).
+  initialMood?: TrackMood
   // When set, the editor was opened against a historical version. Saving still
   // creates a new version on the same slug. The editor surfaces a small banner
   // so the player understands they are forking, not overwriting.
@@ -48,10 +88,30 @@ export function TrackEditor({
   slug,
   initialPieces,
   initialCheckpointCount,
+  initialMood,
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
-  const [pieces, setPieces] = useState<Piece[]>(initialPieces)
+  const [history, setHistory] = useState<EditorHistory<Piece[]>>(() =>
+    createHistory(initialPieces),
+  )
+  const pieces = history.present
+  // Wraps a piece-array transformer so each keystroke records one undo
+  // step. Reference-equal returns from the transformer are no-ops in
+  // `pushHistory`, so an idempotent edit (e.g. erasing an empty cell)
+  // does not pollute the past stack with duplicates.
+  const setPieces = useCallback(
+    (next: Piece[] | ((prev: Piece[]) => Piece[])) => {
+      setHistory((prev) => {
+        const value =
+          typeof next === 'function'
+            ? (next as (p: Piece[]) => Piece[])(prev.present)
+            : next
+        return pushHistory(prev, value)
+      })
+    },
+    [],
+  )
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   // null = "default" (one CP per piece). Number = explicit override.
@@ -61,12 +121,30 @@ export function TrackEditor({
       ? initialCheckpointCount
       : null,
   )
+  // Author-baked mood pickers. null = "use the player's own pick" (no
+  // override). Each field is independent so an author can pick just one.
+  const [moodTimeOfDay, setMoodTimeOfDay] = useState<TimeOfDay | null>(
+    initialMood?.timeOfDay ?? null,
+  )
+  const [moodWeather, setMoodWeather] = useState<Weather | null>(
+    initialMood?.weather ?? null,
+  )
+  const moodActive = moodTimeOfDay !== null || moodWeather !== null
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(
-    initialCheckpointCount !== undefined &&
-      initialCheckpointCount !== initialPieces.length,
+    (initialCheckpointCount !== undefined &&
+      initialCheckpointCount !== initialPieces.length) ||
+      initialMood !== undefined,
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
+  const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
+  const gridContainerRef = useRef<HTMLDivElement | null>(null)
+  // Tracks an active two-finger pinch gesture. Null when no pinch is active.
+  const pinchRef = useRef<{
+    pointers: Map<number, { x: number; y: number }>
+    startDistance: number
+    startZoom: number
+  } | null>(null)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
 
@@ -75,8 +153,13 @@ export function TrackEditor({
   const rowMax = bounds.rowMax + PAD_CELLS
   const colMin = bounds.colMin - PAD_CELLS
   const colMax = bounds.colMax + PAD_CELLS
-  const width = (colMax - colMin + 1) * CELL
-  const height = (rowMax - rowMin + 1) * CELL
+  // Base content size at zoom = 1. The SVG keeps its viewBox at this size and
+  // the rendered width and height scale by `zoom`, so all interior coordinates
+  // (and click hit-testing via data-row / data-col) stay in base units.
+  const baseWidth = (colMax - colMin + 1) * CELL
+  const baseHeight = (rowMax - rowMin + 1) * CELL
+  const renderedWidth = baseWidth * zoom
+  const renderedHeight = baseHeight * zoom
 
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
@@ -126,7 +209,7 @@ export function TrackEditor({
       return next
     })
     if (err !== null) setError(null)
-  }, [])
+  }, [setPieces])
 
   function selectTool(next: Tool) {
     // Only piece tools have a rotation; tapping the same erase or start
@@ -146,7 +229,7 @@ export function TrackEditor({
       key === sk ? reverseStartDirection(prev) : moveStartTo(prev, row, col),
     )
     if (err !== null) setError(null)
-  }, [])
+  }, [setPieces])
 
   function cellFromEvent(e: React.MouseEvent<SVGSVGElement>): { row: number; col: number } | null {
     const target = (e.target as Element).closest('[data-row]') as SVGElement | null
@@ -157,7 +240,155 @@ export function TrackEditor({
     return { row, col }
   }
 
+  // Apply a zoom change anchored on a specific cursor location inside the
+  // grid container so the world point under the cursor stays put. When no
+  // cursor is provided (button taps), we anchor on the viewport center.
+  const applyZoom = useCallback(
+    (
+      newZoom: number,
+      anchor?: { clientX: number; clientY: number },
+    ) => {
+      const container = gridContainerRef.current
+      if (!container) {
+        setZoom((prev) => clampZoom(newZoom <= 0 ? prev : newZoom))
+        return
+      }
+      const rect = container.getBoundingClientRect()
+      const cursorClientX =
+        anchor !== undefined ? anchor.clientX - rect.left : rect.width / 2
+      const cursorClientY =
+        anchor !== undefined ? anchor.clientY - rect.top : rect.height / 2
+      setZoom((prev) => {
+        const result = shiftZoomTowardCursor({
+          oldZoom: prev,
+          newZoom,
+          cursorClientX,
+          cursorClientY,
+          scrollLeft: container.scrollLeft,
+          scrollTop: container.scrollTop,
+        })
+        // Apply scroll on the next frame so the new SVG width has been
+        // committed; otherwise scrollLeft will be clamped to the old size.
+        requestAnimationFrame(() => {
+          container.scrollLeft = result.scrollLeft
+          container.scrollTop = result.scrollTop
+        })
+        return result.zoom
+      })
+    },
+    [],
+  )
+
+  const zoomIn = useCallback(() => {
+    applyZoom(zoom * ZOOM_STEP)
+  }, [applyZoom, zoom])
+  const zoomOut = useCallback(() => {
+    applyZoom(zoom / ZOOM_STEP)
+  }, [applyZoom, zoom])
+  const zoomFit = useCallback(() => {
+    const container = gridContainerRef.current
+    if (!container) return
+    const rect = container.getBoundingClientRect()
+    const next = fitZoom({
+      contentWidth: baseWidth,
+      contentHeight: baseHeight,
+      viewportWidth: rect.width,
+      viewportHeight: rect.height,
+      padding: 16,
+    })
+    setZoom(next)
+    // Recenter after layout settles.
+    requestAnimationFrame(() => {
+      const c = gridContainerRef.current
+      if (!c) return
+      c.scrollLeft = (baseWidth * next - c.clientWidth) / 2
+      c.scrollTop = (baseHeight * next - c.clientHeight) / 2
+    })
+  }, [baseHeight, baseWidth])
+
+  const handleWheel = useCallback(
+    (e: WheelEvent) => {
+      // Only treat as zoom when a modifier is held; otherwise let the user
+      // scroll the grid normally. Trackpad pinch gestures arrive with
+      // ctrlKey synthesized by the browser, so they zoom out of the box.
+      if (!e.ctrlKey && !e.metaKey) return
+      e.preventDefault()
+      const factor = Math.exp(-e.deltaY * 0.0015)
+      applyZoom(zoom * factor, { clientX: e.clientX, clientY: e.clientY })
+    },
+    [applyZoom, zoom],
+  )
+
+  // Wheel needs a non-passive listener to call preventDefault. React's
+  // synthetic onWheel attaches as passive in modern React, so we attach
+  // imperatively.
+  useEffect(() => {
+    const container = gridContainerRef.current
+    if (!container) return
+    container.addEventListener('wheel', handleWheel, { passive: false })
+    return () => container.removeEventListener('wheel', handleWheel)
+  }, [handleWheel])
+
+  // Center the content the first time we have a viewport. Without this the
+  // user can land on a tall track scrolled to the top-left corner.
+  const didInitialCenterRef = useRef(false)
+  useLayoutEffect(() => {
+    if (didInitialCenterRef.current) return
+    const container = gridContainerRef.current
+    if (!container) return
+    if (container.clientWidth === 0 || container.clientHeight === 0) return
+    container.scrollLeft = Math.max(0, (renderedWidth - container.clientWidth) / 2)
+    container.scrollTop = Math.max(0, (renderedHeight - container.clientHeight) / 2)
+    didInitialCenterRef.current = true
+  }, [renderedHeight, renderedWidth])
+
+  const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    if (e.pointerType !== 'touch') return
+    const pinch = pinchRef.current ?? {
+      pointers: new Map<number, { x: number; y: number }>(),
+      startDistance: 0,
+      startZoom: zoom,
+    }
+    pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinch.pointers.size === 2) {
+      const [a, b] = Array.from(pinch.pointers.values())
+      pinch.startDistance = distance(a.x, a.y, b.x, b.y)
+      pinch.startZoom = zoom
+    }
+    pinchRef.current = pinch
+  }, [zoom])
+
+  const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const pinch = pinchRef.current
+    if (!pinch || !pinch.pointers.has(e.pointerId)) return
+    pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+    if (pinch.pointers.size !== 2 || pinch.startDistance <= 0) return
+    e.preventDefault()
+    const [a, b] = Array.from(pinch.pointers.values())
+    const cur = distance(a.x, a.y, b.x, b.y)
+    const next = pinchZoom(pinch.startZoom, pinch.startDistance, cur)
+    const midX = (a.x + b.x) / 2
+    const midY = (a.y + b.y) / 2
+    applyZoom(next, { clientX: midX, clientY: midY })
+  }, [applyZoom])
+
+  const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    const pinch = pinchRef.current
+    if (!pinch) return
+    pinch.pointers.delete(e.pointerId)
+    if (pinch.pointers.size < 2) {
+      pinch.startDistance = 0
+    }
+    if (pinch.pointers.size === 0) {
+      pinchRef.current = null
+    }
+  }, [])
+
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
+    // Suppress the click that would otherwise fire after a pinch gesture
+    // releases its last pointer. Without this a two-finger zoom can
+    // accidentally place a piece.
+    if (pinchRef.current !== null) return
     const cell = cellFromEvent(e)
     if (cell) applyTool(cell.row, cell.col)
   }, [applyTool])
@@ -179,6 +410,55 @@ export function TrackEditor({
     setPieces([])
     setError(null)
   }
+
+  const undoEdit = useCallback(() => {
+    setHistory((prev) => undoHistory(prev))
+    setError(null)
+  }, [])
+
+  const redoEdit = useCallback(() => {
+    setHistory((prev) => redoHistory(prev))
+    setError(null)
+  }, [])
+
+  const undoAvailable = canUndo(history)
+  const redoAvailable = canRedo(history)
+
+  // Keyboard shortcuts: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z = redo, also
+  // Ctrl/Cmd+Y = redo for Windows muscle memory. Ignored when typing in an
+  // input or select so the checkpoint number field and mood pickers behave
+  // normally.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const target = e.target as Element | null
+      if (target) {
+        const tag = target.tagName
+        if (
+          tag === 'INPUT' ||
+          tag === 'TEXTAREA' ||
+          tag === 'SELECT' ||
+          (target as HTMLElement).isContentEditable
+        ) {
+          return
+        }
+      }
+      const mod = e.ctrlKey || e.metaKey
+      if (!mod) return
+      if (e.key === 'z' || e.key === 'Z') {
+        e.preventDefault()
+        if (e.shiftKey) {
+          if (canRedo(history)) redoEdit()
+        } else {
+          if (canUndo(history)) undoEdit()
+        }
+      } else if (e.key === 'y' || e.key === 'Y') {
+        e.preventDefault()
+        if (canRedo(history)) redoEdit()
+      }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [history, redoEdit, undoEdit])
 
   // Clamp the override whenever piece count drops below it.
   const cpMax = pieces.length
@@ -205,9 +485,20 @@ export function TrackEditor({
     setSaving(true)
     setError(null)
     try {
-      const reqBody: { pieces: Piece[]; checkpointCount?: number } = { pieces }
+      const reqBody: {
+        pieces: Piece[]
+        checkpointCount?: number
+        mood?: TrackMood
+      } = { pieces }
       if (checkpointCount !== null && effectiveCp !== cpMax) {
         reqBody.checkpointCount = effectiveCp
+      }
+      const sanitized = sanitizeTrackMood({
+        timeOfDay: moodTimeOfDay ?? undefined,
+        weather: moodWeather ?? undefined,
+      })
+      if (sanitized !== null) {
+        reqBody.mood = sanitized
       }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
@@ -224,6 +515,11 @@ export function TrackEditor({
         return
       }
       const okBody = (await res.json()) as { versionHash: string }
+      // Record this slug in the local "tracks I built" log so the home page
+      // surfaces it under "Tracks you built". Defensive: a thrown writer
+      // (quota etc.) is swallowed inside recordMyTrack so the post-save
+      // navigation always proceeds.
+      recordMyTrack(slug)
       router.push(`/${slug}?v=${okBody.versionHash}`)
     } catch (e) {
       setError(e instanceof Error ? e.message : 'save failed')
@@ -303,42 +599,84 @@ export function TrackEditor({
         <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
 
-      <div style={gridWrap}>
-        <svg
-          width={width}
-          height={height}
-          viewBox={`0 0 ${width} ${height}`}
-          style={{
-            display: 'block',
-            background: '#162233',
-            cursor: 'pointer',
-            touchAction: 'manipulation',
-          }}
-          onClick={handleSvgClick}
-          onContextMenu={handleSvgContextMenu}
-        >
-          {rows.map((r) =>
-            cols.map((c) => {
-              const x = (c - colMin) * CELL
-              const y = (r - rowMin) * CELL
-              const key = cellKey(r, c)
-              const piece = cellMap.get(key)
-              const isStart = key === startKey
-              return (
-                <Cell
-                  key={key}
-                  row={r}
-                  col={c}
-                  x={x}
-                  y={y}
-                  piece={piece}
-                  isStart={isStart}
-                  startExitDir={isStart ? startExitDir : null}
-                />
-              )
-            }),
-          )}
-        </svg>
+      <div style={gridOuter}>
+        <div style={gridWrap} ref={gridContainerRef}>
+          <svg
+            width={renderedWidth}
+            height={renderedHeight}
+            viewBox={`0 0 ${baseWidth} ${baseHeight}`}
+            style={{
+              display: 'block',
+              background: '#162233',
+              cursor: 'pointer',
+              // `none` lets us own pinch gestures; without it the browser
+              // intercepts two-finger touches as page zoom.
+              touchAction: 'none',
+            }}
+            onClick={handleSvgClick}
+            onContextMenu={handleSvgContextMenu}
+            onPointerDown={handlePointerDown}
+            onPointerMove={handlePointerMove}
+            onPointerUp={handlePointerUp}
+            onPointerCancel={handlePointerUp}
+          >
+            {rows.map((r) =>
+              cols.map((c) => {
+                const x = (c - colMin) * CELL
+                const y = (r - rowMin) * CELL
+                const key = cellKey(r, c)
+                const piece = cellMap.get(key)
+                const isStart = key === startKey
+                return (
+                  <Cell
+                    key={key}
+                    row={r}
+                    col={c}
+                    x={x}
+                    y={y}
+                    piece={piece}
+                    isStart={isStart}
+                    startExitDir={isStart ? startExitDir : null}
+                  />
+                )
+              }),
+            )}
+          </svg>
+        </div>
+        <div style={zoomToolbar} role="toolbar" aria-label="Zoom controls">
+          <button
+            type="button"
+            onClick={zoomOut}
+            disabled={zoom <= ZOOM_MIN + 1e-6}
+            style={zoomBtn}
+            aria-label="Zoom out"
+            title="Zoom out (Ctrl + scroll)"
+          >
+            -
+          </button>
+          <button
+            type="button"
+            onClick={zoomFit}
+            style={zoomBtnWide}
+            aria-label="Fit track to viewport"
+            title="Fit track to viewport"
+          >
+            Fit
+          </button>
+          <button
+            type="button"
+            onClick={zoomIn}
+            disabled={zoom >= ZOOM_MAX - 1e-6}
+            style={zoomBtn}
+            aria-label="Zoom in"
+            title="Zoom in (Ctrl + scroll)"
+          >
+            +
+          </button>
+          <span style={zoomReadout} aria-live="polite">
+            {Math.round(zoom * 100)}%
+          </span>
+        </div>
       </div>
 
       {advancedOpen ? (
@@ -389,6 +727,75 @@ export function TrackEditor({
               ) : null}
             </div>
           </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
+              <div style={advancedLabel}>Track mood</div>
+              <p style={advancedHelp}>
+                Pick a baked-in time of day or weather and every player who
+                races this version will see that look (unless they turn off
+                Respect track mood in their Settings). Leave both on Player
+                pick to let racers use their own scene preferences. Mood is
+                cosmetic only: it does not change physics, the lap times, or
+                the version hash, so adding or changing it later does not
+                invalidate any leaderboard entry.
+              </p>
+            </div>
+            <div style={moodControl}>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Time of day</span>
+                <select
+                  value={moodTimeOfDay ?? ''}
+                  onChange={(e) =>
+                    setMoodTimeOfDay(
+                      e.target.value === ''
+                        ? null
+                        : (e.target.value as TimeOfDay),
+                    )
+                  }
+                  style={moodSelect}
+                  aria-label="Track time of day"
+                >
+                  <option value="">Player pick</option>
+                  {TIME_OF_DAY_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {TIME_OF_DAY_LABELS[name]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Weather</span>
+                <select
+                  value={moodWeather ?? ''}
+                  onChange={(e) =>
+                    setMoodWeather(
+                      e.target.value === '' ? null : (e.target.value as Weather),
+                    )
+                  }
+                  style={moodSelect}
+                  aria-label="Track weather"
+                >
+                  <option value="">Player pick</option>
+                  {WEATHER_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {WEATHER_LABELS[name]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {moodActive ? (
+                <button
+                  onClick={() => {
+                    setMoodTimeOfDay(null)
+                    setMoodWeather(null)
+                  }}
+                  style={btnGhostSmall}
+                >
+                  Clear mood
+                </button>
+              ) : null}
+            </div>
+          </div>
         </div>
       ) : null}
 
@@ -408,6 +815,24 @@ export function TrackEditor({
         <div style={buttons}>
           <button onClick={cancel} style={btnGhost}>Cancel</button>
           <button
+            onClick={undoEdit}
+            style={btnGhost}
+            disabled={!undoAvailable}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo"
+          >
+            Undo
+          </button>
+          <button
+            onClick={redoEdit}
+            style={btnGhost}
+            disabled={!redoAvailable}
+            title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+            aria-label="Redo"
+          >
+            Redo
+          </button>
+          <button
             onClick={reverseDirection}
             style={btnGhost}
             disabled={pieces.length < 2}
@@ -420,7 +845,9 @@ export function TrackEditor({
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
               Advanced
-              {checkpointCount !== null ? <span style={advancedDot} /> : null}
+              {checkpointCount !== null || moodActive ? (
+                <span style={advancedDot} />
+              ) : null}
             </button>
           ) : null}
           <button
@@ -598,6 +1025,50 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
         </>
       ) : null}
+      {piece.type === 'scurve' || piece.type === 'scurveLeft' ? (
+        <>
+          {/*
+            Top-down SVG: y grows downward, so a piece that travels south->north
+            in world coords (rotation 0) goes from y=CELL (bottom of glyph) to
+            y=0 (top of glyph). The snake bends right (+x) first for 'scurve'
+            and left (-x) first for 'scurveLeft'; we draw the scurve glyph and
+            mirror the inner group across x = cx for the left variant.
+          */}
+          <g
+            transform={
+              piece.type === 'scurveLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx - roadWidth / 2} ${CELL}
+                  L ${cx - roadWidth / 2} ${CELL * 0.78}
+                  C ${cx - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.6} ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32 - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.24} ${cx - roadWidth / 2} ${CELL * 0.06}
+                  L ${cx - roadWidth / 2} 0
+                  L ${cx + roadWidth / 2} 0
+                  L ${cx + roadWidth / 2} ${CELL * 0.06}
+                  C ${cx + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.24} ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32 + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.6} ${cx + roadWidth / 2} ${CELL * 0.78}
+                  L ${cx + roadWidth / 2} ${CELL}
+                  Z`}
+              fill={road}
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  L ${cx} ${CELL * 0.78}
+                  C ${cx} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.42}
+                  C ${cx + CELL * 0.32} ${CELL * 0.24} ${cx} ${CELL * 0.24} ${cx} ${CELL * 0.06}
+                  L ${cx} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
       <circle cx={cx} cy={CELL - 8} r={3} fill="#9ad8ff" />
     </g>
   )
@@ -705,12 +1176,64 @@ const paletteHint: React.CSSProperties = {
   opacity: 0.6,
   marginLeft: 'auto',
 }
+const gridOuter: React.CSSProperties = {
+  flex: 1,
+  position: 'relative',
+  display: 'flex',
+  minHeight: 0,
+}
 const gridWrap: React.CSSProperties = {
   flex: 1,
   overflow: 'auto',
   display: 'grid',
   placeItems: 'center',
   padding: 20,
+  // Reserve space below for the toolbar so the centered SVG never sits
+  // underneath it.
+  paddingBottom: 60,
+}
+const zoomToolbar: React.CSSProperties = {
+  position: 'absolute',
+  bottom: 12,
+  right: 16,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  padding: '6px 8px',
+  background: 'rgba(13, 20, 32, 0.85)',
+  border: '1px solid #2b3a50',
+  borderRadius: 8,
+  boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
+  pointerEvents: 'auto',
+}
+const zoomBtn: React.CSSProperties = {
+  width: 32,
+  height: 32,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'transparent',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  color: 'white',
+  fontFamily: 'inherit',
+  fontSize: 18,
+  fontWeight: 700,
+  cursor: 'pointer',
+  lineHeight: 1,
+}
+const zoomBtnWide: React.CSSProperties = {
+  ...zoomBtn,
+  width: 48,
+  fontSize: 12,
+  letterSpacing: 0.5,
+}
+const zoomReadout: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.7,
+  minWidth: 36,
+  textAlign: 'right',
+  fontVariantNumeric: 'tabular-nums',
 }
 const footer: React.CSSProperties = {
   padding: '12px 20px',
@@ -790,6 +1313,34 @@ const advancedControl: React.CSSProperties = {
   alignItems: 'center',
   gap: 8,
   flexShrink: 0,
+}
+const moodControl: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 8,
+  flexShrink: 0,
+  minWidth: 200,
+}
+const moodPickerRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  fontSize: 12,
+}
+const moodPickerLabel: React.CSSProperties = {
+  width: 78,
+  opacity: 0.75,
+}
+const moodSelect: React.CSSProperties = {
+  background: '#162233',
+  color: 'white',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  padding: '4px 8px',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  minWidth: 130,
 }
 const btnGhostSmall: React.CSSProperties = {
   border: '1px solid #334155',

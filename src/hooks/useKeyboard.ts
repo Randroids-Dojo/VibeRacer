@@ -3,6 +3,7 @@ import { useEffect, useRef } from 'react'
 import {
   DEFAULT_KEY_BINDINGS,
   actionForCode,
+  isContinuousAction,
   type KeyBindings,
 } from '@/lib/controlSettings'
 
@@ -50,6 +51,10 @@ export function useKeyboard(
       if (pressed && isEditableTarget(e.target)) return
       const action = actionForCode(bindingsRef.current, e.code)
       if (!action) return
+      // One-shot actions (e.g. restartLap) are dispatched by their own
+      // listener and never enter the held-down state. Skip them here so the
+      // KeyInput ref stays clean.
+      if (!isContinuousAction(action)) return
       state.current[action] = pressed
       e.preventDefault()
     }

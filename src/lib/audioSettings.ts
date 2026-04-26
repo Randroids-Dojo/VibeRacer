@@ -12,6 +12,17 @@ export interface AudioSettings {
   sfxEnabled: boolean
   musicVolume: number
   sfxVolume: number
+  // Per-track music personalization. When true, the in-game music's root
+  // key, scale flavor, and tempo are nudged from a stable hash of the
+  // current slug so each track has its own musical identity. When false,
+  // every track plays the same legacy game loop (G minor, 140 BPM).
+  musicPerTrack: boolean
+  // Folds the player's initials into the per-track music seed so two players
+  // on the same slug hear distinct flavors. Only consulted when
+  // `musicPerTrack` is also true; otherwise the loop stays at the legacy
+  // baseline. Default `false` so the audible behavior on upgrade matches the
+  // existing slug-only personalization exactly.
+  musicMixInitials: boolean
 }
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
@@ -19,6 +30,8 @@ export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   sfxEnabled: true,
   musicVolume: 0.7,
   sfxVolume: 0.8,
+  musicPerTrack: true,
+  musicMixInitials: false,
 }
 
 export const AUDIO_SETTINGS_STORAGE_KEY = 'viberacer.audio'
@@ -34,6 +47,16 @@ const AudioSettingsSchema = z.object({
   sfxEnabled: z.boolean(),
   musicVolume: VolumeSchema,
   sfxVolume: VolumeSchema,
+  // musicPerTrack landed after the original audio settings shape. Default
+  // true so legacy stored payloads opt in to the per-track flavor on their
+  // next race without losing any other choices; players who hated it can
+  // flip it off once.
+  musicPerTrack: z.boolean().default(true),
+  // musicMixInitials landed after musicPerTrack. Default false so legacy
+  // stored payloads keep playing the existing per-track flavor unchanged on
+  // upgrade; players who want their initials to influence the loop opt in
+  // once and the choice persists.
+  musicMixInitials: z.boolean().default(false),
 })
 
 export function cloneDefaultAudioSettings(): AudioSettings {

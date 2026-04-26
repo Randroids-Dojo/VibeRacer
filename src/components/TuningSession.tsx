@@ -30,6 +30,12 @@ import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { TimeOfDay } from '@/lib/lighting'
+import type { Weather } from '@/lib/weather'
+import { shouldHeadlightsBeOn } from '@/lib/headlights'
+import type { BrakeLightMode } from '@/lib/brakeLights'
+import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
@@ -73,8 +79,9 @@ export function TuningSession({
   const keys = useKeyboard(settings.keyBindings)
   // Gamepad polling shares the same KeyInput ref so analog axes feed straight
   // into RaceCanvas. The Tuning Lab has no pause concept, so the toggle
-  // callback is a no-op.
-  useGamepad(keys)
+  // callback is a no-op. The user's saved bindings are applied here as well so
+  // a controller rebind in Settings carries into the lab.
+  useGamepad(keys, undefined, settings.gamepadBindings)
 
   const [phase, setPhase] = useState<Phase>('intro')
   const [params, setParams] = useState<CarParams>(initialParams)
@@ -99,6 +106,11 @@ export function TuningSession({
     lapCount: 0,
     onTrack: true,
     lastLapMs: null,
+    wrongWay: false,
+    driftActive: false,
+    driftScore: 0,
+    driftMultiplier: 1,
+    driftLapBest: 0,
   })
   const [saveName, setSaveName] = useState('')
 
@@ -108,6 +120,52 @@ export function TuningSession({
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+  // Mirror the player's chosen camera rig into the lab so the practice loop
+  // matches the view they will race with.
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+      fov: settings.camera.fov,
+    }
+  }
+  // Same idea for car paint: the lab car wears the player's chosen color.
+  const carPaintRef = useRef<string | null>(settings.carPaint)
+  carPaintRef.current = settings.carPaint
+  // And the racing-number plate, so the lab car wears the player's chosen
+  // plate decal too.
+  const racingNumberRef = useRef(settings.racingNumber)
+  racingNumberRef.current = settings.racingNumber
+  // And the time-of-day lighting preset, so the lab matches the race scene.
+  const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
+  timeOfDayRef.current = settings.timeOfDay
+  // And the weather preset, so the lab gets the same fog / sky tint as the
+  // race scene.
+  const weatherRef = useRef<Weather | null>(settings.weather)
+  weatherRef.current = settings.weather
+  // Headlights: resolve from the player's HeadlightMode pick + the lab's
+  // active scene (no track mood in the lab, so it reads the player's own
+  // timeOfDay / weather directly). Keeps the lab car visually consistent with
+  // the race car so a player who flips the lamps on at night sees them in
+  // both contexts.
+  const headlightsOn = shouldHeadlightsBeOn(
+    settings.headlights,
+    settings.timeOfDay,
+    settings.weather,
+  )
+  const headlightsOnRef = useRef<boolean>(headlightsOn)
+  headlightsOnRef.current = headlightsOn
+  // Brake-light mode pick. The renderer combines this with its own per-frame
+  // braking detection so the rear lamps glow on the same frame the player
+  // touches the brake. Mirrors `headlightsOn` from the race renderer so the
+  // lab car visually matches the race car.
+  const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
+  brakeLightModeRef.current = settings.brakeLights
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -127,7 +185,17 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null })
+    setHud({
+      currentMs: 0,
+      lapCount: 0,
+      onTrack: true,
+      lastLapMs: null,
+      wrongWay: false,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: 0,
+    })
     setPhase('countdown')
   }
 
@@ -225,7 +293,17 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
-    setHud({ currentMs: 0, lapCount: 0, onTrack: true, lastLapMs: null })
+    setHud({
+      currentMs: 0,
+      lapCount: 0,
+      onTrack: true,
+      lastLapMs: null,
+      wrongWay: false,
+      driftActive: false,
+      driftScore: 0,
+      driftMultiplier: 1,
+      driftLapBest: 0,
+    })
     setPhase('countdown')
   }
 
@@ -264,6 +342,13 @@ export function TuningSession({
             pendingRaceStartRef={pendingRaceStartRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
+            cameraRigRef={cameraRigRef}
+            carPaintRef={carPaintRef}
+            racingNumberRef={racingNumberRef}
+            headlightsOnRef={headlightsOnRef}
+            brakeLightModeRef={brakeLightModeRef}
+            timeOfDayRef={timeOfDayRef}
+            weatherRef={weatherRef}
             disableMusicIntensity
             style={canvasStyle}
           />
@@ -429,7 +514,9 @@ function DriveHud({ hud }: { hud: RaceCanvasHud }) {
           <span style={driveHudVal}>{last}s</span>
         </div>
       ) : null}
-      {!hud.onTrack ? (
+      {hud.wrongWay ? (
+        <div style={wrongWayBadge}>WRONG WAY</div>
+      ) : !hud.onTrack ? (
         <div style={offTrackBadge}>OFF TRACK</div>
       ) : null}
     </div>
@@ -648,6 +735,17 @@ const offTrackBadge: CSSProperties = {
   borderRadius: 6,
   textAlign: 'center',
   letterSpacing: 1,
+}
+const wrongWayBadge: CSSProperties = {
+  background: '#d32f2f',
+  color: '#fff5d6',
+  fontSize: 11,
+  fontWeight: 800,
+  padding: '4px 8px',
+  borderRadius: 6,
+  textAlign: 'center',
+  letterSpacing: 1,
+  border: '1px solid rgba(255, 240, 180, 0.85)',
 }
 const driveActions: CSSProperties = {
   position: 'fixed',

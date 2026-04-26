@@ -2,10 +2,14 @@ import { describe, it, expect } from 'vitest'
 import { opposite, validateClosedLoop } from '@/game/track'
 import {
   CELL_SIZE,
+  SCURVE_ARC_RADIUS,
   TRACK_WIDTH,
   buildTrackPath,
   computeCpTriggerPieceIdx,
   distanceToCenterline,
+  samplePieceAt,
+  sampleScurveLeftLocal,
+  sampleScurveLocal,
 } from '@/game/trackPath'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import type { Piece } from '@/lib/schemas'
@@ -107,6 +111,211 @@ describe('OrderedPiece.arcCenter', () => {
     const path = buildTrackPath(DEFAULT_TRACK_PIECES)
     const straight = path.order.find((o) => o.piece.type === 'straight')!
     expect(straight.arcCenter).toBeNull()
+  })
+})
+
+describe('S-curve piece', () => {
+  // 3x2 stadium-style loop where the bottom straight is swapped for an
+  // S-curve. The connectors of an S-curve match a straight's at the same
+  // rotation so the loop still closes.
+  const scurveLoop: Piece[] = [
+    { type: 'right90', row: 0, col: 0, rotation: 0 },
+    { type: 'straight', row: 0, col: 1, rotation: 90 },
+    { type: 'right90', row: 0, col: 2, rotation: 90 },
+    { type: 'right90', row: 1, col: 2, rotation: 180 },
+    { type: 'scurve', row: 1, col: 1, rotation: 90 },
+    { type: 'right90', row: 1, col: 0, rotation: 270 },
+  ]
+
+  it('validates as a closed loop when slotted in for a straight', () => {
+    expect(validateClosedLoop(scurveLoop)).toEqual({ ok: true })
+  })
+
+  it('populates samples on the OrderedPiece', () => {
+    const path = buildTrackPath(scurveLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurve')!
+    expect(op.samples).not.toBeNull()
+    expect(op.samples!.length).toBeGreaterThan(8)
+    expect(op.arcCenter).toBeNull()
+  })
+
+  it('starts on the entry edge and ends on the exit edge after rotation', () => {
+    const path = buildTrackPath(scurveLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurve')!
+    const samples = op.samples!
+    const first = samples[0]
+    const last = samples[samples.length - 1]
+    // Entry/exit midpoints precomputed by buildTrackPath.
+    expect(Math.hypot(first.x - op.entry.x, first.z - op.entry.z))
+      .toBeLessThan(0.01)
+    expect(Math.hypot(last.x - op.exit.x, last.z - op.exit.z))
+      .toBeLessThan(0.01)
+  })
+
+  it('keeps every sample inside the cell so the road does not poke into a neighbor', () => {
+    const path = buildTrackPath(scurveLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurve')!
+    const half = CELL_SIZE / 2 + 0.001
+    for (const s of op.samples!) {
+      expect(Math.abs(s.x - op.center.x)).toBeLessThanOrEqual(half)
+      expect(Math.abs(s.z - op.center.z)).toBeLessThanOrEqual(half)
+    }
+  })
+
+  it('local sample peak amplitude matches twice the arc radius', () => {
+    // At rotation 0 the path bumps east. The eastmost sample sits at
+    // 2 * SCURVE_ARC_RADIUS from the cell center (x = 0). The road's outer
+    // edge then lands at 2*r + TRACK_WIDTH/2 = cell edge.
+    const local = sampleScurveLocal()
+    let maxX = -Infinity
+    for (const s of local) {
+      if (s.x > maxX) maxX = s.x
+    }
+    expect(maxX).toBeCloseTo(2 * SCURVE_ARC_RADIUS, 4)
+    expect(2 * SCURVE_ARC_RADIUS + TRACK_WIDTH / 2).toBeLessThanOrEqual(
+      CELL_SIZE / 2 + 0.001,
+    )
+  })
+
+  it('distanceToCenterline is near zero at every sampled point', () => {
+    const path = buildTrackPath(scurveLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurve')!
+    for (const s of op.samples!) {
+      expect(distanceToCenterline(op, s.x, s.z)).toBeLessThan(0.01)
+    }
+  })
+
+  it('spawns on the centerline when piece 0 is an S-curve', () => {
+    // Reorder the stadium loop so the S-curve at (1, 1) is at index 0. The
+    // graph still validates; the path walker starts at the S-curve and the
+    // spawn lands inside it.
+    const start: Piece[] = [
+      { type: 'scurve', row: 1, col: 1, rotation: 90 },
+      { type: 'right90', row: 1, col: 2, rotation: 180 },
+      { type: 'right90', row: 0, col: 2, rotation: 90 },
+      { type: 'straight', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 1, col: 0, rotation: 270 },
+    ]
+    expect(validateClosedLoop(start)).toEqual({ ok: true })
+    const path = buildTrackPath(start)
+    const first = path.order[0]
+    expect(first.piece.type).toBe('scurve')
+    expect(first.samples).not.toBeNull()
+    expect(
+      distanceToCenterline(first, path.spawn.position.x, path.spawn.position.z),
+    ).toBeLessThan(0.05)
+  })
+
+  it('samplePieceAt(t=0.5) lands at the bump apex perpendicular to travel', () => {
+    const path = buildTrackPath(scurveLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurve')!
+    const mid = samplePieceAt(op, 0.5)
+    // At t=0.5 the chicane is at its bump apex: 2 * SCURVE_ARC_RADIUS units
+    // perpendicular to travel from the cell axis. At rotation 90 travel is
+    // east-west, so the perpendicular offset shows up along the z axis.
+    // Allow a tiny linear-interp slop because samples are spaced.
+    const apex = 2 * SCURVE_ARC_RADIUS
+    expect(Math.abs(mid.position.x - op.center.x)).toBeLessThan(0.5)
+    expect(Math.abs(mid.position.z - op.center.z)).toBeCloseTo(apex, 0)
+  })
+})
+
+describe('scurveLeft piece (mirror of scurve)', () => {
+  // Same stadium loop as the scurve test but with a left-bend chicane in the
+  // bottom row. Connectors and rotation are unchanged from the scurve case.
+  const scurveLeftLoop: Piece[] = [
+    { type: 'right90', row: 0, col: 0, rotation: 0 },
+    { type: 'straight', row: 0, col: 1, rotation: 90 },
+    { type: 'right90', row: 0, col: 2, rotation: 90 },
+    { type: 'right90', row: 1, col: 2, rotation: 180 },
+    { type: 'scurveLeft', row: 1, col: 1, rotation: 90 },
+    { type: 'right90', row: 1, col: 0, rotation: 270 },
+  ]
+
+  it('local samples are an exact mirror of the scurve samples across x = 0', () => {
+    const right = sampleScurveLocal()
+    const left = sampleScurveLeftLocal()
+    expect(left.length).toBe(right.length)
+    for (let i = 0; i < right.length; i++) {
+      expect(left[i].x).toBeCloseTo(-right[i].x, 6)
+      expect(left[i].z).toBeCloseTo(right[i].z, 6)
+    }
+  })
+
+  it('local sample peak amplitude bumps WEST (negative x) by 2 * arc radius', () => {
+    const local = sampleScurveLeftLocal()
+    let minX = Infinity
+    for (const s of local) {
+      if (s.x < minX) minX = s.x
+    }
+    expect(minX).toBeCloseTo(-2 * SCURVE_ARC_RADIUS, 4)
+  })
+
+  it('validates as a closed loop when slotted in for a straight', () => {
+    expect(validateClosedLoop(scurveLeftLoop)).toEqual({ ok: true })
+  })
+
+  it('populates samples on the OrderedPiece', () => {
+    const path = buildTrackPath(scurveLeftLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurveLeft')!
+    expect(op.samples).not.toBeNull()
+    expect(op.samples!.length).toBeGreaterThan(8)
+    expect(op.arcCenter).toBeNull()
+  })
+
+  it('starts on the entry edge and ends on the exit edge after rotation', () => {
+    const path = buildTrackPath(scurveLeftLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurveLeft')!
+    const samples = op.samples!
+    const first = samples[0]
+    const last = samples[samples.length - 1]
+    expect(Math.hypot(first.x - op.entry.x, first.z - op.entry.z))
+      .toBeLessThan(0.01)
+    expect(Math.hypot(last.x - op.exit.x, last.z - op.exit.z))
+      .toBeLessThan(0.01)
+  })
+
+  it('keeps every sample inside the cell', () => {
+    const path = buildTrackPath(scurveLeftLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurveLeft')!
+    const half = CELL_SIZE / 2 + 0.001
+    for (const s of op.samples!) {
+      expect(Math.abs(s.x - op.center.x)).toBeLessThanOrEqual(half)
+      expect(Math.abs(s.z - op.center.z)).toBeLessThanOrEqual(half)
+    }
+  })
+
+  it('distanceToCenterline is near zero at every sampled point', () => {
+    const path = buildTrackPath(scurveLeftLoop)
+    const op = path.order.find((o) => o.piece.type === 'scurveLeft')!
+    for (const s of op.samples!) {
+      expect(distanceToCenterline(op, s.x, s.z)).toBeLessThan(0.01)
+    }
+  })
+
+  it('samplePieceAt(t=0.5) bumps in the OPPOSITE direction from the right scurve', () => {
+    const path = buildTrackPath(scurveLeftLoop)
+    const opLeft = path.order.find((o) => o.piece.type === 'scurveLeft')!
+    const midLeft = samplePieceAt(opLeft, 0.5)
+    // The matching right-bend piece at the same rotation/cell.
+    const rightLoop: Piece[] = scurveLeftLoop.map((p) =>
+      p.type === 'scurveLeft' ? { ...p, type: 'scurve' as const } : p,
+    )
+    const opRight = buildTrackPath(rightLoop).order.find(
+      (o) => o.piece.type === 'scurve',
+    )!
+    const midRight = samplePieceAt(opRight, 0.5)
+    // Apex is opposite-signed perpendicular to travel; sum should equal twice
+    // the cell center coords (i.e., they reflect across the center).
+    expect(midLeft.position.x + midRight.position.x).toBeCloseTo(
+      2 * opLeft.center.x,
+      1,
+    )
+    expect(midLeft.position.z + midRight.position.z).toBeCloseTo(
+      2 * opLeft.center.z,
+      1,
+    )
   })
 })
 

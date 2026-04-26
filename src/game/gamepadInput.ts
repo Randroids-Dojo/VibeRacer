@@ -5,12 +5,12 @@
 // Mapping rules (Standard layout, see https://w3c.github.io/gamepad/#remapping):
 //
 //   Steering: left stick X (axes[0]) plus dpad left/right (buttons 14/15).
-//   Throttle: right trigger (button 7) goes forward, left trigger (button 6)
-//             brakes / reverses. Falling back to face buttons A (0) for
-//             forward and B (1) for brake so D-input pads without analog
-//             triggers still work.
-//   Handbrake: right shoulder (button 5) or X face button (2).
-//   Pause: Start / Options (button 9).
+//             Steering source is fixed (not user-rebindable today).
+//   Throttle / brake / handbrake / pause: each action carries a list of
+//             button indices (per `GamepadBindings`). The helper takes the
+//             max analog `value` across that list, which lets analog triggers
+//             feed continuous throttle while digital face-button fallbacks
+//             snap to 0/1 the same as before.
 //
 // We export both a continuous `axes` payload (for analog physics) and a
 // boolean `keys` payload so the same gamepad can drive the existing keyboard
@@ -51,7 +51,12 @@ export const STICK_DEADZONE = 0.18
 export const TRIGGER_DEADZONE = 0.08
 export const BOOLEAN_THRESHOLD = 0.45
 
-function readButton(
+import {
+  DEFAULT_GAMEPAD_BINDINGS,
+  type GamepadBindings,
+} from '@/lib/controlSettings'
+
+export function readButton(
   buttons: ArrayLike<{ pressed: boolean; value?: number }>,
   i: number,
 ): { pressed: boolean; value: number } {
@@ -62,6 +67,23 @@ function readButton(
   // browsers report only one, so fall back gracefully in either direction.
   const value = typeof b.value === 'number' ? b.value : b.pressed ? 1 : 0
   return { pressed: !!b.pressed || value >= BOOLEAN_THRESHOLD, value }
+}
+
+// Sum the analog values across a list of bound button indices, picking the
+// maximum so a fully-pressed trigger and a digital face button feel the same
+// at the physics layer. Pressed flag is true when any bound button is down.
+function readBound(
+  buttons: ArrayLike<{ pressed: boolean; value?: number }>,
+  indices: number[],
+): { pressed: boolean; value: number } {
+  let maxValue = 0
+  let anyPressed = false
+  for (const i of indices) {
+    const b = readButton(buttons, i)
+    if (b.value > maxValue) maxValue = b.value
+    if (b.pressed) anyPressed = true
+  }
+  return { pressed: anyPressed, value: maxValue }
 }
 
 function applyDeadzone(value: number, deadzone: number): number {
@@ -75,6 +97,7 @@ function applyDeadzone(value: number, deadzone: number): number {
 export function gamepadToInput(
   pad: GamepadSnapshot,
   prevStartPressed = false,
+  bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
 ): GamepadInput {
   const stickXRaw = pad.axes.length > 0 ? pad.axes[0] : 0
   const stickX = applyDeadzone(stickXRaw, STICK_DEADZONE)
@@ -89,24 +112,29 @@ export function gamepadToInput(
   if (dpadLeft) steer = 1
   else if (dpadRight) steer = -1
 
-  const rt = readButton(pad.buttons, 7) // right trigger
-  const lt = readButton(pad.buttons, 6) // left trigger
-  const aBtn = readButton(pad.buttons, 0)
-  const bBtn = readButton(pad.buttons, 1)
-
-  const forwardAnalog = applyDeadzone(rt.value, TRIGGER_DEADZONE)
-  const backwardAnalog = applyDeadzone(lt.value, TRIGGER_DEADZONE)
+  // Throttle: take the strongest analog read across all bound forward and
+  // backward buttons. A fully-pulled trigger reads 1.0; a digital face button
+  // reads 1.0 when pressed. Both feed the same `throttle` axis so analog and
+  // digital pads feel identical at the physics layer.
+  const fwdRead = readBound(pad.buttons, bindings.forward)
+  const backRead = readBound(pad.buttons, bindings.backward)
+  const forwardAnalog = applyDeadzone(fwdRead.value, TRIGGER_DEADZONE)
+  const backwardAnalog = applyDeadzone(backRead.value, TRIGGER_DEADZONE)
   let throttle = forwardAnalog - backwardAnalog
   if (throttle === 0) {
-    if (aBtn.pressed) throttle = 1
-    else if (bBtn.pressed) throttle = -1
+    // No analog channel registered. Fall back to digital pressed state so a
+    // bound face button still drives even below the trigger deadzone.
+    if (fwdRead.pressed && !backRead.pressed) throttle = 1
+    else if (backRead.pressed && !fwdRead.pressed) throttle = -1
   }
 
-  const handbrake =
-    readButton(pad.buttons, 5).pressed || readButton(pad.buttons, 2).pressed
+  const handbrake = readBound(pad.buttons, bindings.handbrake).pressed
 
-  const startPressedNow = readButton(pad.buttons, 9).pressed
-  const pausePressed = startPressedNow && !prevStartPressed
+  // Pause: rising-edge detection across all bound pause buttons. We let the
+  // caller persist the prior frame's "any-pause-pressed" state in a single
+  // boolean so multi-button rebinds (Start + Select, say) all behave the same.
+  const pauseRead = readBound(pad.buttons, bindings.pause)
+  const pausePressed = pauseRead.pressed && !prevStartPressed
 
   return {
     axes: { steer, throttle },
@@ -119,6 +147,15 @@ export function gamepadToInput(
     },
     pausePressed,
   }
+}
+
+// True when any of the pause-bound buttons is currently held. The hook
+// stores this value across frames and compares it to detect a rising edge.
+export function pauseHeld(
+  pad: GamepadSnapshot,
+  bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
+): boolean {
+  return readBound(pad.buttons, bindings.pause).pressed
 }
 
 // True when any meaningful input is present on the snapshot. RaceCanvas reads

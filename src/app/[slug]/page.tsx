@@ -4,7 +4,11 @@ import { hasKvConfigured } from '@/lib/kv'
 import { loadTrack } from '@/lib/loadTrack'
 import { Game, type OverallRecord } from '@/components/Game'
 import { SlugLanding } from '@/components/SlugLanding'
-import { loadRecentTracksSafe } from '@/lib/recentTracks'
+import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
+import {
+  parseChallengeFromSearchParams,
+  type ChallengePayload,
+} from '@/lib/challenge'
 
 async function loadOverallRecord(
   slug: string,
@@ -44,11 +48,25 @@ export default async function SlugPage(ctx: {
   const loaded = await loadTrack(slug, requestedHash)
   if (loaded.kind === 'notFound') notFound()
   if (loaded.kind === 'fresh') {
-    const recent = await loadRecentTracksSafe(slug)
+    const recent = await loadRecentTrackPreviewsSafe(slug)
     return <SlugLanding slug={slug} recent={recent} />
   }
-  const { pieces, versionHash, checkpointCount } = loaded
+  const { pieces, versionHash, checkpointCount, mood } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
+
+  // Parse the friend-challenge query string here on the server so the client
+  // bundle never has to. Validation is defensive: a tampered or malformed
+  // challenge surfaces as null and the race falls back to the normal ghost
+  // resolution flow without crashing the page.
+  let challenge: ChallengePayload | null = null
+  const challengeParams = new URLSearchParams()
+  for (const [k, v] of Object.entries(sp)) {
+    if (typeof v === 'string') challengeParams.set(k, v)
+    else if (Array.isArray(v) && typeof v[0] === 'string') {
+      challengeParams.set(k, v[0])
+    }
+  }
+  challenge = parseChallengeFromSearchParams(challengeParams)
 
   return (
     <Game
@@ -56,7 +74,9 @@ export default async function SlugPage(ctx: {
       versionHash={versionHash}
       pieces={pieces}
       checkpointCount={checkpointCount}
+      trackMood={mood ?? null}
       initialRecord={overallRecord}
+      challenge={challenge}
     />
   )
 }
