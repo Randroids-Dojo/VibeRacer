@@ -9,6 +9,12 @@ import {
   isStockParams,
   type InputMode,
 } from '@/lib/tuningSettings'
+import {
+  DEFAULT_SORT_DIRECTION,
+  sortLeaderboardEntries,
+  type LeaderboardSortKey,
+  type SortDirection,
+} from '@/lib/leaderboard'
 import { useClickSfx } from '@/hooks/useClickSfx'
 
 interface LeaderboardProps {
@@ -80,8 +86,14 @@ export function Leaderboard({
     kind: 'loading',
   })
   const [setupForEntry, setSetupForEntry] = useState<Entry | null>(null)
+  // Default to rank ascending so the board reads as the server delivered it.
+  const [sortKey, setSortKey] = useState<LeaderboardSortKey>('rank')
+  const [sortDirection, setSortDirection] = useState<SortDirection>(
+    DEFAULT_SORT_DIRECTION.rank,
+  )
   const clickBack = useClickSfx('back')
   const clickConfirm = useClickSfx('confirm')
+  const clickSort = useClickSfx('soft')
 
   useEffect(() => {
     let cancelled = false
@@ -183,6 +195,24 @@ export function Leaderboard({
     ? `/${slug}/edit`
     : `/${slug}/edit?v=${selectedHash}`
 
+  // Sorted view of the entries. The original `rank` column always reflects
+  // the server-side leaderboard rank so re-sorting by date or racer still
+  // shows "you finished #3" honestly.
+  const sortedEntries = useMemo(() => {
+    if (board.kind !== 'ready') return []
+    return sortLeaderboardEntries(board.entries, sortKey, sortDirection)
+  }, [board, sortKey, sortDirection])
+
+  function handleSort(key: LeaderboardSortKey) {
+    clickSort()
+    if (sortKey === key) {
+      setSortDirection((d) => (d === 'asc' ? 'desc' : 'asc'))
+      return
+    }
+    setSortKey(key)
+    setSortDirection(DEFAULT_SORT_DIRECTION[key])
+  }
+
   return (
     <div style={overlay}>
       <div style={panel}>
@@ -265,14 +295,42 @@ export function Leaderboard({
         ) : (
           <div style={tableWrap}>
             <div style={headerRow}>
-              <div style={{ ...cell, ...rankCell }}>#</div>
+              <SortHeader
+                style={{ ...cell, ...rankCell }}
+                label="#"
+                columnKey="rank"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+              />
               <div style={{ ...cell, ...inputCell }} aria-label="Input device" />
-              <div style={{ ...cell, ...initialsCell }}>RACER</div>
-              <div style={{ ...cell, ...timeCell }}>TIME</div>
-              <div style={{ ...cell, ...dateCell }}>DATE</div>
+              <SortHeader
+                style={{ ...cell, ...initialsCell }}
+                label="RACER"
+                columnKey="racer"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+              />
+              <SortHeader
+                style={{ ...cell, ...timeCell }}
+                label="TIME"
+                columnKey="time"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+              />
+              <SortHeader
+                style={{ ...cell, ...dateCell }}
+                label="DATE"
+                columnKey="date"
+                activeKey={sortKey}
+                direction={sortDirection}
+                onSort={handleSort}
+              />
             </div>
             <div style={scrollArea}>
-              {board.entries.map((e) => (
+              {sortedEntries.map((e) => (
                 <div
                   key={`${e.rank}-${e.ts}`}
                   style={{ ...row, ...(e.isMe ? meRow : null) }}
@@ -314,6 +372,43 @@ export function Leaderboard({
         />
       ) : null}
     </div>
+  )
+}
+
+function SortHeader({
+  style,
+  label,
+  columnKey,
+  activeKey,
+  direction,
+  onSort,
+}: {
+  style: React.CSSProperties
+  label: string
+  columnKey: LeaderboardSortKey
+  activeKey: LeaderboardSortKey
+  direction: SortDirection
+  onSort: (key: LeaderboardSortKey) => void
+}) {
+  const isActive = activeKey === columnKey
+  const ariaSort = isActive
+    ? direction === 'asc'
+      ? 'ascending'
+      : 'descending'
+    : 'none'
+  const arrow = isActive ? (direction === 'asc' ? '↑' : '↓') : ''
+  return (
+    <button
+      type="button"
+      role="columnheader"
+      aria-sort={ariaSort}
+      onClick={() => onSort(columnKey)}
+      style={{ ...sortHeaderBtn, ...style, ...(isActive ? sortHeaderActive : null) }}
+      title={`Sort by ${label.toLowerCase() === '#' ? 'rank' : label.toLowerCase()}`}
+    >
+      <span>{label}</span>
+      {arrow ? <span style={sortArrow}>{arrow}</span> : null}
+    </button>
   )
 }
 
@@ -607,9 +702,32 @@ const headerRow: React.CSSProperties = {
   display: 'flex',
   fontSize: 11,
   letterSpacing: 1.3,
-  opacity: 0.6,
+  opacity: 0.85,
   padding: '0 8px 4px',
   borderBottom: '1px solid #333',
+}
+const sortHeaderBtn: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: 'inherit',
+  font: 'inherit',
+  letterSpacing: 'inherit',
+  padding: '4px 0',
+  margin: 0,
+  cursor: 'pointer',
+  textAlign: 'left',
+  opacity: 0.6,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 4,
+}
+const sortHeaderActive: React.CSSProperties = {
+  opacity: 1,
+  color: '#ffd36b',
+}
+const sortArrow: React.CSSProperties = {
+  fontSize: 12,
+  lineHeight: 1,
 }
 const row: React.CSSProperties = {
   display: 'flex',
