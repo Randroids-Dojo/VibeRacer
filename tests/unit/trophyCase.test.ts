@@ -40,7 +40,7 @@ describe('trophyCase: TROPHY_CASE_CATEGORY_ORDER', () => {
 
   it('contains no em dashes or en dashes in any category name', () => {
     for (const c of TROPHY_CASE_CATEGORY_ORDER) {
-      expect(c).not.toMatch(/[–—]/)
+      expect(c).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })
@@ -307,7 +307,7 @@ describe('trophyCase: formatTrophyTimestamp', () => {
       formatTrophyTimestamp(NOW - 365 * day, NOW),
     ]
     for (const sample of samples) {
-      expect(sample).not.toMatch(/[–—]/)
+      expect(sample).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })

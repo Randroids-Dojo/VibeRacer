@@ -70,7 +70,7 @@ describe('LAP_CONSISTENCY_TIERS', () => {
   })
 
   it('contains no em-dashes or en-dashes in player-facing text', () => {
-    const ban = /[—–]/
+    const ban = /[\u2014\u2013]/
     for (const tier of LAP_CONSISTENCY_TIERS) {
       expect(LAP_CONSISTENCY_LABELS[tier]).not.toMatch(ban)
       expect(LAP_CONSISTENCY_DESCRIPTIONS[tier]).not.toMatch(ban)
@@ -470,7 +470,7 @@ describe('formatConsistencyStdDev', () => {
   })
 
   it('contains no em-dashes or en-dashes', () => {
-    const ban = /[—–]/
+    const ban = /[\u2014\u2013]/
     expect(formatConsistencyStdDev(0)).not.toMatch(ban)
     expect(formatConsistencyStdDev(1500)).not.toMatch(ban)
     expect(formatConsistencyStdDev(Number.NaN)).not.toMatch(ban)
@@ -504,7 +504,7 @@ describe('formatConsistencyRatio', () => {
   })
 
   it('contains no em-dashes or en-dashes', () => {
-    const ban = /[—–]/
+    const ban = /[\u2014\u2013]/
     expect(formatConsistencyRatio(0)).not.toMatch(ban)
     expect(formatConsistencyRatio(0.05)).not.toMatch(ban)
     expect(formatConsistencyRatio(Number.NaN)).not.toMatch(ban)

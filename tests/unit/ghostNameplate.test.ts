@@ -64,7 +64,7 @@ describe('ghostNameplate constants', () => {
 
   it('source tags carry no em-dashes', () => {
     for (const src of GHOST_SOURCES) {
-      expect(NAMEPLATE_SOURCE_TAGS[src]).not.toContain('—')
+      expect(NAMEPLATE_SOURCE_TAGS[src]).not.toContain('\u2014')
     }
   })
 })

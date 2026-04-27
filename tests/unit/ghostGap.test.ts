@@ -220,8 +220,8 @@ describe('formatGhostGap', () => {
   it('contains no em-dash or en-dash characters', () => {
     const samples = [-9876, -1, 0, 1, 9876, 60500].map(formatGhostGap)
     for (const s of samples) {
-      expect(s).not.toMatch(/—/)
-      expect(s).not.toMatch(/–/)
+      expect(s).not.toMatch(/\u2014/)
+      expect(s).not.toMatch(/\u2013/)
     }
   })
 })

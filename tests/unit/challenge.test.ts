@@ -194,8 +194,8 @@ describe('buildChallengeText', () => {
       from: 'BCE',
       timeMs: 42123,
     })
-    expect(text.includes('—')).toBe(false)
-    expect(text.includes('–')).toBe(false)
+    expect(text.includes('\u2014')).toBe(false)
+    expect(text.includes('\u2013')).toBe(false)
   })
 })
 

@@ -157,8 +157,8 @@ describe('formatRivalBannerLabel', () => {
   })
   it('contains no em-dashes (per AGENTS.md)', () => {
     const label = formatRivalBannerLabel(validRival)
-    expect(label.includes('—')).toBe(false)
-    expect(label.includes('–')).toBe(false)
+    expect(label.includes('\u2014')).toBe(false)
+    expect(label.includes('\u2013')).toBe(false)
   })
 })
 

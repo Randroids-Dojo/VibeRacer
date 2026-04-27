@@ -32,8 +32,8 @@ describe('BRAKE_LIGHT_MODES', () => {
 
   it('labels and descriptions never use em-dashes (writing rule)', () => {
     for (const mode of BRAKE_LIGHT_MODES) {
-      expect(BRAKE_LIGHT_MODE_LABELS[mode]).not.toContain('—')
-      expect(BRAKE_LIGHT_MODE_DESCRIPTIONS[mode]).not.toContain('—')
+      expect(BRAKE_LIGHT_MODE_LABELS[mode]).not.toContain('\u2014')
+      expect(BRAKE_LIGHT_MODE_DESCRIPTIONS[mode]).not.toContain('\u2014')
     }
   })
 })

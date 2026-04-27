@@ -57,8 +57,8 @@ describe('reactionTime constants', () => {
 
   it('no tier label or description contains an em dash', () => {
     for (const tier of REACTION_TIME_TIERS) {
-      expect(REACTION_TIME_TIER_LABELS[tier]).not.toContain('—')
-      expect(REACTION_TIME_TIER_DESCRIPTIONS[tier]).not.toContain('—')
+      expect(REACTION_TIME_TIER_LABELS[tier]).not.toContain('\u2014')
+      expect(REACTION_TIME_TIER_DESCRIPTIONS[tier]).not.toContain('\u2014')
     }
   })
 
@@ -148,8 +148,8 @@ describe('formatReactionTime', () => {
     const samples = [245, 1000, 0, -1, Number.NaN, 50, 600]
     for (const v of samples) {
       const out = formatReactionTime(v)
-      expect(out).not.toContain('—') // em dash
-      expect(out).not.toContain('–') // en dash
+      expect(out).not.toContain('\u2014') // em dash
+      expect(out).not.toContain('\u2013') // en dash
     }
   })
 })

@@ -206,8 +206,8 @@ describe('static help copy', () => {
       buildTouchHelp('dual').intro,
       ...buildTouchHelp('dual').bullets,
     ].join('\n')
-    expect(blob.includes('—')).toBe(false)
-    expect(blob.includes('–')).toBe(false)
+    expect(blob.includes('\u2014')).toBe(false)
+    expect(blob.includes('\u2013')).toBe(false)
   })
 })
 

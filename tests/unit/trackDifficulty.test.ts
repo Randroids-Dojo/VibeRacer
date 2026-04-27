@@ -47,10 +47,10 @@ describe('TRACK_DIFFICULTY_TIERS table', () => {
 
   it('avoids em-dashes / en-dashes in every player-facing string', () => {
     for (const tier of TRACK_DIFFICULTY_TIERS) {
-      expect(TRACK_DIFFICULTY_LABELS[tier]).not.toContain('–')
-      expect(TRACK_DIFFICULTY_LABELS[tier]).not.toContain('—')
-      expect(TRACK_DIFFICULTY_DESCRIPTIONS[tier]).not.toContain('–')
-      expect(TRACK_DIFFICULTY_DESCRIPTIONS[tier]).not.toContain('—')
+      expect(TRACK_DIFFICULTY_LABELS[tier]).not.toContain('\u2013')
+      expect(TRACK_DIFFICULTY_LABELS[tier]).not.toContain('\u2014')
+      expect(TRACK_DIFFICULTY_DESCRIPTIONS[tier]).not.toContain('\u2013')
+      expect(TRACK_DIFFICULTY_DESCRIPTIONS[tier]).not.toContain('\u2014')
     }
   })
 

@@ -50,8 +50,8 @@ describe('ACHIEVEMENT_IDS / ACHIEVEMENTS', () => {
 
   it('uses no em-dashes anywhere in player-facing copy', () => {
     for (const def of ACHIEVEMENTS) {
-      expect(def.name).not.toContain('—')
-      expect(def.description).not.toContain('—')
+      expect(def.name).not.toContain('\u2014')
+      expect(def.description).not.toContain('\u2014')
     }
   })
 

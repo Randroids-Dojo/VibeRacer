@@ -38,8 +38,8 @@ describe('RANK_TIERS', () => {
 
   it('keeps every label and description em-dash free', () => {
     for (const tier of RANK_TIERS) {
-      expect(RANK_TIER_LABELS[tier]).not.toMatch(/[—–]/)
-      expect(RANK_TIER_DESCRIPTIONS[tier]).not.toMatch(/[—–]/)
+      expect(RANK_TIER_LABELS[tier]).not.toMatch(/[\u2014\u2013]/)
+      expect(RANK_TIER_DESCRIPTIONS[tier]).not.toMatch(/[\u2014\u2013]/)
     }
   })
 })
@@ -204,7 +204,7 @@ describe('formatRankBadge', () => {
       { rank: 150, boardSize: 200 },
     ]
     for (const s of samples) {
-      expect(formatRankBadge(s)).not.toMatch(/[—–]/)
+      expect(formatRankBadge(s)).not.toMatch(/[\u2014\u2013]/)
     }
   })
 })
@@ -218,7 +218,7 @@ describe('formatRankAriaLabel', () => {
   })
 
   it('produces no em-dashes', () => {
-    expect(formatRankAriaLabel({ rank: 5, boardSize: 50 })).not.toMatch(/[—–]/)
+    expect(formatRankAriaLabel({ rank: 5, boardSize: 50 })).not.toMatch(/[\u2014\u2013]/)
   })
 })
 

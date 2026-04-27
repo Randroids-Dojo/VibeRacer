@@ -284,7 +284,7 @@ describe('pbHistory: formatPbAge', () => {
       formatPbAge(NOW - 700 * 24 * 60 * 60 * 1000, NOW),
     ]
     for (const out of samples) {
-      expect(out).not.toMatch(/[–—]/)
+      expect(out).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })

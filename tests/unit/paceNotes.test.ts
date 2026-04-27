@@ -26,7 +26,7 @@ function note(
 }
 
 function noEmDashes(value: string): boolean {
-  return !/[—–]/.test(value)
+  return !/[\u2014\u2013]/.test(value)
 }
 
 describe('PACE_NOTE_LOOK_AHEAD_PIECES', () => {

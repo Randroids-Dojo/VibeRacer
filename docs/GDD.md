@@ -20,8 +20,8 @@
 | 9 | Title, menu, pause | partial (pause menu and title screen with Play / Load existing / Settings ship; Settings pane is now live for keyboard remap and dual / single touch mode) |
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | partial (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version + sortable rank / racer / time / date columns, overall record in HUD, PB fanfare and record fanfare with a centered HUD burst all live; admin tooling and pagination beyond top 100 pending) |
-| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired; deeper copy testing pending) |
-| 13 | Audio | partial (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, UI click variants, and a centered HUD burst on PB / record all ship; deeper SFX polish and SFX volume slider pending) |
+| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired, Playwright open / close / submit coverage live; deeper copy testing pending) |
+| 13 | Audio | partial (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, UI click variants, haptics, channel toggles, and channel volume sliders all ship; deeper SFX polish pending) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
 | 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls + SFX layer landed; minor module follow-ups still open) |
@@ -741,13 +741,14 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 - Tests: `tests/unit/api.feedback.test.ts` covers the missing-PAT path, the missing-title path, and a mocked happy path that asserts the GitHub issues URL contains `Randroids-Dojo/VibeRacer`.
 - `src/components/FeedbackFab.tsx` ports the Epoch FAB with both modifications. The `View` type dropped to `'closed' | 'feedback'`; `toggle()` flips between them directly so a single click opens the input panel. Pause-only visibility is handled at the call site: `Game.tsx` only mounts `<FeedbackFab />` inside the `paused` branch alongside `<PauseMenu />`. No `isPaused` context needed since only `Game.tsx` renders the FAB.
 - Styling: inline `React.CSSProperties` objects instead of a global stylesheet, matching the project convention (HUD, PauseMenu, Countdown). FAB pill at `bottom-right`, panel opens immediately above it. Screenshot capture and console log buffering work unchanged from Epoch.
-- **Not yet landed.** Playwright coverage for the FAB open/close/submit flow. Visual polish pass on the panel.
+- Playwright: `tests/e2e/feedback.spec.ts` covers the pause-menu FAB opening, closing, focusing the textarea, submitting through a mocked `/api/feedback` response, and verifying the posted payload includes the current route.
+- **Not yet landed.** Visual polish pass on the panel.
 
 ---
 
 ## 13. Audio
 
-**Status.** Partial. Music ships; SFX pending.
+**Status.** Partial. Music, SFX, haptics, and channel volume controls ship; deeper SFX polish is still pending.
 
 Pure Web Audio API. No Tone.js. One shared `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead.
 

@@ -5,7 +5,8 @@ const baseURL = `http://localhost:${PORT}`
 
 export default defineConfig({
   testDir: './tests/e2e',
-  fullyParallel: true,
+  fullyParallel: false,
+  workers: 1,
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   reporter: 'list',
@@ -23,8 +24,8 @@ export default defineConfig({
     timeout: 180_000,
     env: {
       KV_REST_API_URL:
-        process.env.KV_REST_API_URL ?? 'https://fake.upstash.invalid',
-      KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ?? 'fake',
+        process.env.KV_REST_API_URL ?? '',
+      KV_REST_API_TOKEN: process.env.KV_REST_API_TOKEN ?? '',
       RACE_SIGNING_SECRET:
         process.env.RACE_SIGNING_SECRET ?? 'smoke-test-secret',
     },

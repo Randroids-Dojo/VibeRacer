@@ -40,8 +40,8 @@ describe('TIME_OF_DAY_CYCLE_MODES', () => {
   it('has no em-dashes in any player-facing string', () => {
     // Project-wide policy: em-dashes are banned in writing.
     for (const mode of TIME_OF_DAY_CYCLE_MODES) {
-      expect(TIME_OF_DAY_CYCLE_LABELS[mode]).not.toMatch(/—/)
-      expect(TIME_OF_DAY_CYCLE_DESCRIPTIONS[mode]).not.toMatch(/—/)
+      expect(TIME_OF_DAY_CYCLE_LABELS[mode]).not.toMatch(/\u2014/)
+      expect(TIME_OF_DAY_CYCLE_DESCRIPTIONS[mode]).not.toMatch(/\u2014/)
     }
   })
 

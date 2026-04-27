@@ -337,7 +337,7 @@ describe('formatNextMedalLabel', () => {
     for (const s of samples) {
       const label = formatNextMedalLabel(s)
       expect(label).not.toBeNull()
-      expect(label).not.toMatch(/[–—]/)
+      expect(label).not.toMatch(/[\u2013\u2014]/)
     }
   })
 })

@@ -34,8 +34,8 @@ describe('HEADLIGHT_MODES', () => {
 
   it('labels and descriptions never use em-dashes (writing rule)', () => {
     for (const mode of HEADLIGHT_MODES) {
-      expect(HEADLIGHT_MODE_LABELS[mode]).not.toContain('—')
-      expect(HEADLIGHT_MODE_DESCRIPTIONS[mode]).not.toContain('—')
+      expect(HEADLIGHT_MODE_LABELS[mode]).not.toContain('\u2014')
+      expect(HEADLIGHT_MODE_DESCRIPTIONS[mode]).not.toContain('\u2014')
     }
   })
 })

@@ -54,8 +54,8 @@ describe('top speed PB constants', () => {
 
   it('no tier label contains an em dash or en dash', () => {
     for (const tier of TOP_SPEED_TIERS) {
-      expect(TOP_SPEED_TIER_LABELS[tier]).not.toContain('—')
-      expect(TOP_SPEED_TIER_LABELS[tier]).not.toContain('–')
+      expect(TOP_SPEED_TIER_LABELS[tier]).not.toContain('\u2014')
+      expect(TOP_SPEED_TIER_LABELS[tier]).not.toContain('\u2013')
     }
   })
 

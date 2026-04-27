@@ -101,8 +101,8 @@ describe('HAPTIC_MODES', () => {
 
   it('labels and descriptions never use em-dashes (writing rule)', () => {
     for (const mode of HAPTIC_MODES) {
-      expect(HAPTIC_MODE_LABELS[mode]).not.toContain('—')
-      expect(HAPTIC_MODE_DESCRIPTIONS[mode]).not.toContain('—')
+      expect(HAPTIC_MODE_LABELS[mode]).not.toContain('\u2014')
+      expect(HAPTIC_MODE_DESCRIPTIONS[mode]).not.toContain('\u2014')
     }
   })
 })

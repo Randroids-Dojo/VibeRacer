@@ -465,8 +465,8 @@ describe('formatStreakLabel', () => {
   it('contains no em-dashes or en-dashes', () => {
     for (const n of [0, 1, 2, 5, 100]) {
       const out = formatStreakLabel(n)
-      expect(out.includes('—')).toBe(false)
-      expect(out.includes('–')).toBe(false)
+      expect(out.includes('\u2014')).toBe(false)
+      expect(out.includes('\u2013')).toBe(false)
     }
   })
 })

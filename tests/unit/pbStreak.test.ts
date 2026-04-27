@@ -120,8 +120,8 @@ describe('formatStreakLabel', () => {
 
   it('contains no em-dash or en-dash characters', () => {
     const label = formatStreakLabel(4)!
-    expect(label.includes('—')).toBe(false)
-    expect(label.includes('–')).toBe(false)
+    expect(label.includes('\u2014')).toBe(false)
+    expect(label.includes('\u2013')).toBe(false)
   })
 })
 
