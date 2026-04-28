@@ -21,11 +21,12 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   NearestFilter,
-  type Object3D,
+  Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   Points,
   PointsMaterial,
+  Quaternion,
   RGBAFormat,
   Scene,
   SphereGeometry,
@@ -33,6 +34,7 @@ import {
   SpriteMaterial,
   type Texture,
   UnsignedByteType,
+  Vector3,
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
@@ -2152,6 +2154,10 @@ export interface CameraRigParams {
   lookAhead: number
   positionLerp: number
   targetLerp: number
+  // Orientation uses quaternion slerp so camera rotation eases instead of
+  // snapping directly to the latest look target. Defaults to `targetLerp`
+  // for legacy callers.
+  orientationLerp?: number
   // Vertical field of view in degrees. Optional so legacy callers that build
   // CameraRigParams ad-hoc keep working; the renderer reads it through the
   // ref each frame and only reapplies on change.
@@ -2170,19 +2176,46 @@ export const DEFAULT_CAMERA_RIG: CameraRigParams = {
 export interface CameraRigState {
   position: { x: number; y: number; z: number }
   target: { x: number; y: number; z: number }
+  quaternion: Quaternion
+}
+
+const cameraLookHelper = new Object3D()
+const cameraLookPosition = new Vector3()
+const cameraLookTarget = new Vector3()
+const cameraLookQuaternion = new Quaternion()
+
+function clampLerp(value: number): number {
+  if (!Number.isFinite(value)) return 0
+  if (value < 0) return 0
+  if (value > 1) return 1
+  return value
+}
+
+function quaternionForLookAt(
+  position: { x: number; y: number; z: number },
+  target: { x: number; y: number; z: number },
+): Quaternion {
+  cameraLookPosition.set(position.x, position.y, position.z)
+  cameraLookTarget.set(target.x, target.y, target.z)
+  cameraLookHelper.position.copy(cameraLookPosition)
+  cameraLookHelper.lookAt(cameraLookTarget)
+  return cameraLookQuaternion.copy(cameraLookHelper.quaternion)
 }
 
 export function initCameraRig(carX: number, carZ: number, heading: number): CameraRigState {
   const cx = Math.cos(heading)
   const sz = -Math.sin(heading)
-  return {
+  const rig = {
     position: {
       x: carX - cx * DEFAULT_CAMERA_RIG.distance,
       y: DEFAULT_CAMERA_RIG.height,
       z: carZ - sz * DEFAULT_CAMERA_RIG.distance,
     },
     target: { x: carX, y: 1, z: carZ },
+    quaternion: new Quaternion(),
   }
+  rig.quaternion.copy(quaternionForLookAt(rig.position, rig.target))
+  return rig
 }
 
 export function updateCameraRig(
@@ -2205,4 +2238,12 @@ export function updateCameraRig(
   rig.target.x += (aheadX - rig.target.x) * params.targetLerp
   rig.target.y += (1 - rig.target.y) * params.targetLerp
   rig.target.z += (aheadZ - rig.target.z) * params.targetLerp
+
+  const orientationLerp = clampLerp(params.orientationLerp ?? params.targetLerp)
+  rig.quaternion.slerp(quaternionForLookAt(rig.position, rig.target), orientationLerp)
+}
+
+export function applyCameraRig(camera: PerspectiveCamera, rig: CameraRigState): void {
+  camera.position.set(rig.position.x, rig.position.y, rig.position.z)
+  camera.quaternion.copy(rig.quaternion)
 }

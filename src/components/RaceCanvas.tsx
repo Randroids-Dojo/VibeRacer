@@ -11,6 +11,7 @@ import {
   updateWrongWayDetector,
 } from '@/game/wrongWay'
 import {
+  applyCameraRig,
   buildGhostCar,
   buildGhostNameplate,
   buildScene,
@@ -566,8 +567,7 @@ export function RaceCanvas({
 
     bundle.car.position.set(state.x, 0, state.z)
     bundle.car.rotation.y = state.heading
-    bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-    bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+    applyCameraRig(bundle.camera, rig)
     renderer.render(bundle.scene, bundle.camera)
 
     const ghostBuild = buildGhostCar()
@@ -664,8 +664,7 @@ export function RaceCanvas({
         resetRigFromState()
         bundle.car.position.set(state.x, 0, state.z)
         bundle.car.rotation.y = state.heading
-        bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-        bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+        applyCameraRig(bundle.camera, rig)
         ghostMesh.visible = false
         ghostNameplate.setVisible(false)
         lastNameplateVisible = false
@@ -721,8 +720,7 @@ export function RaceCanvas({
         resetRigFromState()
         bundle.car.position.set(state.x, 0, state.z)
         bundle.car.rotation.y = state.heading
-        bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-        bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+        applyCameraRig(bundle.camera, rig)
         if (carPoseOutRef) {
           carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
         }
@@ -896,8 +894,7 @@ export function RaceCanvas({
         state.heading,
         cameraRigRef?.current ?? undefined,
       )
-      bundle.camera.position.set(rig.position.x, rig.position.y, rig.position.z)
-      bundle.camera.lookAt(rig.target.x, rig.target.y, rig.target.z)
+      applyCameraRig(bundle.camera, rig)
 
       // Sample the player's pose into the recording buffer at fixed cadence.
       // Push every sample slot we crossed this frame so a long dt does not
