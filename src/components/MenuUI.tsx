@@ -63,7 +63,7 @@ export function MenuPanel({
   width?: 'narrow' | 'wide'
 }) {
   const minWidth = width === 'wide' ? 320 : 260
-  const maxWidth = width === 'wide' ? 460 : 360
+  const maxWidth = width === 'wide' ? 560 : 360
   return (
     <div
       style={{

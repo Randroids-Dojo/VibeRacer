@@ -129,6 +129,29 @@ interface PadCaptureTarget {
   slot: number
 }
 
+type SettingsTabId =
+  | 'profile'
+  | 'audio'
+  | 'controls'
+  | 'vehicle'
+  | 'world'
+  | 'camera'
+  | 'hud'
+  | 'effects'
+  | 'tuning'
+
+const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
+  { id: 'profile', label: 'Profile' },
+  { id: 'audio', label: 'Audio' },
+  { id: 'controls', label: 'Controls' },
+  { id: 'vehicle', label: 'Vehicle' },
+  { id: 'world', label: 'World' },
+  { id: 'camera', label: 'Camera' },
+  { id: 'hud', label: 'HUD' },
+  { id: 'effects', label: 'Effects' },
+  { id: 'tuning', label: 'Tuning' },
+]
+
 export function SettingsPane({
   settings,
   onChange,
@@ -137,6 +160,7 @@ export function SettingsPane({
   inRace,
 }: SettingsPaneProps) {
   const router = useRouter()
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
@@ -576,12 +600,51 @@ export function SettingsPane({
     setPadCapture(null)
   }
 
+  function selectTab(tab: SettingsTabId) {
+    if (tab === activeTab) return
+    clickSoft()
+    setActiveTab(tab)
+    setCapture(null)
+    setPadCapture(null)
+  }
+
   return (
     <MenuOverlay zIndex={110}>
       <MenuPanel width="wide">
         <MenuHeader title="SETTINGS" onClose={onClose} />
 
-        <MenuSection title="Identity">
+        <div role="tablist" aria-label="Settings sections" style={tabList}>
+          {SETTINGS_TABS.map((tab) => {
+            const selected = activeTab === tab.id
+            return (
+              <button
+                key={tab.id}
+                id={`settings-tab-${tab.id}`}
+                role="tab"
+                type="button"
+                aria-selected={selected}
+                aria-controls={`settings-panel-${tab.id}`}
+                onClick={() => selectTab(tab.id)}
+                style={{
+                  ...tabButton,
+                  ...(selected ? tabButtonActive : null),
+                }}
+              >
+                {tab.label}
+              </button>
+            )
+          })}
+        </div>
+
+        <div
+          id={`settings-panel-${activeTab}`}
+          role="tabpanel"
+          aria-labelledby={`settings-tab-${activeTab}`}
+          style={tabPanel}
+        >
+
+        {activeTab === 'profile' ? (
+          <MenuSection title="Identity">
           <MenuHint>
             Three letters tag your lap times on the leaderboards. Editing
             them only affects future laps. Past entries keep their old tag.
@@ -623,9 +686,11 @@ export function SettingsPane({
           ) : initialsSaved ? (
             <div style={initialsOk}>Saved.</div>
           ) : null}
-        </MenuSection>
+          </MenuSection>
+        ) : null}
 
-        <MenuSection title="Audio">
+        {activeTab === 'audio' ? (
+          <MenuSection title="Audio">
           <div style={audioRow}>
             <div style={audioLabel}>Music</div>
             <MenuToggle
@@ -681,9 +746,11 @@ export function SettingsPane({
               />
             </div>
           </div>
-        </MenuSection>
+          </MenuSection>
+        ) : null}
 
-        <MenuSection title="Controls">
+        {activeTab === 'controls' ? (
+          <MenuSection title="Controls">
           {hasKeyboard ? (
             <div style={subSection}>
               <div style={subTitle}>Keyboard</div>
@@ -808,7 +875,11 @@ export function SettingsPane({
               ))}
             </div>
           </div>
+          </MenuSection>
+        ) : null}
 
+        {activeTab === 'hud' ? (
+          <MenuSection title="HUD and guides">
           <div style={subSection}>
             <div style={subTitle}>Ghost car</div>
             <MenuHint>
@@ -903,6 +974,11 @@ export function SettingsPane({
             </div>
           </div>
 
+          </MenuSection>
+        ) : null}
+
+        {activeTab === 'effects' ? (
+          <MenuSection title="Track effects">
           <div style={subSection}>
             <div style={subTitle}>Skid marks</div>
             <MenuHint>
@@ -968,6 +1044,11 @@ export function SettingsPane({
             </div>
           </div>
 
+          </MenuSection>
+        ) : null}
+
+        {activeTab === 'hud' ? (
+          <MenuSection title="HUD readouts">
           <div style={subSection}>
             <div style={subTitle}>Drift score</div>
             <MenuHint>
@@ -1092,9 +1173,12 @@ export function SettingsPane({
               />
             </div>
           </div>
-        </MenuSection>
+          </MenuSection>
+        ) : null}
 
-        <MenuSection title="Car paint">
+        {activeTab === 'vehicle' ? (
+          <>
+          <MenuSection title="Car paint">
           <MenuHint>
             Pick a paint color for your car. Stock keeps the original red
             finish from the model. Wheels stay dark either way.
@@ -1254,9 +1338,13 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>{HAPTIC_MODE_DESCRIPTIONS[settings.haptics]}</MenuHint>
-        </MenuSection>
+          </MenuSection>
+          </>
+        ) : null}
 
-        <MenuSection title="Time of day">
+        {activeTab === 'world' ? (
+          <>
+          <MenuSection title="Time of day">
           <MenuHint>
             Skin the scene with a different lighting preset. The track is
             unchanged. Default is Noon, which matches the original look.
@@ -1335,9 +1423,12 @@ export function SettingsPane({
               onChange({ ...settings, respectTrackMood: value })
             }
           />
-        </MenuSection>
+          </MenuSection>
+          </>
+        ) : null}
 
-        <MenuSection title="Camera">
+        {activeTab === 'camera' ? (
+          <MenuSection title="Camera">
           <MenuHint>
             Tune the trailing chase camera. Higher views see more of the track,
             lower views feel faster. Look-ahead leans the camera into corners.
@@ -1417,9 +1508,11 @@ export function SettingsPane({
               Reset camera
             </MenuButton>
           </div>
-        </MenuSection>
+          </MenuSection>
+        ) : null}
 
-        <MenuSection title="Tuning">
+        {activeTab === 'tuning' ? (
+          <MenuSection title="Tuning">
           <MenuHint>
             The Tuning Lab drives a curated test loop and uses your feedback
             to suggest car-param updates. Saved tunings can be applied to
@@ -1428,7 +1521,10 @@ export function SettingsPane({
           <MenuButton variant="primary" click="confirm" onClick={openTuningLab}>
             Open Tuning Lab
           </MenuButton>
-        </MenuSection>
+          </MenuSection>
+        ) : null}
+
+        </div>
 
         <div style={footer}>
           <MenuButton variant="ghost" fullWidth={false} onClick={resetAll}>
@@ -1782,6 +1878,36 @@ const subSection: React.CSSProperties = {
 const subTitle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
+}
+const tabList: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))',
+  gap: 8,
+}
+const tabButton: React.CSSProperties = {
+  border: `1px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  background: menuTheme.inputBg,
+  color: menuTheme.textHint,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: 12,
+  fontWeight: 800,
+  letterSpacing: 0.8,
+  lineHeight: 1.1,
+  minHeight: 38,
+  padding: '8px 10px',
+  textTransform: 'uppercase',
+}
+const tabButtonActive: React.CSSProperties = {
+  background: menuTheme.accentBg,
+  borderColor: menuTheme.accentBg,
+  color: menuTheme.accentText,
+}
+const tabPanel: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
 }
 const audioRow: React.CSSProperties = {
   display: 'flex',

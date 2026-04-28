@@ -5,6 +5,32 @@ test('home page renders', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'VibeRacer' })).toBeVisible()
 })
 
+test('settings menu groups options behind tabs', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Settings' }).click()
+
+  await expect(page.getByRole('tab', { name: 'Profile' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByText('Three letters tag your lap times')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Camera' }).click()
+  await expect(page.getByRole('tab', { name: 'Camera' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByText('Tune the trailing chase camera')).toBeVisible()
+
+  await page.getByRole('tab', { name: 'HUD' }).click()
+  await expect(page.getByText('Ghost car', { exact: true })).toBeVisible()
+  await expect(page.getByText('Speedometer', { exact: true })).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Effects' }).click()
+  await expect(page.getByText('Skid marks', { exact: true })).toBeVisible()
+  await expect(page.getByText('Trackside scenery', { exact: true })).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')
