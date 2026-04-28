@@ -2526,30 +2526,7 @@ function GameSession({
                 armLapReset()
               }}
               onEditTrack={editTrack}
-              onLeaderboards={() => setPauseView('leaderboard')}
-              onLapHistory={() => setPauseView('lapHistory')}
-              lapCount={lapHistory.length}
-              onPbHistory={() => setPauseView('pbHistory')}
-              pbHistoryCount={pbHistoryEntries.length}
-              onStats={() => setPauseView('stats')}
-              onAchievements={() => setPauseView('achievements')}
-              achievementCount={achievementProgressCount(achievements)}
-              achievementTotal={achievementTotalCount}
               onSettings={() => setPauseView('settings')}
-              onTuning={() => setPauseView('tuning')}
-              onHowToPlay={() => setPauseView('howToPlay')}
-              onPhotoMode={() => setPauseView('photo')}
-              onShare={() => {
-                void handleShare()
-              }}
-              shareLabel={shareLabel ?? undefined}
-              onChallenge={() => {
-                void handleChallenge()
-              }}
-              challengeAvailable={lastSubmit !== null}
-              challengeLabel={challengeLabel ?? undefined}
-              onToggleFavorite={handleToggleFavorite}
-              isFavorite={favorited}
               trackMoodLabel={trackMoodLabel}
               pieces={pieces}
               onExit={handleExitClick}
@@ -2656,6 +2633,29 @@ function GameSession({
               onClose={() => setPauseView('menu')}
               onReset={resetSettings}
               inRace
+              onLeaderboards={() => setPauseView('leaderboard')}
+              onLapHistory={() => setPauseView('lapHistory')}
+              lapCount={lapHistory.length}
+              onPbHistory={() => setPauseView('pbHistory')}
+              pbHistoryCount={pbHistoryEntries.length}
+              onStats={() => setPauseView('stats')}
+              onAchievements={() => setPauseView('achievements')}
+              achievementCount={achievementProgressCount(achievements)}
+              achievementTotal={achievementTotalCount}
+              onSetup={() => setPauseView('tuning')}
+              onHowToPlay={() => setPauseView('howToPlay')}
+              onPhotoMode={() => setPauseView('photo')}
+              onShare={() => {
+                void handleShare()
+              }}
+              shareLabel={shareLabel ?? undefined}
+              onChallenge={() => {
+                void handleChallenge()
+              }}
+              challengeAvailable={lastSubmit !== null}
+              challengeLabel={challengeLabel ?? undefined}
+              onToggleFavorite={handleToggleFavorite}
+              isFavorite={favorited}
             />
           )}
           {pauseView !== 'photo' ? <FeedbackFab /> : null}

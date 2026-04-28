@@ -117,6 +117,25 @@ interface SettingsPaneProps {
   // Set when SettingsPane is rendered inside the in-game pause overlay so
   // navigating away can warn the player before abandoning the race.
   inRace?: boolean
+  onLeaderboards?: () => void
+  onLapHistory?: () => void
+  lapCount?: number
+  onPbHistory?: () => void
+  pbHistoryCount?: number
+  onStats?: () => void
+  onAchievements?: () => void
+  achievementCount?: number
+  achievementTotal?: number
+  onSetup?: () => void
+  onHowToPlay?: () => void
+  onPhotoMode?: () => void
+  onShare?: () => void
+  shareLabel?: string
+  onChallenge?: () => void
+  challengeAvailable?: boolean
+  challengeLabel?: string
+  onToggleFavorite?: () => void
+  isFavorite?: boolean
 }
 
 interface CaptureTarget {
@@ -131,6 +150,7 @@ interface PadCaptureTarget {
 
 type SettingsTabId =
   | 'profile'
+  | 'race'
   | 'audio'
   | 'controls'
   | 'vehicle'
@@ -142,6 +162,7 @@ type SettingsTabId =
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
   { id: 'profile', label: 'Profile' },
+  { id: 'race', label: 'Race' },
   { id: 'audio', label: 'Audio' },
   { id: 'controls', label: 'Controls' },
   { id: 'vehicle', label: 'Vehicle' },
@@ -158,9 +179,30 @@ export function SettingsPane({
   onClose,
   onReset,
   inRace,
+  onLeaderboards,
+  onLapHistory,
+  lapCount = 0,
+  onPbHistory,
+  pbHistoryCount,
+  onStats,
+  onAchievements,
+  achievementCount = 0,
+  achievementTotal = 0,
+  onSetup,
+  onHowToPlay,
+  onPhotoMode,
+  onShare,
+  shareLabel,
+  onChallenge,
+  challengeAvailable,
+  challengeLabel,
+  onToggleFavorite,
+  isFavorite,
 }: SettingsPaneProps) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
+  const [activeTab, setActiveTab] = useState<SettingsTabId>(() =>
+    inRace ? 'race' : 'profile',
+  )
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [hasKeyboard, setHasKeyboard] = useState(true)
@@ -176,6 +218,9 @@ export function SettingsPane({
     setSettings: setAudio,
     resetSettings: resetAudio,
   } = useAudioSettings()
+  const settingsTabs = inRace
+    ? SETTINGS_TABS
+    : SETTINGS_TABS.filter((tab) => tab.id !== 'race')
   // Identity: editable inline. Hydrated from localStorage on mount; saving
   // dispatches the INITIALS_EVENT (via writeStoredInitials) so the HUD picks
   // up the new tag on the next frame without a page reload. Mid-race edits
@@ -614,7 +659,7 @@ export function SettingsPane({
         <MenuHeader title="SETTINGS" onClose={onClose} />
 
         <div role="tablist" aria-label="Settings sections" style={tabList}>
-          {SETTINGS_TABS.map((tab) => {
+          {settingsTabs.map((tab) => {
             const selected = activeTab === tab.id
             return (
               <button
@@ -642,51 +687,134 @@ export function SettingsPane({
           aria-labelledby={`settings-tab-${activeTab}`}
           style={tabPanel}
         >
-
-        {activeTab === 'profile' ? (
-          <MenuSection title="Identity">
-          <MenuHint>
-            Three letters tag your lap times on the leaderboards. Editing
-            them only affects future laps. Past entries keep their old tag.
-          </MenuHint>
-          <div style={initialsRow}>
-            <input
-              value={initialsDraft}
-              maxLength={3}
-              onChange={(e) => {
-                setInitialsDraft(
-                  e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
-                )
-                setInitialsError(null)
-                setInitialsSaved(false)
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && initialsDirty) {
-                  e.preventDefault()
-                  saveInitials()
-                }
-              }}
-              autoComplete="off"
-              spellCheck={false}
-              aria-label="Initials"
-              style={initialsInput}
-            />
-            <MenuButton
-              variant="primary"
-              click="confirm"
-              fullWidth={false}
-              disabled={!initialsDirty}
-              onClick={saveInitials}
-            >
-              Save
-            </MenuButton>
-          </div>
-          {initialsError ? (
-            <div style={initialsErr}>{initialsError}</div>
-          ) : initialsSaved ? (
-            <div style={initialsOk}>Saved.</div>
+          {activeTab === 'profile' ? (
+            <MenuSection title="Identity">
+              <MenuHint>
+                Three letters tag your lap times on the leaderboards. Editing
+                them only affects future laps. Past entries keep their old tag.
+              </MenuHint>
+              <div style={initialsRow}>
+                <input
+                  value={initialsDraft}
+                  maxLength={3}
+                  onChange={(e) => {
+                    setInitialsDraft(
+                      e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
+                    )
+                    setInitialsError(null)
+                    setInitialsSaved(false)
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && initialsDirty) {
+                      e.preventDefault()
+                      saveInitials()
+                    }
+                  }}
+                  autoComplete="off"
+                  spellCheck={false}
+                  aria-label="Initials"
+                  style={initialsInput}
+                />
+                <MenuButton
+                  variant="primary"
+                  click="confirm"
+                  fullWidth={false}
+                  disabled={!initialsDirty}
+                  onClick={saveInitials}
+                >
+                  Save
+                </MenuButton>
+              </div>
+              {initialsError ? (
+                <div style={initialsErr}>{initialsError}</div>
+              ) : initialsSaved ? (
+                <div style={initialsOk}>Saved.</div>
+              ) : null}
+            </MenuSection>
           ) : null}
-          </MenuSection>
+
+        {activeTab === 'race' && inRace ? (
+          <>
+            <MenuSection title="Progress">
+              <MenuHint>
+                Review your lap data, leaderboard position, and unlocked
+                milestones for this track version.
+              </MenuHint>
+              <div style={settingsActionGrid}>
+                {onLeaderboards ? (
+                  <MenuButton onClick={onLeaderboards}>Leaderboards</MenuButton>
+                ) : null}
+                {onLapHistory ? (
+                  <MenuButton onClick={onLapHistory}>
+                    {lapCount > 0 ? `Laps (${lapCount})` : 'Laps'}
+                  </MenuButton>
+                ) : null}
+                {onPbHistory ? (
+                  <MenuButton
+                    onClick={onPbHistory}
+                    title="See every personal best you have ever set on this version of the layout."
+                  >
+                    {pbHistoryCount && pbHistoryCount > 0
+                      ? `PB History (${pbHistoryCount})`
+                      : 'PB History'}
+                  </MenuButton>
+                ) : null}
+                {onStats ? (
+                  <MenuButton onClick={onStats}>Stats</MenuButton>
+                ) : null}
+                {onAchievements ? (
+                  <MenuButton onClick={onAchievements}>
+                    Achievements ({achievementCount}/{achievementTotal})
+                  </MenuButton>
+                ) : null}
+              </div>
+            </MenuSection>
+
+            <MenuSection title="Track tools">
+              <MenuHint>
+                Capture, share, favorite, or learn the current track without
+                crowding the pause menu.
+              </MenuHint>
+              <div style={settingsActionGrid}>
+                {onHowToPlay ? (
+                  <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
+                ) : null}
+                {onPhotoMode ? (
+                  <MenuButton onClick={onPhotoMode}>Photo mode</MenuButton>
+                ) : null}
+                {onShare ? (
+                  <MenuButton onClick={onShare}>
+                    {shareLabel ?? 'Share track'}
+                  </MenuButton>
+                ) : null}
+                {onToggleFavorite ? (
+                  <MenuButton
+                    onClick={onToggleFavorite}
+                    title={
+                      isFavorite
+                        ? 'Remove this track from your home-page favorites.'
+                        : 'Pin this track to a Favorites section on the home page.'
+                    }
+                  >
+                    {isFavorite ? 'Unstar track' : 'Star track'}
+                  </MenuButton>
+                ) : null}
+                {onChallenge ? (
+                  <MenuButton
+                    onClick={onChallenge}
+                    disabled={!challengeAvailable}
+                    title={
+                      challengeAvailable
+                        ? 'Send a friend a link that races them against your PB ghost.'
+                        : 'Set a personal best on this track first to unlock challenges.'
+                    }
+                  >
+                    {challengeLabel ?? 'Challenge a friend'}
+                  </MenuButton>
+                ) : null}
+              </div>
+            </MenuSection>
+          </>
         ) : null}
 
         {activeTab === 'audio' ? (
@@ -1514,10 +1642,14 @@ export function SettingsPane({
         {activeTab === 'tuning' ? (
           <MenuSection title="Tuning">
           <MenuHint>
-            The Tuning Lab drives a curated test loop and uses your feedback
-            to suggest car-param updates. Saved tunings can be applied to
-            your next race.
+            Adjust the current car setup or open the Tuning Lab for a curated
+            test loop that suggests car-param updates.
           </MenuHint>
+          {onSetup ? (
+            <MenuButton click="confirm" onClick={onSetup}>
+              Open Setup
+            </MenuButton>
+          ) : null}
           <MenuButton variant="primary" click="confirm" onClick={openTuningLab}>
             Open Tuning Lab
           </MenuButton>
@@ -1880,34 +2012,47 @@ const subTitle: React.CSSProperties = {
   fontWeight: 700,
 }
 const tabList: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(86px, 1fr))',
-  gap: 8,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 2,
+  borderBottom: `1px solid ${menuTheme.ghostBorder}`,
+  paddingTop: 2,
 }
 const tabButton: React.CSSProperties = {
-  border: `1px solid ${menuTheme.ghostBorder}`,
-  borderRadius: 8,
-  background: menuTheme.inputBg,
+  border: 'none',
+  borderBottom: '3px solid transparent',
+  borderRadius: '8px 8px 0 0',
+  background: 'transparent',
   color: menuTheme.textHint,
   cursor: 'pointer',
+  flex: '0 0 auto',
   fontFamily: 'inherit',
-  fontSize: 12,
+  fontSize: 11,
   fontWeight: 800,
-  letterSpacing: 0.8,
-  lineHeight: 1.1,
-  minHeight: 38,
-  padding: '8px 10px',
+  letterSpacing: 0.7,
+  lineHeight: 1,
+  minHeight: 34,
+  minWidth: 0,
+  padding: '10px 13px 9px',
+  textAlign: 'center',
   textTransform: 'uppercase',
+  whiteSpace: 'nowrap',
 }
 const tabButtonActive: React.CSSProperties = {
-  background: menuTheme.accentBg,
-  borderColor: menuTheme.accentBg,
-  color: menuTheme.accentText,
+  background: 'rgba(255,107,53,0.16)',
+  borderBottomColor: menuTheme.accentBg,
+  color: '#ffffff',
 }
 const tabPanel: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 14,
+  paddingTop: 4,
+}
+const settingsActionGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
+  gap: 8,
 }
 const audioRow: React.CSSProperties = {
   display: 'flex',

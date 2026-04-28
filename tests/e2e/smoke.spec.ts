@@ -31,6 +31,33 @@ test('settings menu groups options behind tabs', async ({ page }) => {
   await expect(page.getByText('Trackside scenery', { exact: true })).toBeVisible()
 })
 
+test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {
+  await page.goto('/start')
+  await page.getByRole('textbox').fill('TST')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Pause' }).click()
+
+  await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Restart Lap' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit Track' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Exit to title' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Leaderboards' }),
+  ).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await expect(page.getByRole('tab', { name: 'Race' })).toHaveAttribute(
+    'aria-selected',
+    'true',
+  )
+  await expect(page.getByRole('button', { name: 'Leaderboards' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Stats' })).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Tuning' }).click()
+  await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')
