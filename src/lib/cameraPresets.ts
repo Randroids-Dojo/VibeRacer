@@ -1,8 +1,9 @@
 // Camera preset library. The Camera section of Settings ships five sliders
 // (height, distance, look-ahead, follow speed, fov) that together describe
-// the trailing chase rig. Most players never touch them and a handful want
-// a curated mood without doing slider math, so this module surfaces a small
-// set of named snapshots that one click apply to all five values.
+// the camera rig. Most players never touch them and a handful want a curated
+// view without doing slider math, so this module surfaces a small set of
+// named snapshots that one click apply to the public sliders plus optional
+// preset-only local offsets.
 //
 // A preset is just a `CameraRigSettings` object plus a friendly name + blurb.
 // Picking one writes its values into the existing settings field. The user
@@ -19,57 +20,62 @@ import {
   CAMERA_DISTANCE_MIN,
   CAMERA_FOLLOW_SPEED_MAX,
   CAMERA_FOLLOW_SPEED_MIN,
+  CAMERA_FORWARD_MAX,
+  CAMERA_FORWARD_MIN,
   CAMERA_FOV_MAX,
   CAMERA_FOV_MIN,
   CAMERA_HEIGHT_MAX,
   CAMERA_HEIGHT_MIN,
   CAMERA_LOOK_AHEAD_MAX,
   CAMERA_LOOK_AHEAD_MIN,
+  CAMERA_TARGET_HEIGHT_MAX,
+  CAMERA_TARGET_HEIGHT_MIN,
   DEFAULT_CAMERA_SETTINGS,
   type CameraRigSettings,
 } from './controlSettings'
 
 export const CAMERA_PRESET_NAMES = [
-  'chase',
-  'chaseClose',
   'chaseFar',
+  'chaseClose',
+  'cockpit',
+  'dashboard',
   'hood',
-  'cinematic',
-  'low',
+  'bumper',
 ] as const
 export type CameraPresetName = (typeof CAMERA_PRESET_NAMES)[number]
 
-export const DEFAULT_CAMERA_PRESET: CameraPresetName = 'chase'
+export const DEFAULT_CAMERA_PRESET: CameraPresetName = 'chaseFar'
 
 // Friendly display labels for the picker. Single source of truth for
 // capitalization so the picker UI and any test snapshots cannot drift apart.
 export const CAMERA_PRESET_LABELS: Record<CameraPresetName, string> = {
-  chase: 'Chase',
-  chaseClose: 'Chase close',
   chaseFar: 'Chase far',
+  chaseClose: 'Chase close',
+  cockpit: 'Cockpit',
+  dashboard: 'Dashboard',
   hood: 'Hood',
-  cinematic: 'Cinematic',
-  low: 'Low',
+  bumper: 'Bumper',
 }
 
 // One-sentence blurb shown below the swatch and on the button's title /
 // aria-label. Keeps the picker self-explanatory without forcing the player
 // to apply a preset to discover what it does.
 export const CAMERA_PRESET_DESCRIPTIONS: Record<CameraPresetName, string> = {
-  chase: 'Default trailing chase camera. The original look.',
-  chaseClose: 'Closer chase view with the car larger in frame.',
-  chaseFar: 'Farther chase view with more road and horizon visible.',
-  hood: 'Low close-up just over the bumper. Feels fast.',
-  cinematic: 'High and far back with a calm follow. Wide framing.',
-  low: 'Low and tight chase. Aggressive, locked-on feel.',
+  chaseFar: 'Far behind, elevated view with more road and horizon visible.',
+  chaseClose: 'Just behind the car with the body larger in frame.',
+  cockpit: "From the driver's seat, looking out over the nose.",
+  dashboard: 'Behind the windshield with a low road-focused angle.',
+  hood: 'Mounted on the hood with a clear forward view.',
+  bumper: 'Low at the front for the fastest-feeling view.',
 }
 
-// Hand-tuned snapshot for each preset. The chase preset is `DEFAULT_CAMERA_SETTINGS`
-// verbatim so picking it matches the legacy hardcoded view exactly. Each value
-// stays inside the existing slider bounds so users can fine-tune from any
-// preset without first hitting a clamp.
+// Hand-tuned snapshot for each preset. The chase far preset is
+// `DEFAULT_CAMERA_SETTINGS` verbatim so the default remains unchanged. Each
+// value stays inside the existing slider bounds so users can fine-tune from
+// any preset without first hitting a clamp. Non-chase presets set
+// `cameraForward` to place the camera inside or in front of the car.
 const RAW_PRESETS: Record<CameraPresetName, CameraRigSettings> = {
-  chase: { ...DEFAULT_CAMERA_SETTINGS },
+  chaseFar: { ...DEFAULT_CAMERA_SETTINGS },
   // Forza-style close chase: just behind and slightly above the car, with
   // enough look-ahead to keep the road centerline visible.
   chaseClose: {
@@ -79,40 +85,41 @@ const RAW_PRESETS: Record<CameraPresetName, CameraRigSettings> = {
     followSpeed: 1.2,
     fov: 76,
   },
-  // Forza-style far chase: pulled back with a calmer follow so the player
-  // can read more of the upcoming road and scenery.
-  chaseFar: {
-    height: 6.5,
-    distance: 18,
-    lookAhead: 8,
-    followSpeed: 0.9,
-    fov: 72,
+  cockpit: {
+    height: 1.55,
+    distance: 6,
+    lookAhead: 11,
+    followSpeed: 1.45,
+    cameraForward: 0.6,
+    targetHeight: 1.35,
+    fov: 82,
   },
-  // Bumper / hood cam. Sits just over the front of the car looking forward.
-  // Higher fov widens the view so peripheral motion sells the speed.
-  hood: {
+  dashboard: {
     height: 1.8,
     distance: 6,
-    lookAhead: 9,
+    lookAhead: 11,
     followSpeed: 1.4,
+    cameraForward: 1.25,
+    targetHeight: 1.15,
+    fov: 86,
+  },
+  hood: {
+    height: 1.75,
+    distance: 6,
+    lookAhead: 12,
+    followSpeed: 1.4,
+    cameraForward: 2.25,
+    targetHeight: 1,
     fov: 95,
   },
-  // High and far. Slow follow gives a calm cinematic drift through corners.
-  // Narrow fov compresses the scene like a long lens.
-  cinematic: {
-    height: 10,
-    distance: 22,
-    lookAhead: 5,
-    followSpeed: 0.6,
-    fov: 60,
-  },
-  // Low close chase. Aggressive and locked-on. Mid fov keeps the car readable.
-  low: {
-    height: 3.5,
-    distance: 9,
-    lookAhead: 5,
-    followSpeed: 1.3,
-    fov: 78,
+  bumper: {
+    height: 0.65,
+    distance: 6,
+    lookAhead: 12,
+    followSpeed: 1.55,
+    cameraForward: 3.3,
+    targetHeight: 0.8,
+    fov: 102,
   },
 }
 
@@ -131,6 +138,24 @@ export function getCameraPreset(name: CameraPresetName): CameraRigSettings {
       CAMERA_FOLLOW_SPEED_MIN,
       CAMERA_FOLLOW_SPEED_MAX,
     ),
+    ...(raw.cameraForward !== undefined
+      ? {
+          cameraForward: clamp(
+            raw.cameraForward,
+            CAMERA_FORWARD_MIN,
+            CAMERA_FORWARD_MAX,
+          ),
+        }
+      : {}),
+    ...(raw.targetHeight !== undefined
+      ? {
+          targetHeight: clamp(
+            raw.targetHeight,
+            CAMERA_TARGET_HEIGHT_MIN,
+            CAMERA_TARGET_HEIGHT_MAX,
+          ),
+        }
+      : {}),
     fov: clamp(raw.fov, CAMERA_FOV_MIN, CAMERA_FOV_MAX),
   }
 }
@@ -153,6 +178,8 @@ export function matchCameraPreset(
       preset.distance === camera.distance &&
       preset.lookAhead === camera.lookAhead &&
       preset.followSpeed === camera.followSpeed &&
+      preset.cameraForward === camera.cameraForward &&
+      preset.targetHeight === camera.targetHeight &&
       preset.fov === camera.fov
     ) {
       return name

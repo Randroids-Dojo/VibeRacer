@@ -679,6 +679,8 @@ describe('localStorage round-trip', () => {
       distance: 18,
       lookAhead: 8,
       followSpeed: 1.3,
+      cameraForward: 2.4,
+      targetHeight: 1.2,
       fov: 85,
     }
     writeStoredControlSettings(custom)
@@ -695,6 +697,8 @@ describe('localStorage round-trip', () => {
         distance: 9999,
         lookAhead: -3,
         followSpeed: 12,
+        cameraForward: 999,
+        targetHeight: -1,
         fov: 5,
       },
     })
@@ -721,6 +725,8 @@ describe('localStorage round-trip', () => {
     expect(out.distance).toBe(16)
     expect(out.lookAhead).toBe(7)
     expect(out.followSpeed).toBeCloseTo(1.1, 6)
+    expect(out.cameraForward).toBeUndefined()
+    expect(out.targetHeight).toBeUndefined()
   })
 
   it('rejects an out-of-range FOV but keeps the rest of the payload via defaults', () => {
@@ -1118,6 +1124,8 @@ describe('camera defaults', () => {
     expect(DEFAULT_CAMERA_SETTINGS.height).toBeLessThanOrEqual(CAMERA_HEIGHT_MAX)
     expect(DEFAULT_CAMERA_SETTINGS.fov).toBeGreaterThanOrEqual(CAMERA_FOV_MIN)
     expect(DEFAULT_CAMERA_SETTINGS.fov).toBeLessThanOrEqual(CAMERA_FOV_MAX)
+    expect(DEFAULT_CAMERA_SETTINGS.cameraForward).toBeUndefined()
+    expect(DEFAULT_CAMERA_SETTINGS.targetHeight).toBeUndefined()
   })
 })
 

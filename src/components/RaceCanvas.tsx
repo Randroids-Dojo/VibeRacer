@@ -559,10 +559,23 @@ export function RaceCanvas({
     syncFov()
 
     let state = initGameState(path)
-    const rig: CameraRigState = initCameraRig(state.x, state.z, state.heading)
+    const rig: CameraRigState = initCameraRig(
+      state.x,
+      state.z,
+      state.heading,
+      cameraRigRef?.current ?? undefined,
+    )
 
     function resetRigFromState() {
-      Object.assign(rig, initCameraRig(state.x, state.z, state.heading))
+      Object.assign(
+        rig,
+        initCameraRig(
+          state.x,
+          state.z,
+          state.heading,
+          cameraRigRef?.current ?? undefined,
+        ),
+      )
     }
 
     bundle.car.position.set(state.x, 0, state.z)

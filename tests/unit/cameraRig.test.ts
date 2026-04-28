@@ -87,4 +87,17 @@ describe('camera rig orientation', () => {
     expect(forward.dot(toTarget)).toBeGreaterThan(0.999999)
     expect(forward.y).toBeLessThan(0)
   })
+
+  it('supports a forward-mounted camera preset', () => {
+    const rig = initCameraRig(10, 20, 0, {
+      ...baseParams,
+      cameraForward: 3,
+      targetHeight: 0.8,
+    })
+
+    expect(rig.position.x).toBeCloseTo(13, 6)
+    expect(rig.position.z).toBeCloseTo(20, 6)
+    expect(rig.target.x).toBeCloseTo(10 + baseParams.lookAhead, 6)
+    expect(rig.target.y).toBeCloseTo(0.8, 6)
+  })
 })

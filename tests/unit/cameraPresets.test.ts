@@ -45,7 +45,7 @@ describe('camera preset table', () => {
 
 describe('getCameraPreset', () => {
   it('chase preset matches the legacy default camera settings', () => {
-    expect(getCameraPreset('chase')).toEqual(DEFAULT_CAMERA_SETTINGS)
+    expect(getCameraPreset('chaseFar')).toEqual(DEFAULT_CAMERA_SETTINGS)
   })
 
   it('every preset value sits inside the slider bounds', () => {
@@ -75,15 +75,8 @@ describe('getCameraPreset', () => {
 
   it('falls back to the default preset when given an unknown name', () => {
     // Bypass the type guard intentionally to exercise the defensive path.
-    const got = getCameraPreset('nope' as unknown as 'chase')
+    const got = getCameraPreset('nope' as unknown as 'chaseFar')
     expect(got).toEqual(getCameraPreset(DEFAULT_CAMERA_PRESET))
-  })
-
-  it('hood preset reads as a low close forward camera', () => {
-    const hood = getCameraPreset('hood')
-    expect(hood.height).toBeLessThan(DEFAULT_CAMERA_SETTINGS.height)
-    expect(hood.distance).toBeLessThan(DEFAULT_CAMERA_SETTINGS.distance)
-    expect(hood.fov).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.fov)
   })
 
   it('chase close sits closer than the default chase camera', () => {
@@ -93,24 +86,34 @@ describe('getCameraPreset', () => {
     expect(close.lookAhead).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.lookAhead)
   })
 
-  it('chase far sits farther back than the default chase camera', () => {
+  it('chase far is the default chase camera', () => {
     const far = getCameraPreset('chaseFar')
-    expect(far.distance).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.distance)
-    expect(far.height).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.height)
-    expect(far.lookAhead).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.lookAhead)
+    expect(far).toEqual(DEFAULT_CAMERA_SETTINGS)
   })
 
-  it('cinematic preset reads as a high far slow camera', () => {
-    const cine = getCameraPreset('cinematic')
-    expect(cine.height).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.height)
-    expect(cine.distance).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.distance)
-    expect(cine.followSpeed).toBeLessThan(DEFAULT_CAMERA_SETTINGS.followSpeed)
+  it('cockpit and dashboard sit inside the body region', () => {
+    const cockpit = getCameraPreset('cockpit')
+    const dashboard = getCameraPreset('dashboard')
+    expect(cockpit.cameraForward).toBeGreaterThan(0)
+    expect(cockpit.cameraForward).toBeLessThan(dashboard.cameraForward!)
+    expect(dashboard.cameraForward).toBeLessThan(getCameraPreset('hood').cameraForward!)
+    expect(cockpit.height).toBeLessThan(DEFAULT_CAMERA_SETTINGS.height)
+    expect(dashboard.height).toBeLessThan(DEFAULT_CAMERA_SETTINGS.height)
+  })
+
+  it('hood and bumper mount in front of the cockpit views', () => {
+    const hood = getCameraPreset('hood')
+    const bumper = getCameraPreset('bumper')
+    expect(hood.cameraForward).toBeGreaterThan(getCameraPreset('dashboard').cameraForward!)
+    expect(bumper.cameraForward).toBeGreaterThan(hood.cameraForward!)
+    expect(bumper.height).toBeLessThan(hood.height)
+    expect(bumper.fov).toBeGreaterThan(hood.fov)
   })
 })
 
 describe('matchCameraPreset', () => {
   it('returns the matching preset name for the default settings', () => {
-    expect(matchCameraPreset(DEFAULT_CAMERA_SETTINGS)).toBe('chase')
+    expect(matchCameraPreset(DEFAULT_CAMERA_SETTINGS)).toBe('chaseFar')
   })
 
   it('returns the matching preset name for every preset', () => {
@@ -120,7 +123,7 @@ describe('matchCameraPreset', () => {
   })
 
   it('returns null when the camera has drifted off any preset', () => {
-    const tweaked = { ...getCameraPreset('chase'), height: 7.3 }
+    const tweaked = { ...getCameraPreset('chaseFar'), height: 7.3 }
     expect(matchCameraPreset(tweaked)).toBeNull()
   })
 

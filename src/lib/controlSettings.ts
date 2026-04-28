@@ -130,6 +130,14 @@ export interface CameraRigSettings {
   distance: number
   lookAhead: number
   followSpeed: number
+  // Optional preset-only local camera X offset, in car-forward units.
+  // Negative sits behind the car, positive sits toward the front. When
+  // omitted the renderer derives the offset from `-distance` so legacy chase
+  // behavior and the Distance slider stay intact.
+  cameraForward?: number
+  // Optional preset-only look target height. Defaults to 1, matching the
+  // legacy chase camera target around the body center.
+  targetHeight?: number
   // Vertical field of view in degrees. Lower values zoom in and feel calmer;
   // higher values widen the view (peripheral vision) and feel faster, at the
   // cost of more lens distortion at the edges.
@@ -151,6 +159,10 @@ export const CAMERA_LOOK_AHEAD_MIN = 0
 export const CAMERA_LOOK_AHEAD_MAX = 12
 export const CAMERA_FOLLOW_SPEED_MIN = 0.4
 export const CAMERA_FOLLOW_SPEED_MAX = 1.6
+export const CAMERA_FORWARD_MIN = -28
+export const CAMERA_FORWARD_MAX = 4
+export const CAMERA_TARGET_HEIGHT_MIN = 0.2
+export const CAMERA_TARGET_HEIGHT_MAX = 4
 // FOV bounds: 50 is a fairly tight cinematic view, 110 is a fish-eye-leaning
 // wide view that still keeps the chase camera readable. The legacy hardcoded
 // camera shipped with 70 degrees so that stays the default.
@@ -412,6 +424,16 @@ const CameraRigSettingsSchema = z.object({
     .number()
     .min(CAMERA_FOLLOW_SPEED_MIN)
     .max(CAMERA_FOLLOW_SPEED_MAX),
+  cameraForward: z
+    .number()
+    .min(CAMERA_FORWARD_MIN)
+    .max(CAMERA_FORWARD_MAX)
+    .optional(),
+  targetHeight: z
+    .number()
+    .min(CAMERA_TARGET_HEIGHT_MIN)
+    .max(CAMERA_TARGET_HEIGHT_MAX)
+    .optional(),
   // FOV landed after the original camera shape; backfill from the default so
   // legacy stored payloads (with the rest of the rig already saved) keep their
   // tweaks instead of getting reset back to the full default rig.

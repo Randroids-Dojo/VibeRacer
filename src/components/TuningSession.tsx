@@ -133,6 +133,8 @@ export function TuningSession({
       lookAhead: settings.camera.lookAhead,
       positionLerp: lerps.positionLerp,
       targetLerp: lerps.targetLerp,
+      cameraForward: settings.camera.cameraForward,
+      targetHeight: settings.camera.targetHeight,
       fov: settings.camera.fov,
     }
   }

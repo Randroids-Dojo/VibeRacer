@@ -2154,6 +2154,13 @@ export interface CameraRigParams {
   lookAhead: number
   positionLerp: number
   targetLerp: number
+  // Optional local camera X offset in car-forward units. Negative values are
+  // chase views behind the car; positive values support cockpit, dash, hood,
+  // and bumper presets. When omitted, derive from `-distance` for legacy
+  // chase behavior.
+  cameraForward?: number
+  // Optional look target height. Defaults to the legacy center-body target.
+  targetHeight?: number
   // Orientation uses quaternion slerp so camera rotation eases instead of
   // snapping directly to the latest look target. Defaults to `targetLerp`
   // for legacy callers.
@@ -2202,16 +2209,27 @@ function quaternionForLookAt(
   return cameraLookQuaternion.copy(cameraLookHelper.quaternion)
 }
 
-export function initCameraRig(carX: number, carZ: number, heading: number): CameraRigState {
+export function initCameraRig(
+  carX: number,
+  carZ: number,
+  heading: number,
+  params: CameraRigParams = DEFAULT_CAMERA_RIG,
+): CameraRigState {
   const cx = Math.cos(heading)
   const sz = -Math.sin(heading)
+  const cameraForward = params.cameraForward ?? -params.distance
+  const targetHeight = params.targetHeight ?? 1
   const rig = {
     position: {
-      x: carX - cx * DEFAULT_CAMERA_RIG.distance,
-      y: DEFAULT_CAMERA_RIG.height,
-      z: carZ - sz * DEFAULT_CAMERA_RIG.distance,
+      x: carX + cx * cameraForward,
+      y: params.height,
+      z: carZ + sz * cameraForward,
     },
-    target: { x: carX, y: 1, z: carZ },
+    target: {
+      x: carX + cx * params.lookAhead,
+      y: targetHeight,
+      z: carZ + sz * params.lookAhead,
+    },
     quaternion: new Quaternion(),
   }
   rig.quaternion.copy(quaternionForLookAt(rig.position, rig.target))
@@ -2227,8 +2245,10 @@ export function updateCameraRig(
 ): void {
   const cx = Math.cos(heading)
   const sz = -Math.sin(heading)
-  const wantX = carX - cx * params.distance
-  const wantZ = carZ - sz * params.distance
+  const cameraForward = params.cameraForward ?? -params.distance
+  const targetHeight = params.targetHeight ?? 1
+  const wantX = carX + cx * cameraForward
+  const wantZ = carZ + sz * cameraForward
   const aheadX = carX + cx * params.lookAhead
   const aheadZ = carZ + sz * params.lookAhead
 
@@ -2236,7 +2256,7 @@ export function updateCameraRig(
   rig.position.y += (params.height - rig.position.y) * params.positionLerp
   rig.position.z += (wantZ - rig.position.z) * params.positionLerp
   rig.target.x += (aheadX - rig.target.x) * params.targetLerp
-  rig.target.y += (1 - rig.target.y) * params.targetLerp
+  rig.target.y += (targetHeight - rig.target.y) * params.targetLerp
   rig.target.z += (aheadZ - rig.target.z) * params.targetLerp
 
   const orientationLerp = clampLerp(params.orientationLerp ?? params.targetLerp)

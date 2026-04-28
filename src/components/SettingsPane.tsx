@@ -541,6 +541,8 @@ export function SettingsPane({
     settings.camera.distance === DEFAULT_CAMERA_SETTINGS.distance &&
     settings.camera.lookAhead === DEFAULT_CAMERA_SETTINGS.lookAhead &&
     settings.camera.followSpeed === DEFAULT_CAMERA_SETTINGS.followSpeed &&
+    settings.camera.cameraForward === DEFAULT_CAMERA_SETTINGS.cameraForward &&
+    settings.camera.targetHeight === DEFAULT_CAMERA_SETTINGS.targetHeight &&
     settings.camera.fov === DEFAULT_CAMERA_SETTINGS.fov
 
   // Identify which preset (if any) the player is currently on so the picker
@@ -1639,13 +1641,15 @@ function CameraPresetSwatch({
   // dashed sight cone projected forward toward the car.
   const chipW = 56
   const chipH = 36
-  // Map height (1.5..14) and distance (6..28) onto the chip. Defensive clamps
-  // so an out-of-range preset still draws something sensible.
+  // Map height and local forward offset onto the chip. Defensive clamps so an
+  // out-of-range preset still draws something sensible. Presets without an
+  // explicit forward offset are legacy chase rigs, so derive from -distance.
   const heightFrac = clamp01((preset.height - 1.5) / (14 - 1.5))
-  const distanceFrac = clamp01((preset.distance - 6) / (28 - 6))
+  const forwardOffset = preset.cameraForward ?? -preset.distance
+  const forwardFrac = clamp01((forwardOffset - -28) / (4 - -28))
   const carX = chipW * 0.7
   const carY = chipH * 0.8
-  const camX = carX - distanceFrac * chipW * 0.55
+  const camX = carX - chipW * 0.55 + forwardFrac * chipW * 0.72
   const camY = carY - 4 - heightFrac * (chipH * 0.55)
   // FOV cone half-angle. 50..110 degrees mapped onto a small visual spread.
   const halfDeg = preset.fov / 2
