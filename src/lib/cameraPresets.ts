@@ -31,6 +31,8 @@ import {
 
 export const CAMERA_PRESET_NAMES = [
   'chase',
+  'chaseClose',
+  'chaseFar',
   'hood',
   'cinematic',
   'low',
@@ -43,6 +45,8 @@ export const DEFAULT_CAMERA_PRESET: CameraPresetName = 'chase'
 // capitalization so the picker UI and any test snapshots cannot drift apart.
 export const CAMERA_PRESET_LABELS: Record<CameraPresetName, string> = {
   chase: 'Chase',
+  chaseClose: 'Chase close',
+  chaseFar: 'Chase far',
   hood: 'Hood',
   cinematic: 'Cinematic',
   low: 'Low',
@@ -53,6 +57,8 @@ export const CAMERA_PRESET_LABELS: Record<CameraPresetName, string> = {
 // to apply a preset to discover what it does.
 export const CAMERA_PRESET_DESCRIPTIONS: Record<CameraPresetName, string> = {
   chase: 'Default trailing chase camera. The original look.',
+  chaseClose: 'Closer chase view with the car larger in frame.',
+  chaseFar: 'Farther chase view with more road and horizon visible.',
   hood: 'Low close-up just over the bumper. Feels fast.',
   cinematic: 'High and far back with a calm follow. Wide framing.',
   low: 'Low and tight chase. Aggressive, locked-on feel.',
@@ -64,6 +70,24 @@ export const CAMERA_PRESET_DESCRIPTIONS: Record<CameraPresetName, string> = {
 // preset without first hitting a clamp.
 const RAW_PRESETS: Record<CameraPresetName, CameraRigSettings> = {
   chase: { ...DEFAULT_CAMERA_SETTINGS },
+  // Forza-style close chase: just behind and slightly above the car, with
+  // enough look-ahead to keep the road centerline visible.
+  chaseClose: {
+    height: 4.2,
+    distance: 8.5,
+    lookAhead: 7,
+    followSpeed: 1.2,
+    fov: 76,
+  },
+  // Forza-style far chase: pulled back with a calmer follow so the player
+  // can read more of the upcoming road and scenery.
+  chaseFar: {
+    height: 6.5,
+    distance: 18,
+    lookAhead: 8,
+    followSpeed: 0.9,
+    fov: 72,
+  },
   // Bumper / hood cam. Sits just over the front of the car looking forward.
   // Higher fov widens the view so peripheral motion sells the speed.
   hood: {

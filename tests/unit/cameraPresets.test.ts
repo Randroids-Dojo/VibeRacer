@@ -86,6 +86,20 @@ describe('getCameraPreset', () => {
     expect(hood.fov).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.fov)
   })
 
+  it('chase close sits closer than the default chase camera', () => {
+    const close = getCameraPreset('chaseClose')
+    expect(close.distance).toBeLessThan(DEFAULT_CAMERA_SETTINGS.distance)
+    expect(close.height).toBeLessThan(DEFAULT_CAMERA_SETTINGS.height)
+    expect(close.lookAhead).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.lookAhead)
+  })
+
+  it('chase far sits farther back than the default chase camera', () => {
+    const far = getCameraPreset('chaseFar')
+    expect(far.distance).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.distance)
+    expect(far.height).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.height)
+    expect(far.lookAhead).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.lookAhead)
+  })
+
   it('cinematic preset reads as a high far slow camera', () => {
     const cine = getCameraPreset('cinematic')
     expect(cine.height).toBeGreaterThan(DEFAULT_CAMERA_SETTINGS.height)

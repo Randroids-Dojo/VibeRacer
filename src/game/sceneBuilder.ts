@@ -21,7 +21,7 @@ import {
   MeshBasicMaterial,
   MeshStandardMaterial,
   NearestFilter,
-  Object3D,
+  type Object3D,
   PerspectiveCamera,
   PlaneGeometry,
   Points,
@@ -2179,7 +2179,7 @@ export interface CameraRigState {
   quaternion: Quaternion
 }
 
-const cameraLookHelper = new Object3D()
+const cameraLookHelper = new PerspectiveCamera()
 const cameraLookPosition = new Vector3()
 const cameraLookTarget = new Vector3()
 const cameraLookQuaternion = new Quaternion()

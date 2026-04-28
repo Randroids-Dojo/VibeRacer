@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { Object3D, PerspectiveCamera, Vector3 } from 'three'
+import { PerspectiveCamera, Vector3 } from 'three'
 import {
   applyCameraRig,
   initCameraRig,
@@ -21,10 +21,16 @@ function lookQuaternion(
   position: { x: number; y: number; z: number },
   target: { x: number; y: number; z: number },
 ) {
-  const obj = new Object3D()
-  obj.position.set(position.x, position.y, position.z)
-  obj.lookAt(new Vector3(target.x, target.y, target.z))
-  return obj.quaternion
+  const camera = new PerspectiveCamera()
+  camera.position.set(position.x, position.y, position.z)
+  camera.lookAt(new Vector3(target.x, target.y, target.z))
+  return camera.quaternion
+}
+
+function forwardDirection(camera: PerspectiveCamera): Vector3 {
+  const direction = new Vector3()
+  camera.getWorldDirection(direction)
+  return direction
 }
 
 describe('camera rig orientation', () => {
@@ -64,5 +70,21 @@ describe('camera rig orientation', () => {
     expect(camera.position.y).toBeCloseTo(rig.position.y, 6)
     expect(camera.position.z).toBeCloseTo(rig.position.z, 6)
     expect(camera.quaternion.angleTo(rig.quaternion)).toBeLessThan(0.000001)
+  })
+
+  it('applied camera points at the target and pitches downward', () => {
+    const rig = initCameraRig(0, 0, 0)
+    const camera = new PerspectiveCamera()
+    applyCameraRig(camera, rig)
+
+    const forward = forwardDirection(camera)
+    const toTarget = new Vector3(
+      rig.target.x - rig.position.x,
+      rig.target.y - rig.position.y,
+      rig.target.z - rig.position.z,
+    ).normalize()
+
+    expect(forward.dot(toTarget)).toBeGreaterThan(0.999999)
+    expect(forward.y).toBeLessThan(0)
   })
 })
