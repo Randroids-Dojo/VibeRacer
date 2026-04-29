@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Gamepad Rumble Intensity
 
 - Branch: `feature/gamepad-rumble-intensity`
-- PR: pending
+- PR: #52
 - Changed: added separate strong and weak motor intensity sliders for gamepad rumble, persisted them in control settings, and applied them to both continuous rumble and one-shot impulses.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/haptics.test.ts` and `tests/unit/controlSettings.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: one pair of per-motor sliders is simpler than per-cue sliders and covers the real player need: lowering engine / chassis weight independently from slip / warning chatter.
