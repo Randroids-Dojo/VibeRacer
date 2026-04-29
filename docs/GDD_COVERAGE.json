@@ -79,7 +79,7 @@
     {
       "id": "5",
       "title": "Vehicle",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "arcade physics integrator",
         "off-track drag",
@@ -90,7 +90,8 @@
         "racing number",
         "manual gearing",
         "angular velocity",
-        "per-wheel track contact"
+        "per-wheel track contact",
+        "scalar yaw heading decision"
       ],
       "evidence": [
         "src/game/physics.ts",
@@ -106,14 +107,7 @@
         "src/game/wheelContact.ts",
         "tests/unit/wheelContact.test.ts"
       ],
-      "remainingGaps": [
-        "quaternion heading"
-      ],
-      "gapBacklog": {
-        "quaternion heading": [
-          "VibeRacer-evaluate-quaternion-heading-0c71504b"
-        ]
-      }
+      "remainingGaps": []
     },
     {
       "id": "6",
