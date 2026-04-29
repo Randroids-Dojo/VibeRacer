@@ -1,5 +1,9 @@
 import { createHash } from 'node:crypto'
 import type { Piece } from './schemas'
+import {
+  DEFAULT_TRACK_TRANSMISSION,
+  type TrackTransmissionMode,
+} from '@/game/transmission'
 
 export function canonicalizePieces(pieces: Piece[]): Piece[] {
   return [...pieces].sort((a, b) => {
@@ -25,6 +29,7 @@ function effectiveCheckpointCount(
 export function canonicalTrackJson(
   pieces: Piece[],
   checkpointCount?: number,
+  transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
 ): string {
   const canonical = canonicalizePieces(pieces).map((p) => ({
     type: p.type,
@@ -33,12 +38,22 @@ export function canonicalTrackJson(
     rotation: p.rotation,
   }))
   const cp = effectiveCheckpointCount(pieces, checkpointCount)
-  if (cp === null) return JSON.stringify(canonical)
-  return JSON.stringify({ pieces: canonical, checkpointCount: cp })
+  const transmissionOut =
+    transmission === DEFAULT_TRACK_TRANSMISSION ? null : transmission
+  if (cp === null && transmissionOut === null) return JSON.stringify(canonical)
+  return JSON.stringify({
+    pieces: canonical,
+    checkpointCount: cp ?? undefined,
+    transmission: transmissionOut ?? undefined,
+  })
 }
 
-export function hashTrack(pieces: Piece[], checkpointCount?: number): string {
+export function hashTrack(
+  pieces: Piece[],
+  checkpointCount?: number,
+  transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
+): string {
   return createHash('sha256')
-    .update(canonicalTrackJson(pieces, checkpointCount))
+    .update(canonicalTrackJson(pieces, checkpointCount, transmission))
     .digest('hex')
 }

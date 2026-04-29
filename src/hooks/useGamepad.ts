@@ -50,6 +50,8 @@ export function useGamepad(
 
     let raf = 0
     let prevStartPressed = false
+    let prevShiftDownPressed = false
+    let prevShiftUpPressed = false
     let lastSeenPadId: string | null = null
     let lastConnectedFlag = false
 
@@ -81,6 +83,8 @@ export function useGamepad(
 
       if (!pad) {
         prevStartPressed = false
+        prevShiftDownPressed = false
+        prevShiftUpPressed = false
         // Drop the analog override so the keyboard / touch ref retakes control
         // when the pad disconnects mid-race.
         if (keys.current.axes !== null) clearAxes()
@@ -113,12 +117,20 @@ export function useGamepad(
         keys.current.left = input.keys.left
         keys.current.right = input.keys.right
         keys.current.handbrake = input.keys.handbrake
+        keys.current.shiftDown = input.keys.shiftDown
+        keys.current.shiftUp = input.keys.shiftUp
+        prevShiftDownPressed = input.keys.shiftDown
+        prevShiftUpPressed = input.keys.shiftUp
       } else if (keys.current.axes !== null) {
         // Pad idle: relinquish the analog channel so keyboard / touch can take
         // over without an axes lock-out. We do not zero the boolean keys here
         // because the keyboard hook owns those for keyboard-held input; the
         // pad would only have set them in the `active` branch above.
         clearAxes()
+        if (prevShiftDownPressed) keys.current.shiftDown = false
+        if (prevShiftUpPressed) keys.current.shiftUp = false
+        prevShiftDownPressed = false
+        prevShiftUpPressed = false
       }
 
       raf = requestAnimationFrame(poll)

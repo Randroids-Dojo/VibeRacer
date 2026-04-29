@@ -41,6 +41,8 @@ export interface GamepadInput {
     left: boolean
     right: boolean
     handbrake: boolean
+    shiftDown: boolean
+    shiftUp: boolean
   }
   // True only on the rising edge of the Start / Options button. Caller is
   // responsible for tracking the previous frame's state.
@@ -129,6 +131,8 @@ export function gamepadToInput(
   }
 
   const handbrake = readBound(pad.buttons, bindings.handbrake).pressed
+  const shiftDown = readBound(pad.buttons, bindings.shiftDown).pressed
+  const shiftUp = readBound(pad.buttons, bindings.shiftUp).pressed
 
   // Pause: rising-edge detection across all bound pause buttons. We let the
   // caller persist the prior frame's "any-pause-pressed" state in a single
@@ -144,6 +148,8 @@ export function gamepadToInput(
       left: steer > BOOLEAN_THRESHOLD,
       right: steer < -BOOLEAN_THRESHOLD,
       handbrake,
+      shiftDown,
+      shiftUp,
     },
     pausePressed,
   }
@@ -166,6 +172,8 @@ export function gamepadIsActive(input: GamepadInput): boolean {
   return (
     Math.abs(input.axes.steer) > 0 ||
     Math.abs(input.axes.throttle) > 0 ||
-    input.keys.handbrake
+    input.keys.handbrake ||
+    input.keys.shiftDown ||
+    input.keys.shiftUp
   )
 }

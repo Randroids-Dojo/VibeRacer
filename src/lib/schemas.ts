@@ -3,6 +3,10 @@ import { CarParamsSchema, InputModeSchema } from './tuningSettings'
 import { ReplaySchema } from './replay'
 import { TimeOfDaySchema } from './lighting'
 import { WeatherSchema } from './weather'
+import {
+  DEFAULT_TRACK_TRANSMISSION,
+  TRACK_TRANSMISSION_MODES,
+} from '@/game/transmission'
 
 export const PieceTypeSchema = z.enum([
   'straight',
@@ -53,11 +57,15 @@ export const TrackMoodSchema = z
   .strict()
 export type TrackMood = z.infer<typeof TrackMoodSchema>
 
+export const TrackTransmissionModeSchema = z.enum(TRACK_TRANSMISSION_MODES)
+export type TrackTransmissionMode = z.infer<typeof TrackTransmissionModeSchema>
+
 export const TrackSchema = z
   .object({
     pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
     checkpointCount: CheckpointCountSchema.optional(),
     mood: TrackMoodSchema.optional(),
+    transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   })
   .superRefine((track, ctx) => {
     if (
@@ -77,6 +85,7 @@ export const TrackVersionSchema = z.object({
   pieces: z.array(PieceSchema),
   checkpointCount: CheckpointCountSchema.optional(),
   mood: TrackMoodSchema.optional(),
+  transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
 })

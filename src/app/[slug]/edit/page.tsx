@@ -4,6 +4,7 @@ import {
   VersionHashSchema,
   type Piece,
   type TrackMood,
+  type TrackTransmissionMode,
 } from '@/lib/schemas'
 import { loadTrack } from '@/lib/loadTrack'
 import { TrackEditor } from '@/components/TrackEditor'
@@ -33,6 +34,8 @@ export default async function EditPage(ctx: {
     loaded.kind === 'ok' ? loaded.checkpointCount : undefined
   const initialMood: TrackMood | undefined =
     loaded.kind === 'ok' ? loaded.mood : undefined
+  const initialTransmission: TrackTransmissionMode =
+    loaded.kind === 'ok' ? loaded.transmission : 'automatic'
   // When the editor was opened against a specific historical version, surface
   // that as a fork banner so the player understands the saved version will
   // create a new hash rather than overwrite the one they are editing.
@@ -45,6 +48,7 @@ export default async function EditPage(ctx: {
       initialPieces={initialPieces}
       initialCheckpointCount={initialCheckpointCount}
       initialMood={initialMood}
+      initialTransmission={initialTransmission}
       forkingFromHash={forkingFromHash}
     />
   )

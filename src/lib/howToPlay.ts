@@ -40,6 +40,8 @@ export const HOW_TO_PLAY_KEYBOARD_ORDER: readonly ControlAction[] = [
   'left',
   'right',
   'handbrake',
+  'shiftDown',
+  'shiftUp',
   'restartLap',
 ] as const
 
@@ -92,6 +94,8 @@ export const HOW_TO_PLAY_GAMEPAD_ORDER: readonly GamepadAction[] = [
   'forward',
   'backward',
   'handbrake',
+  'shiftDown',
+  'shiftUp',
   'pause',
 ] as const
 

@@ -41,6 +41,7 @@ import {
   type LapConsistencyInfo,
 } from '@/game/lapConsistency'
 import { type SpeedUnit } from '@/lib/speedometer'
+import type { TrackTransmissionMode } from '@/game/transmission'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -162,6 +163,8 @@ interface HudProps {
   // Recent completed-lap consistency. Null until the player has enough laps
   // for the standard deviation to mean something.
   lapConsistency?: LapConsistencyInfo | null
+  transmission?: TrackTransmissionMode
+  gear?: number
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -675,6 +678,13 @@ export function HUD(props: HudProps) {
         <StatBlock label="LAP" value={props.lapCount} />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>
+      {props.transmission === 'manual' ? (
+        <div style={gearChip} role="status" aria-live="polite">
+          <span style={gearChipLabel}>GEAR</span>
+          <span style={gearChipValue}>{props.gear ?? 1}</span>
+          <span style={gearChipHint}>Q / E</span>
+        </div>
+      ) : null}
       {props.showDrift ? (
         <DriftPanel
           active={props.driftActive}
@@ -839,6 +849,38 @@ const timeSm: React.CSSProperties = {
   fontSize: 'clamp(13px, 3.5vw, 18px)',
   fontFamily: 'monospace',
   lineHeight: 1.1,
+}
+const gearChip: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 150,
+  transform: 'translateX(-50%)',
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '5px 10px',
+  borderRadius: 999,
+  background: 'rgba(5, 10, 18, 0.72)',
+  border: '1px solid rgba(255, 211, 107, 0.55)',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+  color: '#ffd36b',
+  fontWeight: 900,
+}
+const gearChipLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.4,
+  opacity: 0.82,
+}
+const gearChipValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 24,
+  lineHeight: 1,
+  color: 'white',
+}
+const gearChipHint: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1,
+  opacity: 0.72,
 }
 const offTrack: React.CSSProperties = {
   position: 'absolute',

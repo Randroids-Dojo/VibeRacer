@@ -1,11 +1,18 @@
-import { TrackVersionSchema, type Piece, type TrackMood } from '@/lib/schemas'
+import {
+  TrackVersionSchema,
+  type Piece,
+  type TrackMood,
+  type TrackTransmissionMode,
+} from '@/lib/schemas'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
 import { hasKvConfigured } from '@/lib/kv'
+import { DEFAULT_TRACK_TRANSMISSION } from '@/game/transmission'
 
 const DEFAULT_TRACK = {
   pieces: DEFAULT_TRACK_PIECES,
   versionHash: hashTrack(DEFAULT_TRACK_PIECES),
+  transmission: DEFAULT_TRACK_TRANSMISSION,
 }
 
 export type LoadTrackResult =
@@ -15,6 +22,7 @@ export type LoadTrackResult =
       versionHash: string
       checkpointCount?: number
       mood?: TrackMood
+      transmission: TrackTransmissionMode
     }
   | { kind: 'fresh' }
   | { kind: 'notFound' }
@@ -48,6 +56,7 @@ export async function loadTrack(
           versionHash: targetHash,
           checkpointCount: parsed.data.checkpointCount,
           mood: parsed.data.mood,
+          transmission: parsed.data.transmission,
         }
       }
       // A specific-version miss must not fall through to latest.

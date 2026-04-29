@@ -1,4 +1,5 @@
 'use client'
+import type { CSSProperties } from 'react'
 import { JOYSTICK_RADIUS, type JoystickState } from '@/game/virtual-joystick'
 import { useTouchControls } from '@/hooks/useTouchControls'
 import type { KeyInput } from '@/hooks/useKeyboard'
@@ -8,23 +9,82 @@ interface TouchControlsProps {
   keys: { current: KeyInput }
   enabled: boolean
   mode?: TouchMode
+  showShifter?: boolean
 }
 
 const KNOB_RADIUS = 26
 
-export function TouchControls({ keys, enabled, mode = 'single' }: TouchControlsProps) {
+export function TouchControls({
+  keys,
+  enabled,
+  mode = 'single',
+  showShifter = false,
+}: TouchControlsProps) {
   const sticks = useTouchControls(keys, enabled, mode)
   if (!enabled) return null
   // Single-stick mode reuses the steer joystick for both axes, so we render
   // it with a neutral tint to signal "this controls everything".
   if (mode === 'single') {
-    return <JoystickVisual js={sticks.steer} tint="rgba(255, 255, 255, 0.85)" />
+    return (
+      <>
+        <JoystickVisual js={sticks.steer} tint="rgba(255, 255, 255, 0.85)" />
+        {showShifter ? <TouchShifter keys={keys} /> : null}
+      </>
+    )
   }
   return (
     <>
       <JoystickVisual js={sticks.steer} tint="rgba(95, 224, 138, 0.85)" />
       <JoystickVisual js={sticks.throttle} tint="rgba(255, 179, 77, 0.85)" />
+      {showShifter ? <TouchShifter keys={keys} /> : null}
     </>
+  )
+}
+
+function TouchShifter({ keys }: { keys: { current: KeyInput } }) {
+  return (
+    <div style={shifterWrap} aria-label="Manual shift controls">
+      <ShiftButton
+        label="DOWN"
+        onPress={(pressed) => {
+          keys.current.shiftDown = pressed
+        }}
+      />
+      <ShiftButton
+        label="UP"
+        onPress={(pressed) => {
+          keys.current.shiftUp = pressed
+        }}
+      />
+    </div>
+  )
+}
+
+function ShiftButton({
+  label,
+  onPress,
+}: {
+  label: string
+  onPress: (pressed: boolean) => void
+}) {
+  return (
+    <button
+      type="button"
+      style={shiftBtn}
+      onPointerDown={(e) => {
+        onPress(true)
+        e.currentTarget.setPointerCapture(e.pointerId)
+        e.preventDefault()
+      }}
+      onPointerUp={(e) => {
+        onPress(false)
+        e.preventDefault()
+      }}
+      onPointerCancel={() => onPress(false)}
+      onPointerLeave={() => onPress(false)}
+    >
+      {label}
+    </button>
   )
 }
 
@@ -68,4 +128,29 @@ function JoystickVisual({ js, tint }: { js: JoystickState; tint: string }) {
       />
     </>
   )
+}
+
+const shifterWrap: CSSProperties = {
+  position: 'fixed',
+  right: 22,
+  bottom: 150,
+  display: 'flex',
+  gap: 10,
+  zIndex: 16,
+  pointerEvents: 'auto',
+}
+
+const shiftBtn: CSSProperties = {
+  width: 72,
+  height: 54,
+  borderRadius: 10,
+  border: '1px solid rgba(255, 211, 107, 0.55)',
+  background: 'rgba(5, 10, 18, 0.72)',
+  color: '#ffd36b',
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 13,
+  fontWeight: 900,
+  letterSpacing: 1,
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.4)',
+  touchAction: 'none',
 }

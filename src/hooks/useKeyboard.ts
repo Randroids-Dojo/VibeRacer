@@ -13,6 +13,8 @@ export interface KeyInput {
   left: boolean
   right: boolean
   handbrake: boolean
+  shiftDown: boolean
+  shiftUp: boolean
   // Optional analog override populated by the gamepad path. RaceCanvas reads
   // this each frame and prefers it over the boolean derivation when set, so
   // triggers and stick deflection feed straight into stepPhysics. null when
@@ -33,6 +35,8 @@ export function useKeyboard(
     left: false,
     right: false,
     handbrake: false,
+    shiftDown: false,
+    shiftUp: false,
     axes: null,
   })
   const bindingsRef = useRef<KeyBindings>(bindings)

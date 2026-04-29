@@ -49,6 +49,16 @@ describe('hashTrack', () => {
     expect(hashTrack(oval, 3)).not.toBe(hashTrack(oval))
     expect(legacy).toBe(overridden)
   })
+
+  it('preserves legacy hash for automatic transmission', () => {
+    expect(hashTrack([a, b, c], undefined, 'automatic')).toBe(hashTrack([a, b, c]))
+  })
+
+  it('produces a different hash for manual transmission', () => {
+    expect(hashTrack([a, b, c], undefined, 'manual')).not.toBe(
+      hashTrack([a, b, c]),
+    )
+  })
 })
 
 describe('canonicalizePieces', () => {

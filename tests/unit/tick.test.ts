@@ -13,6 +13,7 @@ describe('tick', () => {
     expect(s.heading).toBeCloseTo(path.spawn.heading, 6)
     expect(s.raceStartMs).toBeNull()
     expect(s.nextCpId).toBe(0)
+    expect(s.gear).toBe(1)
   })
 
   it('before startRace, physics does not progress', () => {
@@ -20,6 +21,56 @@ describe('tick', () => {
     const r = tick(s, { throttle: 1, steer: 0, handbrake: false }, 16, 1000, path)
     expect(r.state.x).toBeCloseTo(s.x, 6)
     expect(r.state.speed).toBe(0)
+  })
+
+  it('shifts gears only when manual transmission is active', () => {
+    const s = startRace(initGameState(path), 0)
+    const automatic = tick(
+      s,
+      { throttle: 0, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      path,
+    )
+    expect(automatic.state.gear).toBe(1)
+
+    const manual = tick(
+      s,
+      { throttle: 0, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      path,
+      undefined,
+      'manual',
+    )
+    expect(manual.state.gear).toBe(2)
+  })
+
+  it('manual low gear limits top speed below high gear', () => {
+    const s = {
+      ...startRace(initGameState(path), 0),
+      gear: 1,
+      speed: 100,
+    }
+    const low = tick(
+      s,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'manual',
+    )
+    const high = tick(
+      { ...s, gear: 5 },
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'manual',
+    )
+    expect(low.state.speed).toBeLessThan(high.state.speed)
   })
 
   it('teleporting through checkpoints records hits in order and fires lap complete', () => {

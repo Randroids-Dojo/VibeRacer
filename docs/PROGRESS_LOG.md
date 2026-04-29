@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Optional Per-Track Shifting
+
+- Branch: `feature/optional-track-shifting`
+- PR: pending
+- Changed: added per-track automatic/manual transmission, Q/E shift bindings, gamepad and touch shift inputs, gear-aware physics, a manual gear HUD chip, editor save/load support, and version hashes that separate manual layouts from automatic layouts.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, focused Vitest coverage for transmission, hash, tick, gamepad, controls, how-to-play, and track API.
+- Assumptions: manual shifting changes gameplay enough to require its own version hash and leaderboard.
+- GDD coverage: Section 4 Q/E shifter keys and manual gearing gaps are implemented; Section 5 records the manual gearing model as implemented.
+- Followups: none recorded.
+
 ## 2026-04-29, Coverage Gap Backlog Split
 
 - Branch: `docs/split-coverage-gaps`

@@ -11,6 +11,7 @@ import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
+import type { TrackTransmissionMode } from '@/game/transmission'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -211,6 +212,7 @@ interface GameProps {
   versionHash: string
   pieces: Piece[]
   checkpointCount?: number
+  transmission?: TrackTransmissionMode
   // Track-author baked mood (timeOfDay / weather). Null when the author has
   // not picked one, or when the version predates this feature. When set and
   // the player has `respectTrackMood: true` in Settings (the default), the
@@ -363,6 +365,7 @@ interface HudState {
   // (e.g. "Sharp left next") plus a hex severity accent. null hides the chip
   // (off-track, Settings toggle off, no path data on file).
   paceNote: { text: string; accent: string } | null
+  gear: number
 }
 
 type PauseView =
@@ -383,6 +386,7 @@ function GameSession({
   versionHash,
   pieces,
   checkpointCount,
+  transmission = 'automatic',
   trackMood = null,
   initials,
   initialRecord,
@@ -880,6 +884,7 @@ function GameSession({
       topSpeedPb: null,
       leaderboardRank: readLocalBestRank(slug, versionHash),
       paceNote: null,
+      gear: 1,
     }
   })
 
@@ -963,6 +968,7 @@ function GameSession({
           : prev.driftLapBest,
       ghostGapMs: next.ghostGapMs,
       paceNote: next.paceNote,
+      gear: next.gear,
     }))
   }, [])
 
@@ -994,6 +1000,8 @@ function GameSession({
     keys.current.left = false
     keys.current.right = false
     keys.current.handbrake = false
+    keys.current.shiftDown = false
+    keys.current.shiftUp = false
     keys.current.axes = null
     setPaused(false)
   }, [keys])
@@ -2353,6 +2361,7 @@ function GameSession({
       <RaceCanvas
         pieces={pieces}
         checkpointCount={checkpointCount}
+        transmission={transmission}
         paramsRef={paramsRef}
         keys={keys}
         pausedRef={pausedRef}
@@ -2484,6 +2493,8 @@ function GameSession({
         speedUnit={settings.speedUnit}
         carMaxSpeed={tuning.maxSpeed}
         lapConsistency={computeLapConsistency(lapHistory)}
+        gear={hud.gear}
+        transmission={transmission}
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">
@@ -2496,6 +2507,7 @@ function GameSession({
         keys={keys}
         enabled={phase === 'racing' && !paused}
         mode={settings.touchMode}
+        showShifter={transmission === 'manual'}
       />
       {phase === 'racing' && !paused ? (
         <>

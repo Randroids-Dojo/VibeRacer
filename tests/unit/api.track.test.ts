@@ -94,6 +94,33 @@ describe('PUT /api/track/[slug]', () => {
     expect(getBody.track.checkpointCount).toBe(4)
   })
 
+  it('persists manual transmission and includes it in the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'manual-slug'
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pieces: squarePieces,
+        transmission: 'manual',
+      }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(
+      hashTrack(squarePieces, undefined, 'manual'),
+    )
+    expect(putBody.versionHash).not.toBe(hashTrack(squarePieces))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: { transmission?: string }
+    }
+    expect(getBody.track.transmission).toBe('manual')
+  })
+
   it('rejects a checkpointCount above the piece count', async () => {
     const { PUT } = await import('@/app/api/track/[slug]/route')
     const req = new NextRequest('http://test/api/track/bad-cp', {

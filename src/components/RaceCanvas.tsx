@@ -2,6 +2,7 @@
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
 import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece } from '@/lib/schemas'
+import type { TrackTransmissionMode } from '@/game/transmission'
 import { buildTrackPath, worldToCell } from '@/game/trackPath'
 import { cellKey } from '@/game/track'
 import {
@@ -104,6 +105,7 @@ export interface RaceCanvasHud {
   // toggle off, no path data on file). Pre-formatted upstream so the HUD
   // does not need to know the pace-note shape.
   paceNote: { text: string; accent: string } | null
+  gear: number
 }
 
 const HUD_UPDATE_MS = 50
@@ -111,6 +113,7 @@ const HUD_UPDATE_MS = 50
 export interface RaceCanvasProps {
   pieces: Piece[]
   checkpointCount?: number
+  transmission?: TrackTransmissionMode
   paramsRef: MutableRefObject<CarParams>
   keys: ReturnType<typeof useKeyboard>
   pausedRef: MutableRefObject<boolean>
@@ -273,6 +276,7 @@ export interface RaceCanvasProps {
 export function RaceCanvas({
   pieces,
   checkpointCount,
+  transmission = 'automatic',
   paramsRef,
   keys,
   pausedRef,
@@ -620,6 +624,8 @@ export function RaceCanvas({
     let lastTireSmokeSpawnTs = -Infinity
     let running = true
     let prevHud: RaceCanvasHud | null = null
+    let prevShiftDown = false
+    let prevShiftUp = false
     let prevOnTrack = true
     let droneStarted = false
     let prevHitsLen = 0
@@ -699,6 +705,8 @@ export function RaceCanvas({
         pendingRaceStartRef.current = null
         lastTs = ts
         prevHud = null
+        prevShiftDown = false
+        prevShiftUp = false
         prevOnTrack = true
         prevHitsLen = 0
         wrongWayState = initWrongWayDetector()
@@ -758,6 +766,8 @@ export function RaceCanvas({
         driftSession = initDriftSession()
         driftLapBest = 0
         ghostGapHintIdx = 0
+        prevShiftDown = false
+        prevShiftUp = false
         raf = requestAnimationFrame(loop)
         return
       }
@@ -817,6 +827,10 @@ export function RaceCanvas({
       const steerInput = k.axes
         ? k.axes.steer
         : (k.left ? 1 : 0) + (k.right ? -1 : 0)
+      const shiftDownPressed = k.shiftDown && !prevShiftDown
+      const shiftUpPressed = k.shiftUp && !prevShiftUp
+      prevShiftDown = k.shiftDown
+      prevShiftUp = k.shiftUp
 
       // Reaction-time measurement at the GO light. Fires the first frame
       // throttle clears the noise floor after `pendingRaceStartRef` armed
@@ -837,11 +851,14 @@ export function RaceCanvas({
           throttle: throttleInput,
           steer: steerInput,
           handbrake: k.handbrake,
+          shiftDown: shiftDownPressed,
+          shiftUp: shiftUpPressed,
         },
         dtMs,
         ts,
         path,
         paramsRef.current,
+        transmission,
       )
       state = result.state
 
@@ -1280,6 +1297,7 @@ export function RaceCanvas({
           driftLapBest: driftLapBestInt,
           ghostGapMs: ghostGapMsValue,
           paceNote: paceNoteValue,
+          gear: state.gear,
         }
         const prevPaceText = prevHud?.paceNote?.text ?? null
         const nextPaceText = next.paceNote?.text ?? null
@@ -1297,6 +1315,7 @@ export function RaceCanvas({
           prevHud.driftMultiplier !== next.driftMultiplier ||
           prevHud.driftLapBest !== next.driftLapBest ||
           prevHud.ghostGapMs !== next.ghostGapMs ||
+          prevHud.gear !== next.gear ||
           prevPaceText !== nextPaceText ||
           prevPaceAccent !== nextPaceAccent
         ) {
@@ -1334,7 +1353,7 @@ export function RaceCanvas({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces, checkpointCount])
+  }, [pieces, checkpointCount, transmission])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }

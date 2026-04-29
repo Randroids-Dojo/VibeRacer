@@ -1,7 +1,13 @@
 'use client'
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece, PieceType, Rotation, TrackMood } from '@/lib/schemas'
+import type {
+  Piece,
+  PieceType,
+  Rotation,
+  TrackMood,
+  TrackTransmissionMode,
+} from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
@@ -71,6 +77,7 @@ interface TrackEditorProps {
   // pickers with. Both fields are optional inside the mood. Undefined when
   // the loaded track has no mood (legacy or never set).
   initialMood?: TrackMood
+  initialTransmission?: TrackTransmissionMode
   // When set, the editor was opened against a historical version. Saving still
   // creates a new version on the same slug. The editor surfaces a small banner
   // so the player understands they are forking, not overwriting.
@@ -89,6 +96,7 @@ export function TrackEditor({
   initialPieces,
   initialCheckpointCount,
   initialMood,
+  initialTransmission = 'automatic',
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
@@ -130,10 +138,14 @@ export function TrackEditor({
     initialMood?.weather ?? null,
   )
   const moodActive = moodTimeOfDay !== null || moodWeather !== null
+  const [transmission, setTransmission] = useState<TrackTransmissionMode>(
+    initialTransmission,
+  )
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(
     (initialCheckpointCount !== undefined &&
       initialCheckpointCount !== initialPieces.length) ||
-      initialMood !== undefined,
+      initialMood !== undefined ||
+      initialTransmission === 'manual',
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
@@ -489,6 +501,7 @@ export function TrackEditor({
         pieces: Piece[]
         checkpointCount?: number
         mood?: TrackMood
+        transmission?: TrackTransmissionMode
       } = { pieces }
       if (checkpointCount !== null && effectiveCp !== cpMax) {
         reqBody.checkpointCount = effectiveCp
@@ -499,6 +512,9 @@ export function TrackEditor({
       })
       if (sanitized !== null) {
         reqBody.mood = sanitized
+      }
+      if (transmission !== 'automatic') {
+        reqBody.transmission = transmission
       }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
@@ -729,6 +745,34 @@ export function TrackEditor({
           </div>
           <div style={advancedRow}>
             <div style={advancedCopy}>
+              <div style={advancedLabel}>Transmission</div>
+              <p style={advancedHelp}>
+                Automatic keeps the classic arcade drive model. Manual adds
+                upshift and downshift controls to this track version and gives
+                each gear its own acceleration and speed range. Because this
+                affects lap behavior, manual tracks save under a different
+                version hash.
+              </p>
+            </div>
+            <div style={moodControl}>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Mode</span>
+                <select
+                  value={transmission}
+                  onChange={(e) =>
+                    setTransmission(e.target.value as TrackTransmissionMode)
+                  }
+                  style={moodSelect}
+                  aria-label="Track transmission"
+                >
+                  <option value="automatic">Automatic</option>
+                  <option value="manual">Manual shifting</option>
+                </select>
+              </label>
+            </div>
+          </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
               <div style={advancedLabel}>Track mood</div>
               <p style={advancedHelp}>
                 Pick a baked-in time of day or weather and every player who
@@ -845,7 +889,7 @@ export function TrackEditor({
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
               Advanced
-              {checkpointCount !== null || moodActive ? (
+              {checkpointCount !== null || moodActive || transmission !== 'automatic' ? (
                 <span style={advancedDot} />
               ) : null}
             </button>
