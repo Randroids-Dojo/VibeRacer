@@ -893,6 +893,11 @@ export function RaceCanvas({
         armedRaceStartMs = null
         onReactionTimeRef.current(reactionMs)
       }
+      // Snapshot the speed at the start of the frame (before stepPhysics
+      // applies any off-track drag / cap) so the off-track tracker can record
+      // the player's true approach speed on the entry frame instead of the
+      // post-clamp value pinned at offTrackMaxSpeed.
+      const preStepSpeed = state.speed
       const result = tick(
         state,
         {
@@ -979,7 +984,10 @@ export function RaceCanvas({
           x: state.x,
           z: state.z,
           heading: state.heading,
-          speed: state.speed,
+          // Pre-step speed so the entry snapshot reads as the approach speed,
+          // not the post-clamp value pinned at offTrackMaxSpeed. See the
+          // tracker's docstring for the contract.
+          speed: preStepSpeed,
           steer: steerInput,
           throttle: throttleInput,
           handbrake: k.handbrake,

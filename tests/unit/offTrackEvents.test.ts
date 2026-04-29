@@ -85,6 +85,22 @@ describe('stepOffTrackTracker', () => {
     expect(s.current?.entry.speed).toBe(10)
   })
 
+  it('preserves the entry speed verbatim across subsequent off-track frames', () => {
+    // The entry frame carries the player's approach speed (pre-step value the
+    // caller passes). Later frames in the same excursion deliver post-clamp
+    // values; the entry snapshot must not be rewritten by them. This is the
+    // contract that lets the player see "I went off at 22 m/s" even though
+    // the off-track speed cap pins later frames to offTrackMaxSpeed.
+    let s = initOffTrackTracker()
+    s = step(s, { onTrack: false, lapMs: 1000, speed: 22, distanceFromCenter: 5 }).state
+    s = step(s, { onTrack: false, lapMs: 1033, speed: 13.4, distanceFromCenter: 6 }).state
+    s = step(s, { onTrack: false, lapMs: 1066, speed: 13.4, distanceFromCenter: 6 }).state
+    expect(s.current?.entry.speed).toBe(22)
+    const r = step(s, { onTrack: true, lapMs: 1099 })
+    expect(r.emitted?.speed).toBe(22)
+    expect(r.emitted?.peakSpeed).toBe(22)
+  })
+
   it('off-track to on-track emits an event with duration, peaks, and exit time', () => {
     let s = initOffTrackTracker()
     s = step(s, {

@@ -14,6 +14,14 @@
  *    physics integrator rotates heading positive for left turns when moving
  *    forward. Consumers that label steering should treat positive as LEFT.
  *
+ * Speed semantics. The `speed` field on the per-frame input is the speed at
+ * the START of the frame, before stepPhysics applies any off-track drag /
+ * clamp. The entry snapshot captures that value verbatim so the player sees
+ * their true approach speed instead of the post-clamp value at
+ * `offTrackMaxSpeed`. Caller is responsible for passing pre-step speed; in
+ * RaceCanvas that is the speed value carried over from the previous frame
+ * (before this frame's tick() runs).
+ *
  * The companion LapTelemetry type bundles per-position speed samples (one
  * value per replay sample, sampled at REPLAY_SAMPLE_MS) alongside all
  * off-track events captured during the same lap, so the survey screen gets
