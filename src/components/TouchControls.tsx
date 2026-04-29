@@ -1,5 +1,5 @@
 'use client'
-import type { CSSProperties } from 'react'
+import { useEffect, type CSSProperties } from 'react'
 import { JOYSTICK_RADIUS, type JoystickState } from '@/game/virtual-joystick'
 import { useTouchControls } from '@/hooks/useTouchControls'
 import type { KeyInput } from '@/hooks/useKeyboard'
@@ -42,6 +42,13 @@ export function TouchControls({
 }
 
 function TouchShifter({ keys }: { keys: { current: KeyInput } }) {
+  useEffect(() => {
+    return () => {
+      keys.current.shiftDown = false
+      keys.current.shiftUp = false
+    }
+  }, [keys])
+
   return (
     <div style={shifterWrap} aria-label="Manual shift controls">
       <ShiftButton

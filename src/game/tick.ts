@@ -15,7 +15,7 @@ import {
 import {
   DEFAULT_MANUAL_GEAR,
   DEFAULT_TRACK_TRANSMISSION,
-  carParamsForTransmission,
+  manualGearSpec,
   shiftManualGear,
   type TrackTransmissionMode,
 } from './transmission'
@@ -91,6 +91,7 @@ export function tick(
   } else if (gear !== DEFAULT_MANUAL_GEAR) {
     gear = DEFAULT_MANUAL_GEAR
   }
+  const gearSpec = transmission === 'manual' ? manualGearSpec(gear) : null
 
   const cellNow = worldToCell(state.x, state.z)
   const keyNow = cellKey(cellNow.row, cellNow.col)
@@ -107,7 +108,9 @@ export function tick(
         input,
         dtSec,
         onTrack,
-        carParamsForTransmission(params, transmission, gear),
+        params,
+        gearSpec?.accelFactor ?? 1,
+        gearSpec?.maxSpeedFactor ?? 1,
       )
 
   let hits = state.hits
