@@ -4,9 +4,9 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## High Priority
 
-- Advanced authoring: rectangle selection (`VibeRacer-add-editor-rectangle-df4c4169`). Add an editor selection mode for rectangular cell selection, selected-piece highlighting, clear selection, and focused unit coverage without changing track serialization.
-- Advanced authoring: selected track transforms (`VibeRacer-add-selected-track-635d7456`). After rectangle selection lands, add move, rotate, and flip actions for selected pieces with collision checks, validation feedback, keyboard / button UI, and focused editor tests.
-- Advanced authoring: track templates (`VibeRacer-add-editor-track-75987b4d`). After transforms land, add a small template or stamp library so authors can place reusable loops or sections quickly, with save-safe validation and smoke coverage.
+- Advanced authoring: rectangle selection. Add an editor selection mode for rectangular cell selection, selected-piece highlighting, clear selection, and focused unit coverage without changing track serialization.
+- Advanced authoring: selected track transforms. After rectangle selection lands, add move, rotate, and flip actions for selected pieces with collision checks, validation feedback, keyboard / button UI, and focused editor tests.
+- Advanced authoring: track templates. After transforms land, add a small template or stamp library so authors can place reusable loops or sections quickly, with save-safe validation and smoke coverage.
 
 ## Medium Priority
 

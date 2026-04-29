@@ -6,11 +6,11 @@ Newest entries first. Every implementation slice adds an entry.
 
 - Branch: `docs/plan-advanced-track-authoring`
 - PR: pending
-- Changed: chose rectangle selection, selected-piece transforms, and reusable templates as the next advanced authoring workflow; created followup Dots for the three implementation slices; updated the GDD, followups, and coverage ledger to point at the new backlog.
+- Changed: chose rectangle selection, selected-piece transforms, and reusable templates as the next advanced authoring workflow; updated the GDD, followups, and coverage ledger to describe the implementation sequence without committing local Dot state.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: elevation ramps remain outside the current planar vehicle scope, so authoring improvements should first build on the existing grid and piece model.
-- GDD coverage: keeps Section 6 advanced authoring open, now split into implementation Dots.
-- Followups: `VibeRacer-add-editor-rectangle-df4c4169`, `VibeRacer-add-selected-track-635d7456`, and `VibeRacer-add-editor-track-75987b4d`.
+- GDD coverage: keeps Section 6 advanced authoring open, with public followups split into PR-sized implementation slices.
+- Followups: rectangle selection, selected track transforms, and track templates.
 
 ## 2026-04-29, Quaternion Heading Evaluation
 
