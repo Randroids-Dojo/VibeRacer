@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Advanced Track Authoring Plan
+
+- Branch: `docs/plan-advanced-track-authoring`
+- PR: pending
+- Changed: chose rectangle selection, selected-piece transforms, and reusable templates as the next advanced authoring workflow; created followup Dots for the three implementation slices; updated the GDD, followups, and coverage ledger to point at the new backlog.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: elevation ramps remain outside the current planar vehicle scope, so authoring improvements should first build on the existing grid and piece model.
+- GDD coverage: keeps Section 6 advanced authoring open, now split into implementation Dots.
+- Followups: `VibeRacer-add-editor-rectangle-df4c4169`, `VibeRacer-add-selected-track-635d7456`, and `VibeRacer-add-editor-track-75987b4d`.
+
 ## 2026-04-29, Quaternion Heading Evaluation
 
 - Branch: `docs/evaluate-quaternion-heading`
-- PR: pending
+- PR: #41
 - Changed: evaluated vehicle quaternion heading against the current planar arcade model, kept scalar yaw as the explicit vehicle heading design, and updated the GDD plus coverage ledger to close the stale Section 5 gap.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: vehicle pitch, roll, and elevation dynamics are not part of the current planned scope, while camera orientation already uses quaternion slerp where 3D orientation smoothing matters.
