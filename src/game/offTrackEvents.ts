@@ -56,8 +56,13 @@ export interface OffTrackEntrySnapshot {
 export interface OffTrackEvent extends OffTrackEntrySnapshot {
   /** Total milliseconds the car spent off the track in this excursion. */
   durationMs: number
-  /** Maximum |speed| during the excursion. */
-  peakSpeed: number
+  /**
+   * Signed speed (m/s) at the frame the car returned to the track. Useful
+   * paired with `speed` (entry / approach) so the player can see how much
+   * speed the excursion cost them: `entry - exit`. Null when the excursion
+   * was force-closed at lap end with no on-track return frame.
+   */
+  exitSpeed: number | null
   /** Maximum distanceFromCenter during the excursion. */
   peakDistanceFromCenter: number
   /**
@@ -71,7 +76,6 @@ export interface OffTrackTrackerState {
   active: boolean
   current: {
     entry: OffTrackEntrySnapshot
-    peakSpeed: number
     peakDistance: number
     lastLapMs: number
   } | null
@@ -146,10 +150,14 @@ export function stepOffTrackTracker(
   if (input.onTrack) {
     if (prev.active && prev.current !== null) {
       const c = prev.current
+      // input.speed at the on-track edge is the pre-step speed at this
+      // frame, which is the post-clamp speed from the last off-track
+      // frame. That is exactly the "speed when the car returned to the
+      // track" the player wants to see paired with the entry approach.
       const event: OffTrackEvent = {
         ...c.entry,
         durationMs: Math.max(0, input.lapMs - c.entry.lapMs),
-        peakSpeed: c.peakSpeed,
+        exitSpeed: input.speed,
         peakDistanceFromCenter: c.peakDistance,
         exitLapMs: input.lapMs,
       }
@@ -159,7 +167,6 @@ export function stepOffTrackTracker(
   }
 
   // Off-track frame.
-  const speedAbs = Math.abs(input.speed)
   if (!prev.active) {
     const entry = snapshotOf(input)
     return {
@@ -167,7 +174,6 @@ export function stepOffTrackTracker(
         active: true,
         current: {
           entry,
-          peakSpeed: speedAbs,
           peakDistance: input.distanceFromCenter,
           lastLapMs: input.lapMs,
         },
@@ -177,7 +183,6 @@ export function stepOffTrackTracker(
   }
 
   const c = prev.current!
-  const peakSpeed = speedAbs > c.peakSpeed ? speedAbs : c.peakSpeed
   const peakDistance =
     input.distanceFromCenter > c.peakDistance
       ? input.distanceFromCenter
@@ -187,7 +192,6 @@ export function stepOffTrackTracker(
       active: true,
       current: {
         entry: c.entry,
-        peakSpeed,
         peakDistance,
         lastLapMs: input.lapMs,
       },
@@ -210,7 +214,9 @@ export function flushOffTrackTracker(
   return {
     ...c.entry,
     durationMs: Math.max(0, c.lastLapMs - c.entry.lapMs),
-    peakSpeed: c.peakSpeed,
+    // No on-track-return frame was observed (lap ended mid-excursion), so
+    // we have no exit speed to report. The UI renders this as a dash.
+    exitSpeed: null,
     peakDistanceFromCenter: c.peakDistance,
     exitLapMs: null,
   }
@@ -234,7 +240,7 @@ export const OffTrackEntrySnapshotSchema = z.object({
 
 export const OffTrackEventSchema = OffTrackEntrySnapshotSchema.extend({
   durationMs: z.number().finite().nonnegative(),
-  peakSpeed: z.number().finite().nonnegative(),
+  exitSpeed: z.number().finite().nullable(),
   peakDistanceFromCenter: z.number().finite().nonnegative(),
   exitLapMs: z.number().finite().nullable(),
 })

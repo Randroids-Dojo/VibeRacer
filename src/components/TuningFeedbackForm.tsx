@@ -244,6 +244,14 @@ function OffTrackEventRow({
       : null
   const steerLabel = describeSteer(event.steer)
   const throttleLabel = formatSigned(event.throttle, 2)
+  // Exit speed is the speed when the car returned to the track (post off-
+  // track clamp). Different from `speed` (the approach / pre-clamp value),
+  // so the player can see how much speed the excursion cost. Null when the
+  // lap ended mid-excursion (no on-track return frame was observed).
+  const exitSpeedAbs =
+    event.exitSpeed === null ? null : Math.abs(event.exitSpeed)
+  const speedLost =
+    exitSpeedAbs !== null ? Math.max(0, speedAbs - exitSpeedAbs) : null
   return (
     <div style={offRow}>
       <div style={offRowHeader}>
@@ -265,7 +273,18 @@ function OffTrackEventRow({
           {throttleLabel}
           {event.handbrake ? <span style={fieldChip}>handbrake</span> : null}
         </Field>
-        <Field label="Peak speed">{event.peakSpeed.toFixed(1)} m/s</Field>
+        <Field label="Exit speed">
+          {exitSpeedAbs !== null ? (
+            <>
+              {exitSpeedAbs.toFixed(1)} m/s
+              {speedLost !== null && speedLost > 0.05 ? (
+                <span style={fieldHint}> (lost {speedLost.toFixed(1)})</span>
+              ) : null}
+            </>
+          ) : (
+            <span style={fieldHint}>still off at lap end</span>
+          )}
+        </Field>
         <Field label="Max off-line">
           {event.peakDistanceFromCenter.toFixed(1)} m
         </Field>

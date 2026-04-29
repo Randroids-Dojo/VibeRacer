@@ -70,17 +70,15 @@ describe('stepOffTrackTracker', () => {
     expect(r.state.current?.entry.z).toBe(-3)
     expect(r.state.current?.entry.speed).toBe(18)
     expect(r.state.current?.entry.steer).toBe(0.6)
-    expect(r.state.current?.peakSpeed).toBe(18)
     expect(r.state.current?.peakDistance).toBe(4.1)
   })
 
-  it('updates peakSpeed and peakDistance monotonically across off-track frames', () => {
+  it('updates peakDistance monotonically across off-track frames', () => {
     let s = initOffTrackTracker()
     s = step(s, { onTrack: false, lapMs: 100, speed: 10, distanceFromCenter: 5 }).state
     s = step(s, { onTrack: false, lapMs: 116, speed: 14, distanceFromCenter: 6 }).state
     s = step(s, { onTrack: false, lapMs: 132, speed: 9, distanceFromCenter: 6.5 }).state
     s = step(s, { onTrack: false, lapMs: 148, speed: -16, distanceFromCenter: 4 }).state
-    expect(s.current?.peakSpeed).toBe(16)
     expect(s.current?.peakDistance).toBe(6.5)
     expect(s.current?.entry.speed).toBe(10)
   })
@@ -96,9 +94,12 @@ describe('stepOffTrackTracker', () => {
     s = step(s, { onTrack: false, lapMs: 1033, speed: 13.4, distanceFromCenter: 6 }).state
     s = step(s, { onTrack: false, lapMs: 1066, speed: 13.4, distanceFromCenter: 6 }).state
     expect(s.current?.entry.speed).toBe(22)
-    const r = step(s, { onTrack: true, lapMs: 1099 })
+    // The on-track edge frame's input.speed is the post-clamp value coming
+    // off the off-track cap. The caller (RaceCanvas) passes preStepSpeed,
+    // which on this frame is the previous frame's post-clamp value (13.4).
+    const r = step(s, { onTrack: true, lapMs: 1099, speed: 13.4 })
     expect(r.emitted?.speed).toBe(22)
-    expect(r.emitted?.peakSpeed).toBe(22)
+    expect(r.emitted?.exitSpeed).toBe(13.4)
   })
 
   it('off-track to on-track emits an event with duration, peaks, and exit time', () => {
@@ -117,7 +118,11 @@ describe('stepOffTrackTracker', () => {
     expect(r.emitted?.lapMs).toBe(1000)
     expect(r.emitted?.durationMs).toBe(420)
     expect(r.emitted?.exitLapMs).toBe(1420)
-    expect(r.emitted?.peakSpeed).toBe(22)
+    // exitSpeed is the input.speed at the on-track-edge frame (the post-
+    // step value the caller passes when onTrack returns true). The caller
+    // passes whatever speed the physics step produced; here the test
+    // passes the default override (0).
+    expect(r.emitted?.exitSpeed).toBe(0)
     expect(r.emitted?.peakDistanceFromCenter).toBe(7)
     expect(r.emitted?.steer).toBe(0.8)
     expect(r.emitted?.throttle).toBe(1)
@@ -136,7 +141,7 @@ describe('stepOffTrackTracker', () => {
     const r2 = step(s, { onTrack: true, lapMs: 1100 })
     expect(r2.emitted?.lapMs).toBe(800)
     expect(r2.emitted?.durationMs).toBe(300)
-    expect(r2.emitted?.peakSpeed).toBe(18)
+    expect(r2.emitted?.speed).toBe(18)
   })
 
   it('clamps a negative duration to zero (defends against a clock-rewind frame)', () => {
@@ -177,16 +182,17 @@ describe('flushOffTrackTracker', () => {
     expect(flushOffTrackTracker(initOffTrackTracker())).toBeNull()
   })
 
-  it('emits an event with exitLapMs null when the lap ends mid-excursion', () => {
+  it('emits an event with exitLapMs and exitSpeed null when the lap ends mid-excursion', () => {
     let s = initOffTrackTracker()
     s = step(s, { onTrack: false, lapMs: 2000, speed: 8, distanceFromCenter: 5 }).state
     s = step(s, { onTrack: false, lapMs: 2200, speed: 12, distanceFromCenter: 6 }).state
     const flushed = flushOffTrackTracker(s)
     expect(flushed).not.toBeNull()
     expect(flushed?.exitLapMs).toBeNull()
+    expect(flushed?.exitSpeed).toBeNull()
     expect(flushed?.lapMs).toBe(2000)
     expect(flushed?.durationMs).toBe(200)
-    expect(flushed?.peakSpeed).toBe(12)
+    expect(flushed?.speed).toBe(8)
   })
 })
 
@@ -203,7 +209,7 @@ describe('OffTrackEventSchema', () => {
       handbrake: false,
       distanceFromCenter: 5,
       durationMs: 200,
-      peakSpeed: 20,
+      exitSpeed: 12,
       peakDistanceFromCenter: 6,
       exitLapMs: 300,
     }
@@ -222,7 +228,7 @@ describe('OffTrackEventSchema', () => {
       handbrake: false,
       distanceFromCenter: 4,
       durationMs: 100,
-      peakSpeed: 10,
+      exitSpeed: 8,
       peakDistanceFromCenter: 4,
       exitLapMs: null,
     })
@@ -241,7 +247,7 @@ describe('OffTrackEventSchema', () => {
       handbrake: false,
       distanceFromCenter: -1,
       durationMs: 100,
-      peakSpeed: 10,
+      exitSpeed: 8,
       peakDistanceFromCenter: 4,
       exitLapMs: 200,
     })
@@ -261,7 +267,7 @@ describe('OffTrackEventSchema', () => {
         handbrake: false,
         distanceFromCenter: 0,
         durationMs: 0,
-        peakSpeed: 0,
+        exitSpeed: 0,
         peakDistanceFromCenter: 0,
         exitLapMs: null,
       }).success,
@@ -278,7 +284,7 @@ describe('OffTrackEventSchema', () => {
         handbrake: false,
         distanceFromCenter: 0,
         durationMs: -1,
-        peakSpeed: 0,
+        exitSpeed: 0,
         peakDistanceFromCenter: 0,
         exitLapMs: null,
       }).success,

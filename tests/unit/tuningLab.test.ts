@@ -518,7 +518,7 @@ describe('buildExportPayload and parseImportedJson', () => {
               handbrake: false,
               distanceFromCenter: 5,
               durationMs: 250,
-              peakSpeed: 19,
+              exitSpeed: 13.4,
               peakDistanceFromCenter: 6,
               exitLapMs: 1250,
             },
