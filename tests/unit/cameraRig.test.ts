@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest'
 import { PerspectiveCamera, Vector3 } from 'three'
 import {
+  RACING_NUMBER_PLATE_HEIGHT_Y,
+  RACING_NUMBER_PLATE_SIZE,
   applyCameraRig,
   initCameraRig,
   updateCameraRig,
@@ -99,5 +101,17 @@ describe('camera rig orientation', () => {
     expect(rig.position.z).toBeCloseTo(20, 6)
     expect(rig.target.x).toBeCloseTo(10 + baseParams.lookAhead, 6)
     expect(rig.target.y).toBeCloseTo(0.8, 6)
+  })
+})
+
+describe('racing number sticker constants', () => {
+  it('keeps the roof sticker compact enough to read as attached', () => {
+    expect(RACING_NUMBER_PLATE_SIZE).toBeGreaterThan(0.8)
+    expect(RACING_NUMBER_PLATE_SIZE).toBeLessThan(1.3)
+  })
+
+  it('keeps the roof sticker close to the car roof', () => {
+    expect(RACING_NUMBER_PLATE_HEIGHT_Y).toBeGreaterThan(1.1)
+    expect(RACING_NUMBER_PLATE_HEIGHT_Y).toBeLessThan(1.4)
   })
 })
