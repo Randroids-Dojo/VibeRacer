@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, In-Race HUD Declutter
 
 - Branch: `feature/hud-declutter`
-- PR: pending
+- PR: #25
 - Changed: reorganized the race HUD into deterministic zones, moved the minimap to the top-right race cluster, capped transient feedback to a two-slot notification stack, and moved ghost / challenge / rival status into a bottom-center live band.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm test -- tests/unit/hudNotifications.test.ts`, `npm test`, `npm run type-check`, `npm run build`, `npm run test:e2e -- tests/e2e/smoke.spec.ts`, and desktop / mobile Playwright screenshots at `test-results/hud-desktop.png` and `test-results/hud-mobile.png`.
 - Assumptions: the HUD can omit a POS chip for now because VibeRacer does not have live multi-car race position data; LAP and RACER remain in the top-right cluster beside the minimap.
