@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Angular Velocity Handling
 
 - Branch: `feature/angular-velocity-handling`
-- PR: pending
+- PR: #36
 - Changed: added angular velocity to vehicle and game state so steering eases into and out of yaw-rate changes instead of snapping heading directly each tick.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for physics, tick, tuning settings, and the tuning lab track, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: angular velocity should remain internal physics state for this slice, preserving the existing tuning schema, replay shape, and anti-cheat payloads.
