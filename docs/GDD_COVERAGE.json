@@ -174,7 +174,7 @@
     {
       "id": "11",
       "title": "Leaderboards",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "race start and submit APIs",
         "anti-cheat",
@@ -188,28 +188,24 @@
         "tuning metadata",
         "rival chase",
         "rank toast",
-        "pagination beyond top 100"
+        "pagination beyond top 100",
+        "guarded admin revocation"
       ],
       "evidence": [
         "src/app/api/race/start/route.ts",
         "src/app/api/race/submit/route.ts",
         "src/app/api/leaderboard/route.ts",
+        "src/app/api/admin/leaderboard/route.ts",
         "src/components/Leaderboard.tsx",
         "src/lib/tuningSettings.ts",
         "tests/unit/api.raceStart.test.ts",
         "tests/unit/api.raceSubmit.test.ts",
+        "tests/unit/api.adminLeaderboard.test.ts",
         "tests/unit/api.leaderboard.test.ts",
         "tests/unit/tuningSettings.test.ts",
         "tests/e2e/smoke.spec.ts"
       ],
-      "remainingGaps": [
-        "admin tooling"
-      ],
-      "gapBacklog": {
-        "admin tooling": [
-          "VibeRacer-define-leaderboard-admin-66ce1190"
-        ]
-      }
+      "remainingGaps": []
     },
     {
       "id": "13",

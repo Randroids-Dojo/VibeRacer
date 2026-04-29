@@ -119,6 +119,20 @@ export class FakeKv {
     return entry ? entry.score : null
   }
 
+  async zrem(key: string, ...membersToRemove: string[]): Promise<number> {
+    const list = this.zsets.get(key) ?? []
+    const removeSet = new Set(membersToRemove)
+    const filtered = list.filter((e) => !removeSet.has(e.member))
+    this.zsets.set(key, filtered)
+    const members = this.zsetMembers.get(key) ?? new Set<string>()
+    let removed = 0
+    for (const member of membersToRemove) {
+      if (members.delete(member)) removed++
+    }
+    this.zsetMembers.set(key, members)
+    return removed
+  }
+
   async zrank(key: string, member: string): Promise<number | null> {
     const list = this.zsets.get(key) ?? []
     const idx = list.findIndex((e) => e.member === member)
@@ -140,6 +154,12 @@ export class FakeKv {
   async lrange(key: string, start: number, stop: number): Promise<string[]> {
     const list = this.lists.get(key) ?? []
     return list.slice(start, stop === -1 ? undefined : stop + 1)
+  }
+
+  async ltrim(key: string, start: number, stop: number): Promise<string> {
+    const list = this.lists.get(key) ?? []
+    this.lists.set(key, list.slice(start, stop === -1 ? undefined : stop + 1))
+    return 'OK'
   }
 }
 

@@ -62,7 +62,7 @@ test('settings tabs keep long sections inside the modal viewport', async ({
   await page.getByRole('tabpanel').evaluate((panel) => {
     panel.scrollTop = panel.scrollHeight
   })
-  await expect(page.getByText('Haptic feedback', { exact: true })).toBeVisible()
+  await expect(page.getByText('Brake lights', { exact: true })).toBeVisible()
 })
 
 test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {
@@ -310,6 +310,13 @@ test('POST /api/feedback returns 500 when GITHUB_PAT missing, 400 when body empt
 test('GET /api/leaderboard rejects bad params with 400', async ({ request }) => {
   const res = await request.get('/api/leaderboard?slug=BAD&v=abc')
   expect(res.status()).toBe(400)
+})
+
+test('POST /api/admin/leaderboard is gated without admin auth', async ({
+  request,
+}) => {
+  const res = await request.post('/api/admin/leaderboard', { data: {} })
+  expect([401, 503]).toContain(res.status())
 })
 
 test('GET /api/leaderboard returns a shaped response for valid params', async ({

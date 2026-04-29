@@ -35,6 +35,7 @@ export const kvKeys = {
   lapReplay: (nonce: string) => `lap:replay:${nonce}`,
   topReplayPointer: (slug: Slug, hash: VersionHash) =>
     `track:${slug}:${hash}:topReplay`,
+  leaderboardAdminAudit: () => 'leaderboard:admin:audit',
   racerFirstSeen: (racerId: RacerId) => `racer:${racerId}:firstSeen`,
   racerLastSubmit: (racerId: RacerId) => `racer:${racerId}:lastSubmit`,
   ratelimitIp: (ip: string) => `ratelimit:submit:ip:${ip}`,
