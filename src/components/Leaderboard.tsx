@@ -484,7 +484,7 @@ export function Leaderboard({
                   type="button"
                   onClick={() => {
                     clickSort()
-                    setPageOffset(Math.max(0, pagination.offset - pagination.limit))
+                    setPageOffset((prev) => Math.max(0, prev - pagination.limit))
                   }}
                   disabled={!pagination.hasPrev}
                   style={{
@@ -504,7 +504,7 @@ export function Leaderboard({
                   type="button"
                   onClick={() => {
                     clickSort()
-                    setPageOffset(pagination.offset + pagination.limit)
+                    setPageOffset((prev) => prev + pagination.limit)
                   }}
                   disabled={!pagination.hasNext}
                   style={{

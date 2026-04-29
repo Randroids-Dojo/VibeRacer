@@ -156,6 +156,28 @@ describe('GET /api/leaderboard', () => {
     expect(body.pagination.total).toBe(3)
   })
 
+  it('still returns entries when leaderboard count lookup fails', async () => {
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'n1')
+    await seedLap('BBB', racerB, 2500, 1_700_000_000_100, 'n2')
+    const zcardSpy = vi
+      .spyOn(fake, 'zcard')
+      .mockRejectedValueOnce(new Error('count failed'))
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '5' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number; initials: string }>
+      pagination: { total: number; hasNext: boolean }
+    }
+
+    expect(zcardSpy).toHaveBeenCalledOnce()
+    expect(body.entries.map((e) => e.initials)).toEqual(['AAA', 'BBB'])
+    expect(body.entries.map((e) => e.rank)).toEqual([1, 2])
+    expect(body.pagination.total).toBe(2)
+    expect(body.pagination.hasNext).toBe(false)
+    zcardSpy.mockRestore()
+  })
+
   it('clamps a malformed offset to the first page', async () => {
     await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'n1')
     const { GET } = await import('@/app/api/leaderboard/route')

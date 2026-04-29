@@ -177,14 +177,19 @@ export async function readLeaderboard(
     : LEADERBOARD_DEFAULT_LIMIT
   const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0
   const key = kvKeys.leaderboard(slug, versionHash)
-  const [raw, totalRaw] = await Promise.all([
+  const [rawResult, totalResult] = await Promise.allSettled([
     kv.zrange(key, safeOffset, safeOffset + safeLimit - 1, { withScores: true }),
     kv.zcard(key),
   ])
+  if (rawResult.status !== 'fulfilled') throw rawResult.reason
+  const raw = rawResult.value as (string | number)[]
+  const rawEntryCount = Math.trunc(raw.length / 2)
   const total =
-    typeof totalRaw === 'number' && Number.isFinite(totalRaw)
-      ? Math.max(0, Math.trunc(totalRaw))
-      : 0
+    totalResult.status === 'fulfilled' &&
+    typeof totalResult.value === 'number' &&
+    Number.isFinite(totalResult.value)
+      ? Math.max(0, Math.trunc(totalResult.value))
+      : safeOffset + rawEntryCount
 
   // Walk the zrange output collecting parsed members + scores + nonce keys for
   // a single mget. Skip entries we cannot parse.
