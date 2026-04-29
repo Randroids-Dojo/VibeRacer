@@ -1250,10 +1250,14 @@ export function RaceCanvas({
       // moment the impulse finishes.
       const rumbleMode = gamepadRumbleModeRef?.current ?? 'auto'
       const pad = gamepadPadRef?.current ?? null
-      const rumbleAllowed = shouldGamepadRumbleFire(
-        rumbleMode,
-        hasRumbleCapableGamepad(),
-      )
+      // Off and On short-circuit without walking navigator.getGamepads() each
+      // frame; only Auto pays the cost of capability detection (and even then
+      // only when a pad is actually connected, since the resolver short-circuits
+      // on hasGamepad === false anyway).
+      const rumbleAllowed =
+        rumbleMode === 'auto'
+          ? shouldGamepadRumbleFire(rumbleMode, hasRumbleCapableGamepad())
+          : shouldGamepadRumbleFire(rumbleMode, false)
       if (rumbleAllowed && pad) {
         const speedAbs = Math.abs(state.speed)
         const mags = computeContinuousRumble({
@@ -1263,8 +1267,18 @@ export function RaceCanvas({
           driftIntensity: dIntensity,
           brakeLock: keys.current.backward && speedAbs < 1,
         })
-        setGamepadContinuousRumble(pad, mags)
-        rumbleWasActive = true
+        // Only write to the actuator when the magnitudes are non-zero. A
+        // zero-zero result means an idle on-track straightaway with no slip;
+        // skip the helper entirely and only call stopGamepadRumble on the
+        // transition from active to idle so the motor settles exactly once.
+        const continuousActive = mags.strongMagnitude > 0 || mags.weakMagnitude > 0
+        if (continuousActive) {
+          setGamepadContinuousRumble(pad, mags)
+          rumbleWasActive = true
+        } else if (rumbleWasActive) {
+          stopGamepadRumble(pad)
+          rumbleWasActive = false
+        }
         // Off-track rising edge: short tap impulse on the transition from
         // on-track to off-track. 250 ms cooldown so dribbling along the curb
         // does not chatter the motor.

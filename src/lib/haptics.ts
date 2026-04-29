@@ -326,11 +326,21 @@ export function setGamepadContinuousRumble(
   if (!r || !pad) return
   const strong = clamp01(mags.strongMagnitude)
   const weak = clamp01(mags.weakMagnitude)
+  const prev = lastContinuousMags.get(pad)
   if (strong <= RUMBLE_EPSILON && weak <= RUMBLE_EPSILON) {
+    // Already stopped: skip the actuator call so a steady idle does not
+    // ping reset() / playEffect(0) every frame.
+    if (
+      prev &&
+      prev.strongMagnitude <= RUMBLE_EPSILON &&
+      prev.weakMagnitude <= RUMBLE_EPSILON
+    ) {
+      return
+    }
     stopGamepadRumble(pad)
+    lastContinuousMags.set(pad, { strongMagnitude: 0, weakMagnitude: 0 })
     return
   }
-  const prev = lastContinuousMags.get(pad)
   if (
     prev &&
     Math.abs(prev.strongMagnitude - strong) < RUMBLE_EPSILON &&

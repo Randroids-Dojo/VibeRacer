@@ -668,6 +668,22 @@ describe('setGamepadContinuousRumble', () => {
     expect(args[0]).toBeCloseTo(0.7, 5)
     expect(args[1]).toBe(RUMBLE_FRAME_DURATION_MS)
   })
+
+  it('dedupes consecutive zero writes after the first stop (idle steady state)', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
+    expect(actuator.reset).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).not.toHaveBeenCalled()
+  })
+
+  it('a non-zero write after a zero write hits the actuator (zero state cached, not blocking)', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('stopGamepadRumble', () => {
@@ -704,15 +720,21 @@ describe('stopGamepadRumble', () => {
 })
 
 describe('hasRumbleCapableGamepad', () => {
-  const originalNavigator = globalThis.navigator
+  // Vitest's node env can leave `globalThis.navigator` undefined at module
+  // load. A `const originalNavigator = globalThis.navigator` capture would
+  // then no-op the restore branch and leak mocked values into the next
+  // suite. Capture the property descriptor directly so the afterEach can
+  // either re-define or delete back to the pre-test state.
+  const originalNavigatorDescriptor = Object.getOwnPropertyDescriptor(
+    globalThis,
+    'navigator',
+  )
 
   afterEach(() => {
-    if (originalNavigator) {
-      Object.defineProperty(globalThis, 'navigator', {
-        value: originalNavigator,
-        configurable: true,
-        writable: true,
-      })
+    if (originalNavigatorDescriptor) {
+      Object.defineProperty(globalThis, 'navigator', originalNavigatorDescriptor)
+    } else {
+      delete (globalThis as { navigator?: Navigator }).navigator
     }
   })
 

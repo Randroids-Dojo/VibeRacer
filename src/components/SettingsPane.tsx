@@ -590,6 +590,7 @@ export function SettingsPane({
 
   function setGamepadRumble(value: HapticMode) {
     if (settings.gamepadRumble === value) return
+    clickSoft()
     onChange({ ...settings, gamepadRumble: value })
   }
 
