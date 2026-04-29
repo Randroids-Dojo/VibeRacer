@@ -663,6 +663,36 @@ export function TrackEditor({
             )}
           </svg>
         </div>
+        <div style={editHistoryToolbar} role="toolbar" aria-label="Edit history">
+          <button
+            type="button"
+            onClick={undoEdit}
+            disabled={!undoAvailable}
+            style={{
+              ...floatingIconBtn,
+              opacity: undoAvailable ? 1 : 0.45,
+              cursor: undoAvailable ? 'pointer' : 'not-allowed',
+            }}
+            title="Undo (Ctrl+Z)"
+            aria-label="Undo edit"
+          >
+            <UndoIcon />
+          </button>
+          <button
+            type="button"
+            onClick={redoEdit}
+            disabled={!redoAvailable}
+            style={{
+              ...floatingIconBtn,
+              opacity: redoAvailable ? 1 : 0.45,
+              cursor: redoAvailable ? 'pointer' : 'not-allowed',
+            }}
+            title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
+            aria-label="Redo edit"
+          >
+            <RedoIcon />
+          </button>
+        </div>
         <div style={zoomToolbar} role="toolbar" aria-label="Zoom controls">
           <button
             type="button"
@@ -862,24 +892,6 @@ export function TrackEditor({
         </div>
         <div style={buttons}>
           <button onClick={cancel} style={btnGhost}>Cancel</button>
-          <button
-            onClick={undoEdit}
-            style={btnGhost}
-            disabled={!undoAvailable}
-            title="Undo (Ctrl+Z)"
-            aria-label="Undo"
-          >
-            Undo
-          </button>
-          <button
-            onClick={redoEdit}
-            style={btnGhost}
-            disabled={!redoAvailable}
-            title="Redo (Ctrl+Shift+Z or Ctrl+Y)"
-            aria-label="Redo"
-          >
-            Redo
-          </button>
           <button
             onClick={reverseDirection}
             style={btnGhost}
@@ -1282,6 +1294,24 @@ const zoomToolbar: React.CSSProperties = {
   boxShadow: '0 4px 12px rgba(0, 0, 0, 0.4)',
   pointerEvents: 'auto',
 }
+const editHistoryToolbar: React.CSSProperties = {
+  ...zoomToolbar,
+  left: 16,
+  right: 'auto',
+}
+const floatingIconBtn: React.CSSProperties = {
+  width: 36,
+  height: 36,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'transparent',
+  border: '1px solid #334155',
+  borderRadius: 6,
+  color: 'white',
+  cursor: 'pointer',
+  lineHeight: 1,
+}
 const zoomBtn: React.CSSProperties = {
   width: 32,
   height: 32,
@@ -1330,6 +1360,8 @@ const status: React.CSSProperties = {
 const buttons: React.CSSProperties = {
   display: 'flex',
   gap: 10,
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
 }
 const cpInput: React.CSSProperties = {
   width: 56,
@@ -1459,4 +1491,48 @@ const btnGhost: React.CSSProperties = {
   fontSize: 14,
   cursor: 'pointer',
   fontFamily: 'inherit',
+}
+
+function UndoIcon() {
+  return (
+    <svg width={22} height={22} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M9 7H5v4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M5.5 10.5A7 7 0 1 1 8 17"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+      />
+    </svg>
+  )
+}
+
+function RedoIcon() {
+  return (
+    <svg width={22} height={22} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M15 7h4v4"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18.5 10.5A7 7 0 1 0 16 17"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth={2.4}
+        strokeLinecap="round"
+      />
+    </svg>
+  )
 }

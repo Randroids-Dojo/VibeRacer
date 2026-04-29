@@ -129,6 +129,7 @@
         "sweep turns",
         "kerbs",
         "undo and redo",
+        "floating undo and redo editor controls",
         "pan and zoom",
         "difficulty rating"
       ],
@@ -143,7 +144,8 @@
         "tests/unit/trackPath.test.ts",
         "tests/unit/editor.test.ts",
         "tests/unit/editorHistory.test.ts",
-        "tests/unit/editorZoom.test.ts"
+        "tests/unit/editorZoom.test.ts",
+        "tests/e2e/smoke.spec.ts"
       ],
       "remainingGaps": [
         "advanced authoring tools"
