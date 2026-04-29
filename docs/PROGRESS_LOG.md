@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Archived Dot Progress Summary
 
 - Branch: `docs/archive-progress-summary`
-- PR: Pending
+- PR: #54
 - Changed: summarized older archived Dot entries that predate the current detailed progress-log era, and clarified that collision-magnitude rumble is blocked until the game has a real collision event source.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: archived local `.dots` files are useful continuity input but should not be required reading for routine resume. The progress log should carry the durable summary instead.
