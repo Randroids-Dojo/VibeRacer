@@ -31,6 +31,40 @@ test('settings menu groups options behind tabs', async ({ page }) => {
   await expect(page.getByText('Trackside scenery', { exact: true })).toBeVisible()
 })
 
+test('settings tabs keep long sections inside the modal viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('tab', { name: 'Vehicle' }).click()
+
+  const panelInfo = await page.getByRole('tabpanel').evaluate((panel) => {
+    const menu = panel.parentElement
+    const menuRect = menu?.getBoundingClientRect()
+    return {
+      scrollHeight: panel.scrollHeight,
+      clientHeight: panel.clientHeight,
+      menuTop: menuRect?.top ?? Number.NEGATIVE_INFINITY,
+      menuBottom: menuRect?.bottom ?? Number.POSITIVE_INFINITY,
+      menuLeft: menuRect?.left ?? Number.NEGATIVE_INFINITY,
+      menuRight: menuRect?.right ?? Number.POSITIVE_INFINITY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }
+  })
+  expect(panelInfo.menuTop).toBeGreaterThanOrEqual(15)
+  expect(panelInfo.menuBottom).toBeLessThanOrEqual(panelInfo.viewportHeight - 15)
+  expect(panelInfo.menuLeft).toBeGreaterThanOrEqual(15)
+  expect(panelInfo.menuRight).toBeLessThanOrEqual(panelInfo.viewportWidth - 15)
+  expect(panelInfo.scrollHeight).toBeGreaterThan(panelInfo.clientHeight)
+
+  await page.getByRole('tabpanel').evaluate((panel) => {
+    panel.scrollTop = panel.scrollHeight
+  })
+  await expect(page.getByText('Haptic feedback', { exact: true })).toBeVisible()
+})
+
 test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')

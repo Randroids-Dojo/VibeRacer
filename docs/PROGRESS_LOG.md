@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Settings Tab Scroll Containment
+
+- Branch: `fix/settings-tab-scroll`
+- PR: pending
+- Changed: rendered shared menu overlays through a document-body portal so fixed positioning is viewport-relative, corrected modal box sizing, and made Settings tab panels own their own scroll area while the header and tabs stay in view.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, `npm test`, focused Playwright settings smoke, full Playwright smoke, `npm run build`, and browser screenshot at `test-results/settings-vehicle-after.png`.
+- Assumptions: moving `MenuOverlay` to a portal is the simplest consistent fix for both title Settings and in-race pause Settings because both use the same menu component.
+- GDD coverage: refines Section 9 menu usability without changing game rules or data.
+- Followups: none recorded.
+
 ## 2026-04-29, Track Biome Selection
 
 - Branch: `feature/track-biomes`
