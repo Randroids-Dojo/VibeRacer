@@ -54,6 +54,8 @@ export const NAMEPLATE_SPRITE_HEIGHT = 2
 // near the road, so 3.0 floats the plate above the roof without floating
 // out into the sky on dawn / dusk presets.
 export const NAMEPLATE_Y_OFFSET = 3.0
+export const NAMEPLATE_CLOSE_HIDE_DISTANCE = 5
+export const NAMEPLATE_CLOSE_FULL_DISTANCE = 12
 
 export interface GhostMeta {
   // Player initials (3 uppercase letters in normal use; the renderer guards
@@ -97,4 +99,14 @@ export function nameplateCacheKey(
   const ini = formatNameplateInitials(meta.initials)
   const lap = formatNameplateLapTime(meta.lapTimeMs)
   return `${source}|${ini}|${lap}`
+}
+
+export function nameplateOpacityForDistance(distance: number): number {
+  if (!Number.isFinite(distance)) return 1
+  if (distance <= NAMEPLATE_CLOSE_HIDE_DISTANCE) return 0
+  if (distance >= NAMEPLATE_CLOSE_FULL_DISTANCE) return 1
+  return (
+    (distance - NAMEPLATE_CLOSE_HIDE_DISTANCE) /
+    (NAMEPLATE_CLOSE_FULL_DISTANCE - NAMEPLATE_CLOSE_HIDE_DISTANCE)
+  )
 }

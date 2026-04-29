@@ -1736,6 +1736,7 @@ export function buildGhostCar(): { ghost: Group; dispose: () => void } {
 export interface GhostNameplate {
   group: Group
   apply: (meta: GhostMeta | null, source: GhostSource) => void
+  setOpacity: (value: number) => void
   setVisible: (value: boolean) => void
   dispose: () => void
 }
@@ -1859,6 +1860,11 @@ export function buildGhostNameplate(): GhostNameplate {
     if (sprite) group.visible = true
   }
 
+  function setOpacity(value: number) {
+    if (!material) return
+    material.opacity = Math.max(0, Math.min(1, value))
+  }
+
   function dispose() {
     if (texture) texture.dispose()
     if (material) material.dispose()
@@ -1869,7 +1875,7 @@ export function buildGhostNameplate(): GhostNameplate {
     material = null
   }
 
-  return { group, apply, setVisible, dispose }
+  return { group, apply, setOpacity, setVisible, dispose }
 }
 
 export function buildScene(path: TrackPath): SceneBundle {
