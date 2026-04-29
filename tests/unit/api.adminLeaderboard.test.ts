@@ -94,6 +94,29 @@ describe('POST /api/admin/leaderboard', () => {
     expect(await fake.zscore(lbKey, member)).toBe(50123)
   })
 
+  it('does not delete side keys when the member is missing from the board', async () => {
+    await fake.set(`lap:meta:${'b'.repeat(32)}`, { tuning: null })
+    await fake.set(`lap:replay:${'b'.repeat(32)}`, { lapTimeMs: 50123 })
+    await fake.set(`track:${slug}:${hash}:topReplay`, 'b'.repeat(32))
+
+    const { POST } = await import('@/app/api/admin/leaderboard/route')
+    const res = await POST(
+      req({
+        action: 'revoke',
+        slug,
+        versionHash: hash,
+        member,
+        reason: 'moderation test',
+        confirm: 'revoke leaderboard member',
+      }),
+    )
+    expect(res.status).toBe(404)
+    expect(await fake.get(`lap:meta:${'b'.repeat(32)}`)).not.toBeNull()
+    expect(await fake.get(`lap:replay:${'b'.repeat(32)}`)).not.toBeNull()
+    expect(await fake.get(`track:${slug}:${hash}:topReplay`)).toBe('b'.repeat(32))
+    expect(await fake.lrange('leaderboard:admin:audit', 0, -1)).toEqual([])
+  })
+
   it('revokes a member, cleans lap metadata, and writes an audit entry', async () => {
     await fake.zadd(lbKey, { score: 50123, member })
     await fake.set(`lap:meta:${'b'.repeat(32)}`, { tuning: null })
@@ -127,5 +150,28 @@ describe('POST /api/admin/leaderboard', () => {
     const audit = await fake.lrange('leaderboard:admin:audit', 0, -1)
     expect(audit).toHaveLength(1)
     expect(audit[0]).toContain('moderation test')
+  })
+
+  it('trims the audit list after writing a revoke entry', async () => {
+    for (let i = 0; i < 250; i++) {
+      await fake.lpush('leaderboard:admin:audit', `old-${i}`)
+    }
+    await fake.zadd(lbKey, { score: 50123, member })
+
+    const { POST } = await import('@/app/api/admin/leaderboard/route')
+    const res = await POST(
+      req({
+        action: 'revoke',
+        slug,
+        versionHash: hash,
+        member,
+        reason: 'audit trim test',
+        confirm: 'revoke leaderboard member',
+      }),
+    )
+    expect(res.status).toBe(200)
+    const audit = await fake.lrange('leaderboard:admin:audit', 0, -1)
+    expect(audit).toHaveLength(250)
+    expect(audit[0]).toContain('audit trim test')
   })
 })

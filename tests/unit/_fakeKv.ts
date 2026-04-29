@@ -155,6 +155,12 @@ export class FakeKv {
     const list = this.lists.get(key) ?? []
     return list.slice(start, stop === -1 ? undefined : stop + 1)
   }
+
+  async ltrim(key: string, start: number, stop: number): Promise<string> {
+    const list = this.lists.get(key) ?? []
+    this.lists.set(key, list.slice(start, stop === -1 ? undefined : stop + 1))
+    return 'OK'
+  }
 }
 
 export function installFakeKv(): FakeKv {

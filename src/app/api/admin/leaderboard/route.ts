@@ -1,4 +1,5 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { timingSafeEqual } from 'node:crypto'
 import { z } from 'zod'
 import { SlugSchema, VersionHashSchema } from '@/lib/schemas'
 import { getKv, kvKeys } from '@/lib/kv'
@@ -7,6 +8,7 @@ import { parseLeaderboardMember } from '@/lib/leaderboard'
 export const runtime = 'nodejs'
 
 const CONFIRM_REVOKE = 'revoke leaderboard member'
+const ADMIN_AUDIT_LIMIT = 250
 
 const AdminLeaderboardRequestSchema = z
   .object({
@@ -26,7 +28,13 @@ function adminToken(): string | null {
 
 function isAuthorized(req: NextRequest, token: string): boolean {
   const header = req.headers.get('authorization')
-  return header === `Bearer ${token}`
+  const prefix = 'Bearer '
+  if (!header?.startsWith(prefix)) return false
+  const candidate = header.slice(prefix.length)
+  const expectedBuffer = Buffer.from(token)
+  const candidateBuffer = Buffer.from(candidate)
+  if (candidateBuffer.length !== expectedBuffer.length) return false
+  return timingSafeEqual(candidateBuffer, expectedBuffer)
 }
 
 function redactedKeys(slug: string, versionHash: string, nonce: string) {
@@ -87,12 +95,27 @@ export async function POST(req: NextRequest) {
   }
 
   const kv = getKv()
+  const existingScore = await kv.zscore(keys.leaderboard, body.member)
+  if (existingScore === null) {
+    return NextResponse.json(
+      { error: 'member not found in leaderboard' },
+      { status: 404 },
+    )
+  }
+
   const topPointer = await kv.get<string>(keys.topReplayPointer)
   const shouldClearTopPointer = topPointer === member.nonce
   const keysToDelete = [keys.lapMeta, keys.lapReplay]
   if (shouldClearTopPointer) keysToDelete.push(keys.topReplayPointer)
 
   const removed = await kv.zrem(keys.leaderboard, body.member)
+  if (removed === 0) {
+    return NextResponse.json(
+      { error: 'member was not removed because it no longer exists' },
+      { status: 409 },
+    )
+  }
+
   const deletedKeys = await kv.del(...keysToDelete)
   await kv.lpush(
     kvKeys.leaderboardAdminAudit(),
@@ -109,6 +132,7 @@ export async function POST(req: NextRequest) {
       ts: new Date().toISOString(),
     }),
   )
+  await kv.ltrim(kvKeys.leaderboardAdminAudit(), 0, ADMIN_AUDIT_LIMIT - 1)
 
   return NextResponse.json({
     ok: true,
