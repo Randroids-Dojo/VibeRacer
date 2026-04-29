@@ -2,7 +2,7 @@
 import { useMemo, useState, type CSSProperties } from 'react'
 import type { Piece } from '@/lib/schemas'
 import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
-import { buildTrackPath } from '@/game/trackPath'
+import { TRACK_WIDTH, buildTrackPath } from '@/game/trackPath'
 import { buildMinimapGeometry } from '@/game/minimap'
 import {
   buildLinePath,
@@ -254,20 +254,23 @@ function TrackView({
   pieces: Piece[]
   maxRef: number
 }) {
-  const geometry = useMemo(() => {
+  const built = useMemo(() => {
     try {
-      return buildMinimapGeometry(buildTrackPath(pieces), TRACK_VIEW_SIZE, 8)
+      const path = buildTrackPath(pieces)
+      const geometry = buildMinimapGeometry(path, TRACK_VIEW_SIZE, 8)
+      return { path, geometry }
     } catch {
       return null
     }
   }, [pieces])
 
-  if (geometry === null) {
+  if (built === null) {
     return (
       <div style={emptyNote}>Track shape unavailable</div>
     )
   }
 
+  const { path, geometry } = built
   const view = geometry.viewSize
   const samples = telemetry.positions
   const speeds = telemetry.speeds
@@ -283,6 +286,37 @@ function TrackView({
       color: speedColor(t),
     })
   }
+
+  // Start-finish line. Heading 0 = +X, PI/2 = -Z, so the forward unit vector
+  // is (cos h, -sin h) and the lateral perpendicular is (-sin h, -cos h).
+  // Project both endpoints (one track-half-width to either side of the spawn
+  // point) through worldToView so the line scales with the rest of the
+  // minimap. A short forward chevron just past the line tells the player
+  // which way the lap was driven.
+  const startHeading = path.spawn.heading
+  const sx = path.spawn.position.x
+  const sz = path.spawn.position.z
+  const fwdX = Math.cos(startHeading)
+  const fwdZ = -Math.sin(startHeading)
+  const latX = -Math.sin(startHeading)
+  const latZ = -Math.cos(startHeading)
+  const half = TRACK_WIDTH / 2
+  const lineA = geometry.worldToView(sx + latX * half, sz + latZ * half)
+  const lineB = geometry.worldToView(sx - latX * half, sz - latZ * half)
+  const arrowAhead = 5
+  const arrowSpread = 2
+  const tip = geometry.worldToView(
+    sx + fwdX * arrowAhead,
+    sz + fwdZ * arrowAhead,
+  )
+  const wingL = geometry.worldToView(
+    sx + fwdX * (arrowAhead - 2.5) + latX * arrowSpread,
+    sz + fwdZ * (arrowAhead - 2.5) + latZ * arrowSpread,
+  )
+  const wingR = geometry.worldToView(
+    sx + fwdX * (arrowAhead - 2.5) - latX * arrowSpread,
+    sz + fwdZ * (arrowAhead - 2.5) - latZ * arrowSpread,
+  )
 
   return (
     <svg
@@ -315,6 +349,37 @@ function TrackView({
           fill="none"
         />
       ))}
+      <g>
+        <line
+          x1={lineA.x.toFixed(2)}
+          y1={lineA.y.toFixed(2)}
+          x2={lineB.x.toFixed(2)}
+          y2={lineB.y.toFixed(2)}
+          stroke="white"
+          strokeWidth={2.4}
+          strokeLinecap="round"
+        />
+        <polygon
+          points={`${tip.x.toFixed(2)},${tip.y.toFixed(2)} ${wingL.x.toFixed(2)},${wingL.y.toFixed(2)} ${wingR.x.toFixed(2)},${wingR.y.toFixed(2)}`}
+          fill="white"
+          stroke="rgba(0,0,0,0.6)"
+          strokeWidth={0.5}
+        />
+        <text
+          x={lineA.x.toFixed(2)}
+          y={(lineA.y - 4).toFixed(2)}
+          fill="white"
+          fontSize={9}
+          fontWeight={700}
+          fontFamily="monospace"
+          textAnchor="middle"
+          stroke="rgba(0,0,0,0.7)"
+          strokeWidth={2}
+          paintOrder="stroke"
+        >
+          START
+        </text>
+      </g>
       {telemetry.offTrackEvents.map((ev, i) => {
         const v = geometry.worldToView(ev.x, ev.z)
         const r = 3.5
