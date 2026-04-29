@@ -30,8 +30,15 @@ import {
 } from '@/lib/haptics'
 
 describe('HAPTIC_OUTCOMES', () => {
-  it('exposes exactly the four documented outcomes in stable order', () => {
-    expect(HAPTIC_OUTCOMES).toEqual(['lap', 'pb', 'record', 'offTrack'])
+  it('exposes exactly the documented outcomes in stable order', () => {
+    expect(HAPTIC_OUTCOMES).toEqual([
+      'lap',
+      'pb',
+      'record',
+      'offTrack',
+      'wrongWay',
+      'achievement',
+    ])
   })
 
   it('every outcome has a non-empty pattern', () => {
@@ -77,6 +84,22 @@ describe('HAPTIC_OUTCOMES', () => {
     expect(HAPTIC_PATTERNS.offTrack[0]).toBeGreaterThan(0)
     expect(HAPTIC_PATTERNS.offTrack[0]).toBeLessThan(
       patternTotalMs(HAPTIC_PATTERNS.record),
+    )
+  })
+
+  it('wrongWay stays a short warning pattern', () => {
+    expect(HAPTIC_PATTERNS.wrongWay.length).toBe(3)
+    expect(patternTotalMs(HAPTIC_PATTERNS.wrongWay)).toBeLessThan(
+      patternTotalMs(HAPTIC_PATTERNS.pb),
+    )
+  })
+
+  it('achievement is more substantial than a lap and lighter than a PB', () => {
+    expect(patternTotalMs(HAPTIC_PATTERNS.achievement)).toBeGreaterThan(
+      patternTotalMs(HAPTIC_PATTERNS.lap),
+    )
+    expect(patternTotalMs(HAPTIC_PATTERNS.achievement)).toBeLessThan(
+      patternTotalMs(HAPTIC_PATTERNS.pb),
     )
   })
 })
@@ -460,6 +483,24 @@ describe('RUMBLE_EFFECTS', () => {
     )
   })
 
+  it('wrongWay emphasizes the weak motor as a warning chatter', () => {
+    expect(RUMBLE_EFFECTS.wrongWay.weakMagnitude).toBeGreaterThan(
+      RUMBLE_EFFECTS.wrongWay.strongMagnitude,
+    )
+    expect(RUMBLE_EFFECTS.wrongWay.duration).toBeLessThan(
+      RUMBLE_EFFECTS.pb.duration,
+    )
+  })
+
+  it('achievement reads as a bright short celebration', () => {
+    expect(RUMBLE_EFFECTS.achievement.weakMagnitude).toBeGreaterThan(
+      RUMBLE_EFFECTS.lap.weakMagnitude,
+    )
+    expect(RUMBLE_EFFECTS.achievement.duration).toBeLessThan(
+      RUMBLE_EFFECTS.pb.duration,
+    )
+  })
+
   it('per-frame call duration covers a stuttered 60fps frame', () => {
     expect(RUMBLE_FRAME_DURATION_MS).toBeGreaterThan(16)
   })
@@ -566,6 +607,26 @@ describe('fireGamepadImpulse', () => {
       duration: RUMBLE_EFFECTS.record.duration,
       strongMagnitude: RUMBLE_EFFECTS.record.strongMagnitude,
       weakMagnitude: RUMBLE_EFFECTS.record.weakMagnitude,
+    })
+  })
+
+  it('drives the wrongWay impulse through vibrationActuator.playEffect', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(fireGamepadImpulse('wrongWay', pad)).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_EFFECTS.wrongWay.duration,
+      strongMagnitude: RUMBLE_EFFECTS.wrongWay.strongMagnitude,
+      weakMagnitude: RUMBLE_EFFECTS.wrongWay.weakMagnitude,
+    })
+  })
+
+  it('drives the achievement impulse through vibrationActuator.playEffect', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(fireGamepadImpulse('achievement', pad)).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_EFFECTS.achievement.duration,
+      strongMagnitude: RUMBLE_EFFECTS.achievement.strongMagnitude,
+      weakMagnitude: RUMBLE_EFFECTS.achievement.weakMagnitude,
     })
   })
 

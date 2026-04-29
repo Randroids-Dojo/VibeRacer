@@ -4,10 +4,11 @@
 //    tablets). One-shot pulse patterns; silently no-ops on desktop.
 // 2. Gamepad API rumble (`gamepad.vibrationActuator.playEffect("dual-rumble",
 //    ...)`) for connected controllers. Both impulses (lap / PB / record /
-//    offTrack) and a continuous physics-driven rumble loop (engine purr,
-//    surface texture, slip / drift) so a 360 pad feels Forza-lite during a
-//    race. Falls back to the legacy `gamepad.hapticActuators[0].pulse(...)`
-//    array on browsers that have not shipped `vibrationActuator` yet.
+//    offTrack / wrongWay / achievement) and a continuous physics-driven
+//    rumble loop (engine purr, surface texture, slip / drift) so a 360 pad
+//    feels Forza-lite during a race. Falls back to the legacy
+//    `gamepad.hapticActuators[0].pulse(...)` array on browsers that have not
+//    shipped `vibrationActuator` yet.
 //
 // Pure cosmetic; never affects physics or anti-cheat. Both paths are
 // defensive and safe to call from any code path on any runtime.
@@ -18,6 +19,8 @@
 //   - 'record'   -> heaviest impulse for a fresh track-wide record.
 //   - 'offTrack' -> short tap on the on-track to off-track rising edge,
 //                   paired with the existing audio off-track rumble cue.
+//   - 'wrongWay' -> short warning chatter when the wrong-way banner appears.
+//   - 'achievement' -> celebratory pop when an achievement unlocks.
 //
 // Patterns / effects are tuned so a fast circuit racer is not constantly
 // buzzing, and impulses stay under a second so they overlap with (but do not
@@ -25,7 +28,14 @@
 
 import { z } from 'zod'
 
-export const HAPTIC_OUTCOMES = ['lap', 'pb', 'record', 'offTrack'] as const
+export const HAPTIC_OUTCOMES = [
+  'lap',
+  'pb',
+  'record',
+  'offTrack',
+  'wrongWay',
+  'achievement',
+] as const
 export type HapticOutcome = (typeof HAPTIC_OUTCOMES)[number]
 
 export function isHapticOutcome(value: unknown): value is HapticOutcome {
@@ -47,6 +57,11 @@ export const HAPTIC_PATTERNS: Record<HapticOutcome, readonly number[]> = {
   // the player feels the curb / grass without it competing with the audio
   // off-track rumble that fires on the same edge.
   offTrack: [55],
+  // wrongWay is a warning cue rather than a reward, so it uses two small
+  // pulses with a tight gap.
+  wrongWay: [35, 25, 35],
+  // achievement is brighter than a normal lap but still shorter than a PB.
+  achievement: [45, 35, 90],
 }
 
 // Total budget so a future pattern tweak does not accidentally schedule a
@@ -176,6 +191,8 @@ export const RUMBLE_EFFECTS: Record<HapticOutcome, DualRumbleEffect> = {
   pb: { duration: 220, strongMagnitude: 0.65, weakMagnitude: 0.85 },
   record: { duration: 380, strongMagnitude: 0.85, weakMagnitude: 1.0 },
   offTrack: { duration: 90, strongMagnitude: 0.55, weakMagnitude: 0.3 },
+  wrongWay: { duration: 130, strongMagnitude: 0.25, weakMagnitude: 0.75 },
+  achievement: { duration: 180, strongMagnitude: 0.45, weakMagnitude: 0.9 },
 }
 
 // Per-effect duration cap. Keeps a future tweak from accidentally scheduling

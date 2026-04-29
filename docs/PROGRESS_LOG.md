@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Gamepad Event Rumble
+
+- Branch: `feature/gamepad-event-rumble`
+- PR: #50
+- Changed: added gamepad rumble impulses for wrong-way warning and achievement unlock events, reusing the existing gamepad rumble mode and active-pad capability checks.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/haptics.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: this is an event-cue slice only; continuous rumble shaping, collision impulses, trigger rumble, and per-channel intensity controls remain separate followups.
+- GDD coverage: extends Section 13 Audio / haptics with wrong-way and achievement gamepad impulses.
+- Followups: removed the completed wrong-way and achievement-unlock gamepad rumble item.
+
 ## 2026-04-29, Architecture Tree Refresh
 
 - Branch: `docs/architecture-tree-refresh`
-- PR: pending
+- PR: #49
 - Changed: refreshed the Section 16 architecture tree and build log so they name the current App Router routes, API handlers, RaceCanvas renderer, hooks, game helpers, lib modules, and middleware layout.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: this is a docs-only reconciliation slice because the architecture gap was stale documentation, not missing runtime behavior.
