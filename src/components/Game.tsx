@@ -2424,6 +2424,7 @@ function GameSession({
               ? 'block'
               : 'none',
         }}
+        data-testid="rearview-mirror"
       />
       {settings.showMinimap ? (
         <Minimap
@@ -2793,10 +2794,9 @@ const canvasStyle: React.CSSProperties = {
 // Rear-view mirror inset. Sits at the top-center, scaled with viewport width
 // so the strip reads on phones without overwhelming the HUD on a desktop.
 // 4:1 aspect ratio matches a stretched panoramic mirror you would see in a
-// real car. Higher z-index than the HUD so the inset sits cleanly on top of
-// the HUD top-row blocks if they ever wrap into the same band.
+// real car. Fixed positioning keeps the mirror in its own viewport band.
 const rearviewStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
   top: 8,
   left: '50%',
   transform: 'translateX(-50%)',

@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, HUD Mirror And Bottom Lane Spacing
+
+- Branch: `fix/hud-mirror-speed-overlap`
+- PR: pending
+- Changed: kept the rear-view mirror in a fixed top-center band, moved top-center alerts below that band, stacked compact bottom readouts above the speedometer, and added a mobile smoke check for mirror, speedometer, and session-strip overlap.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, `npm test`, `npm run build`, focused Playwright HUD lane smoke, and full Playwright smoke.
+- Assumptions: compact HUD spacing should prefer stable vertical lanes over squeezing more status text near the speedometer.
+- GDD coverage: refines Sections 8 and 9 HUD readability without changing race rules or data.
+- Followups: none recorded.
+
 ## 2026-04-29, Settings Tab Scroll Containment
 
 - Branch: `fix/settings-tab-scroll`

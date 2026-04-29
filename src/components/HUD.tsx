@@ -667,7 +667,10 @@ function SessionStrip({
   compact: boolean
 }) {
   return (
-    <div style={compact ? compactSessionStrip : sessionStrip}>
+    <div
+      style={compact ? compactSessionStrip : sessionStrip}
+      data-testid="hud-session-strip"
+    >
       <span>BEST {bestAllTime}</span>
       {!compact ? (
         <>
@@ -717,7 +720,10 @@ function LiveBand({
 }) {
   if (!ghostGapLabel && !challenge && !rivalLabel) return null
   return (
-    <div style={compact ? compactLiveBand : liveBand}>
+    <div
+      style={compact ? compactLiveBand : liveBand}
+      data-testid="hud-live-band"
+    >
       {ghostGapLabel !== null ? (
         <div
           style={ghostGapAhead ? livePillAhead : livePillBehind}
@@ -909,9 +915,18 @@ export function HUD(props: HudProps) {
           </div>
         ) : null}
       </div>
-      {props.prediction ? <div style={projectedDock}><PredictionBlock prediction={props.prediction} /></div> : null}
+      {props.prediction ? (
+        <div style={compact ? compactProjectedDock : projectedDock}>
+          <PredictionBlock prediction={props.prediction} />
+        </div>
+      ) : null}
       {props.transmission === 'manual' ? (
-        <div style={gearChip} role="status" aria-live="polite">
+        <div
+          style={compact ? compactGearChip : gearChip}
+          role="status"
+          aria-live="polite"
+          data-testid="hud-gear-chip"
+        >
           <span style={gearChipLabel}>GEAR</span>
           <span style={gearChipValue}>{props.gear ?? 1}</span>
           <span style={gearChipHint}>Q / E</span>
@@ -995,7 +1010,7 @@ const topRight: React.CSSProperties = {
 }
 const topCenter: React.CSSProperties = {
   position: 'absolute',
-  top: 48,
+  top: 88,
   left: '50%',
   transform: 'translateX(-50%)',
   display: 'flex',
@@ -1007,6 +1022,11 @@ const projectedDock: React.CSSProperties = {
   position: 'absolute',
   top: 8,
   left: 168,
+}
+const compactProjectedDock: React.CSSProperties = {
+  ...projectedDock,
+  top: 62,
+  left: 8,
 }
 const block: React.CSSProperties = {
   background: 'var(--hud-bg)',
@@ -1036,7 +1056,7 @@ const timeSm: React.CSSProperties = {
 const gearChip: React.CSSProperties = {
   position: 'absolute',
   left: '50%',
-  bottom: 150,
+  bottom: 'calc(158px + env(safe-area-inset-bottom, 0px))',
   transform: 'translateX(-50%)',
   display: 'inline-flex',
   alignItems: 'center',
@@ -1048,6 +1068,10 @@ const gearChip: React.CSSProperties = {
   boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
   color: '#ffd36b',
   fontWeight: 900,
+}
+const compactGearChip: React.CSSProperties = {
+  ...gearChip,
+  bottom: 'calc(206px + env(safe-area-inset-bottom, 0px))',
 }
 const gearChipLabel: React.CSSProperties = {
   fontSize: 10,
@@ -1113,7 +1137,7 @@ const sessionStrip: React.CSSProperties = {
 }
 const compactSessionStrip: React.CSSProperties = {
   ...sessionStrip,
-  bottom: 130,
+  bottom: 'calc(166px + env(safe-area-inset-bottom, 0px))',
   maxWidth: 'min(260px, calc(100vw - 16px))',
   fontSize: 11,
   overflow: 'hidden',
@@ -1177,7 +1201,7 @@ const liveBand: React.CSSProperties = {
 }
 const compactLiveBand: React.CSSProperties = {
   ...liveBand,
-  bottom: 176,
+  bottom: 'calc(252px + env(safe-area-inset-bottom, 0px))',
   flexDirection: 'column',
   gap: 6,
 }

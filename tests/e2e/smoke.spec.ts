@@ -92,6 +92,66 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
   await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
 })
 
+test('race HUD keeps mirror and bottom readouts in separate lanes on mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/start')
+  await page.getByRole('textbox').fill('TST')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByTestId('rearview-mirror')).toBeVisible({
+    timeout: 10000,
+  })
+  await expect(page.getByTestId('hud-speedometer')).toBeVisible({
+    timeout: 10000,
+  })
+  await expect(page.getByTestId('hud-session-strip')).toBeVisible()
+
+  const layout = await page.evaluate(() => {
+    function rectFor(testId: string) {
+      const node = document.querySelector(`[data-testid="${testId}"]`)
+      const rect = node?.getBoundingClientRect()
+      return rect
+        ? {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          }
+        : null
+    }
+    function overlaps(
+      a: { left: number; right: number; top: number; bottom: number },
+      b: { left: number; right: number; top: number; bottom: number },
+    ) {
+      return (
+        a.left < b.right &&
+        a.right > b.left &&
+        a.top < b.bottom &&
+        a.bottom > b.top
+      )
+    }
+    const mirror = rectFor('rearview-mirror')
+    const speedometer = rectFor('hud-speedometer')
+    const session = rectFor('hud-session-strip')
+    return {
+      mirror,
+      speedometer,
+      session,
+      speedometerSessionOverlap:
+        speedometer && session ? overlaps(speedometer, session) : true,
+      mirrorSessionOverlap: mirror && session ? overlaps(mirror, session) : true,
+    }
+  })
+
+  expect(layout.mirror).not.toBeNull()
+  expect(layout.speedometer).not.toBeNull()
+  expect(layout.session).not.toBeNull()
+  expect(layout.speedometerSessionOverlap).toBe(false)
+  expect(layout.mirrorSessionOverlap).toBe(false)
+})
+
 test('track editor uses floating undo and redo controls on mobile', async ({
   page,
 }) => {
