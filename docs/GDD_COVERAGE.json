@@ -205,6 +205,31 @@
           "VibeRacer-define-leaderboard-admin-66ce1190"
         ]
       }
+    },
+    {
+      "id": "13",
+      "title": "Audio",
+      "status": "partial",
+      "implemented": [
+        "music",
+        "sound effects",
+        "channel volume controls",
+        "haptics",
+        "per-track music personalization",
+        "background tab audio suspension"
+      ],
+      "evidence": [
+        "src/game/audioEngine.ts",
+        "src/game/music.ts",
+        "src/game/audio.ts",
+        "src/lib/audioSettings.ts",
+        "tests/unit/audio.test.ts",
+        "tests/unit/music.test.ts",
+        "tests/unit/audioSettings.test.ts"
+      ],
+      "remainingGaps": [
+        "deeper SFX polish"
+      ]
     }
   ]
 }
