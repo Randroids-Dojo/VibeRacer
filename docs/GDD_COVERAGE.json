@@ -130,7 +130,8 @@
         "pan and zoom",
         "difficulty rating",
         "per-track biomes",
-        "placed decorations"
+        "placed decorations",
+        "rectangle selection"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -157,11 +158,15 @@
         "tests/e2e/smoke.spec.ts"
       ],
       "remainingGaps": [
-        "advanced authoring tools"
+        "selected track transforms",
+        "track templates"
       ],
       "gapBacklog": {
-        "advanced authoring tools": [
-          "VibeRacer-plan-advanced-track-f9837405"
+        "selected track transforms": [
+          "docs/FOLLOWUPS.md#high-priority"
+        ],
+        "track templates": [
+          "docs/FOLLOWUPS.md#high-priority"
         ]
       }
     },

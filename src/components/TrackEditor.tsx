@@ -40,7 +40,10 @@ import {
   getStartExitDir,
   moveStartTo,
   nextRotation,
+  countSelectedPieces,
+  rectangleSelectionKeys,
   reverseStartDirection,
+  selectedCellKey,
   withPiecePlaced,
   withPieceRemoved,
   withPieceRotated,
@@ -66,7 +69,7 @@ import {
   shiftZoomTowardCursor,
 } from '@/game/editorZoom'
 
-type Tool = 'erase' | PieceType | 'start' | 'checkpoint' | TrackDecorationKind
+type Tool = 'select' | 'erase' | PieceType | 'start' | 'checkpoint' | TrackDecorationKind
 const PIECE_TOOLS: PieceType[] = [
   'straight',
   'left90',
@@ -76,8 +79,9 @@ const PIECE_TOOLS: PieceType[] = [
   'sweepRight',
   'sweepLeft',
 ]
-const BASE_TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start', 'checkpoint']
+const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
+  select: 'Select',
   erase: 'Erase',
   straight: 'Straight',
   left90: 'Left turn',
@@ -200,6 +204,8 @@ export function TrackEditor({
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
+  const [selectionAnchor, setSelectionAnchor] = useState<{ row: number; col: number } | null>(null)
+  const [selectedCells, setSelectedCells] = useState<Set<string>>(() => new Set())
   const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
   // Tracks an active two-finger pinch gesture. Null when no pinch is active.
@@ -233,6 +239,10 @@ export function TrackEditor({
   const startKey =
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
   const startExitDir = getStartExitDir(pieces)
+  const selectedPieceCount = useMemo(
+    () => countSelectedPieces(pieces, selectedCells),
+    [pieces, selectedCells],
+  )
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
@@ -256,6 +266,7 @@ export function TrackEditor({
     error,
     tool,
     toolRotation,
+    selectionAnchor,
   })
   latestRef.current = {
     cellMap,
@@ -265,6 +276,7 @@ export function TrackEditor({
     error,
     tool,
     toolRotation,
+    selectionAnchor,
   }
 
   const applyTool = useCallback((row: number, col: number) => {
@@ -276,9 +288,21 @@ export function TrackEditor({
       decorationMap: dm,
       startKey: sk,
       error: err,
+      selectionAnchor: anchor,
     } = latestRef.current
     const key = cellKey(row, col)
     const existing = cm.get(key)
+    if (t === 'select') {
+      if (anchor === null) {
+        setSelectionAnchor({ row, col })
+        setSelectedCells(new Set([selectedCellKey(row, col)]))
+      } else {
+        setSelectedCells(new Set(rectangleSelectionKeys(anchor, { row, col })))
+        setSelectionAnchor(null)
+      }
+      if (err !== null) setError(null)
+      return
+    }
     if (t === 'checkpoint') {
       if (!existing || key === sk) return
       setCheckpoints((current) =>
@@ -545,7 +569,14 @@ export function TrackEditor({
 
   function clearAll() {
     setPieces([])
+    setSelectionAnchor(null)
+    setSelectedCells(new Set())
     setError(null)
+  }
+
+  function clearSelection() {
+    setSelectionAnchor(null)
+    setSelectedCells(new Set())
   }
 
   const undoEdit = useCallback(() => {
@@ -764,6 +795,8 @@ export function TrackEditor({
                   <EraseGlyph />
                 ) : t === 'start' ? (
                   <StartGlyph />
+                ) : t === 'select' ? (
+                  <SelectGlyph />
                 ) : t === 'checkpoint' ? (
                   <CheckpointGlyph />
                 ) : isDecoration ? (
@@ -826,6 +859,10 @@ export function TrackEditor({
                     hasCheckpoint={checkpointKeys.has(key)}
                     decoration={decorationMap.get(key)}
                     startExitDir={isStart ? startExitDir : null}
+                    isSelected={selectedCells.has(selectedCellKey(r, c))}
+                    isSelectionAnchor={
+                      selectionAnchor?.row === r && selectionAnchor.col === c
+                    }
                   />
                 )
               }),
@@ -1148,6 +1185,11 @@ export function TrackEditor({
               {decorations.length} decorations
             </span>
           ) : null}
+          {selectedCells.size > 0 ? (
+            <span style={cpHint}>
+              {selectedPieceCount} selected pieces, {selectedCells.size} cells
+            </span>
+          ) : null}
           {error ? <span style={{ color: '#ff6b6b' }}>{error}</span> : null}
         </div>
         <div style={buttons}>
@@ -1161,6 +1203,13 @@ export function TrackEditor({
           </button>
           <button onClick={clearAll} style={btnGhost} disabled={pieces.length === 0}>
             Clear
+          </button>
+          <button
+            onClick={clearSelection}
+            style={btnGhost}
+            disabled={selectedCells.size === 0 && selectionAnchor === null}
+          >
+            Clear selection
           </button>
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
@@ -1205,6 +1254,8 @@ interface CellProps {
   hasCheckpoint: boolean
   decoration: TrackDecoration | undefined
   startExitDir: Dir | null
+  isSelected: boolean
+  isSelectionAnchor: boolean
 }
 
 const Cell = memo(function Cell({
@@ -1217,6 +1268,8 @@ const Cell = memo(function Cell({
   hasCheckpoint,
   decoration,
   startExitDir,
+  isSelected,
+  isSelectionAnchor,
 }: CellProps) {
   return (
     <g transform={`translate(${x}, ${y})`} data-row={row} data-col={col}>
@@ -1270,6 +1323,19 @@ const Cell = memo(function Cell({
           ) : null}
         </>
       ) : null}
+      {isSelected ? (
+        <rect
+          x={3}
+          y={3}
+          width={CELL - 6}
+          height={CELL - 6}
+          fill="rgba(88, 166, 255, 0.16)"
+          stroke={isSelectionAnchor ? '#ffd36b' : '#58a6ff'}
+          strokeWidth={isSelectionAnchor ? 3 : 2}
+          strokeDasharray={isSelectionAnchor ? '5 4' : undefined}
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : null}
     </g>
   )
 })
@@ -1290,6 +1356,9 @@ function StartGlyph() {
 }
 
 function paletteHintText(tool: Tool, rotation: Rotation): string {
+  if (tool === 'select') {
+    return 'Tap one cell to anchor selection, then tap another to select the rectangle.'
+  }
   if (tool === 'erase') return 'Tap a placed piece to remove it.'
   if (tool === 'start') {
     return 'Tap any piece to make it the start. Tap the current start to reverse direction.'
@@ -1301,6 +1370,26 @@ function paletteHintText(tool: Tool, rotation: Rotation): string {
     return 'Tap empty cells to place or replace decorations. Tap the same prop to remove it.'
   }
   return `Rotation ${rotation}°. Tap the tile above to spin it.`
+}
+
+function SelectGlyph() {
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <rect
+        x={12}
+        y={12}
+        width={32}
+        height={32}
+        rx={3}
+        fill="rgba(88, 166, 255, 0.16)"
+        stroke="#58a6ff"
+        strokeWidth={4}
+        strokeDasharray="6 4"
+      />
+      <circle cx={12} cy={12} r={4} fill="#ffd36b" />
+      <circle cx={44} cy={44} r={4} fill="#58a6ff" />
+    </g>
+  )
 }
 
 function EraseGlyph() {

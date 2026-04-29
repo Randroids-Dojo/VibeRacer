@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest'
 import {
+  countSelectedPieces,
   getBounds,
   getStartExitDir,
   moveStartTo,
   nextRotation,
+  rectangleSelectionKeys,
   reverseStartDirection,
+  selectedCellKey,
   withPiecePlaced,
   withPieceRemoved,
   withPieceRotated,
@@ -197,5 +200,57 @@ describe('getBounds', () => {
       colMin: -4,
       colMax: 7,
     })
+  })
+})
+
+describe('rectangleSelectionKeys', () => {
+  it('selects a single cell when anchor and target match', () => {
+    expect(rectangleSelectionKeys({ row: 2, col: 3 }, { row: 2, col: 3 })).toEqual([
+      selectedCellKey(2, 3),
+    ])
+  })
+
+  it('selects every cell inside the rectangle regardless of drag direction', () => {
+    const forward = rectangleSelectionKeys({ row: 1, col: 2 }, { row: 3, col: 4 })
+    const reverse = rectangleSelectionKeys({ row: 3, col: 4 }, { row: 1, col: 2 })
+
+    expect(forward).toEqual(reverse)
+    expect(forward).toEqual([
+      '1,2',
+      '1,3',
+      '1,4',
+      '2,2',
+      '2,3',
+      '2,4',
+      '3,2',
+      '3,3',
+      '3,4',
+    ])
+  })
+
+  it('handles negative coordinates', () => {
+    expect(rectangleSelectionKeys({ row: -1, col: -2 }, { row: 0, col: -1 })).toEqual([
+      '-1,-2',
+      '-1,-1',
+      '0,-2',
+      '0,-1',
+    ])
+  })
+})
+
+describe('countSelectedPieces', () => {
+  it('counts selected pieces and ignores selected empty cells', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'left90', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 2, col: 2, rotation: 180 },
+    ]
+    const selected = new Set(['0,0', '0,1', '1,1'])
+
+    expect(countSelectedPieces(pieces, selected)).toBe(2)
+  })
+
+  it('returns zero for an empty selection', () => {
+    expect(countSelectedPieces(DEFAULT_TRACK_PIECES, new Set())).toBe(0)
   })
 })

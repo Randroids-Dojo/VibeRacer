@@ -106,3 +106,39 @@ export function getBounds(pieces: Piece[]): {
   }
   return { rowMin, rowMax, colMin, colMax }
 }
+
+export function selectedCellKey(row: number, col: number): string {
+  return cellSelectionKey(row, col)
+}
+
+function cellSelectionKey(row: number, col: number): string {
+  return `${row},${col}`
+}
+
+export function rectangleSelectionKeys(
+  anchor: { row: number; col: number },
+  target: { row: number; col: number },
+): string[] {
+  const rowMin = Math.min(anchor.row, target.row)
+  const rowMax = Math.max(anchor.row, target.row)
+  const colMin = Math.min(anchor.col, target.col)
+  const colMax = Math.max(anchor.col, target.col)
+  const keys: string[] = []
+  for (let row = rowMin; row <= rowMax; row++) {
+    for (let col = colMin; col <= colMax; col++) {
+      keys.push(cellSelectionKey(row, col))
+    }
+  }
+  return keys
+}
+
+export function countSelectedPieces(
+  pieces: Piece[],
+  selectedKeys: ReadonlySet<string>,
+): number {
+  let count = 0
+  for (const piece of pieces) {
+    if (selectedKeys.has(cellSelectionKey(piece.row, piece.col))) count += 1
+  }
+  return count
+}
