@@ -177,6 +177,23 @@ test('track editor uses floating undo and redo controls on mobile', async ({
   expect(horizontalOverflow).toBeLessThanOrEqual(1)
 })
 
+test('track editor decoration palette follows the selected biome', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await expect(page.getByRole('button', { name: 'Tree' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Cactus' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Advanced' }).click()
+  await page.getByLabel('Track biome').selectOption('desert')
+  await expect(page.getByRole('button', { name: 'Cactus' })).toBeVisible()
+
+  await page.getByRole('button', { name: 'Cactus' }).click()
+  await page.locator('g[data-row="-2"][data-col="-2"]').click()
+  await expect(page.getByText('1 decorations')).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')

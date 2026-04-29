@@ -124,6 +124,9 @@ export async function PUT(
       : {}),
     ...(moodOut !== undefined ? { mood: moodOut } : {}),
     ...(track.data.biome !== undefined ? { biome: track.data.biome } : {}),
+    ...(track.data.decorations !== undefined && track.data.decorations.length > 0
+      ? { decorations: track.data.decorations }
+      : {}),
     transmission: track.data.transmission,
     createdByRacerId: racerId,
     createdAt,

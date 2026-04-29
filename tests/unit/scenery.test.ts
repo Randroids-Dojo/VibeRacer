@@ -11,6 +11,7 @@ import {
   SCENERY_TREE_SCALE_MIN,
   buildCornerCones,
   buildScenery,
+  buildPlacedDecorations,
   buildStartBarriers,
   buildTreeScenery,
   distanceToTrack,
@@ -342,5 +343,37 @@ describe('buildScenery', () => {
     expect(new Set(barriers.map((i) => i.colorHex))).toEqual(
       new Set([style.barrierA, style.barrierB]),
     )
+  })
+
+  it('adds placed decorations at cell centers', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES)
+    const items = buildScenery(path, {
+      includeTrees: false,
+      includeCones: false,
+      includeBarriers: false,
+      decorations: [{ kind: 'cactus', row: 2, col: -1 }],
+    })
+    expect(items).toMatchObject([
+      {
+        kind: 'cactus',
+        x: -CELL_SIZE,
+        z: CELL_SIZE * 2,
+      },
+    ])
+  })
+})
+
+describe('buildPlacedDecorations', () => {
+  it('returns an empty list without decorations', () => {
+    expect(buildPlacedDecorations(undefined)).toEqual([])
+  })
+
+  it('maps every decoration into a scenery item', () => {
+    expect(
+      buildPlacedDecorations([
+        { kind: 'building', row: 1, col: 2 },
+        { kind: 'snowPile', row: -1, col: 0 },
+      ]).map((item) => item.kind),
+    ).toEqual(['building', 'snowPile'])
   })
 })

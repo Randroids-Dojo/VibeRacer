@@ -127,6 +127,7 @@ import {
   getTrackBiomePreset,
   type TrackBiome,
 } from '@/lib/biomes'
+import type { TrackDecoration } from '@/lib/decorations'
 import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
@@ -1244,10 +1245,11 @@ const BARRIER_DEPTH = 0.55
 export function buildSceneryLayer(
   path: TrackPath,
   biome?: TrackBiome | null,
+  decorations?: readonly TrackDecoration[],
 ): SceneryLayer {
   const group = new Group()
   const sceneryStyle = getSceneryStyle(biome)
-  const items = buildScenery(path, { biome, style: sceneryStyle })
+  const items = buildScenery(path, { biome, style: sceneryStyle, decorations })
 
   // Cached materials and geometries. One entry per unique color so a hundred
   // trees with two foliage palettes collapses to two foliage materials.
@@ -1282,6 +1284,15 @@ export function buildSceneryLayer(
   )
   const foliageGeom = new ConeGeometry(TREE_FOLIAGE_RADIUS, TREE_FOLIAGE_HEIGHT, 8)
   const coneGeom = new ConeGeometry(CONE_RADIUS, CONE_HEIGHT, 12)
+  const rockGeom = new SphereGeometry(0.9, 7, 5)
+  rockGeom.scale(1.2, 0.55, 0.9)
+  const cactusStemGeom = new CylinderGeometry(0.28, 0.34, 2.6, 8)
+  const cactusArmGeom = new CylinderGeometry(0.18, 0.18, 1.2, 8)
+  const palmTrunkGeom = new CylinderGeometry(0.22, 0.3, 3.2, 7)
+  const palmLeafGeom = new ConeGeometry(1.15, 1.1, 7)
+  const buildingGeom = new BoxGeometry(2.4, 3.6, 2.4)
+  const snowPileGeom = new SphereGeometry(1.1, 10, 6)
+  snowPileGeom.scale(1.25, 0.32, 0.85)
   const coneBaseGeom = new BoxGeometry(
     CONE_BASE_HALF_WIDTH * 2,
     CONE_BASE_HEIGHT,
@@ -1307,6 +1318,85 @@ export function buildSceneryLayer(
     tree.add(foliage)
 
     group.add(tree)
+  }
+
+  function addPine(item: SceneryItem) {
+    const pine = new Group()
+    pine.position.set(item.x, 0, item.z)
+    pine.rotation.y = item.rotationY
+    pine.scale.setScalar(item.scale)
+
+    const trunk = new Mesh(trunkGeom, trunkMat)
+    trunk.position.y = TREE_TRUNK_HEIGHT / 2
+    pine.add(trunk)
+
+    const foliage = new Mesh(foliageGeom, getColorMat(item.colorHex || 0x2f6b46))
+    foliage.position.y = TREE_TRUNK_HEIGHT + TREE_FOLIAGE_HEIGHT / 2 - 0.1
+    foliage.scale.set(0.9, 1.15, 0.9)
+    pine.add(foliage)
+    group.add(pine)
+  }
+
+  function addRock(item: SceneryItem) {
+    const rock = new Mesh(rockGeom, getColorMat(0x7b7f84))
+    rock.position.set(item.x, 0.28, item.z)
+    rock.rotation.y = item.rotationY
+    rock.scale.setScalar(item.scale)
+    group.add(rock)
+  }
+
+  function addCactus(item: SceneryItem) {
+    const cactus = new Group()
+    cactus.position.set(item.x, 0, item.z)
+    cactus.rotation.y = item.rotationY
+    cactus.scale.setScalar(item.scale)
+    const mat = getColorMat(0x4f7f35)
+
+    const stem = new Mesh(cactusStemGeom, mat)
+    stem.position.y = 1.3
+    cactus.add(stem)
+    for (const side of [-1, 1]) {
+      const arm = new Mesh(cactusArmGeom, mat)
+      arm.position.set(side * 0.55, 1.55, 0)
+      arm.rotation.z = Math.PI / 2
+      cactus.add(arm)
+    }
+    group.add(cactus)
+  }
+
+  function addPalm(item: SceneryItem) {
+    const palm = new Group()
+    palm.position.set(item.x, 0, item.z)
+    palm.rotation.y = item.rotationY
+    palm.scale.setScalar(item.scale)
+
+    const trunk = new Mesh(palmTrunkGeom, trunkMat)
+    trunk.position.y = 1.6
+    trunk.rotation.z = 0.14
+    palm.add(trunk)
+
+    const leaves = new Mesh(palmLeafGeom, getColorMat(0x2e8f63))
+    leaves.position.set(0.25, 3.45, 0)
+    leaves.rotation.x = Math.PI
+    leaves.scale.set(1.6, 0.45, 1.6)
+    palm.add(leaves)
+    group.add(palm)
+  }
+
+  function addBuilding(item: SceneryItem) {
+    const building = new Mesh(buildingGeom, getColorMat(0x444b55))
+    building.position.set(item.x, 1.8, item.z)
+    building.rotation.y = item.rotationY
+    building.scale.setScalar(item.scale)
+    group.add(building)
+  }
+
+  function addSnowPile(item: SceneryItem) {
+    const pile = new Mesh(snowPileGeom, getColorMat(0xf1f5f9))
+    pile.position.set(item.x, 0.22, item.z)
+    pile.rotation.y = item.rotationY
+    pile.scale.setScalar(item.scale)
+    group.add(pile)
   }
 
   function addCone(item: SceneryItem) {
@@ -1338,6 +1428,12 @@ export function buildSceneryLayer(
 
   for (const item of items) {
     if (item.kind === 'tree') addTree(item)
+    else if (item.kind === 'pine') addPine(item)
+    else if (item.kind === 'rock') addRock(item)
+    else if (item.kind === 'cactus') addCactus(item)
+    else if (item.kind === 'palm') addPalm(item)
+    else if (item.kind === 'building') addBuilding(item)
+    else if (item.kind === 'snowPile') addSnowPile(item)
     else if (item.kind === 'cone') addCone(item)
     else if (item.kind === 'barrier') addBarrier(item)
   }
@@ -1359,6 +1455,13 @@ export function buildSceneryLayer(
       trunkGeom.dispose()
       foliageGeom.dispose()
       coneGeom.dispose()
+      rockGeom.dispose()
+      cactusStemGeom.dispose()
+      cactusArmGeom.dispose()
+      palmTrunkGeom.dispose()
+      palmLeafGeom.dispose()
+      buildingGeom.dispose()
+      snowPileGeom.dispose()
       coneBaseGeom.dispose()
       barrierGeom.dispose()
     },
@@ -1907,7 +2010,7 @@ export function buildGhostNameplate(): GhostNameplate {
 
 export function buildScene(
   path: TrackPath,
-  opts?: { biome?: TrackBiome | null },
+  opts?: { biome?: TrackBiome | null; decorations?: readonly TrackDecoration[] },
 ): SceneBundle {
   const biomePreset = getTrackBiomePreset(opts?.biome)
   const scene = new Scene()
@@ -2132,7 +2235,7 @@ export function buildScene(
 
   scene.add(buildCheckpointMarkers(path))
 
-  const scenery = buildSceneryLayer(path, opts?.biome)
+  const scenery = buildSceneryLayer(path, opts?.biome, opts?.decorations)
   scene.add(scenery.group)
 
   const racingLine = buildRacingLineLayer()

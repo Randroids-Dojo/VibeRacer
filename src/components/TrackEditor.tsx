@@ -7,6 +7,7 @@ import type {
   Rotation,
   TrackBiome,
   TrackCheckpoint,
+  TrackDecoration,
   TrackMood,
   TrackTransmissionMode,
 } from '@/lib/schemas'
@@ -24,6 +25,14 @@ import {
   TRACK_BIOME_LABELS,
   TRACK_BIOME_NAMES,
 } from '@/lib/biomes'
+import {
+  MAX_DECORATIONS_PER_TRACK,
+  TRACK_DECORATION_LABELS,
+  TRACK_DECORATION_KINDS,
+  decorationCellKey,
+  getDecorationPaletteForBiome,
+  type TrackDecorationKind,
+} from '@/lib/decorations'
 import { sanitizeTrackMood } from '@/game/trackMood'
 import { recordMyTrack } from '@/lib/myTracks'
 import {
@@ -57,7 +66,7 @@ import {
   shiftZoomTowardCursor,
 } from '@/game/editorZoom'
 
-type Tool = 'erase' | PieceType | 'start' | 'checkpoint'
+type Tool = 'erase' | PieceType | 'start' | 'checkpoint' | TrackDecorationKind
 const PIECE_TOOLS: PieceType[] = [
   'straight',
   'left90',
@@ -67,7 +76,7 @@ const PIECE_TOOLS: PieceType[] = [
   'sweepRight',
   'sweepLeft',
 ]
-const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start', 'checkpoint']
+const BASE_TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
@@ -79,6 +88,7 @@ const TOOL_LABELS: Record<Tool, string> = {
   sweepLeft: 'Sweep turn (left)',
   start: 'Set start',
   checkpoint: 'Checkpoint',
+  ...TRACK_DECORATION_LABELS,
 }
 
 interface TrackEditorProps {
@@ -87,6 +97,7 @@ interface TrackEditorProps {
   initialCheckpointCount?: number
   initialCheckpoints?: TrackCheckpoint[]
   initialBiome?: TrackBiome
+  initialDecorations?: TrackDecoration[]
   // Optional baked-in author mood (timeOfDay / weather) to seed the editor's
   // pickers with. Both fields are optional inside the mood. Undefined when
   // the loaded track has no mood (legacy or never set).
@@ -111,6 +122,7 @@ export function TrackEditor({
   initialCheckpointCount,
   initialCheckpoints = [],
   initialBiome,
+  initialDecorations = [],
   initialMood,
   initialTransmission = 'automatic',
   forkingFromHash,
@@ -159,6 +171,21 @@ export function TrackEditor({
   const moodActive = moodTimeOfDay !== null || moodWeather !== null
   const [biome, setBiome] = useState<TrackBiome | null>(initialBiome ?? null)
   const biomeActive = biome !== null
+  const [decorations, setDecorations] = useState<TrackDecoration[]>(
+    () => initialDecorations,
+  )
+  const decorationPalette = useMemo(
+    () => getDecorationPaletteForBiome(biome),
+    [biome],
+  )
+  const decorationToolSet = useMemo(
+    () => new Set<TrackDecorationKind>(decorationPalette),
+    [decorationPalette],
+  )
+  const tools = useMemo<Tool[]>(
+    () => [...BASE_TOOLS, ...decorationPalette],
+    [decorationPalette],
+  )
   const [transmission, setTransmission] = useState<TrackTransmissionMode>(
     initialTransmission,
   )
@@ -167,6 +194,7 @@ export function TrackEditor({
       initialCheckpointCount !== initialPieces.length) ||
       initialMood !== undefined ||
       initialBiome !== undefined ||
+      initialDecorations.length > 0 ||
       initialTransmission === 'manual' ||
       initialCheckpoints.length > 0,
   )
@@ -212,10 +240,18 @@ export function TrackEditor({
     () => new Set(checkpoints.map((cp) => cellKey(cp.row, cp.col))),
     [checkpoints],
   )
+  const decorationMap = useMemo(() => {
+    const m = new Map<string, TrackDecoration>()
+    for (const decoration of decorations) {
+      m.set(decorationCellKey(decoration), decoration)
+    }
+    return m
+  }, [decorations])
 
   const latestRef = useRef({
     cellMap,
     checkpointKeys,
+    decorationMap,
     startKey,
     error,
     tool,
@@ -224,6 +260,7 @@ export function TrackEditor({
   latestRef.current = {
     cellMap,
     checkpointKeys,
+    decorationMap,
     startKey,
     error,
     tool,
@@ -236,6 +273,7 @@ export function TrackEditor({
       toolRotation: tr,
       cellMap: cm,
       checkpointKeys: ck,
+      decorationMap: dm,
       startKey: sk,
       error: err,
     } = latestRef.current
@@ -252,11 +290,35 @@ export function TrackEditor({
       if (err !== null) setError(null)
       return
     }
-    setPieces((prev) => {
-      if (t === 'erase') {
-        return existing ? withPieceRemoved(prev, row, col) : prev
+    if (decorationToolSet.has(t as TrackDecorationKind)) {
+      if (existing) return
+      setDecorations((current) => {
+        const decorationKind = t as TrackDecorationKind
+        const withoutCell = current.filter((item) => decorationCellKey(item) !== key)
+        if (dm.get(key)?.kind === decorationKind) return withoutCell
+        if (
+          withoutCell.length >= MAX_DECORATIONS_PER_TRACK &&
+          !dm.has(key)
+        ) {
+          return current
+        }
+        return [...withoutCell, { kind: decorationKind, row, col }]
+      })
+      if (err !== null) setError(null)
+      return
+    }
+    if (t === 'erase') {
+      if (dm.has(key)) {
+        setDecorations((current) =>
+          current.filter((item) => decorationCellKey(item) !== key),
+        )
       }
-      if (t === 'start') {
+      setPieces((prev) => (existing ? withPieceRemoved(prev, row, col) : prev))
+      if (err !== null) setError(null)
+      return
+    }
+    if (t === 'start') {
+      setPieces((prev) => {
         // Mirrors the right-click semantics: re-tapping the current start
         // reverses the loop direction; tapping any other piece relocates
         // start to it. Tapping an empty cell is a no-op.
@@ -264,18 +326,27 @@ export function TrackEditor({
         return key === sk
           ? reverseStartDirection(prev)
           : moveStartTo(prev, row, col)
-      }
-      // Tapping any existing piece rotates it. To change the piece type,
-      // erase it first and then place the new one.
-      if (existing) {
-        return withPieceRotated(prev, row, col)
-      }
-      const next = withPiecePlaced(prev, row, col, t, tr)
+      })
+      if (err !== null) setError(null)
+      return
+    }
+    // Tapping any existing piece rotates it. To change the piece type,
+    // erase it first and then place the new one.
+    if (existing) {
+      setPieces((prev) => withPieceRotated(prev, row, col))
+      if (err !== null) setError(null)
+      return
+    }
+    setDecorations((current) =>
+      current.filter((item) => decorationCellKey(item) !== key),
+    )
+    setPieces((prev) => {
+      const next = withPiecePlaced(prev, row, col, t as PieceType, tr)
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
     if (err !== null) setError(null)
-  }, [setPieces])
+  }, [decorationToolSet, setPieces])
 
   function selectTool(next: Tool) {
     // Only piece tools have a rotation; tapping the same erase or start
@@ -498,6 +569,20 @@ export function TrackEditor({
     })
   }, [pieces])
 
+  useEffect(() => {
+    setDecorations((current) => {
+      const pieceCells = new Set(pieces.map((p) => cellKey(p.row, p.col)))
+      const next = current.filter((item) => !pieceCells.has(decorationCellKey(item)))
+      return next.length === current.length ? current : next
+    })
+  }, [pieces])
+
+  useEffect(() => {
+    if (!TRACK_DECORATION_KINDS.includes(tool as TrackDecorationKind)) return
+    if (decorationToolSet.has(tool as TrackDecorationKind)) return
+    setTool(decorationPalette[0] ?? 'straight')
+  }, [decorationPalette, decorationToolSet, tool])
+
   // Keyboard shortcuts: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z = redo, also
   // Ctrl/Cmd+Y = redo for Windows muscle memory. Ignored when typing in an
   // input or select so the checkpoint number field and mood pickers behave
@@ -567,6 +652,7 @@ export function TrackEditor({
         checkpointCount?: number
         checkpoints?: TrackCheckpoint[]
         biome?: TrackBiome
+        decorations?: TrackDecoration[]
         mood?: TrackMood
         transmission?: TrackTransmissionMode
       } = { pieces }
@@ -584,6 +670,9 @@ export function TrackEditor({
       }
       if (biome !== null) {
         reqBody.biome = biome
+      }
+      if (decorations.length > 0) {
+        reqBody.decorations = decorations
       }
       if (transmission !== 'automatic') {
         reqBody.transmission = transmission
@@ -653,9 +742,10 @@ export function TrackEditor({
       </div>
 
       <div style={paletteBar} role="toolbar" aria-label="Piece palette">
-        {TOOLS.map((t) => {
+        {tools.map((t) => {
           const selected = t === tool
           const isPiece = (PIECE_TOOLS as Tool[]).includes(t)
+          const isDecoration = decorationToolSet.has(t as TrackDecorationKind)
           return (
             <button
               key={t}
@@ -676,9 +766,16 @@ export function TrackEditor({
                   <StartGlyph />
                 ) : t === 'checkpoint' ? (
                   <CheckpointGlyph />
+                ) : isDecoration ? (
+                  <DecorationGlyph kind={t as TrackDecorationKind} />
                 ) : (
                   <PieceGlyph
-                    piece={{ type: t, row: 0, col: 0, rotation: toolRotation }}
+                    piece={{
+                      type: t as PieceType,
+                      row: 0,
+                      col: 0,
+                      rotation: toolRotation,
+                    }}
                   />
                 )}
               </svg>
@@ -727,6 +824,7 @@ export function TrackEditor({
                     piece={piece}
                     isStart={isStart}
                     hasCheckpoint={checkpointKeys.has(key)}
+                    decoration={decorationMap.get(key)}
                     startExitDir={isStart ? startExitDir : null}
                   />
                 )
@@ -935,6 +1033,30 @@ export function TrackEditor({
           </div>
           <div style={advancedRow}>
             <div style={advancedCopy}>
+              <div style={advancedLabel}>Decorations</div>
+              <p style={advancedHelp}>
+                Place cosmetic props on empty grid cells with the decoration
+                tools in the palette. The available props follow the current
+                biome. Decorations are visual only and do not affect physics,
+                lap times, or the version hash.
+              </p>
+            </div>
+            <div style={moodControl}>
+              <p style={biomeHint}>
+                {decorations.length} of {MAX_DECORATIONS_PER_TRACK} placed.
+              </p>
+              {decorations.length > 0 ? (
+                <button
+                  onClick={() => setDecorations([])}
+                  style={btnGhostSmall}
+                >
+                  Clear decorations
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
               <div style={advancedLabel}>Track mood</div>
               <p style={advancedHelp}>
                 Pick a baked-in time of day or weather and every player who
@@ -1021,6 +1143,11 @@ export function TrackEditor({
               {checkpoints.length} custom checkpoints
             </span>
           ) : null}
+          {decorations.length > 0 ? (
+            <span style={cpHint}>
+              {decorations.length} decorations
+            </span>
+          ) : null}
           {error ? <span style={{ color: '#ff6b6b' }}>{error}</span> : null}
         </div>
         <div style={buttons}>
@@ -1041,6 +1168,7 @@ export function TrackEditor({
               {checkpointCount !== null ||
               customCheckpointsActive ||
               biomeActive ||
+              decorations.length > 0 ||
               moodActive ||
               transmission !== 'automatic' ? (
                 <span style={advancedDot} />
@@ -1075,6 +1203,7 @@ interface CellProps {
   piece: Piece | undefined
   isStart: boolean
   hasCheckpoint: boolean
+  decoration: TrackDecoration | undefined
   startExitDir: Dir | null
 }
 
@@ -1086,6 +1215,7 @@ const Cell = memo(function Cell({
   piece,
   isStart,
   hasCheckpoint,
+  decoration,
   startExitDir,
 }: CellProps) {
   return (
@@ -1098,6 +1228,9 @@ const Cell = memo(function Cell({
         strokeWidth={isStart ? 2 : 1}
       />
       {piece ? <PieceGlyph piece={piece} /> : null}
+      {!piece && decoration ? (
+        <DecorationGlyph kind={decoration.kind} />
+      ) : null}
       {hasCheckpoint ? (
         <g style={{ pointerEvents: 'none' }}>
           <circle
@@ -1164,6 +1297,9 @@ function paletteHintText(tool: Tool, rotation: Rotation): string {
   if (tool === 'checkpoint') {
     return 'Tap track pieces to toggle custom checkpoints. Place at least 3.'
   }
+  if (TRACK_DECORATION_KINDS.includes(tool as TrackDecorationKind)) {
+    return 'Tap empty cells to place or replace decorations. Tap the same prop to remove it.'
+  }
   return `Rotation ${rotation}°. Tap the tile above to spin it.`
 }
 
@@ -1204,6 +1340,75 @@ function CheckpointGlyph() {
         d={`M ${cx - 6} ${cy - 14} L ${cx + 13} ${cy - 8} L ${cx - 6} ${cy - 2} Z`}
         fill="#ffb347"
       />
+    </g>
+  )
+}
+
+function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  if (kind === 'rock') {
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <ellipse cx={cx} cy={cy + 4} rx={13} ry={8} fill="#7b7f84" />
+        <path
+          d={`M ${cx - 10} ${cy + 3} L ${cx - 2} ${cy - 5} L ${cx + 10} ${cy + 2}`}
+          stroke="rgba(255,255,255,0.28)"
+          strokeWidth={2}
+          fill="none"
+        />
+      </g>
+    )
+  }
+  if (kind === 'cactus') {
+    return (
+      <g style={{ pointerEvents: 'none' }} stroke="#4f7f35" strokeWidth={7} strokeLinecap="round">
+        <line x1={cx} y1={cy + 15} x2={cx} y2={cy - 14} />
+        <path d={`M ${cx - 2} ${cy - 1} H ${cx - 13} V ${cy - 9}`} fill="none" />
+        <path d={`M ${cx + 2} ${cy + 5} H ${cx + 13} V ${cy - 2}`} fill="none" />
+      </g>
+    )
+  }
+  if (kind === 'building') {
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <rect x={cx - 13} y={cy - 16} width={26} height={32} rx={2} fill="#444b55" />
+        {[cx - 7, cx + 3].map((x) =>
+          [cy - 9, cy, cy + 9].map((y) => (
+            <rect key={`${x}-${y}`} x={x} y={y} width={5} height={4} fill="#ffd36b" opacity={0.7} />
+          )),
+        )}
+      </g>
+    )
+  }
+  if (kind === 'snowPile') {
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <ellipse cx={cx} cy={cy + 6} rx={16} ry={8} fill="#f1f5f9" />
+        <circle cx={cx - 7} cy={cy + 2} r={7} fill="#e2e8f0" />
+        <circle cx={cx + 5} cy={cy} r={9} fill="#f8fafc" />
+      </g>
+    )
+  }
+  if (kind === 'palm') {
+    return (
+      <g style={{ pointerEvents: 'none' }}>
+        <line x1={cx - 2} y1={cy + 16} x2={cx + 4} y2={cy - 3} stroke="#7c4a25" strokeWidth={5} strokeLinecap="round" />
+        <path d={`M ${cx + 4} ${cy - 7} C ${cx - 12} ${cy - 16} ${cx - 14} ${cy - 3} ${cx + 2} ${cy - 2}`} fill="#2e8f63" />
+        <path d={`M ${cx + 4} ${cy - 7} C ${cx + 18} ${cy - 16} ${cx + 18} ${cy - 2} ${cx + 5} ${cy - 1}`} fill="#57b26b" />
+      </g>
+    )
+  }
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <rect x={cx - 4} y={cy + 6} width={8} height={12} rx={2} fill="#6b4423" />
+      <polygon
+        points={`${cx},${cy - 18} ${cx - 16},${cy + 8} ${cx + 16},${cy + 8}`}
+        fill={kind === 'pine' ? '#2f6b46' : '#4caf50'}
+      />
+      {kind === 'tree' ? (
+        <polygon points={`${cx},${cy - 10} ${cx - 12},${cy + 12} ${cx + 12},${cy + 12}`} fill="#66bb6a" />
+      ) : null}
     </g>
   )
 }
