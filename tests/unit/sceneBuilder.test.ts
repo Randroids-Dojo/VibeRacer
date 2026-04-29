@@ -101,4 +101,37 @@ describe('pieceGeometry face normals', () => {
     expect(validateClosedLoop(santi).ok).toBe(true)
     expectAllTrianglesFaceUp(santi)
   })
+
+  it('sweep entry / exit road corners land exactly on the cell edge', () => {
+    // Regression for the thin grass seam at every sweep boundary on /santi.
+    // polylineGeometry used to compute the perpendicular by differencing
+    // neighbouring samples; with the new wider sweep bezier sample[1] has a
+    // small lateral offset, so the entry vertices ended up rotated ~2° and
+    // shifted ~0.12 units off the connecting piece's edge. Using each
+    // sample's analytical heading instead lands them exactly on the edge.
+    const sweepLoop: Piece[] = [
+      { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 1, col: 1, rotation: 180 },
+      { type: 'right90', row: 1, col: 0, rotation: 270 },
+    ]
+    expect(validateClosedLoop(sweepLoop).ok).toBe(true)
+    const path = buildTrackPath(sweepLoop)
+    const sweep = path.order.find((o) => o.piece.type === 'sweepRight')!
+    const geom = pieceGeometry(sweep)
+    const pos = geom.getAttribute('position')
+    const last = pos.count - 1
+    // Entry: south edge of cell (0, 0) at z = +CELL/2 = 10. Road corners at
+    // x = ±TRACK_WIDTH/2 = ±4.
+    expect(pos.getZ(0)).toBeCloseTo(10, 9)
+    expect(pos.getZ(1)).toBeCloseTo(10, 9)
+    expect(Math.abs(pos.getX(0))).toBeCloseTo(4, 9)
+    expect(Math.abs(pos.getX(1))).toBeCloseTo(4, 9)
+    // Exit: east edge of cell (0, 0) at x = +CELL/2 = 10. Road corners at
+    // z = ±TRACK_WIDTH/2 = ±4.
+    expect(pos.getX(last - 1)).toBeCloseTo(10, 9)
+    expect(pos.getX(last)).toBeCloseTo(10, 9)
+    expect(Math.abs(pos.getZ(last - 1))).toBeCloseTo(4, 9)
+    expect(Math.abs(pos.getZ(last))).toBeCloseTo(4, 9)
+  })
 })

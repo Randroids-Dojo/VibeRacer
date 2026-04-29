@@ -329,28 +329,16 @@ function polylineGeometry(op: OrderedPiece): BufferGeometry {
   const verts: number[] = []
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i]
-    // Build a tangent from neighboring samples (central difference at the
-    // interior, forward / backward at the ends). The perpendicular in the
-    // y=0 plane is (tz, -tx) rotated 90 CW, which yields the right-hand side
-    // when standing at the sample looking along travel.
-    let tx: number
-    let tz: number
-    if (i === 0) {
-      tx = samples[i + 1].x - s.x
-      tz = samples[i + 1].z - s.z
-    } else if (i === samples.length - 1) {
-      tx = s.x - samples[i - 1].x
-      tz = s.z - samples[i - 1].z
-    } else {
-      tx = samples[i + 1].x - samples[i - 1].x
-      tz = samples[i + 1].z - samples[i - 1].z
-    }
-    const tlen = Math.hypot(tx, tz) || 1
-    tx /= tlen
-    tz /= tlen
-    // Right-hand perpendicular in the +Y up frame.
-    const px = -tz
-    const pz = tx
+    // Use the sample's analytical heading instead of differencing neighbours.
+    // At the endpoints the analytical tangent is exactly perpendicular to the
+    // cell edge, so the road vertices land exactly on the connecting piece's
+    // edge corners. Differencing produced a small lateral error at the ends
+    // that showed up as a thin grass seam at every sweep / scurve boundary.
+    // Game heading convention: 0 = +X (east), increasing CCW. So the unit
+    // tangent is (cos h, -sin h) and the right-hand perpendicular is
+    // (sin h, cos h).
+    const px = Math.sin(s.heading)
+    const pz = Math.cos(s.heading)
     verts.push(s.x + px * half, 0, s.z + pz * half)
     verts.push(s.x - px * half, 0, s.z - pz * half)
   }
