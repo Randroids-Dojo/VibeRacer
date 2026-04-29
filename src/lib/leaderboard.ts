@@ -98,6 +98,15 @@ export interface LeaderboardResponse {
   versionHash: string
   entries: LeaderboardEntry[]
   meBestRank: number | null
+  pagination: LeaderboardPagination
+}
+
+export interface LeaderboardPagination {
+  offset: number
+  limit: number
+  total: number
+  hasPrev: boolean
+  hasNext: boolean
 }
 
 interface ParsedMember {
@@ -148,6 +157,7 @@ function parseLapMeta(raw: unknown): RawLapMeta {
 interface MetaCapableKv {
   zrange: Redis['zrange']
   mget: Redis['mget']
+  zcard: Redis['zcard']
 }
 
 export async function readLeaderboard(
@@ -155,14 +165,26 @@ export async function readLeaderboard(
   slug: Slug,
   versionHash: VersionHash,
   limit: number,
+  offset: number,
   myRacerId: string | null,
-): Promise<{ entries: LeaderboardEntry[]; meBestRank: number | null }> {
-  const raw = (await kv.zrange(
-    kvKeys.leaderboard(slug, versionHash),
-    0,
-    limit - 1,
-    { withScores: true },
-  )) as (string | number)[]
+): Promise<{
+  entries: LeaderboardEntry[]
+  meBestRank: number | null
+  pagination: LeaderboardPagination
+}> {
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.min(LEADERBOARD_MAX_LIMIT, Math.trunc(limit)))
+    : LEADERBOARD_DEFAULT_LIMIT
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0
+  const key = kvKeys.leaderboard(slug, versionHash)
+  const [raw, totalRaw] = await Promise.all([
+    kv.zrange(key, safeOffset, safeOffset + safeLimit - 1, { withScores: true }),
+    kv.zcard(key),
+  ])
+  const total =
+    typeof totalRaw === 'number' && Number.isFinite(totalRaw)
+      ? Math.max(0, Math.trunc(totalRaw))
+      : 0
 
   // Walk the zrange output collecting parsed members + scores + nonce keys for
   // a single mget. Skip entries we cannot parse.
@@ -190,7 +212,7 @@ export async function readLeaderboard(
   for (let i = 0; i < pending.length; i++) {
     const { parsed, score } = pending[i]
     const meta = parseLapMeta(metaRaws[i])
-    const rank = entries.length + 1
+    const rank = safeOffset + entries.length + 1
     const isMe = myRacerId !== null && parsed.racerId === myRacerId
     if (isMe && meBestRank === null) meBestRank = rank
     entries.push({
@@ -205,5 +227,15 @@ export async function readLeaderboard(
     })
   }
 
-  return { entries, meBestRank }
+  return {
+    entries,
+    meBestRank,
+    pagination: {
+      offset: safeOffset,
+      limit: safeLimit,
+      total,
+      hasPrev: safeOffset > 0,
+      hasNext: safeOffset + safeLimit < total,
+    },
+  }
 }

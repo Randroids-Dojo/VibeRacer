@@ -11,6 +11,7 @@ import {
 } from '@/lib/tuningSettings'
 import {
   DEFAULT_SORT_DIRECTION,
+  LEADERBOARD_DEFAULT_LIMIT,
   sortLeaderboardEntries,
   type LeaderboardSortKey,
   type SortDirection,
@@ -67,6 +68,13 @@ interface RawLeaderboardEntry extends Omit<Entry, 'nonce'> {
 interface LeaderboardApiResponse {
   entries: RawLeaderboardEntry[]
   meBestRank: number | null
+  pagination?: {
+    offset: number
+    limit: number
+    total: number
+    hasPrev: boolean
+    hasNext: boolean
+  }
 }
 
 interface VersionOption {
@@ -81,7 +89,12 @@ interface TrackApiResponse {
 
 type BoardState =
   | { kind: 'loading' }
-  | { kind: 'ready'; entries: Entry[]; meBestRank: number | null }
+  | {
+      kind: 'ready'
+      entries: Entry[]
+      meBestRank: number | null
+      pagination: LeaderboardApiResponse['pagination']
+    }
   | { kind: 'error'; message: string }
 
 type VersionsState =
@@ -112,6 +125,7 @@ export function Leaderboard({
 }: LeaderboardProps) {
   const router = useRouter()
   const [selectedHash, setSelectedHash] = useState<string>(versionHash)
+  const [pageOffset, setPageOffset] = useState(0)
   const [board, setBoard] = useState<BoardState>({ kind: 'loading' })
   const [versionsState, setVersionsState] = useState<VersionsState>({
     kind: 'loading',
@@ -166,8 +180,14 @@ export function Leaderboard({
     setBoard({ kind: 'loading' })
     async function load() {
       try {
+        const params = new URLSearchParams({
+          slug,
+          v: selectedHash,
+          limit: String(LEADERBOARD_DEFAULT_LIMIT),
+          offset: String(pageOffset),
+        })
         const res = await fetch(
-          `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${selectedHash}`,
+          `/api/leaderboard?${params.toString()}`,
           { cache: 'no-store' },
         )
         if (!res.ok) throw new Error(`status ${res.status}`)
@@ -185,6 +205,7 @@ export function Leaderboard({
           kind: 'ready',
           entries,
           meBestRank: body.meBestRank,
+          pagination: body.pagination,
         })
       } catch (e) {
         if (cancelled) return
@@ -198,7 +219,7 @@ export function Leaderboard({
     return () => {
       cancelled = true
     }
-  }, [slug, selectedHash])
+  }, [slug, selectedHash, pageOffset])
 
   const dropdown = useMemo(() => {
     if (versionsState.kind !== 'ready') return null
@@ -241,6 +262,17 @@ export function Leaderboard({
     if (board.kind !== 'ready') return []
     return sortLeaderboardEntries(board.entries, sortKey, sortDirection)
   }, [board, sortKey, sortDirection])
+  const pagination = board.kind === 'ready' ? board.pagination : undefined
+  const totalRows =
+    pagination?.total ?? (board.kind === 'ready' ? board.entries.length : 0)
+  const firstRow =
+    pagination && board.kind === 'ready' && board.entries.length > 0
+      ? pagination.offset + 1
+      : 0
+  const lastRow =
+    pagination && board.kind === 'ready' && board.entries.length > 0
+      ? pagination.offset + board.entries.length
+      : 0
 
   function handleSort(key: LeaderboardSortKey) {
     clickSort()
@@ -278,7 +310,10 @@ export function Leaderboard({
             VERSION
             <select
               value={selectedHash}
-              onChange={(e) => setSelectedHash(e.target.value)}
+              onChange={(e) => {
+                setSelectedHash(e.target.value)
+                setPageOffset(0)
+              }}
               style={selectStyle}
               disabled={dropdown === null || dropdown.length <= 1}
               aria-label="Track version"
@@ -443,6 +478,45 @@ export function Leaderboard({
                 )
               })}
             </div>
+            {pagination ? (
+              <div style={pagerRow}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clickSort()
+                    setPageOffset(Math.max(0, pagination.offset - pagination.limit))
+                  }}
+                  disabled={!pagination.hasPrev}
+                  style={{
+                    ...pagerBtn,
+                    opacity: pagination.hasPrev ? 1 : 0.4,
+                    cursor: pagination.hasPrev ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Prev
+                </button>
+                <div style={pagerLabel}>
+                  {firstRow > 0 && lastRow > 0
+                    ? `${firstRow}-${lastRow} of ${totalRows}`
+                    : `0 of ${totalRows}`}
+                </div>
+                <button
+                  type="button"
+                  onClick={() => {
+                    clickSort()
+                    setPageOffset(pagination.offset + pagination.limit)
+                  }}
+                  disabled={!pagination.hasNext}
+                  style={{
+                    ...pagerBtn,
+                    opacity: pagination.hasNext ? 1 : 0.4,
+                    cursor: pagination.hasNext ? 'pointer' : 'not-allowed',
+                  }}
+                >
+                  Next
+                </button>
+              </div>
+            ) : null}
             {board.meBestRank !== null ? (
               <div style={footer}>Your best on this track: #{board.meBestRank}</div>
             ) : null}
@@ -789,6 +863,31 @@ const scrollArea: React.CSSProperties = {
   overflowY: 'auto',
   display: 'flex',
   flexDirection: 'column',
+}
+const pagerRow: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 10,
+  padding: '8px 0 4px',
+}
+const pagerBtn: React.CSSProperties = {
+  background: '#2a2a2a',
+  color: 'white',
+  border: '1px solid #3a3a3a',
+  borderRadius: 6,
+  padding: '6px 12px',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 0.6,
+  fontFamily: 'inherit',
+}
+const pagerLabel: React.CSSProperties = {
+  minWidth: 96,
+  textAlign: 'center',
+  fontSize: 12,
+  opacity: 0.7,
+  fontVariantNumeric: 'tabular-nums',
 }
 const headerRow: React.CSSProperties = {
   display: 'flex',

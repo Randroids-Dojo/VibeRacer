@@ -1,6 +1,6 @@
 ---
 title: Add leaderboard pagination beyond top 100
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-04-28T20:12:23.690738-05:00"

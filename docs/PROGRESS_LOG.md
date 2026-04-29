@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Leaderboard Pagination
+
+- Branch: `feature/leaderboard-pagination-v2`
+- PR: pending
+- Changed: added offset-based leaderboard pagination to the API, absolute rank preservation beyond the first page, page metadata, and Prev / Next controls in the paused leaderboard UI.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, `npm test`, `npm run build`, and `npm run test:e2e -- tests/e2e/smoke.spec.ts`.
+- Assumptions: page sorting remains client-side within the currently loaded page, while server rank remains absolute across the full per-version board.
+- GDD coverage: Section 11 pagination beyond top 100 is implemented; admin tooling remains the only recorded leaderboard gap.
+- Followups: none recorded.
+
 ## 2026-04-29, Optional Per-Track Shifting
 
 - Branch: `feature/optional-track-shifting`

@@ -25,17 +25,22 @@ export async function GET(req: NextRequest) {
   const limit = Number.isFinite(limitRaw)
     ? Math.min(LEADERBOARD_MAX_LIMIT, Math.max(1, Math.trunc(limitRaw)))
     : LEADERBOARD_DEFAULT_LIMIT
+  const offsetRaw = Number(url.searchParams.get('offset') ?? 0)
+  const offset = Number.isFinite(offsetRaw)
+    ? Math.max(0, Math.trunc(offsetRaw))
+    : 0
 
   const cookieRacerId = req.cookies.get(RACER_ID_COOKIE)?.value
   const myRacerId =
     cookieRacerId && isValidRacerId(cookieRacerId) ? cookieRacerId : null
 
   try {
-    const { entries, meBestRank } = await readLeaderboard(
+    const { entries, meBestRank, pagination } = await readLeaderboard(
       getKv(),
       slug.data,
       versionHash.data,
       limit,
+      offset,
       myRacerId,
     )
     return NextResponse.json<LeaderboardResponse>({
@@ -43,6 +48,7 @@ export async function GET(req: NextRequest) {
       versionHash: versionHash.data,
       entries,
       meBestRank,
+      pagination,
     })
   } catch {
     return NextResponse.json<LeaderboardResponse>({
@@ -50,6 +56,13 @@ export async function GET(req: NextRequest) {
       versionHash: versionHash.data,
       entries: [],
       meBestRank: null,
+      pagination: {
+        offset,
+        limit,
+        total: 0,
+        hasPrev: false,
+        hasNext: false,
+      },
     })
   }
 }
