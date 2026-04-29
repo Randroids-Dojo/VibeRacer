@@ -88,15 +88,16 @@ For every implementation slice:
 8. Open a PR.
 9. Inspect all PR review comments, including inline and threaded comments from Copilot or other review bots.
 10. Fix actionable review comments, reply in-thread when the platform supports it, and resolve threads when resolved.
-11. Wait for CI and the preview deploy to pass.
-12. Merge only when green, review feedback is handled, and the preview deploy is healthy.
-13. Pull `main`, verify main CI and production deploy, and smoke test production.
-14. Close the completed backlog item with the PR number and verification.
-15. Immediately start the next slice.
+11. After every push to the PR branch, wait for Copilot or any configured bot reviewer to finish its review pass before merging. Re-inspect reviews and review threads after the wait. If no fresh bot review appears, record that the bot did not post new feedback after the push and continue only after the check window has settled.
+12. Wait for CI and the preview deploy to pass.
+13. Merge only when green, review feedback is handled, Copilot or bot review has settled after the latest push, and the preview deploy is healthy.
+14. Pull `main`, verify main CI and production deploy, and smoke test production.
+15. Close the completed backlog item with the PR number and verification.
+16. Immediately start the next slice.
 
 Do not stop at planning. Do not stop after opening a PR. Do not stop after merge. If blocked, log the blocker clearly, create or update the backlog item, and move to the next unblocked slice if one exists.
 
-Never mark work complete with failing tests, unresolved actionable review comments, red CI, or a broken deploy.
+Never mark work complete with failing tests, unresolved actionable review comments, a bot review still in flight after the latest push, red CI, or a broken deploy.
 
 ---
 

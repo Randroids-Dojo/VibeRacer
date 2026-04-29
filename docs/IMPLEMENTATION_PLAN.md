@@ -16,11 +16,12 @@ Every slice follows the same loop:
 8. Open a PR.
 9. Inspect review comments and threaded inline comments.
 10. Fix actionable feedback, reply when useful, and resolve threads.
-11. Wait for CI and preview deploy to pass.
-12. Merge only when green.
-13. Pull `main`, verify main CI and production deploy, and smoke test production.
-14. Close the backlog item with the PR number and verification evidence.
-15. Immediately start the next slice.
+11. After every push to the PR branch, wait for Copilot or any configured bot reviewer to finish its review pass, then re-inspect reviews and threaded comments. If no fresh bot review appears, record that no new bot feedback was posted after the push once the check window has settled.
+12. Wait for CI and preview deploy to pass.
+13. Merge only when green and bot review has settled after the latest push.
+14. Pull `main`, verify main CI and production deploy, and smoke test production.
+15. Close the backlog item with the PR number and verification evidence.
+16. Immediately start the next slice.
 
 Do not stop after planning, after opening a PR, or after merging. If a task is blocked, log the blocker in `docs/OPEN_QUESTIONS.md` or `docs/FOLLOWUPS.md`, update the Dots item, and move to the next unblocked slice.
 
@@ -45,6 +46,7 @@ A slice is done only when all apply:
 - Code, docs, tests, and coverage ledger match the implemented behavior.
 - Required local verification passes.
 - PR is open and all actionable review comments are handled.
+- Copilot or bot review has finished after the latest push, or no fresh bot feedback appeared after the wait window.
 - CI and preview deploy are green.
 - PR is merged.
 - Local `main` is updated from remote.
