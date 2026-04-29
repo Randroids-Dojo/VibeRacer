@@ -70,9 +70,14 @@
         "Q/E shifter keys",
         "manual gearing if promoted from stretch"
       ],
-      "backlog": [
-        "VibeRacer-implement-q-e-2789311e"
-      ]
+      "gapBacklog": {
+        "Q/E shifter keys": [
+          "VibeRacer-implement-q-e-2789311e"
+        ],
+        "manual gearing if promoted from stretch": [
+          "VibeRacer-implement-q-e-2789311e"
+        ]
+      }
     },
     {
       "id": "5",
@@ -100,9 +105,14 @@
         "per-wheel raycast",
         "angular velocity"
       ],
-      "backlog": [
-        "VibeRacer-evaluate-per-wheel-9337b9e7"
-      ]
+      "gapBacklog": {
+        "per-wheel raycast": [
+          "VibeRacer-evaluate-per-wheel-9337b9e7"
+        ],
+        "angular velocity": [
+          "VibeRacer-evaluate-per-wheel-9337b9e7"
+        ]
+      }
     },
     {
       "id": "6",
@@ -138,10 +148,14 @@
         "additional track pieces",
         "advanced authoring tools"
       ],
-      "backlog": [
-        "VibeRacer-add-next-track-fd53033b",
-        "VibeRacer-plan-advanced-track-f9837405"
-      ]
+      "gapBacklog": {
+        "additional track pieces": [
+          "VibeRacer-add-next-track-fd53033b"
+        ],
+        "advanced authoring tools": [
+          "VibeRacer-plan-advanced-track-f9837405"
+        ]
+      }
     },
     {
       "id": "11",
@@ -172,10 +186,14 @@
         "admin tooling",
         "pagination beyond top 100"
       ],
-      "backlog": [
-        "VibeRacer-add-leaderboard-pagination-c470cd13",
-        "VibeRacer-define-leaderboard-admin-66ce1190"
-      ]
+      "gapBacklog": {
+        "admin tooling": [
+          "VibeRacer-define-leaderboard-admin-66ce1190"
+        ],
+        "pagination beyond top 100": [
+          "VibeRacer-add-leaderboard-pagination-c470cd13"
+        ]
+      }
     }
   ]
 }
