@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Coverage Progress Cleanup
+
+- Branch: `docs/coverage-progress-cleanup`
+- PR: pending
+- Changed: reconciled stale progress-log PR numbers, promoted shipped GDD sections with no remaining user-visible gaps to done, and expanded the coverage ledger so every active GDD section has explicit status, evidence, and remaining gaps.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: sections with live build logs and no recorded remaining product gaps should be marked done rather than left partial indefinitely; Feedback FAB visual polish and the stale architecture diagram remain tracked as explicit docs coverage gaps.
+- GDD coverage: closes silent empty-gap partial states for core loop, camera, controls, routing, race flow, and menus; records the remaining Section 12 and Section 16 gaps.
+- Followups: none recorded.
+
 ## 2026-04-29, Audio SFX Polish
 
 - Branch: `feature/audio-sfx-polish`
-- PR: pending
+- PR: #46
 - Changed: added wrong-way and achievement unlock one-shot SFX cues, wired wrong-way playback to the HUD banner rising edge, wired achievement sparkle to the unlock toast flow, and added pure pattern plus Web Audio scheduling tests.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/audio.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: the best PR-sized deeper SFX polish pass is to cover existing user-visible events that had visual feedback but no sound, rather than adding new settings or changing the music system.
@@ -145,7 +155,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Settings Tab Scroll Containment
 
 - Branch: `fix/settings-tab-scroll`
-- PR: pending
+- PR: #29
 - Changed: rendered shared menu overlays through a document-body portal so fixed positioning is viewport-relative, corrected modal box sizing, and made Settings tab panels own their own scroll area while the header and tabs stay in view.
 - Verification: dash checks, `git diff --check`, `npm run type-check`, `npm test`, focused Playwright settings smoke, full Playwright smoke, `npm run build`, and browser screenshot at `test-results/settings-vehicle-after.png`.
 - Assumptions: moving `MenuOverlay` to a portal is the simplest consistent fix for both title Settings and in-race pause Settings because both use the same menu component.
@@ -155,7 +165,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Track Biome Selection
 
 - Branch: `feature/track-biomes`
-- PR: pending
+- PR: #28
 - Changed: added optional per-track biomes for Snow, Desert, Beach, Mountains, and City; wired editor save/load support; and applied biome styling to sky tint, terrain, asphalt, and roadside scenery.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for biome presets, schemas, API track persistence, and scenery styling, `npm test`, `npm run build`, `npm run test:e2e -- tests/e2e/smoke.spec.ts`, and Playwright editor screenshot at `test-results/biome-editor.png`.
 - Assumptions: biome is visual metadata like track mood, so it does not affect physics, lap validity, anti-cheat, version hashes, or leaderboard splits. Leaving biome unset preserves the classic forest look.
@@ -275,7 +285,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Autonomous PR Loop Docs
 
 - Branch: `docs/autonomous-pr-loop`
-- PR: pending
+- PR: #14
 - Changed: added the continuous PR loop to `AGENTS.md`, documented the continuity docs in `README.md`, created the implementation plan, working agreement, progress log, open questions, followups, and GDD coverage ledger.
 - Verification: dash checks, `git diff --check`, `npm run type-check`.
 - Assumptions: documentation-only workflow changes do not require Vitest, Playwright, or production build.

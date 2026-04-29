@@ -4,7 +4,7 @@
     {
       "id": "2",
       "title": "Core game loop",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "countdown",
         "race loop",
@@ -29,7 +29,7 @@
     {
       "id": "3",
       "title": "Camera and perspective",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "third-person camera rig",
         "camera presets",
@@ -53,7 +53,7 @@
     {
       "id": "4",
       "title": "Controls",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "keyboard controls",
         "touch controls",
@@ -164,6 +164,118 @@
       "remainingGaps": []
     },
     {
+      "id": "7",
+      "title": "Routing and user-owned paths",
+      "status": "done",
+      "implemented": [
+        "racerId middleware",
+        "home route",
+        "slug race route",
+        "fresh-slug create-or-load prompt",
+        "historical version links",
+        "inline initials editing",
+        "home personalization",
+        "track discovery surfaces",
+        "favorites",
+        "daily challenge and activity widgets"
+      ],
+      "evidence": [
+        "middleware.ts",
+        "src/app/page.tsx",
+        "src/app/[slug]/page.tsx",
+        "src/components/SlugLanding.tsx",
+        "src/components/InitialsPrompt.tsx",
+        "src/components/SettingsPane.tsx",
+        "src/lib/recentTracks.ts",
+        "src/lib/favoriteTracks.ts",
+        "src/game/dailyStreak.ts",
+        "tests/unit/recentTracks.test.ts",
+        "tests/unit/favoriteTracks.test.ts",
+        "tests/unit/dailyStreak.test.ts",
+        "tests/e2e/smoke.spec.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
+      "id": "8",
+      "title": "Race flow",
+      "status": "done",
+      "implemented": [
+        "animated countdown",
+        "lap detection",
+        "configurable checkpoints",
+        "visual checkpoints",
+        "invalid-lap reset",
+        "wrong-way warning",
+        "drift score HUD",
+        "split delta and projected lap HUD",
+        "minimap",
+        "rear-view mirror",
+        "speedometer",
+        "ghost car and rival chase",
+        "friend challenge ghost",
+        "session lap history"
+      ],
+      "evidence": [
+        "src/components/Game.tsx",
+        "src/components/HUD.tsx",
+        "src/components/Countdown.tsx",
+        "src/components/Minimap.tsx",
+        "src/components/Speedometer.tsx",
+        "src/game/tick.ts",
+        "src/game/splits.ts",
+        "src/game/driftScore.ts",
+        "src/lib/challenge.ts",
+        "tests/unit/tick.test.ts",
+        "tests/unit/splits.test.ts",
+        "tests/unit/driftScore.test.ts",
+        "tests/unit/challenge.test.ts",
+        "tests/e2e/smoke.spec.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
+      "id": "9",
+      "title": "Title screen, menu, and pause",
+      "status": "done",
+      "implemented": [
+        "title screen",
+        "load existing track",
+        "how to play",
+        "slim pause menu",
+        "settings tabs",
+        "leaderboards pane",
+        "lap history pane",
+        "PB history pane",
+        "stats pane",
+        "achievements pane",
+        "photo mode",
+        "share track",
+        "star track",
+        "challenge a friend",
+        "session summary exit flow"
+      ],
+      "evidence": [
+        "src/app/page.tsx",
+        "src/components/PauseMenu.tsx",
+        "src/components/SettingsPane.tsx",
+        "src/components/HowToPlayLauncher.tsx",
+        "src/components/SessionSummary.tsx",
+        "src/components/AchievementsPane.tsx",
+        "src/components/TrackStatsPane.tsx",
+        "src/lib/howToPlay.ts",
+        "src/lib/photoMode.ts",
+        "src/lib/share.ts",
+        "src/lib/challenge.ts",
+        "tests/unit/howToPlay.test.ts",
+        "tests/unit/photoMode.test.ts",
+        "tests/unit/share.test.ts",
+        "tests/unit/sessionSummary.test.ts",
+        "tests/e2e/smoke.spec.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
       "id": "11",
       "title": "Leaderboards",
       "status": "done",
@@ -200,6 +312,29 @@
       "remainingGaps": []
     },
     {
+      "id": "12",
+      "title": "Feedback FAB",
+      "status": "partial",
+      "implemented": [
+        "feedback API route",
+        "console capture",
+        "screenshot capture",
+        "single-click feedback panel",
+        "pause-only visibility",
+        "Playwright feedback smoke"
+      ],
+      "evidence": [
+        "src/app/api/feedback/route.ts",
+        "src/components/FeedbackFab.tsx",
+        "src/lib/consoleCapture.ts",
+        "tests/unit/api.feedback.test.ts",
+        "tests/e2e/feedback.spec.ts"
+      ],
+      "remainingGaps": [
+        "visual polish pass on the feedback panel"
+      ]
+    },
+    {
       "id": "13",
       "title": "Audio",
       "status": "done",
@@ -224,6 +359,41 @@
         "tests/unit/audioSettings.test.ts"
       ],
       "remainingGaps": []
+    },
+    {
+      "id": "16",
+      "title": "Architecture",
+      "status": "partial",
+      "implemented": [
+        "Next.js app routes",
+        "serverless API routes",
+        "pure game loop",
+        "custom physics integrator",
+        "Three.js scene builder",
+        "React HUD and menu layer",
+        "KV-backed persistence",
+        "audio and SFX modules",
+        "custom touch and gamepad controls"
+      ],
+      "evidence": [
+        "src/app/page.tsx",
+        "src/app/[slug]/page.tsx",
+        "src/components/Game.tsx",
+        "src/components/RaceCanvas.tsx",
+        "src/game/tick.ts",
+        "src/game/physics.ts",
+        "src/game/sceneBuilder.ts",
+        "src/game/audioEngine.ts",
+        "src/game/audio.ts",
+        "src/hooks/useKeyboard.ts",
+        "src/hooks/useTouchControls.ts",
+        "src/hooks/useGamepad.ts",
+        "src/lib/kv.ts",
+        "src/lib/schemas.ts"
+      ],
+      "remainingGaps": [
+        "refresh the Section 16 architecture file tree so it reflects the current module names"
+      ]
     }
   ]
 }
