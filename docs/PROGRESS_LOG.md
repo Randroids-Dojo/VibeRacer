@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Audio SFX Polish
+
+- Branch: `feature/audio-sfx-polish`
+- PR: pending
+- Changed: added wrong-way and achievement unlock one-shot SFX cues, wired wrong-way playback to the HUD banner rising edge, wired achievement sparkle to the unlock toast flow, and added pure pattern plus Web Audio scheduling tests.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/audio.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: the best PR-sized deeper SFX polish pass is to cover existing user-visible events that had visual feedback but no sound, rather than adding new settings or changing the music system.
+- GDD coverage: completes Section 13 Audio.
+- Followups: none recorded.
+
 ## 2026-04-29, Editor Track Templates
 
 - Branch: `feature/editor-track-templates`
-- PR: pending
+- PR: #45
 - Changed: added a small track template library with Starter oval, Sweep loop, and S-curve loop presets; surfaced a Templates panel in the editor; applying a template replaces the current piece layout with a valid closed loop, clears custom checkpoints and decorations, selects the new loop, and preserves advanced track settings.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/trackTemplates.test.ts`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: templates are complete starter loops rather than partial disconnected stamps, which keeps Save governed by existing closed-loop validation and avoids adding repair UX in this slice.

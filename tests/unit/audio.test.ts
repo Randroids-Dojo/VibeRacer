@@ -1,11 +1,14 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
+  achievementUnlockCuePattern,
   droneFilterHz,
   droneFreqHz,
   droneVolume,
+  playAchievementUnlockCue,
   playLapStinger,
   playOffTrackRumble,
   playPbFanfare,
+  playWrongWayCue,
   playUiClick,
   silenceAllSfx,
   skidIntensity,
@@ -17,6 +20,7 @@ import {
   updateDriveSfx,
   updateEngine,
   updateSkid,
+  wrongWayCuePattern,
   _resetSfxForTesting,
 } from '@/game/audio'
 import { _resetAudioEngineForTesting, getAudioEngine } from '@/game/audioEngine'
@@ -120,6 +124,37 @@ describe('uiClickEnvelope', () => {
     const b = uiClickEnvelope('confirm').freqHz
     const c = uiClickEnvelope('back').freqHz
     expect(new Set([a, b, c]).size).toBe(3)
+  })
+})
+
+describe('cue patterns', () => {
+  it('wrong-way cue is short and descending', () => {
+    const pattern = wrongWayCuePattern()
+    expect(pattern.length).toBe(2)
+    expect(pattern[0].midi).toBeGreaterThan(pattern[1].midi)
+    expect(Math.max(...pattern.map((n) => n.offsetSec + n.durSec))).toBeLessThan(
+      0.5,
+    )
+  })
+
+  it('achievement cue adds sparkle for multi-unlocks', () => {
+    expect(achievementUnlockCuePattern(1).length).toBe(3)
+    expect(achievementUnlockCuePattern(3).length).toBe(4)
+    expect(achievementUnlockCuePattern(Number.NaN).length).toBe(3)
+  })
+
+  it('cue pattern values stay playable', () => {
+    const all = [
+      ...wrongWayCuePattern(),
+      ...achievementUnlockCuePattern(2),
+    ]
+    for (const note of all) {
+      expect(note.midi).toBeGreaterThan(0)
+      expect(note.offsetSec).toBeGreaterThanOrEqual(0)
+      expect(note.durSec).toBeGreaterThan(0)
+      expect(note.vol).toBeGreaterThan(0)
+      expect(note.vol).toBeLessThanOrEqual(0.2)
+    }
   })
 })
 
@@ -526,6 +561,16 @@ describe('one-shot SFX', () => {
     expect(bufferSources.length).toBe(1)
     const stop = bufferSources[0].stoppedAt ?? 0
     expect(stop).toBeLessThan(1.0)
+  })
+
+  it('wrong-way cue schedules the pure warning pattern', () => {
+    playWrongWayCue()
+    expect(oscillators.length).toBe(wrongWayCuePattern().length)
+  })
+
+  it('achievement unlock cue schedules the pure sparkle pattern', () => {
+    playAchievementUnlockCue(2)
+    expect(oscillators.length).toBe(achievementUnlockCuePattern(2).length)
   })
 })
 

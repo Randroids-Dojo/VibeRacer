@@ -183,8 +183,10 @@ import {
 } from '@/game/musicPersonalization'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
+  playAchievementUnlockCue,
   playLapStinger,
   playPbFanfare,
+  playWrongWayCue,
   silenceAllSfx,
 } from '@/game/audio'
 import { TitleMusic } from './TitleMusic'
@@ -837,6 +839,7 @@ function GameSession({
   // achievement on the next lap completion. Reset on Restart so a fresh race
   // starts clean.
   const wrongWayTriggeredRef = useRef<boolean>(false)
+  const wrongWayAudioActiveRef = useRef<boolean>(false)
   // Just-finished lap's drift peak. Set by handleLapDriftBest (which fires
   // immediately before handleLapComplete inside the rAF loop) so the
   // achievement evaluator sees the drift score for the SAME lap that just
@@ -988,6 +991,10 @@ function GameSession({
     // for the rest of the session so a fleeting blip earns the badge on the
     // next lap completion. Reset on Restart (see the restart() handler).
     if (next.wrongWay) wrongWayTriggeredRef.current = true
+    if (next.wrongWay && !wrongWayAudioActiveRef.current) {
+      playWrongWayCue()
+    }
+    wrongWayAudioActiveRef.current = next.wrongWay
     setHud((prev) => ({
       ...prev,
       currentMs: next.currentMs,
@@ -1095,6 +1102,7 @@ function GameSession({
     // run no longer counts toward the achievement. Restart Lap intentionally
     // keeps it: the player did go the wrong way at some point in this session.
     wrongWayTriggeredRef.current = false
+    wrongWayAudioActiveRef.current = false
     if (achievementToastTimerRef.current) {
       clearTimeout(achievementToastTimerRef.current)
       achievementToastTimerRef.current = null
@@ -2250,6 +2258,7 @@ function GameSession({
       .map((id) => getAchievementDef(id)?.name ?? null)
       .filter((s): s is string => s !== null)
     if (names.length === 0) return
+    playAchievementUnlockCue(ids.length)
     const label =
       names.length === 1
         ? `Achievement: ${names[0]}`

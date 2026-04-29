@@ -9,9 +9,10 @@
  *    setTargetAtTime so per-frame writes never click.
  *  - Tire skid: one looping noise buffer + lowpass + gain.
  *
- * One-shots: lap stinger, PB fanfare (pb / record), UI click variants, and
- * the off-track rumble. Each schedules a few oscillator/noise nodes against
- * master and self-terminates within ~1.1 s.
+ * One-shots: lap stinger, PB fanfare (pb / record), achievement sparkle,
+ * wrong-way warning, UI click variants, and the off-track rumble. Each
+ * schedules a few oscillator/noise nodes against master and self-terminates
+ * within ~1.1 s.
  */
 
 import {
@@ -45,6 +46,14 @@ const STINGER_GAP = 0.09
 const FANFARE_NOTE_DUR_PB = 0.18
 const FANFARE_NOTE_DUR_RECORD = 0.22
 const RUMBLE_DUR_SEC = 0.5
+
+export interface SfxPatternNote {
+  midi: number
+  offsetSec: number
+  durSec: number
+  vol: number
+  wave: OscillatorType
+}
 
 interface DroneVoice {
   osc: OscillatorNode
@@ -129,6 +138,34 @@ export function uiClickEnvelope(
     default:
       return { freqHz: midiFreq(72), durSec: 0.05, vol: 0.1, wave: 'square' }
   }
+}
+
+export function wrongWayCuePattern(): SfxPatternNote[] {
+  return [
+    { midi: 72, offsetSec: 0, durSec: 0.12, vol: 0.13, wave: 'square' },
+    { midi: 60, offsetSec: 0.13, durSec: 0.16, vol: 0.14, wave: 'square' },
+  ]
+}
+
+export function achievementUnlockCuePattern(
+  unlockCount: number,
+): SfxPatternNote[] {
+  const count = Number.isFinite(unlockCount) ? Math.max(1, Math.floor(unlockCount)) : 1
+  const notes: SfxPatternNote[] = [
+    { midi: 84, offsetSec: 0, durSec: 0.12, vol: 0.1, wave: 'triangle' },
+    { midi: 88, offsetSec: 0.08, durSec: 0.14, vol: 0.12, wave: 'triangle' },
+    { midi: 91, offsetSec: 0.16, durSec: 0.18, vol: 0.13, wave: 'triangle' },
+  ]
+  if (count > 1) {
+    notes.push({
+      midi: 96,
+      offsetSec: 0.25,
+      durSec: 0.2,
+      vol: 0.11,
+      wave: 'sine',
+    })
+  }
+  return notes
 }
 
 // ---------------------------------------------------------------------------
@@ -297,6 +334,20 @@ function schedMasterNote(e: AudioEngine, opts: OneShotNoteOpts): void {
   osc.stop(opts.startTime + opts.durSec + 0.02)
 }
 
+function schedPattern(e: AudioEngine, pattern: readonly SfxPatternNote[]): void {
+  const start = e.ctx.currentTime + 0.005
+  for (const note of pattern) {
+    schedMasterNote(e, {
+      freqHz: midiFreq(note.midi),
+      startTime: start + note.offsetSec,
+      durSec: note.durSec,
+      wave: note.wave,
+      vol: note.vol,
+      attackSec: 0.005,
+    })
+  }
+}
+
 export function playLapStinger(): void {
   const e = getAudioEngine()
   if (!e) return
@@ -369,6 +420,20 @@ export function playPbFanfare(variant: 'pb' | 'record'): void {
     kick.start(start)
     kick.stop(start + 0.25)
   }
+}
+
+export function playAchievementUnlockCue(unlockCount = 1): void {
+  const e = getAudioEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  schedPattern(e, achievementUnlockCuePattern(unlockCount))
+}
+
+export function playWrongWayCue(): void {
+  const e = getAudioEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  schedPattern(e, wrongWayCuePattern())
 }
 
 export function playUiClick(variant: 'soft' | 'confirm' | 'back' = 'soft'): void {

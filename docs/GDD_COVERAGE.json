@@ -202,27 +202,28 @@
     {
       "id": "13",
       "title": "Audio",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "music",
         "sound effects",
         "channel volume controls",
         "haptics",
         "per-track music personalization",
-        "background tab audio suspension"
+        "background tab audio suspension",
+        "wrong-way SFX cue",
+        "achievement unlock SFX cue"
       ],
       "evidence": [
         "src/game/audioEngine.ts",
         "src/game/music.ts",
         "src/game/audio.ts",
+        "src/components/Game.tsx",
         "src/lib/audioSettings.ts",
         "tests/unit/audio.test.ts",
         "tests/unit/music.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],
-      "remainingGaps": [
-        "deeper SFX polish"
-      ]
+      "remainingGaps": []
     }
   ]
 }
