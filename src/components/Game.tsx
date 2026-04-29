@@ -2258,7 +2258,7 @@ function GameSession({
       .map((id) => getAchievementDef(id)?.name ?? null)
       .filter((s): s is string => s !== null)
     if (names.length === 0) return
-    playAchievementUnlockCue(ids.length)
+    playAchievementUnlockCue(names.length)
     const label =
       names.length === 1
         ? `Achievement: ${names[0]}`
