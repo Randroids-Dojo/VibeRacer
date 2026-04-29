@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Leaderboard Admin Tooling
+
+- Branch: `feature/leaderboard-admin-tooling`
+- PR: pending
+- Changed: added a token-gated leaderboard admin API with preview and exact-member revoke actions, explicit confirmation text, required reason capture, side-key cleanup, conditional top-replay pointer clearing, and an audit log entry.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for admin leaderboard and leaderboard reads, focused Playwright admin-gate smoke, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: admin moderation should be API-first and disabled unless `LEADERBOARD_ADMIN_TOKEN` is configured, avoiding any public UI or accidental live KV mutation path.
+- GDD coverage: completes Section 11 leaderboard admin tooling.
+- Followups: none recorded.
+
 ## 2026-04-29, Leaderboard Run Metadata Details
 
 - Branch: `feature/leaderboard-run-metadata`

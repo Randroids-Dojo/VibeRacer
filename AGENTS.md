@@ -131,6 +131,7 @@ A prior approval for one destructive action is not approval for all of them. Ask
   - `GITHUB_PAT` (feedback FAB, mandatory)
   - `RACE_SIGNING_SECRET` (HMAC key for race token signing)
   - `RACER_ID_COOKIE_SECRET` (optional, for signed racerId cookies if used)
+  - `LEADERBOARD_ADMIN_TOKEN` (optional, enables guarded leaderboard admin API)
 
 ---
 

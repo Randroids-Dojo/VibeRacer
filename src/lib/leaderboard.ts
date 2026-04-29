@@ -109,16 +109,18 @@ export interface LeaderboardPagination {
   hasNext: boolean
 }
 
-interface ParsedMember {
+export interface ParsedLeaderboardMember {
   initials: string
   racerId: string
   ts: number
   nonce: string
 }
 
-function parseMember(member: string): ParsedMember | null {
+export function parseLeaderboardMember(
+  member: string,
+): ParsedLeaderboardMember | null {
   const parts = member.split(':')
-  if (parts.length < 4) return null
+  if (parts.length !== 4) return null
   const [initials, racerId, tsStr, nonce] = parts
   const ts = Number(tsStr)
   if (!Number.isFinite(ts)) return null
@@ -194,7 +196,7 @@ export async function readLeaderboard(
   // Walk the zrange output collecting parsed members + scores + nonce keys for
   // a single mget. Skip entries we cannot parse.
   interface Pending {
-    parsed: ParsedMember
+    parsed: ParsedLeaderboardMember
     score: number
     zsetIndex: number
   }
@@ -202,7 +204,7 @@ export async function readLeaderboard(
   for (let i = 0; i < raw.length; i += 2) {
     const member = typeof raw[i] === 'string' ? (raw[i] as string) : String(raw[i])
     const score = Number(raw[i + 1])
-    const parsed = parseMember(member)
+    const parsed = parseLeaderboardMember(member)
     if (!parsed || !Number.isFinite(score)) continue
     pending.push({ parsed, score, zsetIndex: i / 2 })
   }

@@ -312,6 +312,13 @@ test('GET /api/leaderboard rejects bad params with 400', async ({ request }) => 
   expect(res.status()).toBe(400)
 })
 
+test('POST /api/admin/leaderboard is gated without admin auth', async ({
+  request,
+}) => {
+  const res = await request.post('/api/admin/leaderboard', { data: {} })
+  expect([401, 503]).toContain(res.status())
+})
+
 test('GET /api/leaderboard returns a shaped response for valid params', async ({
   request,
 }) => {
