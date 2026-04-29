@@ -3,7 +3,12 @@ import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 're
 import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece, TrackCheckpoint } from '@/lib/schemas'
 import type { TrackTransmissionMode } from '@/game/transmission'
-import { buildTrackPath, worldToCell } from '@/game/trackPath'
+import {
+  TRACK_WIDTH,
+  buildTrackPath,
+  distanceToCenterline,
+  worldToCell,
+} from '@/game/trackPath'
 import { cellKey } from '@/game/track'
 import {
   expectedTangent,
@@ -75,6 +80,13 @@ import {
   stepDriftSession,
   type DriftSessionState,
 } from '@/game/drift'
+import {
+  flushOffTrackTracker,
+  initOffTrackTracker,
+  stepOffTrackTracker,
+  type LapTelemetry,
+  type OffTrackEvent,
+} from '@/game/offTrackEvents'
 import { ghostGapMs } from '@/game/ghostGap'
 import { isReactionInputPressed } from '@/game/reactionTime'
 import {
@@ -255,6 +267,27 @@ export interface RaceCanvasProps {
   // persist the score as a new local PB. Always emitted on lap complete
   // (even when the score is 0) so consumers can clear stale UI.
   onLapDriftBest?: (score: number) => void
+  // Fired once per off-track excursion, on the falling edge when the car
+  // returns to the track. The Tuning Lab's feedback survey buffers these
+  // and renders one row per event so the player has hard physics evidence
+  // (entry speed, steer, throttle, duration, peak speed, peak distance) to
+  // rate the off-track penalty against. The race flow can ignore the prop;
+  // when omitted the per-frame tracker is still active but emits to nobody.
+  onOffTrackEvent?: (event: OffTrackEvent) => void
+  // Fired once per lap-complete with a per-position speed trace plus all
+  // off-track events captured during the lap. The Tuning Lab consumes the
+  // bundle to render the speed-trace graph alongside the off-track rows.
+  // Skipped when there are fewer than two recorded samples (aborted run).
+  onLapTelemetry?: (telemetry: LapTelemetry) => void
+  // Synchronous out-ref the parent can call to force-close any in-flight
+  // off-track excursion as a final event with `exitLapMs: null`. The
+  // Tuning Lab's "Stop run" button calls this from `abortDrive` so an
+  // excursion that started mid-lap and was never returned from still
+  // surfaces on the feedback survey instead of being silently dropped
+  // when the rAF loop pauses. Returns the flushed event if the tracker
+  // was active, or null when idle. The race flow ignores this ref.
+  flushOffTrackEventsRef?: MutableRefObject<(() => OffTrackEvent | null) | null>
+
   // Fired the very first frame the player presses throttle after a fresh
   // race-start (the GO light). The argument is the elapsed milliseconds
   // between `state.raceStartMs` (seeded by `pendingRaceStartRef`) and the
@@ -325,6 +358,9 @@ export function RaceCanvas({
   onLapReplay,
   onCheckpointHit,
   onLapDriftBest,
+  onOffTrackEvent,
+  onLapTelemetry,
+  flushOffTrackEventsRef,
   onReactionTime,
   captureScreenshotRef,
   disableMusicIntensity,
@@ -337,6 +373,8 @@ export function RaceCanvas({
   const onLapReplayRef = useRef(onLapReplay)
   const onCheckpointHitRef = useRef(onCheckpointHit)
   const onLapDriftBestRef = useRef(onLapDriftBest)
+  const onOffTrackEventRef = useRef(onOffTrackEvent)
+  const onLapTelemetryRef = useRef(onLapTelemetry)
   const onReactionTimeRef = useRef(onReactionTime)
   const disableMusicRef = useRef(!!disableMusicIntensity)
   onLapCompleteRef.current = onLapComplete
@@ -344,6 +382,8 @@ export function RaceCanvas({
   onLapReplayRef.current = onLapReplay
   onCheckpointHitRef.current = onCheckpointHit
   onLapDriftBestRef.current = onLapDriftBest
+  onOffTrackEventRef.current = onOffTrackEvent
+  onLapTelemetryRef.current = onLapTelemetry
   onReactionTimeRef.current = onReactionTime
   disableMusicRef.current = !!disableMusicIntensity
 
@@ -622,10 +662,16 @@ export function RaceCanvas({
     // constant-time array lookup. Buffer resets every time a lap completes
     // (tick.ts also resets raceStartMs at the same instant) and on full reset.
     let recordingBuffer: number[] = []
+    // Parallel speed buffer. One absolute |speed| value per replay sample so
+    // the post-run speed-trace graph in the Tuning Lab can plot speed against
+    // either lap time or position without needing its own sampling pass.
+    // Resets in lockstep with recordingBuffer.
+    let speedSamples: number[] = []
     let nextSampleAt = 0
 
     function resetRecording() {
       recordingBuffer = []
+      speedSamples = []
       nextSampleAt = 0
     }
 
@@ -649,6 +695,34 @@ export function RaceCanvas({
     // player can see how big a chain just landed.
     let driftSession: DriftSessionState = initDriftSession()
     let driftLapBest = 0
+    // Off-track event tracker. Captures one event per excursion at the
+    // off-track-to-on-track edge, plus a per-lap buffer flushed on lap
+    // completion so the Tuning Lab feedback survey can render every instance.
+    // Resets on lap completion, on a full reset, and on a lap-restart pulse
+    // (mirrors how the drift session resets) so a teleport never carries a
+    // stale active excursion forward.
+    let offTrackTracker = initOffTrackTracker()
+    let offTrackLapBuffer: OffTrackEvent[] = []
+    // Synchronous flush hook for the Tuning Lab's "Stop run" abort path.
+    // When the player stops mid-excursion the rAF loop is about to pause,
+    // so an off-track event that never saw a return-to-track edge would
+    // otherwise be silently dropped. The Tuning Lab calls this from its
+    // abortDrive handler before pausing so the in-flight excursion gets a
+    // final event with `exitLapMs: null` and shows up on the feedback
+    // survey. The race flow does not touch the ref.
+    if (flushOffTrackEventsRef) {
+      flushOffTrackEventsRef.current = (): OffTrackEvent | null => {
+        const flushed = flushOffTrackTracker(offTrackTracker)
+        offTrackTracker = initOffTrackTracker()
+        if (flushed) {
+          offTrackLapBuffer.push(flushed)
+          if (onOffTrackEventRef.current) {
+            onOffTrackEventRef.current(flushed)
+          }
+        }
+        return flushed
+      }
+    }
     // Hint index for the windowed ghost-gap search. Survives across HUD
     // ticks so the per-frame search stays O(W) instead of O(N). Reset on a
     // full Restart and on a lap-restart pulse so a teleport never carries a
@@ -724,6 +798,8 @@ export function RaceCanvas({
         wrongWayState = initWrongWayDetector()
         driftSession = initDriftSession()
         driftLapBest = 0
+        offTrackTracker = initOffTrackTracker()
+        offTrackLapBuffer = []
         ghostGapHintIdx = 0
         // Disarm reaction-time detection; the next pendingRaceStartRef pulse
         // (after the post-restart countdown) re-arms it so the player gets a
@@ -777,6 +853,8 @@ export function RaceCanvas({
         wrongWayState = initWrongWayDetector()
         driftSession = initDriftSession()
         driftLapBest = 0
+        offTrackTracker = initOffTrackTracker()
+        offTrackLapBuffer = []
         ghostGapHintIdx = 0
         prevShiftDown = false
         prevShiftUp = false
@@ -857,6 +935,17 @@ export function RaceCanvas({
         armedRaceStartMs = null
         onReactionTimeRef.current(reactionMs)
       }
+      // Snapshot the speed at the start of the frame (before stepPhysics
+      // applies any off-track drag / cap) so the off-track tracker can record
+      // the player's true approach speed on the entry frame instead of the
+      // post-clamp value pinned at offTrackMaxSpeed.
+      const preStepSpeed = state.speed
+      // Snapshot raceStartMs before tick(): on a lap-complete frame tick()
+      // resets raceStartMs to nowMs, so reading state.raceStartMs after the
+      // tick would make `lapMs` jump back to ~0 and produce off-track events
+      // with incorrect timestamps. Reading the pre-tick value keeps the
+      // tracker on the lap clock that was in effect during the frame.
+      const preStepRaceStartMs = state.raceStartMs
       const result = tick(
         state,
         {
@@ -918,6 +1007,68 @@ export function RaceCanvas({
         wrongWayState = initWrongWayDetector()
       }
 
+      // Off-track event tracking. Drives the post-run feedback panel in the
+      // Tuning Lab. Only sample while a lap is active; pre-race idling on
+      // the start line should not emit a phantom event. The tracker is pure
+      // and emits exactly one event per excursion at the off-track-to-on-
+      // track edge, plus a flushed event at lap completion if the car
+      // crossed the line while still off (handled in the lap-complete
+      // branch below). Distance is read off the player's current piece's
+      // centerline; off the path we fall back to TRACK_WIDTH/2 so the value
+      // is always non-negative without faking a fake-precise number.
+      //
+      // The whole block is skipped when no telemetry consumer is wired
+      // (race flow), so the normal per-frame cost of the worldToCell +
+      // distanceToCenterline + tracker step does not apply outside the
+      // Tuning Lab. We use preStepRaceStartMs so a lap-complete frame
+      // (which resets state.raceStartMs to nowMs inside tick()) still
+      // reads `lapMs` against the lap clock that was in effect during the
+      // frame, not the freshly reseeded one.
+      const offTrackTracking =
+        onOffTrackEventRef.current !== undefined ||
+        onLapTelemetryRef.current !== undefined ||
+        flushOffTrackEventsRef !== undefined
+      if (offTrackTracking && preStepRaceStartMs !== null) {
+        const lapMs = ts - preStepRaceStartMs
+        const cellOff = worldToCell(state.x, state.z)
+        const orderIdxOff = path.cellToOrderIdx.get(
+          cellKey(cellOff.row, cellOff.col),
+        )
+        const distFromCenter =
+          orderIdxOff !== undefined
+            ? distanceToCenterline(path.order[orderIdxOff], state.x, state.z)
+            : Number.POSITIVE_INFINITY
+        // Off the indexed path entirely (deep off-track, no piece under the
+        // car this frame): fall back to TRACK_WIDTH / 2, which is the floor
+        // for "off the track" and avoids under-reporting an excursion as a
+        // centerline-aligned read of 0.
+        const distSafe = Number.isFinite(distFromCenter)
+          ? distFromCenter
+          : TRACK_WIDTH / 2
+        const offResult = stepOffTrackTracker(offTrackTracker, {
+          onTrack: state.onTrack,
+          lapMs,
+          x: state.x,
+          z: state.z,
+          heading: state.heading,
+          // Pre-step speed so the entry snapshot reads as the approach speed,
+          // not the post-clamp value pinned at offTrackMaxSpeed. See the
+          // tracker's docstring for the contract.
+          speed: preStepSpeed,
+          steer: steerInput,
+          throttle: throttleInput,
+          handbrake: k.handbrake,
+          distanceFromCenter: distSafe,
+        })
+        offTrackTracker = offResult.state
+        if (offResult.emitted) {
+          offTrackLapBuffer.push(offResult.emitted)
+          if (onOffTrackEventRef.current) {
+            onOffTrackEventRef.current(offResult.emitted)
+          }
+        }
+      }
+
       bundle.car.position.set(state.x, 0, state.z)
       bundle.car.rotation.y = state.heading
       // Publish the live pose for any overlays subscribed via a ref. Cheap
@@ -945,11 +1096,17 @@ export function RaceCanvas({
       // and we reset the buffer in the lap-complete branch below.
       if (state.raceStartMs !== null && recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES) {
         const tLap = ts - state.raceStartMs
+        // Only sample speeds when a Tuning Lab telemetry consumer is wired
+        // so the race flow does not pay the per-frame buffer-push cost
+        // for data nobody reads. The position buffer (recordingBuffer)
+        // still feeds ghost replays so it always samples.
+        const collectSpeeds = onLapTelemetryRef.current !== undefined
         while (
           tLap >= nextSampleAt &&
           recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES
         ) {
           recordingBuffer.push(state.x, state.z, state.heading)
+          if (collectSpeeds) speedSamples.push(Math.abs(state.speed))
           nextSampleAt += REPLAY_SAMPLE_MS
         }
       }
@@ -1230,6 +1387,37 @@ export function RaceCanvas({
         onLapDriftBestRef.current?.(finalLapBest)
         driftLapBest = 0
         driftSession = initDriftSession()
+        // Force-close any in-flight off-track excursion as a final event so
+        // a "left the track and crossed the line before returning" case
+        // still surfaces in the per-lap buffer. Then emit the per-lap
+        // telemetry envelope (positions + speeds + events) before the
+        // recording buffer is reset for the next lap.
+        const flushed = flushOffTrackTracker(offTrackTracker)
+        if (flushed) {
+          offTrackLapBuffer.push(flushed)
+          if (onOffTrackEventRef.current) {
+            onOffTrackEventRef.current(flushed)
+          }
+        }
+        offTrackTracker = initOffTrackTracker()
+        if (onLapTelemetryRef.current) {
+          const sampleCount = recordingBuffer.length / 3
+          if (sampleCount >= 2) {
+            const positions: Array<[number, number]> = new Array(sampleCount)
+            for (let i = 0; i < sampleCount; i++) {
+              const o = i * 3
+              positions[i] = [recordingBuffer[o], recordingBuffer[o + 1]]
+            }
+            onLapTelemetryRef.current({
+              sampleMs: REPLAY_SAMPLE_MS,
+              positions,
+              speeds: speedSamples.slice(0, sampleCount),
+              lapTimeMs: result.lapComplete.lapTimeMs,
+              offTrackEvents: offTrackLapBuffer.slice(),
+            })
+          }
+        }
+        offTrackLapBuffer = []
         resetRecording()
         // Reset the ghost-gap hint: the player just crossed the finish line,
         // so the ghost replay restarts from sample 0 in lockstep. Holding a
@@ -1371,6 +1559,9 @@ export function RaceCanvas({
       // renderer is disposed.
       if (captureScreenshotRef) {
         captureScreenshotRef.current = null
+      }
+      if (flushOffTrackEventsRef) {
+        flushOffTrackEventsRef.current = null
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
