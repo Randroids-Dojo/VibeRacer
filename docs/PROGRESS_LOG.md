@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Track Editor Mobile Actions
 
 - Branch: `fix/editor-undo-redo-floating`
-- PR: pending
+- PR: #26
 - Changed: moved track editor Undo and Redo out of the bottom action bar into a floating canvas toolbar, and allowed the remaining footer actions to wrap cleanly on mobile widths.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm test -- tests/unit/editorHistory.test.ts tests/unit/editorZoom.test.ts`, `npm run type-check`, `npm test`, `npm run build`, `npm run test:e2e -- tests/e2e/smoke.spec.ts`, and a mobile Playwright screenshot at `test-results/editor-mobile.png`.
 - Assumptions: keeping edit history controls visible over the canvas is preferable to hiding footer actions behind a menu because undo and redo are high-frequency authoring actions.
