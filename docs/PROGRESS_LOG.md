@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Background Audio Pause
+
+- Branch: `fix/background-audio-pause`
+- PR: pending
+- Changed: suspended the shared Web Audio context while the page is hidden and resumed it through the existing autoplay-safe path when visible again.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for audio visibility behavior and music helpers, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: suspending the single shared `AudioContext` is the lowest-risk fix because music and SFX already route through the same engine.
+- GDD coverage: advances Section 13 audio behavior and records background-tab audio suspension in the coverage ledger.
+- Followups: none recorded.
+
 ## 2026-04-29, Per-Wheel Track Contact
 
 - Branch: `feature/per-wheel-track-contact`

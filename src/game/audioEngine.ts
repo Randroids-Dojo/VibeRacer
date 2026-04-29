@@ -33,6 +33,12 @@ export interface AudioEngine {
 
 let engine: AudioEngine | null = null
 let firstGestureHandler: (() => void) | null = null
+let visibilityHandler: (() => void) | null = null
+let hiddenSuspendActive = false
+
+function pageIsHidden(): boolean {
+  return typeof document !== 'undefined' && document.hidden
+}
 
 export function getAudioEngine(): AudioEngine | null {
   if (engine) return engine
@@ -54,7 +60,26 @@ export function getAudioEngine(): AudioEngine | null {
   sfxBus.gain.value = effectiveSfxGain(initial)
   sfxBus.connect(master)
   engine = { ctx, master, musicBus, sfxBus, noiseBuffers: new Map() }
+  installVisibilityPause(engine)
   return engine
+}
+
+function installVisibilityPause(e: AudioEngine): void {
+  if (typeof document === 'undefined') return
+  if (visibilityHandler) return
+  const handler = () => {
+    if (document.hidden) {
+      hiddenSuspendActive = true
+      if (e.ctx.state === 'running') void e.ctx.suspend()
+      return
+    }
+    if (!hiddenSuspendActive) return
+    hiddenSuspendActive = false
+    ensureAudioReady(e)
+  }
+  visibilityHandler = handler
+  document.addEventListener('visibilitychange', handler)
+  handler()
 }
 
 /**
@@ -63,12 +88,13 @@ export function getAudioEngine(): AudioEngine | null {
  * keydown handler that retries on the next user gesture. Idempotent.
  */
 export function ensureAudioReady(e: AudioEngine): void {
+  if (pageIsHidden()) return
   if (e.ctx.state !== 'suspended') return
   void e.ctx.resume()
   if (firstGestureHandler) return
   const handler = () => {
     const cur = engine
-    if (cur) void cur.ctx.resume()
+    if (cur && !pageIsHidden()) void cur.ctx.resume()
     if (firstGestureHandler) {
       window.removeEventListener('pointerdown', firstGestureHandler)
       window.removeEventListener('keydown', firstGestureHandler)
@@ -123,5 +149,12 @@ export function _resetAudioEngineForTesting(): void {
     }
     firstGestureHandler = null
   }
+  if (visibilityHandler) {
+    if (typeof document !== 'undefined') {
+      document.removeEventListener('visibilitychange', visibilityHandler)
+    }
+    visibilityHandler = null
+  }
+  hiddenSuspendActive = false
   engine = null
 }
