@@ -8,7 +8,11 @@
 // state the rest of the per-frame loop already computed, and writes the
 // result through `setGamepadContinuousRumble` in `src/lib/haptics.ts`.
 
-import { RUMBLE_EPSILON } from './haptics'
+import { RUMBLE_EPSILON, type DualRumbleMagnitudes } from './haptics'
+
+// Re-export the shared shape so call sites that import the mapper output
+// alongside the input shape can stay scoped to this module.
+export type { DualRumbleMagnitudes }
 
 export interface ContinuousRumbleInput {
   // Absolute speed in world units per second. Negative reverse motion is
@@ -29,11 +33,6 @@ export interface ContinuousRumbleInput {
   // True when the brake key is held down at very low speed. Adds a short ABS
   // flutter on the weak motor so a panic-stop has tactile bite.
   brakeLock: boolean
-}
-
-export interface DualRumbleMagnitudes {
-  strongMagnitude: number
-  weakMagnitude: number
 }
 
 const ENGINE_GAIN = 0.35

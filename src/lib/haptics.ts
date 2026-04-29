@@ -301,7 +301,10 @@ export function fireGamepadImpulse(
       }
       return true
     } catch {
-      return false
+      // Fall through to the legacy hapticActuators[0].pulse(...) path. A
+      // browser may expose vibrationActuator but throw at call time
+      // (unsupported effect, runtime permission issue, hostile shim) while
+      // still providing a working legacy actuator that can run the cue.
     }
   }
   const legacy = r.hapticActuators && r.hapticActuators[0]
@@ -417,7 +420,9 @@ export function stopGamepadRumble(pad: Gamepad | null): void {
       }
       return
     } catch {
-      return
+      // Fall through to the legacy hapticActuators[0].pulse(0, 0) path so a
+      // browser that exposes vibrationActuator but throws at call time still
+      // gets a chance to silence the pad through the legacy API.
     }
   }
   const legacy = r.hapticActuators && r.hapticActuators[0]

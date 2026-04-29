@@ -1448,9 +1448,7 @@ export function RaceCanvas({
       window.removeEventListener('resize', resize)
       // Silence the controller motor on unmount so a navigation away from the
       // race never leaves the pad humming. Reading the freshest pad here is
-      // intentional (we want to silence whatever is connected at teardown),
-      // not a stale-ref bug, so the ESLint warning is suppressed.
-      // eslint-disable-next-line react-hooks/exhaustive-deps
+      // intentional: we want to silence whatever is connected at teardown.
       stopGamepadRumble(gamepadPadRef?.current ?? null)
       if (!disableMusicRef.current) {
         stopEngineDrone(0.1)

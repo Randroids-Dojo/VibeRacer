@@ -599,6 +599,23 @@ describe('fireGamepadImpulse', () => {
     const pad = { vibrationActuator: actuator } as unknown as Gamepad
     expect(fireGamepadImpulse('lap', pad)).toBe(true)
   })
+
+  it('falls through to legacy hapticActuators[0].pulse when playEffect throws', () => {
+    const actuator: MockActuator = {
+      playEffect: vi.fn(() => {
+        throw new Error('unsupported effect')
+      }),
+    }
+    const legacy: MockLegacyActuator = {
+      pulse: vi.fn(() => Promise.resolve(true)),
+    }
+    const pad = {
+      vibrationActuator: actuator,
+      hapticActuators: [legacy],
+    } as unknown as Gamepad
+    expect(fireGamepadImpulse('lap', pad)).toBe(true)
+    expect(legacy.pulse).toHaveBeenCalledTimes(1)
+  })
 })
 
 describe('setGamepadContinuousRumble', () => {
@@ -716,6 +733,27 @@ describe('stopGamepadRumble', () => {
     stopGamepadRumble(pad)
     setGamepadContinuousRumble(pad, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
     expect(actuator.playEffect).toHaveBeenCalledTimes(2)
+  })
+
+  it('falls through to legacy hapticActuators[0].pulse(0, 0) when playEffect throws', () => {
+    const actuator: MockActuator = {
+      // No reset, so the fallback chain hits playEffect first.
+      playEffect: vi.fn(() => {
+        throw new Error('unsupported effect')
+      }),
+    }
+    const legacy: MockLegacyActuator = {
+      pulse: vi.fn(() => Promise.resolve(true)),
+    }
+    const pad = {
+      vibrationActuator: actuator,
+      hapticActuators: [legacy],
+    } as unknown as Gamepad
+    stopGamepadRumble(pad)
+    expect(legacy.pulse).toHaveBeenCalledTimes(1)
+    const args = legacy.pulse.mock.calls[0]
+    expect(args[0]).toBe(0)
+    expect(args[1]).toBe(0)
   })
 })
 

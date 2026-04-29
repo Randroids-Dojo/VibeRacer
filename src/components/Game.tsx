@@ -198,8 +198,8 @@ import {
 import {
   fireGamepadImpulse,
   fireHaptic,
-  hasRumbleCapableGamepad,
   isTouchRuntime,
+  padHasRumble,
   shouldGamepadRumbleFire,
   shouldTouchHapticFire,
   stopGamepadRumble,
@@ -2142,7 +2142,7 @@ function GameSession({
     if (
       shouldGamepadRumbleFire(
         gamepadRumbleModeRef.current,
-        hasRumbleCapableGamepad(),
+        padHasRumble(gamepadPadRef.current),
       )
     ) {
       fireGamepadImpulse(outcome, gamepadPadRef.current)
