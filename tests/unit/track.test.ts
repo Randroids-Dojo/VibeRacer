@@ -29,6 +29,15 @@ describe('connectorsOf', () => {
     expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 180 }))
       .toEqual([0, 2])
   })
+
+  it('sweep turns share the matching 90-degree turn connectors', () => {
+    expect(connectorsOf({ type: 'sweepRight', row: 0, col: 0, rotation: 0 }))
+      .toEqual([2, 1])
+    expect(connectorsOf({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 }))
+      .toEqual([2, 3])
+    expect(connectorsOf({ type: 'sweepRight', row: 0, col: 0, rotation: 90 }))
+      .toEqual([3, 2])
+  })
 })
 
 describe('validateClosedLoop', () => {

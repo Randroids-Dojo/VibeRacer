@@ -153,6 +153,42 @@ describe('buildPaceNotes', () => {
     // Last entry rolls up to finish per the build rule.
     expect(notes[1].kind).toBe('finish')
   })
+
+  it('classifies sweep turns as medium left and right notes', () => {
+    const sPieces: Piece[] = [
+      { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'sweepLeft', row: 0, col: 1, rotation: 0 },
+      { type: 'straight', row: 1, col: 1, rotation: 0 },
+    ]
+    const synthOrder = sPieces.map((p, i) => ({
+      piece: p,
+      entryDir: 2,
+      exitDir: p.type === 'sweepLeft' ? 3 : p.type === 'sweepRight' ? 1 : 0,
+      center: { x: 0, y: 0, z: 0 },
+      entry: { x: 0, y: 0, z: 0 },
+      exit: { x: 0, y: 0, z: 0 },
+      arcCenter: null,
+      samples: null,
+    }))
+    const path = {
+      order: synthOrder,
+      cellToOrderIdx: new Map(),
+      spawn: null,
+      finishLine: null,
+      cpTriggerPieceIdx: [],
+    } as unknown as TrackPath
+    const notes = buildPaceNotes(path)
+    expect(notes[0]).toMatchObject({
+      kind: 'right',
+      severity: 'medium',
+      label: 'Sweep right',
+    })
+    expect(notes[1]).toMatchObject({
+      kind: 'left',
+      severity: 'medium',
+      label: 'Sweep left',
+    })
+  })
 })
 
 describe('pieceIdxForCellKey', () => {

@@ -10,6 +10,8 @@ import {
   samplePieceAt,
   sampleScurveLeftLocal,
   sampleScurveLocal,
+  sampleSweepLeftLocal,
+  sampleSweepRightLocal,
 } from '@/game/trackPath'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import type { Piece } from '@/lib/schemas'
@@ -316,6 +318,69 @@ describe('scurveLeft piece (mirror of scurve)', () => {
       2 * opLeft.center.z,
       1,
     )
+  })
+})
+
+describe('sweep turn pieces', () => {
+  const sweepLoop: Piece[] = [
+    { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
+    { type: 'right90', row: 0, col: 1, rotation: 90 },
+    { type: 'right90', row: 1, col: 1, rotation: 180 },
+    { type: 'right90', row: 1, col: 0, rotation: 270 },
+  ]
+
+  it('local left sweep samples mirror the right sweep across x = 0', () => {
+    const right = sampleSweepRightLocal()
+    const left = sampleSweepLeftLocal()
+    expect(left.length).toBe(right.length)
+    for (let i = 0; i < right.length; i++) {
+      expect(left[i].x).toBeCloseTo(-right[i].x, 6)
+      expect(left[i].z).toBeCloseTo(right[i].z, 6)
+    }
+  })
+
+  it('spaces right sweep samples by near-equal arc length', () => {
+    const samples = sampleSweepRightLocal()
+    const lengths: number[] = []
+    for (let i = 1; i < samples.length; i++) {
+      lengths.push(
+        Math.hypot(
+          samples[i].x - samples[i - 1].x,
+          samples[i].z - samples[i - 1].z,
+        ),
+      )
+    }
+    const average =
+      lengths.reduce((sum, length) => sum + length, 0) / lengths.length
+    for (const length of lengths) {
+      expect(Math.abs(length - average) / average).toBeLessThan(0.04)
+    }
+  })
+
+  it('forms a valid loop when replacing a sharp right turn', () => {
+    expect(validateClosedLoop(sweepLoop)).toEqual({ ok: true })
+    const path = buildTrackPath(sweepLoop)
+    const op = path.order[0]
+    expect(op.piece.type).toBe('sweepRight')
+    expect(op.samples).not.toBeNull()
+    expect(op.entry).toEqual({ x: 0, y: 0, z: CELL_SIZE / 2 })
+    expect(op.exit).toEqual({ x: CELL_SIZE / 2, y: 0, z: 0 })
+  })
+
+  it('samples stay inside the sweep cell and preserve a smooth right turn', () => {
+    const path = buildTrackPath(sweepLoop)
+    const op = path.order[0]
+    const samples = op.samples ?? []
+    expect(samples.length).toBeGreaterThan(8)
+    for (const sample of samples) {
+      expect(sample.x).toBeGreaterThanOrEqual(0)
+      expect(sample.x).toBeLessThanOrEqual(CELL_SIZE / 2)
+      expect(sample.z).toBeGreaterThanOrEqual(0)
+      expect(sample.z).toBeLessThanOrEqual(CELL_SIZE / 2)
+      expect(distanceToCenterline(op, sample.x, sample.z)).toBeLessThan(0.001)
+    }
+    expect(samplePieceAt(op, 0).heading).toBeCloseTo(Math.PI / 2, 5)
+    expect(samplePieceAt(op, 1).heading).toBeCloseTo(0, 5)
   })
 })
 

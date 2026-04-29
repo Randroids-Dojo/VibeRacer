@@ -98,6 +98,17 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
       label: 'Sharp right',
     }
   }
+  if (type === 'sweepLeft') {
+    return { pieceIdx: idx, kind: 'left', severity: 'medium', label: 'Sweep left' }
+  }
+  if (type === 'sweepRight') {
+    return {
+      pieceIdx: idx,
+      kind: 'right',
+      severity: 'medium',
+      label: 'Sweep right',
+    }
+  }
   if (type === 'scurve') {
     return {
       pieceIdx: idx,

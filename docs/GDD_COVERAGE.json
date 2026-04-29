@@ -123,6 +123,7 @@
         "historical version forking",
         "checkpoint count override",
         "S-curves",
+        "sweep turns",
         "kerbs",
         "undo and redo",
         "pan and zoom",
@@ -142,13 +143,9 @@
         "tests/unit/editorZoom.test.ts"
       ],
       "remainingGaps": [
-        "additional track pieces",
         "advanced authoring tools"
       ],
       "gapBacklog": {
-        "additional track pieces": [
-          "VibeRacer-add-next-track-fd53033b"
-        ],
         "advanced authoring tools": [
           "VibeRacer-plan-advanced-track-f9837405"
         ]
