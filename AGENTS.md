@@ -32,6 +32,19 @@ This rule is not negotiable. It is the top rule in this file for a reason.
 
 The Game Design Document at `docs/GDD.md` is the source of truth for what VibeRacer is. Before proposing architecture, adding features, changing game mechanics, renaming routes, or touching data schemas, read it. If the GDD and your idea disagree, the GDD wins unless the user explicitly approves a change.
 
+Before each implementation slice, read:
+
+- `AGENTS.md`
+- `README.md`
+- `docs/IMPLEMENTATION_PLAN.md`
+- `docs/WORKING_AGREEMENT.md`
+- `docs/GDD.md` and any files under `docs/gdd/` if present
+- `docs/PROGRESS_LOG.md`
+- `docs/OPEN_QUESTIONS.md`
+- `docs/FOLLOWUPS.md`
+- `docs/GDD_COVERAGE.json`
+- the current Dots backlog
+
 ---
 
 ## RULE 3: Stack constraints
@@ -61,14 +74,16 @@ Do not introduce new dependencies in these categories without explicit user appr
 
 Operate continuously until the planned scope is complete.
 
+The main loop definition lives in `docs/IMPLEMENTATION_PLAN.md`. The process contract lives in `docs/WORKING_AGREEMENT.md`. Follow both on every slice.
+
 For every implementation slice:
 
-1. Read these project instructions, `docs/GDD.md`, the implementation plan if present, the working agreement if present, latest progress log entries if present, open questions if present, followups if present, and the current Dots backlog.
-2. Pick the highest-priority unblocked task.
+1. Read the required rule, plan, product, progress, question, followup, coverage, and backlog documents listed in Rule 2.
+2. Pick the highest-priority unblocked task from the implementation plan, GDD coverage gaps, followups, and active Dots backlog.
 3. Create one branch for one PR-sized slice. Never push directly to `main`.
 4. Implement the slice fully using existing project patterns.
 5. Add or update tests appropriate to the risk and surface area.
-6. Update progress docs, coverage docs, open questions, followups, and the GDD when the work changes them. If those docs do not exist, create them only when they add useful durable context.
+6. Update `docs/PROGRESS_LOG.md`, `docs/GDD_COVERAGE.json`, `docs/OPEN_QUESTIONS.md`, `docs/FOLLOWUPS.md`, and the GDD when the work changes them.
 7. Run the required local verification suite. At minimum run dash checks, `git diff --check`, relevant unit tests, and broader checks when the touched surface warrants them.
 8. Open a PR.
 9. Inspect all PR review comments, including inline and threaded comments from Copilot or other review bots.

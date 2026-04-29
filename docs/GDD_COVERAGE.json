@@ -1,0 +1,167 @@
+{
+  "updatedAt": "2026-04-29",
+  "sections": [
+    {
+      "id": "2",
+      "title": "Core game loop",
+      "status": "partial",
+      "implemented": [
+        "countdown",
+        "race loop",
+        "HUD",
+        "lap auto-submit",
+        "pause",
+        "restart",
+        "fresh-slug prompt",
+        "track editing access",
+        "PB and record celebrations"
+      ],
+      "evidence": [
+        "src/components/Game.tsx",
+        "src/game/tick.ts",
+        "tests/unit/tick.test.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
+      "id": "3",
+      "title": "Camera and perspective",
+      "status": "partial",
+      "implemented": [
+        "third-person camera rig",
+        "camera presets",
+        "camera tuning",
+        "time-of-day presets",
+        "weather presets",
+        "track mood",
+        "visual effects toggles"
+      ],
+      "evidence": [
+        "src/game/sceneBuilder.ts",
+        "src/lib/cameraPresets.ts",
+        "src/lib/lighting.ts",
+        "src/lib/weather.ts",
+        "tests/unit/cameraPresets.test.ts",
+        "tests/unit/lighting.test.ts",
+        "tests/unit/weather.test.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
+      "id": "4",
+      "title": "Controls",
+      "status": "partial",
+      "implemented": [
+        "keyboard controls",
+        "touch controls",
+        "gamepad controls",
+        "remapping",
+        "restart lap"
+      ],
+      "evidence": [
+        "src/hooks/useKeyboard.ts",
+        "src/hooks/useTouchControls.ts",
+        "src/hooks/useGamepad.ts",
+        "src/lib/controlSettings.ts",
+        "tests/unit/controlSettings.test.ts",
+        "tests/unit/gamepadInput.test.ts"
+      ],
+      "remainingGaps": [
+        "Q/E shifter keys",
+        "manual gearing if promoted from stretch"
+      ]
+    },
+    {
+      "id": "5",
+      "title": "Vehicle",
+      "status": "partial",
+      "implemented": [
+        "arcade physics integrator",
+        "off-track drag",
+        "Kenney car model",
+        "paint palette",
+        "brake lights",
+        "headlights",
+        "racing number"
+      ],
+      "evidence": [
+        "src/game/physics.ts",
+        "src/game/sceneBuilder.ts",
+        "src/lib/carPaint.ts",
+        "tests/unit/physics.test.ts",
+        "tests/unit/carPaint.test.ts",
+        "tests/unit/brakeLights.test.ts",
+        "tests/unit/headlights.test.ts"
+      ],
+      "remainingGaps": [
+        "per-wheel raycast",
+        "angular velocity"
+      ]
+    },
+    {
+      "id": "6",
+      "title": "Track system",
+      "status": "partial",
+      "implemented": [
+        "closed-loop validation",
+        "canonical hashing",
+        "track editor",
+        "save flow",
+        "historical version forking",
+        "checkpoint count override",
+        "S-curves",
+        "kerbs",
+        "undo and redo",
+        "pan and zoom",
+        "difficulty rating"
+      ],
+      "evidence": [
+        "src/components/TrackEditor.tsx",
+        "src/game/track.ts",
+        "src/game/trackPath.ts",
+        "src/game/editor.ts",
+        "src/game/editorHistory.ts",
+        "src/game/editorZoom.ts",
+        "tests/unit/track.test.ts",
+        "tests/unit/trackPath.test.ts",
+        "tests/unit/editor.test.ts",
+        "tests/unit/editorHistory.test.ts",
+        "tests/unit/editorZoom.test.ts"
+      ],
+      "remainingGaps": [
+        "additional track pieces",
+        "advanced authoring tools"
+      ]
+    },
+    {
+      "id": "11",
+      "title": "Leaderboards",
+      "status": "partial",
+      "implemented": [
+        "race start and submit APIs",
+        "anti-cheat",
+        "autosubmit",
+        "leaderboard UI",
+        "version dropdown",
+        "sorting",
+        "PB highlight",
+        "tuning metadata",
+        "rival chase",
+        "rank toast"
+      ],
+      "evidence": [
+        "src/app/api/race/start/route.ts",
+        "src/app/api/race/submit/route.ts",
+        "src/app/api/leaderboard/route.ts",
+        "src/components/Leaderboard.tsx",
+        "tests/unit/api.raceStart.test.ts",
+        "tests/unit/api.raceSubmit.test.ts",
+        "tests/unit/api.leaderboard.test.ts"
+      ],
+      "remainingGaps": [
+        "admin tooling",
+        "pagination beyond top 100"
+      ]
+    }
+  ]
+}
