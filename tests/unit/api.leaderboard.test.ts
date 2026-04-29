@@ -109,6 +109,90 @@ describe('GET /api/leaderboard', () => {
     expect(body.entries.length).toBe(5)
   })
 
+  it('paginates beyond the first page with absolute ranks', async () => {
+    for (let i = 0; i < 30; i++) {
+      await seedLap('XXX', racerA, 1000 + i, 1_700_000_000_000 + i, `n${i}`)
+    }
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '10', offset: '20' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number; lapTimeMs: number }>
+      pagination: {
+        offset: number
+        limit: number
+        total: number
+        hasPrev: boolean
+        hasNext: boolean
+      }
+    }
+
+    expect(body.entries.map((e) => e.rank)).toEqual([
+      21, 22, 23, 24, 25, 26, 27, 28, 29, 30,
+    ])
+    expect(body.entries[0].lapTimeMs).toBe(1020)
+    expect(body.pagination).toEqual({
+      offset: 20,
+      limit: 10,
+      total: 30,
+      hasPrev: true,
+      hasNext: false,
+    })
+  })
+
+  it('keeps absolute ranks when malformed rows in the page are skipped', async () => {
+    await seedLap('AAA', racerA, 1000, 1_700_000_000_000, 'n1')
+    await fake.zadd(lbKey, { score: 1100, member: 'broken-member' })
+    await seedLap('BBB', racerB, 1200, 1_700_000_000_200, 'n2')
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '3' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number; initials: string; lapTimeMs: number }>
+      pagination: { total: number }
+    }
+
+    expect(body.entries.map((e) => e.initials)).toEqual(['AAA', 'BBB'])
+    expect(body.entries.map((e) => e.rank)).toEqual([1, 3])
+    expect(body.pagination.total).toBe(3)
+  })
+
+  it('still returns entries when leaderboard count lookup fails', async () => {
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'n1')
+    await seedLap('BBB', racerB, 2500, 1_700_000_000_100, 'n2')
+    const zcardSpy = vi
+      .spyOn(fake, 'zcard')
+      .mockRejectedValueOnce(new Error('count failed'))
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '5' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number; initials: string }>
+      pagination: { total: number; hasNext: boolean }
+    }
+
+    expect(zcardSpy).toHaveBeenCalledOnce()
+    expect(body.entries.map((e) => e.initials)).toEqual(['AAA', 'BBB'])
+    expect(body.entries.map((e) => e.rank)).toEqual([1, 2])
+    expect(body.pagination.total).toBe(2)
+    expect(body.pagination.hasNext).toBe(false)
+    zcardSpy.mockRestore()
+  })
+
+  it('clamps a malformed offset to the first page', async () => {
+    await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'n1')
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '5', offset: 'nope' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number }>
+      pagination: { offset: number; hasPrev: boolean; hasNext: boolean }
+    }
+
+    expect(body.entries[0].rank).toBe(1)
+    expect(body.pagination.offset).toBe(0)
+    expect(body.pagination.hasPrev).toBe(false)
+    expect(body.pagination.hasNext).toBe(false)
+  })
+
   it('returns empty entries when the board is empty', async () => {
     const { GET } = await import('@/app/api/leaderboard/route')
     const res = await GET(req({ slug, v: hash }))

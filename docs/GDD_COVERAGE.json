@@ -168,7 +168,8 @@
         "PB highlight",
         "tuning metadata",
         "rival chase",
-        "rank toast"
+        "rank toast",
+        "pagination beyond top 100"
       ],
       "evidence": [
         "src/app/api/race/start/route.ts",
@@ -180,15 +181,11 @@
         "tests/unit/api.leaderboard.test.ts"
       ],
       "remainingGaps": [
-        "admin tooling",
-        "pagination beyond top 100"
+        "admin tooling"
       ],
       "gapBacklog": {
         "admin tooling": [
           "VibeRacer-define-leaderboard-admin-66ce1190"
-        ],
-        "pagination beyond top 100": [
-          "VibeRacer-add-leaderboard-pagination-c470cd13"
         ]
       }
     }

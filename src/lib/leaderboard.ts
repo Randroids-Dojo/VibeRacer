@@ -98,6 +98,15 @@ export interface LeaderboardResponse {
   versionHash: string
   entries: LeaderboardEntry[]
   meBestRank: number | null
+  pagination: LeaderboardPagination
+}
+
+export interface LeaderboardPagination {
+  offset: number
+  limit: number
+  total: number
+  hasPrev: boolean
+  hasNext: boolean
 }
 
 interface ParsedMember {
@@ -148,6 +157,7 @@ function parseLapMeta(raw: unknown): RawLapMeta {
 interface MetaCapableKv {
   zrange: Redis['zrange']
   mget: Redis['mget']
+  zcard: Redis['zcard']
 }
 
 export async function readLeaderboard(
@@ -155,20 +165,38 @@ export async function readLeaderboard(
   slug: Slug,
   versionHash: VersionHash,
   limit: number,
+  offset: number,
   myRacerId: string | null,
-): Promise<{ entries: LeaderboardEntry[]; meBestRank: number | null }> {
-  const raw = (await kv.zrange(
-    kvKeys.leaderboard(slug, versionHash),
-    0,
-    limit - 1,
-    { withScores: true },
-  )) as (string | number)[]
+): Promise<{
+  entries: LeaderboardEntry[]
+  meBestRank: number | null
+  pagination: LeaderboardPagination
+}> {
+  const safeLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.min(LEADERBOARD_MAX_LIMIT, Math.trunc(limit)))
+    : LEADERBOARD_DEFAULT_LIMIT
+  const safeOffset = Number.isFinite(offset) ? Math.max(0, Math.trunc(offset)) : 0
+  const key = kvKeys.leaderboard(slug, versionHash)
+  const [rawResult, totalResult] = await Promise.allSettled([
+    kv.zrange(key, safeOffset, safeOffset + safeLimit - 1, { withScores: true }),
+    kv.zcard(key),
+  ])
+  if (rawResult.status !== 'fulfilled') throw rawResult.reason
+  const raw = rawResult.value as (string | number)[]
+  const rawEntryCount = Math.trunc(raw.length / 2)
+  const total =
+    totalResult.status === 'fulfilled' &&
+    typeof totalResult.value === 'number' &&
+    Number.isFinite(totalResult.value)
+      ? Math.max(0, Math.trunc(totalResult.value))
+      : safeOffset + rawEntryCount
 
   // Walk the zrange output collecting parsed members + scores + nonce keys for
   // a single mget. Skip entries we cannot parse.
   interface Pending {
     parsed: ParsedMember
     score: number
+    zsetIndex: number
   }
   const pending: Pending[] = []
   for (let i = 0; i < raw.length; i += 2) {
@@ -176,7 +204,7 @@ export async function readLeaderboard(
     const score = Number(raw[i + 1])
     const parsed = parseMember(member)
     if (!parsed || !Number.isFinite(score)) continue
-    pending.push({ parsed, score })
+    pending.push({ parsed, score, zsetIndex: i / 2 })
   }
 
   const metaKeys = pending.map((p) => kvKeys.lapMeta(p.parsed.nonce))
@@ -188,9 +216,9 @@ export async function readLeaderboard(
   const entries: LeaderboardEntry[] = []
   let meBestRank: number | null = null
   for (let i = 0; i < pending.length; i++) {
-    const { parsed, score } = pending[i]
+    const { parsed, score, zsetIndex } = pending[i]
     const meta = parseLapMeta(metaRaws[i])
-    const rank = entries.length + 1
+    const rank = safeOffset + zsetIndex + 1
     const isMe = myRacerId !== null && parsed.racerId === myRacerId
     if (isMe && meBestRank === null) meBestRank = rank
     entries.push({
@@ -205,5 +233,15 @@ export async function readLeaderboard(
     })
   }
 
-  return { entries, meBestRank }
+  return {
+    entries,
+    meBestRank,
+    pagination: {
+      offset: safeOffset,
+      limit: safeLimit,
+      total,
+      hasPrev: safeOffset > 0,
+      hasNext: safeOffset + safeLimit < total,
+    },
+  }
 }

@@ -18,7 +18,7 @@ async function loadOverallRecord(
   try {
     const { getKv } = await import('@/lib/kv')
     const { readLeaderboard } = await import('@/lib/leaderboard')
-    const { entries } = await readLeaderboard(getKv(), slug, versionHash, 1, null)
+    const { entries } = await readLeaderboard(getKv(), slug, versionHash, 1, 0, null)
     const top = entries[0]
     if (!top) return null
     return { initials: top.initials, lapTimeMs: top.lapTimeMs }
