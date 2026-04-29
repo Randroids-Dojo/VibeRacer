@@ -69,7 +69,15 @@
       "remainingGaps": [
         "Q/E shifter keys",
         "manual gearing if promoted from stretch"
-      ]
+      ],
+      "gapBacklog": {
+        "Q/E shifter keys": [
+          "VibeRacer-implement-q-e-2789311e"
+        ],
+        "manual gearing if promoted from stretch": [
+          "VibeRacer-implement-manual-gearing-6c2f4d1a"
+        ]
+      }
     },
     {
       "id": "5",
@@ -96,7 +104,15 @@
       "remainingGaps": [
         "per-wheel raycast",
         "angular velocity"
-      ]
+      ],
+      "gapBacklog": {
+        "per-wheel raycast": [
+          "VibeRacer-evaluate-per-wheel-9337b9e7"
+        ],
+        "angular velocity": [
+          "VibeRacer-add-angular-velocity-84b6d920"
+        ]
+      }
     },
     {
       "id": "6",
@@ -131,7 +147,15 @@
       "remainingGaps": [
         "additional track pieces",
         "advanced authoring tools"
-      ]
+      ],
+      "gapBacklog": {
+        "additional track pieces": [
+          "VibeRacer-add-next-track-fd53033b"
+        ],
+        "advanced authoring tools": [
+          "VibeRacer-plan-advanced-track-f9837405"
+        ]
+      }
     },
     {
       "id": "11",
@@ -161,7 +185,15 @@
       "remainingGaps": [
         "admin tooling",
         "pagination beyond top 100"
-      ]
+      ],
+      "gapBacklog": {
+        "admin tooling": [
+          "VibeRacer-define-leaderboard-admin-66ce1190"
+        ],
+        "pagination beyond top 100": [
+          "VibeRacer-add-leaderboard-pagination-c470cd13"
+        ]
+      }
     }
   ]
 }
