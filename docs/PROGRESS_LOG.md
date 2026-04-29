@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Quaternion Heading Evaluation
+
+- Branch: `docs/evaluate-quaternion-heading`
+- PR: pending
+- Changed: evaluated vehicle quaternion heading against the current planar arcade model, kept scalar yaw as the explicit vehicle heading design, and updated the GDD plus coverage ledger to close the stale Section 5 gap.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: vehicle pitch, roll, and elevation dynamics are not part of the current planned scope, while camera orientation already uses quaternion slerp where 3D orientation smoothing matters.
+- GDD coverage: completes Section 5 vehicle state for the current planar model.
+- Followups: none recorded.
+
 ## 2026-04-29, Forza-lite Gamepad Rumble (Xbox 360 dual rumble)
 
 - Branch: `claude/add-haptic-feedback-xbox-01QX1`

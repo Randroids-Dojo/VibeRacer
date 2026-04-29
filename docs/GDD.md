@@ -13,7 +13,7 @@
 | 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt, track editing access, and PB / record celebrations all work) |
 | 3 | Camera and perspective | partial (trailing third-person rig, camera presets, player-tunable camera sliders, time-of-day lighting, weather, particles, track mood, and visual toggles shipped) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Q/E shifting + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad live with remappable buttons) |
-| 5 | Vehicle | partial (arcade integrator + optional manual gearing + angular velocity + per-wheel track contact + off-track drag; Kenney model ships) |
+| 5 | Vehicle | done (planar arcade integrator + optional manual gearing + scalar yaw heading + angular velocity + per-wheel track contact + off-track drag; Kenney model ships) |
 | 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with save flow, version forking, custom checkpoint placement, S-curves, sweep turns, kerbs, floating undo / redo, pan / zoom, difficulty rating, optional manual shifting, per-track biomes, and placed decorations) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + historical `?v=<hash>` links + Settings pane on home and pause menu live, with inline initials editing in the Settings pane) |
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, visible per-track checkpoints, lap detection, invalid-lap reset, wrong-way warning banner, drift score HUD, and the full HUD all live) |
@@ -157,7 +157,7 @@ Pause button floats in a corner and is always tappable during a race.
 
 ## 5. Vehicle
 
-**Status.** Partial. Arcade integrator with angular velocity, per-wheel track contact, and off-track drag ships in `src/game/physics.ts`. Car renders using the Kenney Car Kit `race.glb` loaded via `GLTFLoader`. Quaternion heading is not yet landed.
+**Status.** Done. Arcade integrator with scalar yaw heading, angular velocity, optional manual gearing, per-wheel track contact, and off-track drag ships in `src/game/physics.ts`. Car renders using the Kenney Car Kit `race.glb` loaded via `GLTFLoader`.
 
 ### Build log
 
@@ -174,8 +174,8 @@ Pause button floats in a corner and is always tappable during a race.
 - Cosmetic brake lights: live. Pure helpers in `src/lib/brakeLights.ts` (`BRAKE_LIGHT_MODES = ['off','auto','on']`, `DEFAULT_BRAKE_LIGHT_MODE = 'auto'`, `BrakeLightModeSchema` zod enum, `BRAKE_LIGHT_MODE_LABELS` / `BRAKE_LIGHT_MODE_DESCRIPTIONS`, the `isBrakeLightMode` guard, `isBrakingNow(throttle, speed, handbrake)` per-frame predicate, `shouldBrakeLightsLight(mode, braking)` resolver, `BRAKE_LIGHT_MIN_FORWARD_SPEED = 0.5` floor so a player intentionally reversing onto the throttle does not flicker the lamps, plus the `BRAKE_LIGHT_*` visual tunables for lamp / glow offsets, sizes, opacity, and the bright red color palette). The auto rule fires whenever the player is actively slowing the car down: holding the handbrake at any speed, or pressing brake while moving forward. Coasting (zero throttle) and reverse-acceleration (negative throttle while already reversing) both stay dark, matching what a real car does so the visual cue reads honestly. Renderer side is `buildBrakeLights()` in `src/game/sceneBuilder.ts`: a single `Group` attached to the OUTER car group (so it inherits heading rotation but not the inner-group's GLB-orientation yaw / scale) holding two `SphereGeometry` "lamps" at the rear of the chassis (offset along -X for back, +Y for height, +/-Z for the lateral spread, mirroring the headlight layout but on the opposite face) plus two slightly larger `SphereGeometry` "glow" discs co-located with each lamp. Lamps share one `MeshBasicMaterial` (bright red `BRAKE_LIGHT_COLOR_HEX = 0xff2a2a`, no transparency, full alpha so the lens pops on a bright body too); glow discs share one `MeshBasicMaterial` with `transparent: true`, `opacity: BRAKE_LIGHT_GLOW_OPACITY = 0.55`, `depthWrite: false`, and `AdditiveBlending` so the halo glows against either a bright body or a dark night scene without needing tonemapping. Pure cosmetic; never affects physics or anti-cheat. The setter (`SceneBundle.setBrakeLights(on)`) just flips the parent group's `visible` flag (O(1)) and is exposed through `bundle.setBrakeLights`. `RaceCanvas.tsx` reads a new optional `brakeLightModeRef` (the player's mode pick) and computes the live boolean inside its rAF loop using `isBrakingNow(throttleInput, state.speed, k.handbrake)` against the freshest physics state, then routes the result through `shouldBrakeLightsLight(mode, braking)` and an `applyBrakeLights` helper that short-circuits on a cached boolean so the per-frame cost is one compare. Mirroring the mode (not a resolved boolean) into the ref keeps the source of truth in one place: the renderer reconciles the live driver input against the player's preference each frame, which means a Settings flip OR a brake press OR a handbrake release lands on the very next frame. `Game.tsx` and `TuningSession.tsx` mirror `settings.brakeLights` into the ref each render so the lab car visually matches the race car. Most visible from the rear-view mirror inset, where the player sees their own rear lamps glow each time they tap brake, and from chasers (the cyan ghost car keeps the lamps on the same model for visual continuity, but only the player's instance is wired to the live brake state). `ControlSettings` gained a `brakeLights: BrakeLightMode` field (default `'auto'`), persisted in the existing `viberacer.controls` localStorage key with a backfill default for legacy payloads. Settings UI: a new Brake lights section in `SettingsPane.tsx` (right under Headlights, above Time of day) renders a three-button picker (Off / Auto / On) reusing the same `MenuButton` row pattern as the headlights picker, plus a sub-hint that swaps to whichever option is active so the player always sees plain-language confirmation of what the lamps will do. Tests: `tests/unit/brakeLights.test.ts` (42 tests covering enum membership / stable order / non-empty labels and descriptions / no em-dashes invariant on every player-facing string, `DEFAULT_BRAKE_LIGHT_MODE` membership, `BrakeLightModeSchema` accept all three valid modes plus reject `'flicker'` / `''` / `'AUTO'` / `0` / `null` / `undefined` / `{}`, `isBrakeLightMode` mirror coverage, `isBrakingNow` handbrake-always-on / brake-while-moving-forward / throttle-positive-never / throttle-zero-coasting-never / negative-throttle-while-reversing-never / non-finite-defensive-false / handbrake-overrides-non-finite-guard cases plus the positive `BRAKE_LIGHT_MIN_FORWARD_SPEED` floor invariant, `shouldBrakeLightsLight` `'off'`-always-dark / `'on'`-always-lit / `'auto'`-tracks-braking, plus visual-constant invariants (positive finite Y / Z offsets, negative X offset so the lamps mount on the rear, lamp radius under 0.5, glow disc wider than lamp, glow opacity strictly inside (0..1), 24-bit-bounds for the color hex, and a "red dominates green and blue" channel-mask invariant so a future palette tweak that breaks the brake cue gets caught here rather than in a bug report). `tests/unit/controlSettings.test.ts` adds 5 tests covering the default `'auto'`, round-trip of `'on'` and `'off'`, legacy backfill (omitted in stored payload), and reject-and-default on an unknown stored value.
 - Angular velocity: live. `PhysicsState` now carries `angularVelocity` alongside scalar speed and heading. `stepPhysics` computes a target yaw rate from the existing low-speed / high-speed steering tuning, eases the current angular velocity toward that target with a fast exponential response, damps it back toward zero when the car slows below the steering floor or the player releases steering, then integrates heading from the yaw rate. Handbrake uses a faster angular response so slides feel more immediate without adding a separate lateral-velocity model. `GameState` stores the yaw rate so steering inertia persists across ticks and resets cleanly before countdown. Tests: `tests/unit/physics.test.ts` covers yaw-rate easing, damping, reverse sign, low-speed lockout, and steering-rate interpolation. `tests/unit/tick.test.ts` covers angular velocity initialization, countdown freeze, and racing-state propagation.
 - Per-wheel track contact: live. `src/game/wheelContact.ts` defines the wheel footprint, returns per-wheel contact records, and aggregates the vehicle as on-track only when all four wheels are inside the road. This keeps collision custom and math-based rather than using a physics engine or Three.js mesh raycasts, while preserving the GDD behavior that a wheel leaving the road triggers the off-track handling model. Tests: `tests/unit/wheelContact.test.ts` covers wheel centerline hits, missing-cell misses, spawn all-wheels-on-road, and one-side-off-road cases. `tests/unit/tick.test.ts` covers off-track drag when a wheel leaves the road edge.
+- Quaternion heading evaluation: complete. Vehicle heading intentionally remains a scalar planar yaw. The current game has flat tracks, no pitch / roll vehicle dynamics, no elevation gameplay, and many hot paths that consume yaw directly: wheel contact, wrong-way checks, minimap arrows, replay interpolation, ghost poses, skid marks, and car Group rotation. Adding a vehicle quaternion now would add conversion points without improving the arcade handling model. Camera orientation already uses quaternion slerp where 3D orientation smoothing matters visually.
 - Tests: `tests/unit/physics.test.ts` covers throttle, max-speed cap, off-track cap, brake-while-moving, coast-to-zero, low-speed steering lockout, angular velocity easing / damping, reverse steering sign, and steering while moving.
-- **Not yet landed.** Quaternion heading, dev-panel tuning (Section 10), `mass`/`downforce`/`forwardGrip`/`lateralGrip` fields from the GDD spec.
 
 ### Visual style
 
@@ -185,22 +185,22 @@ Cartoony, clean, readable silhouette. Start with free CC0 low-poly glTF models f
 
 Custom tick-based integrator. No Rapier or Cannon. Matches FrackingAsteroids' "custom math" approach in `src/game/collision.ts`.
 
-**Parameters (all tunable via the dev panel, see Section 10).**
+**Parameters (all tunable via the player Setup panel, see Section 10).**
 
-- `mass` (kg)
-- `engineForce` (N)
-- `brakeForce` (N)
-- `forwardGrip` (0..1)
-- `lateralGrip` (0..1)
-- `steeringRate` (radians/sec)
-- `steeringReturn` (radians/sec when neutral)
-- `handbrakeLockFactor` (0..1 multiplier on lateral grip)
-- `downforce` (arbitrary units, scales with speed)
 - `maxSpeed` (m/s)
+- `accel` (m/s2)
+- `brake` (m/s2)
+- `reverseAccel` (m/s2)
+- `rollingFriction` (m/s2)
+- `steerRateLow` (radians/sec)
+- `steerRateHigh` (radians/sec)
+- `minSpeedForSteering` (m/s)
+- `offTrackMaxSpeed` (m/s)
+- `offTrackDrag` (m/s2)
 
 **Track adhesion.** Sample the ground under each wheel. If any wheel is off-track (outside the valid road width for the current track cell), apply strong drag and a slowdown cap. This satisfies the requirement that the car stays on the track, without hard walls that feel cheap.
 
-**State.** Position, velocity, heading (quaternion), angular velocity, throttle, brake, steering angle, handbrake.
+**State.** Position, scalar speed, scalar yaw heading, angular velocity, throttle, brake, steering, handbrake, and current gear when manual transmission is enabled.
 
 ---
 
