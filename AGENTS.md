@@ -57,13 +57,40 @@ Do not introduce new dependencies in these categories without explicit user appr
 
 ---
 
-## RULE 5: Destructive and shared-system actions
+## RULE 5: Autonomous PR loop
+
+Operate continuously until the planned scope is complete.
+
+For every implementation slice:
+
+1. Read these project instructions, `docs/GDD.md`, the implementation plan if present, the working agreement if present, latest progress log entries if present, open questions if present, followups if present, and the current Dots backlog.
+2. Pick the highest-priority unblocked task.
+3. Create one branch for one PR-sized slice. Never push directly to `main`.
+4. Implement the slice fully using existing project patterns.
+5. Add or update tests appropriate to the risk and surface area.
+6. Update progress docs, coverage docs, open questions, followups, and the GDD when the work changes them. If those docs do not exist, create them only when they add useful durable context.
+7. Run the required local verification suite. At minimum run dash checks, `git diff --check`, relevant unit tests, and broader checks when the touched surface warrants them.
+8. Open a PR.
+9. Inspect all PR review comments, including inline and threaded comments from Copilot or other review bots.
+10. Fix actionable review comments, reply in-thread when the platform supports it, and resolve threads when resolved.
+11. Wait for CI and the preview deploy to pass.
+12. Merge only when green, review feedback is handled, and the preview deploy is healthy.
+13. Pull `main`, verify main CI and production deploy, and smoke test production.
+14. Close the completed backlog item with the PR number and verification.
+15. Immediately start the next slice.
+
+Do not stop at planning. Do not stop after opening a PR. Do not stop after merge. If blocked, log the blocker clearly, create or update the backlog item, and move to the next unblocked slice if one exists.
+
+Never mark work complete with failing tests, unresolved actionable review comments, red CI, or a broken deploy.
+
+---
+
+## RULE 6: Destructive and shared-system actions
 
 Always confirm with the user before:
 
 - `git push --force`, `git reset --hard`, `rm -rf`, dropping KV keys, deleting files or branches.
-- Pushing to `main` or any protected branch.
-- Creating, closing, or commenting on PRs or issues on the user's behalf.
+- Direct pushes to `main` or any protected branch are not allowed.
 - Modifying CI/CD configuration.
 - Uploading content to third-party services.
 
@@ -71,15 +98,15 @@ A prior approval for one destructive action is not approval for all of them. Ask
 
 ---
 
-## RULE 6: When in doubt, ask. And prefer simple consistent flows.
+## RULE 7: When in doubt, ask. And prefer simple consistent flows.
 
 - When a UX decision could go branchy (different behavior per route, per state, per user), default to one consistent rule across all cases.
 - Always explain to the user why you are prompting them for input.
-- If requirements are ambiguous, use AskUserQuestion rather than guessing.
+- If requirements are ambiguous and a reasonable default would be risky, ask. Otherwise choose the simplest consistent path, document the assumption, and keep moving.
 
 ---
 
-## RULE 7: Secrets and environment variables
+## RULE 8: Secrets and environment variables
 
 - Never commit `.env`, `.env.local`, or any file containing credentials.
 - Never print secret values in logs, chat, or commit messages.
@@ -91,7 +118,7 @@ A prior approval for one destructive action is not approval for all of them. Ask
 
 ---
 
-## RULE 8: Testing expectations
+## RULE 9: Testing expectations
 
 - New pure game-logic code (anything in `src/game/`) must have Vitest unit tests.
 - New API routes must have at least one Vitest test against the route handler plus one Playwright smoke.
