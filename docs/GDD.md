@@ -10,17 +10,17 @@
 
 | § | Section | Status |
 | - | - | - |
-| 2 | Core game loop | partial (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt, track editing access, and PB / record celebrations all work) |
-| 3 | Camera and perspective | partial (trailing third-person rig, camera presets, player-tunable camera sliders, time-of-day lighting, weather, particles, track mood, and visual toggles shipped) |
-| 4 | Controls | partial (keyboard WASD/arrows/space + Q/E shifting + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad live with remappable buttons) |
+| 2 | Core game loop | done (countdown, race, HUD, lap auto-submit, pause, restart, fresh-slug prompt, track editing access, and PB / record celebrations all work) |
+| 3 | Camera and perspective | done (trailing third-person rig, camera presets, player-tunable camera sliders, time-of-day lighting, weather, particles, track mood, and visual toggles shipped) |
+| 4 | Controls | done (keyboard WASD/arrows/space + Q/E shifting + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad live with remappable buttons) |
 | 5 | Vehicle | done (planar arcade integrator + optional manual gearing + scalar yaw heading + angular velocity + per-wheel track contact + off-track drag; Kenney model ships) |
 | 6 | Track system | done (current grid track model ships with save flow, version forking, checkpoints, S-curves, sweep turns, kerbs, undo / redo, pan / zoom, selection, transforms, templates, difficulty rating, optional manual shifting, biomes, and decorations) |
-| 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + historical `?v=<hash>` links + Settings pane on home and pause menu live, with inline initials editing in the Settings pane) |
-| 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, visible per-track checkpoints, lap detection, invalid-lap reset, wrong-way warning banner, drift score HUD, and the full HUD all live) |
-| 9 | Title, menu, pause | partial (title screen with Play / Load existing / Settings ships; pause menu is slimmed to race-critical actions, with progress, track tools, setup, and visual controls grouped inside Settings tabs) |
+| 7 | Routing and user-owned paths | done (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + historical `?v=<hash>` links + Settings pane on home and pause menu live, with inline initials editing in the Settings pane) |
+| 8 | Race flow | done (countdown with animated red/amber/green traffic light + synth beeps, visible per-track checkpoints, lap detection, invalid-lap reset, wrong-way warning banner, drift score HUD, and the full HUD all live) |
+| 9 | Title, menu, pause | done (title screen, slim pause menu, session summary exit, and Settings-tab secondary race tools all ship) |
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | done (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version + sortable rank / racer / time / date columns, pagination, input-mode badges, clickable lap details, overall record in HUD, PB fanfare, record fanfare, and guarded admin tooling all live) |
-| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired, Playwright open / close / submit coverage live; deeper copy testing pending) |
+| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired, Playwright open / close / submit coverage live; visual polish pending) |
 | 13 | Audio | done (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, wrong-way and achievement cues, UI click variants, haptics, channel toggles, and channel volume sliders all ship) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
@@ -46,7 +46,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 
 ## 2. Core Game Loop
 
-**Status.** Partial. Countdown, race, HUD, per-lap auto-submit, pause (Esc + on-screen button), restart, fresh-slug create-or-load, track editing access, and PB / record celebrations are live at `/[slug]`.
+**Status.** Done. Countdown, race, HUD, per-lap auto-submit, pause (Esc + on-screen button), restart, fresh-slug create-or-load, track editing access, and PB / record celebrations are live at `/[slug]`.
 
 1. Player lands on `/<slug>`.
 2. If a track exists at that slug, the latest version loads. If not, a prompt offers "create new track" or "load existing".
@@ -72,7 +72,7 @@ Infrastructure commit: `703f080` (Next.js + KV + anti-cheat + four API routes). 
 
 ## 3. Camera & Perspective
 
-**Status.** Partial. Trailing third-person rig with linear position lerp, target lerp, and quaternion orientation slerp is live. The four player-facing camera tunables (height, distance, look-ahead, follow speed) are now exposed in Settings and persisted in the existing `viberacer.controls` localStorage key. Time-of-day lighting presets (Noon, Morning, Sunset, Night) skin the sky, ambient light, and sun direction live from Settings. Weather presets (Clear, Cloudy, Foggy, Rainy, Snowy) layer fog, sky tint, ambient / sun multipliers, and the appropriate falling particle layer on top of the time-of-day skin. Track authors can bake a preferred mood (timeOfDay and / or weather) into the saved track version, and every player who races that version sees the author's intended look unless they turn off "Respect track mood" in Settings.
+**Status.** Done. Trailing third-person rig with linear position lerp, target lerp, and quaternion orientation slerp is live. The four player-facing camera tunables (height, distance, look-ahead, follow speed) are now exposed in Settings and persisted in the existing `viberacer.controls` localStorage key. Time-of-day lighting presets (Noon, Morning, Sunset, Night) skin the sky, ambient light, and sun direction live from Settings. Weather presets (Clear, Cloudy, Foggy, Rainy, Snowy) layer fog, sky tint, ambient / sun multipliers, and the appropriate falling particle layer on top of the time-of-day skin. Track authors can bake a preferred mood (timeOfDay and / or weather) into the saved track version, and every player who races that version sees the author's intended look unless they turn off "Respect track mood" in Settings.
 
 Trailing third-person camera, Forza Horizon style.
 
@@ -101,7 +101,7 @@ Trailing third-person camera, Forza Horizon style.
 
 ## 4. Controls
 
-**Status.** Partial. Keyboard (WASD + arrows + Space + Q/E shifting, all remappable) plus Esc-to-pause are live. Touch controls support both a dual-stick layout and a single-stick layout, switchable in Settings, with mobile shift buttons when a track enables manual shifting. Gamepad support (Standard layout: triggers for gas / brake, left stick for steering, RB for handbrake, LB / Y for shifting, Start to pause) is live, with discrete buttons remappable from Settings.
+**Status.** Done. Keyboard (WASD + arrows + Space + Q/E shifting, all remappable) plus Esc-to-pause are live. Touch controls support both a dual-stick layout and a single-stick layout, switchable in Settings, with mobile shift buttons when a track enables manual shifting. Gamepad support (Standard layout: triggers for gas / brake, left stick for steering, RB for handbrake, LB / Y for shifting, Start to pause) is live, with discrete buttons remappable from Settings.
 
 ### Build log
 
@@ -279,7 +279,7 @@ Each piece occupies one cell on an infinite grid. Pieces have entry and exit con
 
 ## 7. Routing & User-Owned Paths
 
-**Status.** Partial. Middleware, `racerId` cookie, `/` home, `/[slug]` race page, the initials lifecycle, the fresh-slug create-or-load prompt, the Settings screen, and historical `?v=<hash>` deep-linking all ship. Home-page personalization and track-discovery surfaces are live; account-style ownership remains intentionally out of scope.
+**Status.** Done. Middleware, `racerId` cookie, `/` home, `/[slug]` race page, the initials lifecycle, the fresh-slug create-or-load prompt, the Settings screen, and historical `?v=<hash>` deep-linking all ship. Home-page personalization and track-discovery surfaces are live; account-style ownership remains intentionally out of scope.
 
 Next.js App Router dynamic routes.
 
@@ -337,7 +337,7 @@ Initials are the player's leaderboard identity. Three uppercase letters, arcade 
 
 ## 8. Race Flow
 
-**Status.** Partial. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB and a projected final lap time at each checkpoint), top-down minimap card, top-center rear-view mirror inset, pause button, skid mark trail, invalid-lap handling, drift score readouts, and a wrong-way warning banner are all live.
+**Status.** Done. Countdown (now animated traffic light with per-step synth beeps), per-track configurable checkpoint count, lap detection, the full HUD (with live split delta vs local PB and a projected final lap time at each checkpoint), top-down minimap card, top-center rear-view mirror inset, pause button, skid mark trail, invalid-lap handling, drift score readouts, and a wrong-way warning banner are all live.
 
 ### Build log
 
@@ -493,7 +493,7 @@ Ghost-source picker: live. `src/lib/ghostSource.ts` defines `GHOST_SOURCES = ['a
 
 ## 9. Title Screen, Menu, and Pause
 
-**Status.** Partial. Pause menu is live and intentionally slim: Resume, Restart Lap, Restart, Edit Track, Settings, and Exit to title stay top-level. Secondary race views and tools now live inside Settings tabs. Title screen at `/` is live with a Fredoka-wordmark logo over a Three.js background loop, Play at `/start`, Load existing track, Tuning Lab, Settings, and How to play.
+**Status.** Done. Pause menu is live and intentionally slim: Resume, Restart Lap, Restart, Edit Track, Settings, and Exit to title stay top-level. Secondary race views and tools now live inside Settings tabs. Title screen at `/` is live with a Fredoka-wordmark logo over a Three.js background loop, Play at `/start`, Load existing track, Tuning Lab, Settings, and How to play.
 
 ### Build log
 
