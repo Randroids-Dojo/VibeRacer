@@ -191,6 +191,7 @@ export async function readLeaderboard(
   interface Pending {
     parsed: ParsedMember
     score: number
+    zsetIndex: number
   }
   const pending: Pending[] = []
   for (let i = 0; i < raw.length; i += 2) {
@@ -198,7 +199,7 @@ export async function readLeaderboard(
     const score = Number(raw[i + 1])
     const parsed = parseMember(member)
     if (!parsed || !Number.isFinite(score)) continue
-    pending.push({ parsed, score })
+    pending.push({ parsed, score, zsetIndex: i / 2 })
   }
 
   const metaKeys = pending.map((p) => kvKeys.lapMeta(p.parsed.nonce))
@@ -210,9 +211,9 @@ export async function readLeaderboard(
   const entries: LeaderboardEntry[] = []
   let meBestRank: number | null = null
   for (let i = 0; i < pending.length; i++) {
-    const { parsed, score } = pending[i]
+    const { parsed, score, zsetIndex } = pending[i]
     const meta = parseLapMeta(metaRaws[i])
-    const rank = safeOffset + entries.length + 1
+    const rank = safeOffset + zsetIndex + 1
     const isMe = myRacerId !== null && parsed.racerId === myRacerId
     if (isMe && meBestRank === null) meBestRank = rank
     entries.push({

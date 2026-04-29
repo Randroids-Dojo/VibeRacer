@@ -60,7 +60,7 @@ export async function GET(req: NextRequest) {
         offset,
         limit,
         total: 0,
-        hasPrev: false,
+        hasPrev: offset > 0,
         hasNext: false,
       },
     })

@@ -139,6 +139,23 @@ describe('GET /api/leaderboard', () => {
     })
   })
 
+  it('keeps absolute ranks when malformed rows in the page are skipped', async () => {
+    await seedLap('AAA', racerA, 1000, 1_700_000_000_000, 'n1')
+    await fake.zadd(lbKey, { score: 1100, member: 'broken-member' })
+    await seedLap('BBB', racerB, 1200, 1_700_000_000_200, 'n2')
+
+    const { GET } = await import('@/app/api/leaderboard/route')
+    const res = await GET(req({ slug, v: hash, limit: '3' }))
+    const body = (await res.json()) as {
+      entries: Array<{ rank: number; initials: string; lapTimeMs: number }>
+      pagination: { total: number }
+    }
+
+    expect(body.entries.map((e) => e.initials)).toEqual(['AAA', 'BBB'])
+    expect(body.entries.map((e) => e.rank)).toEqual([1, 3])
+    expect(body.pagination.total).toBe(3)
+  })
+
   it('clamps a malformed offset to the first page', async () => {
     await seedLap('AAA', racerA, 1500, 1_700_000_000_000, 'n1')
     const { GET } = await import('@/app/api/leaderboard/route')
