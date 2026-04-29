@@ -1,4 +1,4 @@
-import type { Piece } from '@/lib/schemas'
+import type { Piece, TrackCheckpoint } from '@/lib/schemas'
 import { DIR_OFFSETS, cellKey, connectorsOf, opposite, type Dir } from './track'
 
 // Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
@@ -62,6 +62,7 @@ export interface TrackPath {
   // Path-order index of the piece whose entry triggers checkpoint k. The last
   // entry is always 0 (lap completes when the car re-enters the start piece).
   cpTriggerPieceIdx: number[]
+  checkpointMarkers: { cpId: number; pieceIdx: number; position: Vec3; heading: number }[]
 }
 
 // K checkpoints distributed evenly across M pieces in path order. The k-th CP
@@ -79,6 +80,25 @@ export function computeCpTriggerPieceIdx(
     out.push(Math.round(((k + 1) * M) / K) % M)
   }
   return out
+}
+
+export function computeExplicitCpTriggerPieceIdx(
+  order: OrderedPiece[],
+  checkpoints: TrackCheckpoint[],
+): number[] {
+  const cellToIdx = new Map<string, number>()
+  for (let i = 0; i < order.length; i++) {
+    const p = order[i].piece
+    cellToIdx.set(cellKey(p.row, p.col), i)
+  }
+  const idxs = Array.from(
+    new Set(
+      checkpoints
+        .map((cp) => cellToIdx.get(cellKey(cp.row, cp.col)))
+        .filter((idx): idx is number => idx !== undefined && idx > 0),
+    ),
+  ).sort((a, b) => a - b)
+  return [...idxs, 0]
 }
 
 export function cellCenter(row: number, col: number): Vec3 {
@@ -455,6 +475,7 @@ function buildSweepSamples(
 export function buildTrackPath(
   pieces: Piece[],
   checkpointCount?: number,
+  checkpoints?: TrackCheckpoint[],
 ): TrackPath {
   if (pieces.length === 0) {
     throw new Error('empty pieces')
@@ -521,12 +542,28 @@ export function buildTrackPath(
   const spawn = pointAlongStartPiece(order[0], SPAWN_INSET)
   const finishLine = pointAlongStartPiece(order[0], FINISH_LINE_INSET)
 
-  const cpTriggerPieceIdx = computeCpTriggerPieceIdx(
-    order.length,
-    checkpointCount,
-  )
+  const cpTriggerPieceIdx =
+    checkpoints !== undefined && checkpoints.length > 0
+      ? computeExplicitCpTriggerPieceIdx(order, checkpoints)
+      : computeCpTriggerPieceIdx(order.length, checkpointCount)
+  const checkpointMarkers = cpTriggerPieceIdx.slice(0, -1).map((pieceIdx, cpId) => {
+    const sample = samplePieceAt(order[pieceIdx], 0.5)
+    return {
+      cpId,
+      pieceIdx,
+      position: sample.position,
+      heading: sample.heading,
+    }
+  })
 
-  return { order, cellToOrderIdx, spawn, finishLine, cpTriggerPieceIdx }
+  return {
+    order,
+    cellToOrderIdx,
+    spawn,
+    finishLine,
+    cpTriggerPieceIdx,
+    checkpointMarkers,
+  }
 }
 
 export function samplePieceAt(

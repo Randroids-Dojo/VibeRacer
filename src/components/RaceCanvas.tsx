@@ -1,7 +1,7 @@
 'use client'
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
 import { PerspectiveCamera, WebGLRenderer } from 'three'
-import type { Piece } from '@/lib/schemas'
+import type { Piece, TrackCheckpoint } from '@/lib/schemas'
 import type { TrackTransmissionMode } from '@/game/transmission'
 import { buildTrackPath, worldToCell } from '@/game/trackPath'
 import { cellKey } from '@/game/track'
@@ -116,6 +116,7 @@ const HUD_UPDATE_MS = 50
 export interface RaceCanvasProps {
   pieces: Piece[]
   checkpointCount?: number
+  checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
   paramsRef: MutableRefObject<CarParams>
   keys: ReturnType<typeof useKeyboard>
@@ -279,6 +280,7 @@ export interface RaceCanvasProps {
 export function RaceCanvas({
   pieces,
   checkpointCount,
+  checkpoints,
   transmission = 'automatic',
   paramsRef,
   keys,
@@ -342,7 +344,7 @@ export function RaceCanvas({
     const canvas = canvasRef.current
     if (!canvas) return
 
-    const path = buildTrackPath(pieces, checkpointCount)
+    const path = buildTrackPath(pieces, checkpointCount, checkpoints)
     // Build the per-piece pace-notes table once per path so the rAF loop just
     // does a piece-index lookup each HUD frame. The table never changes
     // mid-race; a new pieces / checkpointCount value re-runs this effect and
@@ -1365,7 +1367,7 @@ export function RaceCanvas({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces, checkpointCount, transmission])
+  }, [pieces, checkpointCount, checkpoints, transmission])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }

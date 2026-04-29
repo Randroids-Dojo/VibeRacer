@@ -5,6 +5,7 @@ import type {
   Piece,
   PieceType,
   Rotation,
+  TrackCheckpoint,
   TrackMood,
   TrackTransmissionMode,
 } from '@/lib/schemas'
@@ -50,7 +51,7 @@ import {
   shiftZoomTowardCursor,
 } from '@/game/editorZoom'
 
-type Tool = 'erase' | PieceType | 'start'
+type Tool = 'erase' | PieceType | 'start' | 'checkpoint'
 const PIECE_TOOLS: PieceType[] = [
   'straight',
   'left90',
@@ -60,7 +61,7 @@ const PIECE_TOOLS: PieceType[] = [
   'sweepRight',
   'sweepLeft',
 ]
-const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start']
+const TOOLS: Tool[] = ['erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
   erase: 'Erase',
   straight: 'Straight',
@@ -71,12 +72,14 @@ const TOOL_LABELS: Record<Tool, string> = {
   sweepRight: 'Sweep turn (right)',
   sweepLeft: 'Sweep turn (left)',
   start: 'Set start',
+  checkpoint: 'Checkpoint',
 }
 
 interface TrackEditorProps {
   slug: string
   initialPieces: Piece[]
   initialCheckpointCount?: number
+  initialCheckpoints?: TrackCheckpoint[]
   // Optional baked-in author mood (timeOfDay / weather) to seed the editor's
   // pickers with. Both fields are optional inside the mood. Undefined when
   // the loaded track has no mood (legacy or never set).
@@ -99,6 +102,7 @@ export function TrackEditor({
   slug,
   initialPieces,
   initialCheckpointCount,
+  initialCheckpoints = [],
   initialMood,
   initialTransmission = 'automatic',
   forkingFromHash,
@@ -133,6 +137,9 @@ export function TrackEditor({
       ? initialCheckpointCount
       : null,
   )
+  const [checkpoints, setCheckpoints] = useState<TrackCheckpoint[]>(
+    () => initialCheckpoints,
+  )
   // Author-baked mood pickers. null = "use the player's own pick" (no
   // override). Each field is independent so an author can pick just one.
   const [moodTimeOfDay, setMoodTimeOfDay] = useState<TimeOfDay | null>(
@@ -149,7 +156,8 @@ export function TrackEditor({
     (initialCheckpointCount !== undefined &&
       initialCheckpointCount !== initialPieces.length) ||
       initialMood !== undefined ||
-      initialTransmission === 'manual',
+      initialTransmission === 'manual' ||
+      initialCheckpoints.length > 0,
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
@@ -189,19 +197,50 @@ export function TrackEditor({
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
-  const latestRef = useRef({ cellMap, startKey, error, tool, toolRotation })
-  latestRef.current = { cellMap, startKey, error, tool, toolRotation }
+  const checkpointKeys = useMemo(
+    () => new Set(checkpoints.map((cp) => cellKey(cp.row, cp.col))),
+    [checkpoints],
+  )
+
+  const latestRef = useRef({
+    cellMap,
+    checkpointKeys,
+    startKey,
+    error,
+    tool,
+    toolRotation,
+  })
+  latestRef.current = {
+    cellMap,
+    checkpointKeys,
+    startKey,
+    error,
+    tool,
+    toolRotation,
+  }
 
   const applyTool = useCallback((row: number, col: number) => {
     const {
       tool: t,
       toolRotation: tr,
       cellMap: cm,
+      checkpointKeys: ck,
       startKey: sk,
       error: err,
     } = latestRef.current
     const key = cellKey(row, col)
     const existing = cm.get(key)
+    if (t === 'checkpoint') {
+      if (!existing || key === sk) return
+      setCheckpoints((current) =>
+        ck.has(key)
+          ? current.filter((cp) => cellKey(cp.row, cp.col) !== key)
+          : [...current, { row, col }],
+      )
+      setCheckpointCount(null)
+      if (err !== null) setError(null)
+      return
+    }
     setPieces((prev) => {
       if (t === 'erase') {
         return existing ? withPieceRemoved(prev, row, col) : prev
@@ -440,6 +479,14 @@ export function TrackEditor({
   const undoAvailable = canUndo(history)
   const redoAvailable = canRedo(history)
 
+  useEffect(() => {
+    setCheckpoints((current) => {
+      const valid = new Set(pieces.slice(1).map((p) => cellKey(p.row, p.col)))
+      const next = current.filter((cp) => valid.has(cellKey(cp.row, cp.col)))
+      return next.length === current.length ? current : next
+    })
+  }, [pieces])
+
   // Keyboard shortcuts: Ctrl/Cmd+Z = undo, Ctrl/Cmd+Shift+Z = redo, also
   // Ctrl/Cmd+Y = redo for Windows muscle memory. Ignored when typing in an
   // input or select so the checkpoint number field and mood pickers behave
@@ -484,6 +531,9 @@ export function TrackEditor({
       ? cpMax
       : Math.max(cpMin, Math.min(cpMax, checkpointCount))
   const cpInputDisabled = cpMax < MIN_CHECKPOINT_COUNT
+  const customCheckpointsActive = checkpoints.length > 0
+  const customCheckpointValid =
+    !customCheckpointsActive || checkpoints.length >= MIN_CHECKPOINT_COUNT
 
   function onCpChange(raw: string) {
     if (raw === '') {
@@ -504,10 +554,13 @@ export function TrackEditor({
       const reqBody: {
         pieces: Piece[]
         checkpointCount?: number
+        checkpoints?: TrackCheckpoint[]
         mood?: TrackMood
         transmission?: TrackTransmissionMode
       } = { pieces }
-      if (checkpointCount !== null && effectiveCp !== cpMax) {
+      if (customCheckpointsActive) {
+        reqBody.checkpoints = checkpoints
+      } else if (checkpointCount !== null && effectiveCp !== cpMax) {
         reqBody.checkpointCount = effectiveCp
       }
       const sanitized = sanitizeTrackMood({
@@ -606,6 +659,8 @@ export function TrackEditor({
                   <EraseGlyph />
                 ) : t === 'start' ? (
                   <StartGlyph />
+                ) : t === 'checkpoint' ? (
+                  <CheckpointGlyph />
                 ) : (
                   <PieceGlyph
                     piece={{ type: t, row: 0, col: 0, rotation: toolRotation }}
@@ -656,6 +711,7 @@ export function TrackEditor({
                     y={y}
                     piece={piece}
                     isStart={isStart}
+                    hasCheckpoint={checkpointKeys.has(key)}
                     startExitDir={isStart ? startExitDir : null}
                   />
                 )
@@ -759,13 +815,17 @@ export function TrackEditor({
                 min={cpMin}
                 max={cpMax}
                 value={effectiveCp}
-                disabled={cpInputDisabled}
+                disabled={cpInputDisabled || customCheckpointsActive}
                 onChange={(e) => onCpChange(e.target.value)}
                 style={cpInput}
                 aria-label="Checkpoint count"
               />
               <span style={cpHint}>
-                {checkpointCount === null ? 'default' : `of ${cpMax}`}
+                {customCheckpointsActive
+                  ? 'custom'
+                  : checkpointCount === null
+                    ? 'default'
+                    : `of ${cpMax}`}
               </span>
               {checkpointCount !== null ? (
                 <button
@@ -773,6 +833,14 @@ export function TrackEditor({
                   style={btnGhostSmall}
                 >
                   Reset
+                </button>
+              ) : null}
+              {customCheckpointsActive ? (
+                <button
+                  onClick={() => setCheckpoints([])}
+                  style={btnGhostSmall}
+                >
+                  Clear custom
                 </button>
               ) : null}
             </div>
@@ -888,6 +956,11 @@ export function TrackEditor({
               {effectiveCp} of {cpMax} checkpoints
             </span>
           ) : null}
+          {customCheckpointsActive ? (
+            <span style={customCheckpointValid ? cpHint : invalidStatus}>
+              {checkpoints.length} custom checkpoints
+            </span>
+          ) : null}
           {error ? <span style={{ color: '#ff6b6b' }}>{error}</span> : null}
         </div>
         <div style={buttons}>
@@ -905,18 +978,24 @@ export function TrackEditor({
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
               Advanced
-              {checkpointCount !== null || moodActive || transmission !== 'automatic' ? (
+              {checkpointCount !== null ||
+              customCheckpointsActive ||
+              moodActive ||
+              transmission !== 'automatic' ? (
                 <span style={advancedDot} />
               ) : null}
             </button>
           ) : null}
           <button
             onClick={save}
-            disabled={!validation.ok || saving}
+            disabled={!validation.ok || saving || !customCheckpointValid}
             style={{
               ...btnPrimary,
-              opacity: validation.ok && !saving ? 1 : 0.5,
-              cursor: validation.ok && !saving ? 'pointer' : 'not-allowed',
+              opacity: validation.ok && !saving && customCheckpointValid ? 1 : 0.5,
+              cursor:
+                validation.ok && !saving && customCheckpointValid
+                  ? 'pointer'
+                  : 'not-allowed',
             }}
           >
             {saving ? 'Saving...' : 'Save'}
@@ -934,10 +1013,20 @@ interface CellProps {
   y: number
   piece: Piece | undefined
   isStart: boolean
+  hasCheckpoint: boolean
   startExitDir: Dir | null
 }
 
-const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }: CellProps) {
+const Cell = memo(function Cell({
+  row,
+  col,
+  x,
+  y,
+  piece,
+  isStart,
+  hasCheckpoint,
+  startExitDir,
+}: CellProps) {
   return (
     <g transform={`translate(${x}, ${y})`} data-row={row} data-col={col}>
       <rect
@@ -948,6 +1037,22 @@ const Cell = memo(function Cell({ row, col, x, y, piece, isStart, startExitDir }
         strokeWidth={isStart ? 2 : 1}
       />
       {piece ? <PieceGlyph piece={piece} /> : null}
+      {hasCheckpoint ? (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle
+            cx={CELL / 2}
+            cy={CELL / 2}
+            r={10}
+            fill="rgba(255, 179, 71, 0.18)"
+            stroke="#ffb347"
+            strokeWidth={2}
+          />
+          <path
+            d={`M ${CELL / 2 - 4} ${CELL / 2 + 10} L ${CELL / 2 - 4} ${CELL / 2 - 10} L ${CELL / 2 + 9} ${CELL / 2 - 6} L ${CELL / 2 - 4} ${CELL / 2 - 2}`}
+            fill="#ffb347"
+          />
+        </g>
+      ) : null}
       {isStart ? (
         <>
           <text
@@ -995,6 +1100,9 @@ function paletteHintText(tool: Tool, rotation: Rotation): string {
   if (tool === 'start') {
     return 'Tap any piece to make it the start. Tap the current start to reverse direction.'
   }
+  if (tool === 'checkpoint') {
+    return 'Tap track pieces to toggle custom checkpoints. Place at least 3.'
+  }
   return `Rotation ${rotation}°. Tap the tile above to spin it.`
 }
 
@@ -1012,6 +1120,28 @@ function EraseGlyph() {
         y2={cy + r * 0.7}
         stroke="#ff6b6b"
         strokeWidth={4}
+      />
+    </g>
+  )
+}
+
+function CheckpointGlyph() {
+  const cx = CELL / 2
+  const cy = CELL / 2
+  return (
+    <g style={{ pointerEvents: 'none' }}>
+      <line
+        x1={cx - 8}
+        y1={cy + 14}
+        x2={cx - 8}
+        y2={cy - 14}
+        stroke="#ffb347"
+        strokeWidth={4}
+        strokeLinecap="round"
+      />
+      <path
+        d={`M ${cx - 6} ${cy - 14} L ${cx + 13} ${cy - 8} L ${cx - 6} ${cy - 2} Z`}
+        fill="#ffb347"
       />
     </g>
   )
@@ -1376,6 +1506,10 @@ const cpInput: React.CSSProperties = {
 const cpHint: React.CSSProperties = {
   fontSize: 11,
   opacity: 0.6,
+}
+const invalidStatus: React.CSSProperties = {
+  fontSize: 11,
+  color: '#ffb86b',
 }
 const advancedPanel: React.CSSProperties = {
   borderTop: '1px solid #1f2b3d',

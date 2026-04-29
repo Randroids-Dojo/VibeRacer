@@ -32,6 +32,8 @@ export default async function EditPage(ctx: {
   const initialPieces: Piece[] = loaded.kind === 'fresh' ? [] : loaded.pieces
   const initialCheckpointCount =
     loaded.kind === 'ok' ? loaded.checkpointCount : undefined
+  const initialCheckpoints =
+    loaded.kind === 'ok' ? loaded.checkpoints : undefined
   const initialMood: TrackMood | undefined =
     loaded.kind === 'ok' ? loaded.mood : undefined
   const initialTransmission: TrackTransmissionMode =
@@ -47,6 +49,7 @@ export default async function EditPage(ctx: {
       slug={slug}
       initialPieces={initialPieces}
       initialCheckpointCount={initialCheckpointCount}
+      initialCheckpoints={initialCheckpoints}
       initialMood={initialMood}
       initialTransmission={initialTransmission}
       forkingFromHash={forkingFromHash}

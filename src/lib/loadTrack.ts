@@ -1,6 +1,7 @@
 import {
   TrackVersionSchema,
   type Piece,
+  type TrackCheckpoint,
   type TrackMood,
   type TrackTransmissionMode,
 } from '@/lib/schemas'
@@ -21,6 +22,7 @@ export type LoadTrackResult =
       pieces: Piece[]
       versionHash: string
       checkpointCount?: number
+      checkpoints?: TrackCheckpoint[]
       mood?: TrackMood
       transmission: TrackTransmissionMode
     }
@@ -55,6 +57,7 @@ export async function loadTrack(
           pieces: parsed.data.pieces as Piece[],
           versionHash: targetHash,
           checkpointCount: parsed.data.checkpointCount,
+          checkpoints: parsed.data.checkpoints,
           mood: parsed.data.mood,
           transmission: parsed.data.transmission,
         }

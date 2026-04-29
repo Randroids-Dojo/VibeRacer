@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, useMemo, useRef, type MutableRefObject } from 'react'
-import type { Piece } from '@/lib/schemas'
+import type { Piece, TrackCheckpoint } from '@/lib/schemas'
 import { buildTrackPath } from '@/game/trackPath'
 import { buildMinimapGeometry } from '@/game/minimap'
 
@@ -18,6 +18,7 @@ interface MinimapProps {
   // Optional override; mainly here for the (currently identical) test layout.
   // Not expected to differ from `pieces.length` in production.
   checkpointCount?: number
+  checkpoints?: TrackCheckpoint[]
   carPoseRef: MutableRefObject<MinimapPose | null>
   // Optional ghost overlay. When the ref is null or its current is null we
   // simply hide the marker.
@@ -34,15 +35,16 @@ interface MinimapProps {
 export function Minimap({
   pieces,
   checkpointCount,
+  checkpoints,
   carPoseRef,
   ghostPoseRef,
   compact = false,
   placement = 'bottomRight',
 }: MinimapProps) {
   const geom = useMemo(() => {
-    const path = buildTrackPath(pieces, checkpointCount)
+    const path = buildTrackPath(pieces, checkpointCount, checkpoints)
     return buildMinimapGeometry(path)
-  }, [pieces, checkpointCount])
+  }, [pieces, checkpointCount, checkpoints])
 
   const carDotRef = useRef<SVGGElement | null>(null)
   const ghostDotRef = useRef<SVGGElement | null>(null)
@@ -97,9 +99,16 @@ export function Minimap({
   // a small green pill as "you start here" without us having to draw a giant
   // label inside the card.
   const startMarker = useMemo(() => {
-    const path = buildTrackPath(pieces, checkpointCount)
+    const path = buildTrackPath(pieces, checkpointCount, checkpoints)
     return geom.worldToView(path.spawn.position.x, path.spawn.position.z)
-  }, [geom, pieces, checkpointCount])
+  }, [geom, pieces, checkpointCount, checkpoints])
+
+  const checkpointMarkers = useMemo(() => {
+    const path = buildTrackPath(pieces, checkpointCount, checkpoints)
+    return path.checkpointMarkers.map((marker) =>
+      geom.worldToView(marker.position.x, marker.position.z),
+    )
+  }, [geom, pieces, checkpointCount, checkpoints])
 
   return (
     <div
@@ -160,6 +169,17 @@ export function Minimap({
           stroke="rgba(0,0,0,0.4)"
           strokeWidth={0.4}
         />
+        {checkpointMarkers.map((marker, i) => (
+          <circle
+            key={`cp-${i}`}
+            cx={marker.x}
+            cy={marker.y}
+            r={2.2}
+            fill="#ffb347"
+            stroke="rgba(0,0,0,0.5)"
+            strokeWidth={0.4}
+          />
+        ))}
         {/* Ghost marker rendered before the player so the player sits on top
             in case of overlap. */}
         {ghostPoseRef ? (

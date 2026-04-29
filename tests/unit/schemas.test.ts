@@ -102,6 +102,102 @@ describe('TrackSchema', () => {
     expect(TrackSchema.safeParse({ pieces, checkpointCount: 5 }).success).toBe(false)
   })
 
+  it('accepts custom checkpoint cells on non-start pieces', () => {
+    const pieces = Array.from({ length: 5 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+          { row: 0, col: 3 },
+        ],
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects too few custom checkpoints', () => {
+    const pieces = Array.from({ length: 5 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects custom checkpoints on empty, duplicate, or start cells', () => {
+    const pieces = Array.from({ length: 5 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 0 },
+          { row: 0, col: 2 },
+          { row: 0, col: 3 },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 1 },
+          { row: 0, col: 3 },
+        ],
+      }).success,
+    ).toBe(false)
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+          { row: 9, col: 9 },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects combining custom checkpoints with checkpointCount', () => {
+    const pieces = Array.from({ length: 5 }, (_, i) => ({
+      type: 'straight' as const,
+      row: 0,
+      col: i,
+      rotation: 0 as const,
+    }))
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpointCount: 3,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+          { row: 0, col: 3 },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+
   it('accepts an empty mood object (author opted not to bake one in)', () => {
     const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
     expect(TrackSchema.safeParse({ pieces, mood: {} }).success).toBe(true)

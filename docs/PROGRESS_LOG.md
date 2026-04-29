@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Visual Checkpoint Placement
+
+- Branch: `feature/visual-checkpoints`
+- PR: pending
+- Changed: added optional custom checkpoint cells to track versions, ordered them by loop path, rendered checkpoint flags on the 3D track and minimap, and added a Checkpoint editor tool with a 3-checkpoint minimum once custom placement begins.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for schemas, hashing, path ordering, tick progression, API persistence, and minimap shape, `npm test`, `npm run build`, `npm run test:e2e -- tests/e2e/smoke.spec.ts`, and Playwright screenshots at `test-results/checkpoints-editor.png` and `test-results/checkpoints-race.png`.
+- Assumptions: custom checkpoints are stored as unordered cells and sorted by path order at runtime so authors choose locations without managing fragile checkpoint ids; the finish line remains the final lap-completing trigger.
+- GDD coverage: advances Sections 6 and 8 for visual checkpoints and editor placement.
+- Followups: none recorded.
+
 ## 2026-04-29, Track Editor Mobile Actions
 
 - Branch: `fix/editor-undo-redo-floating`

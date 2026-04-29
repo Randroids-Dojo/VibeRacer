@@ -35,6 +35,14 @@ export const PieceSchema = z.object({
 })
 export type Piece = z.infer<typeof PieceSchema>
 
+export const TrackCheckpointSchema = z
+  .object({
+    row: z.number().int(),
+    col: z.number().int(),
+  })
+  .strict()
+export type TrackCheckpoint = z.infer<typeof TrackCheckpointSchema>
+
 export const MAX_PIECES_PER_TRACK = 64
 export const MIN_CHECKPOINT_COUNT = 3
 
@@ -66,6 +74,10 @@ export const TrackSchema = z
   .object({
     pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
     checkpointCount: CheckpointCountSchema.optional(),
+    checkpoints: z.array(TrackCheckpointSchema)
+      .min(MIN_CHECKPOINT_COUNT)
+      .max(MAX_PIECES_PER_TRACK)
+      .optional(),
     mood: TrackMoodSchema.optional(),
     transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   })
@@ -80,12 +92,57 @@ export const TrackSchema = z
         message: 'checkpointCount must not exceed piece count',
       })
     }
+    if (track.checkpointCount !== undefined && track.checkpoints !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['checkpoints'],
+        message: 'checkpoints cannot be combined with checkpointCount',
+      })
+    }
+    if (track.checkpoints !== undefined) {
+      const cells = new Set(track.pieces.map((p) => `${p.row},${p.col}`))
+      const seen = new Set<string>()
+      const startKey =
+        track.pieces.length > 0
+          ? `${track.pieces[0].row},${track.pieces[0].col}`
+          : null
+      for (let i = 0; i < track.checkpoints.length; i++) {
+        const cp = track.checkpoints[i]
+        const key = `${cp.row},${cp.col}`
+        if (!cells.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['checkpoints', i],
+            message: 'checkpoint must be placed on a track piece',
+          })
+        }
+        if (key === startKey) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['checkpoints', i],
+            message: 'checkpoint cannot be placed on the start piece',
+          })
+        }
+        if (seen.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['checkpoints', i],
+            message: 'duplicate checkpoint',
+          })
+        }
+        seen.add(key)
+      }
+    }
   })
 export type Track = z.infer<typeof TrackSchema>
 
 export const TrackVersionSchema = z.object({
   pieces: z.array(PieceSchema),
   checkpointCount: CheckpointCountSchema.optional(),
+  checkpoints: z.array(TrackCheckpointSchema)
+    .min(MIN_CHECKPOINT_COUNT)
+    .max(MAX_PIECES_PER_TRACK)
+    .optional(),
   mood: TrackMoodSchema.optional(),
   transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   createdByRacerId: z.string().uuid(),

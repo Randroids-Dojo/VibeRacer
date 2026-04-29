@@ -1,7 +1,7 @@
 'use client'
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import type { Piece, TrackMood } from '@/lib/schemas'
+import type { Piece, TrackCheckpoint, TrackMood } from '@/lib/schemas'
 import type { LapCompleteEvent } from '@/game/tick'
 import { resolveActiveMood, trackHasMood } from '@/game/trackMood'
 import { useKeyboard } from '@/hooks/useKeyboard'
@@ -213,6 +213,7 @@ interface GameProps {
   versionHash: string
   pieces: Piece[]
   checkpointCount?: number
+  checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
   // Track-author baked mood (timeOfDay / weather). Null when the author has
   // not picked one, or when the version predates this feature. When set and
@@ -387,6 +388,7 @@ function GameSession({
   versionHash,
   pieces,
   checkpointCount,
+  checkpoints,
   transmission = 'automatic',
   trackMood = null,
   initials,
@@ -755,7 +757,10 @@ function GameSession({
   // Expected sector count for OPTIMAL completeness. Equals the track's
   // checkpoint count (one sector per checkpoint), which defaults to the
   // piece count when no override is set.
-  const expectedSectorCount = checkpointCount ?? pieces.length
+  const expectedSectorCount =
+    checkpoints !== undefined && checkpoints.length > 0
+      ? checkpoints.length + 1
+      : checkpointCount ?? pieces.length
   const { compact: compactHud } = useViewportWidth(600)
 
   // Per-track engagement stats (lap count, total drive time, sessions, first /
@@ -2363,6 +2368,7 @@ function GameSession({
       <RaceCanvas
         pieces={pieces}
         checkpointCount={checkpointCount}
+        checkpoints={checkpoints}
         transmission={transmission}
         paramsRef={paramsRef}
         keys={keys}
@@ -2419,6 +2425,7 @@ function GameSession({
         <Minimap
           pieces={pieces}
           checkpointCount={checkpointCount}
+          checkpoints={checkpoints}
           carPoseRef={minimapCarPoseRef}
           ghostPoseRef={settings.showGhost ? minimapGhostPoseRef : undefined}
           compact={compactHud}
