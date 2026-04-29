@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Archived Dot Progress Summary
+
+- Branch: `docs/archive-progress-summary`
+- PR: #54
+- Changed: summarized older archived Dot entries that predate the current detailed progress-log era, and clarified that collision-magnitude rumble is blocked until the game has a real collision event source.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: archived local `.dots` files are useful continuity input but should not be required reading for routine resume. The progress log should carry the durable summary instead.
+- GDD coverage: no product behavior changed.
+- Followups: removes the deeper progress-history followup.
+
 ## 2026-04-29, Gamepad Trigger Rumble
 
 - Branch: `feature/gamepad-trigger-rumble`
@@ -361,3 +371,15 @@ Newest entries first. Every implementation slice adds an entry.
 - Assumptions: docs-only changes did not need Playwright.
 - GDD coverage: corrected status wording only.
 - Followups: none.
+
+## Archived Dot Snapshot Before PR #13
+
+These older archived Dots were present in local `.dots/archive` but did not have full standalone entries in this progress log. They are summarized here so future agents do not need to inspect local task files for baseline continuity.
+
+- Identity settings: added inline initials editing to `SettingsPane`, extracted initials storage helpers, broadcast an initials update event for HUD refresh, and verified with focused unit tests, build, and Playwright.
+- Gamepad controls: added Standard Gamepad input, analog trigger support, Start pause handling, Settings detection, leaderboard input-device badge plumbing, GDD notes, and unit coverage.
+- Sortable leaderboard columns: added rank / racer / time / date sorting through a pure `sortLeaderboardEntries` helper and `SortHeader` buttons.
+- Lap consistency: added the lap consistency feature wiring, HUD chip, session summary tile, summary stats integration, and tests.
+- Snowy weather: added a Snowy preset, deterministic falling snow particle helpers, scene-builder wiring, weather settings, GDD coverage, and focused snow / weather tests.
+- Manual gearing setup: optional per-track shifting in PR #16 also closed the archived Q/E shifter key and manual gearing model Dots.
+- Non-applicable cleanup: archived Garage / World Tour overlap and stray rename Dots were closed as not applicable to this repo.
