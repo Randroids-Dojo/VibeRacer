@@ -42,6 +42,7 @@ import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { TuningFeedbackForm } from './TuningFeedbackForm'
 import type { CarParams } from '@/game/physics'
 import type { LapCompleteEvent } from '@/game/tick'
+import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
 
 export type SessionDoneReason = 'saved' | 'discarded'
 
@@ -90,6 +91,8 @@ export function TuningSession({
   const [rounds, setRounds] = useState<RoundLog[]>([])
   const [pendingRound, setPendingRound] = useState<{
     lapTimeMs: number | null
+    offTrackEvents: OffTrackEvent[]
+    telemetry: LapTelemetry | null
   } | null>(null)
   const [pendingRecommendation, setPendingRecommendation] = useState<{
     ratings: AspectRatings
@@ -123,6 +126,22 @@ export function TuningSession({
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+  // Per-lap telemetry buffers. The off-track event ref accumulates as the
+  // car leaves and returns to the track during the active lap; the
+  // telemetry ref captures the per-lap envelope (positions + speeds + final
+  // event list) the canvas emits at lap completion. Both clear on lap
+  // capture, on countdown start, on a mid-run restart, and on abort so a
+  // fresh attempt never inherits stale data.
+  const offTrackEventsRef = useRef<OffTrackEvent[]>([])
+  const lastTelemetryRef = useRef<LapTelemetry | null>(null)
+  // Synchronous flush hook the canvas installs while mounted. abortDrive
+  // calls it to force-close any in-flight off-track excursion as a final
+  // event before the rAF loop pauses, so the feedback survey reflects the
+  // run faithfully even when the player hits Stop run while still off the
+  // track. Null when the canvas is not mounted or the renderer torn down.
+  const flushOffTrackEventsRef = useRef<(() => OffTrackEvent | null) | null>(
+    null,
+  )
   // Mirror the player's chosen camera rig into the lab so the practice loop
   // matches the view they will race with.
   const cameraRigRef = useRef<CameraRigParams | null>(null)
@@ -180,9 +199,25 @@ export function TuningSession({
 
   const handleLapComplete = useCallback((event: LapCompleteEvent) => {
     if (phaseRef.current !== 'drive') return
-    setPendingRound({ lapTimeMs: event.lapTimeMs })
+    // Snapshot whatever was sampled this lap, clear the refs for the next
+    // attempt, and hand the bundle to the feedback form via pendingRound.
+    setPendingRound({
+      lapTimeMs: event.lapTimeMs,
+      offTrackEvents: offTrackEventsRef.current.slice(),
+      telemetry: lastTelemetryRef.current,
+    })
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     pausedRef.current = true
     setPhase('feedback')
+  }, [])
+
+  const handleOffTrackEvent = useCallback((event: OffTrackEvent) => {
+    offTrackEventsRef.current.push(event)
+  }, [])
+
+  const handleLapTelemetry = useCallback((telemetry: LapTelemetry) => {
+    lastTelemetryRef.current = telemetry
   }, [])
 
   function startCountdown() {
@@ -190,6 +225,8 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     setHud({
       currentMs: 0,
       lapCount: 0,
@@ -213,7 +250,23 @@ export function TuningSession({
   }
 
   function abortDrive() {
-    setPendingRound({ lapTimeMs: null })
+    // Force-close any in-flight excursion before the rAF loop pauses so
+    // the feedback survey shows it. The canvas's flush hook re-emits the
+    // event through `onOffTrackEvent`, which has already pushed it into
+    // `offTrackEventsRef.current` by the time the call returns. Snapshot
+    // after the flush.
+    flushOffTrackEventsRef.current?.()
+    // The canvas only emits a per-lap telemetry envelope at lap-complete,
+    // and `lastTelemetryRef` is cleared on lap capture / countdown /
+    // restart, so `telemetry` is always null on abort. The feedback form
+    // renders the "No telemetry recorded" placeholder in that case.
+    setPendingRound({
+      lapTimeMs: null,
+      offTrackEvents: offTrackEventsRef.current.slice(),
+      telemetry: null,
+    })
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     pausedRef.current = true
     setPhase('feedback')
   }
@@ -233,6 +286,8 @@ export function TuningSession({
         ratings,
         notes,
         lapTimeMs: pendingRound?.lapTimeMs ?? null,
+        offTrackEvents: pendingRound?.offTrackEvents,
+        telemetry: pendingRound?.telemetry ?? undefined,
       },
     ])
     setPrevDeltas(result.perParamDelta)
@@ -268,6 +323,8 @@ export function TuningSession({
       ratings: pendingRecommendation.ratings,
       notes: pendingRecommendation.notes,
       lapTimeMs: pendingRound?.lapTimeMs ?? null,
+      offTrackEvents: pendingRound?.offTrackEvents,
+      telemetry: pendingRound?.telemetry ?? undefined,
     }
     const saved = makeSavedTuning({
       id: makeTuningId(),
@@ -301,6 +358,8 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     setHud({
       currentMs: 0,
       lapCount: 0,
@@ -352,6 +411,9 @@ export function TuningSession({
             pendingResetRef={pendingResetRef}
             pendingRaceStartRef={pendingRaceStartRef}
             onLapComplete={handleLapComplete}
+            onOffTrackEvent={handleOffTrackEvent}
+            onLapTelemetry={handleLapTelemetry}
+            flushOffTrackEventsRef={flushOffTrackEventsRef}
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
@@ -395,6 +457,10 @@ export function TuningSession({
         <div style={formScroll}>
           <TuningFeedbackForm
             lapTimeMs={pendingRound?.lapTimeMs ?? null}
+            offTrackEvents={pendingRound?.offTrackEvents ?? []}
+            telemetry={pendingRound?.telemetry ?? null}
+            params={params}
+            pieces={TUNING_LAB_TRACK_PIECES}
             onSubmit={onFeedbackSubmit}
             onCancel={onFeedbackCancel}
           />

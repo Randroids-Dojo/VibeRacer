@@ -1,5 +1,11 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type RefObject,
+} from 'react'
 import {
   gamepadIsActive,
   gamepadToInput,
@@ -29,7 +35,17 @@ export function useGamepad(
   keys: { current: KeyInput },
   onPauseToggle?: () => void,
   bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
-): { connected: boolean; padId: string | null } {
+  // Optional output ref. When the parent owns the ref (so it can be referenced
+  // by sibling callbacks like `pause` that are declared above the useGamepad
+  // call), pass it in and the hook writes the active Gamepad here every poll.
+  // When omitted the hook uses its own internal ref and exposes it on the
+  // return tuple.
+  padOutRef?: MutableRefObject<Gamepad | null>,
+): {
+  connected: boolean
+  padId: string | null
+  padRef: RefObject<Gamepad | null>
+} {
   const [info, setInfo] = useState<{ connected: boolean; padId: string | null }>({
     connected: false,
     padId: null,
@@ -41,6 +57,14 @@ export function useGamepad(
   // restart polling on every binding change.
   const bindingsRef = useRef<GamepadBindings>(bindings)
   bindingsRef.current = bindings
+  // Internal ref used when the parent did not pass `padOutRef`. When the
+  // parent did pass one, we write to that one instead so the parent can
+  // reference the same live `Gamepad` object from its other callbacks
+  // without depending on this hook's return value (avoiding TDZ pitfalls
+  // when the consumer declares `pause` / `resume` callbacks above the
+  // useGamepad call).
+  const internalPadRef = useRef<Gamepad | null>(null)
+  const padRef = padOutRef ?? internalPadRef
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -75,6 +99,7 @@ export function useGamepad(
 
       const padId = pad?.id ?? null
       const connected = pad !== null
+      padRef.current = pad
       if (connected !== lastConnectedFlag || padId !== lastSeenPadId) {
         lastConnectedFlag = connected
         lastSeenPadId = padId
@@ -157,8 +182,9 @@ export function useGamepad(
       window.removeEventListener('gamepadconnected', onConnect)
       window.removeEventListener('gamepaddisconnected', onDisconnect)
       clearAxes()
+      padRef.current = null
     }
   }, [keys])
 
-  return info
+  return { connected: info.connected, padId: info.padId, padRef }
 }

@@ -1,6 +1,12 @@
 import { z } from 'zod'
 import type { CarParams } from '@/game/physics'
 import {
+  LapTelemetrySchema,
+  OffTrackEventSchema,
+  type LapTelemetry,
+  type OffTrackEvent,
+} from '@/game/offTrackEvents'
+import {
   CarParamsSchema,
   TUNING_BOUNDS,
   TUNING_PARAM_META,
@@ -386,6 +392,16 @@ export interface RoundLog {
   ratings: AspectRatings
   notes: string
   lapTimeMs: number | null
+  // Per-excursion telemetry shown on the post-run feedback survey so the
+  // player has hard physics evidence (entry speed / steer / duration) when
+  // rating off-track penalty. Optional so legacy exported sessions still
+  // parse through RoundLogSchema.
+  offTrackEvents?: OffTrackEvent[]
+  // Per-position speed trace (positions + speeds at REPLAY_SAMPLE_MS) plus a
+  // bundled copy of the same off-track events. Renders as a speed-vs-time
+  // line graph and a track-shape minimap colored by speed. Optional for the
+  // same backwards-compat reason.
+  telemetry?: LapTelemetry
 }
 
 export const RoundLogSchema = z.object({
@@ -393,6 +409,8 @@ export const RoundLogSchema = z.object({
   ratings: AspectRatingsSchema,
   notes: z.string().max(500),
   lapTimeMs: z.number().int().positive().nullable(),
+  offTrackEvents: z.array(OffTrackEventSchema).optional(),
+  telemetry: LapTelemetrySchema.optional(),
 })
 
 export const ExportSessionSchema = z.object({

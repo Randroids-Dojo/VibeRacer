@@ -1,0 +1,277 @@
+/**
+ * Off-track event tracker and per-lap telemetry envelope. All pure: no Web
+ * Audio, no Three.js, no DOM. The race renderer feeds in per-frame inputs
+ * (onTrack flag, position, heading, speed, control inputs) and the helpers
+ * detect each off-track excursion as a single event with an entry snapshot
+ * and a return-to-track aggregate.
+ *
+ * What counts as an off-track event?
+ *  - Each contiguous run of frames where `onTrack` is false counts as one
+ *    excursion. The event is emitted on the falling edge (off-track to
+ *    on-track) so the consumer always sees a complete record.
+ *  - Sign convention: in this codebase the keyboard's `left` key maps to
+ *    `steerInput = +1` and `right` to `-1` (see the `steerInput` derivation
+ *    in `RaceCanvas`). The physics integrator rotates heading positive for
+ *    left turns when moving forward. Consumers that label steering should
+ *    treat positive as LEFT.
+ *
+ * Speed semantics. The `speed` field on the per-frame input is the speed at
+ * the START of the frame, before stepPhysics applies any off-track drag /
+ * clamp. The entry snapshot captures that value verbatim so the player sees
+ * their true approach speed instead of the post-clamp value at
+ * `offTrackMaxSpeed`. Caller is responsible for passing pre-step speed; in
+ * RaceCanvas that is the speed value carried over from the previous frame
+ * (before this frame's tick() runs).
+ *
+ * The companion LapTelemetry type bundles per-position speed samples (one
+ * value per replay sample, sampled at REPLAY_SAMPLE_MS) alongside all
+ * off-track events captured during the same lap, so the survey screen gets
+ * one envelope to render.
+ */
+
+import { z } from 'zod'
+
+export interface OffTrackEntrySnapshot {
+  /** Milliseconds into the current lap when the car crossed off the track. */
+  lapMs: number
+  x: number
+  z: number
+  /** Heading in radians at the moment of departure. */
+  heading: number
+  /** Signed speed in m/s. Negative values mean the car was reversing off. */
+  speed: number
+  /** Steering input in [-1, 1]. Positive = LEFT (see file docstring). */
+  steer: number
+  /** Throttle input in [-1, 1]. Negative is brake / reverse. */
+  throttle: number
+  handbrake: boolean
+  /**
+   * Distance from the centerline when the car first read off-track. Caller
+   * passes the current piece distance, so this is a non-negative number that
+   * is at least TRACK_WIDTH / 2 at the boundary itself.
+   */
+  distanceFromCenter: number
+}
+
+export interface OffTrackEvent extends OffTrackEntrySnapshot {
+  /** Total milliseconds the car spent off the track in this excursion. */
+  durationMs: number
+  /**
+   * Signed speed (m/s) at the frame the car returned to the track. Useful
+   * paired with `speed` (entry / approach) so the player can see how much
+   * speed the excursion cost them: `entry - exit`. Null when the excursion
+   * was force-closed at lap end with no on-track return frame.
+   */
+  exitSpeed: number | null
+  /** Maximum distanceFromCenter during the excursion. */
+  peakDistanceFromCenter: number
+  /**
+   * Lap milliseconds when the car returned to track, or null if the lap
+   * ended (or the run aborted) while still off.
+   */
+  exitLapMs: number | null
+}
+
+export interface OffTrackTrackerState {
+  active: boolean
+  current: {
+    entry: OffTrackEntrySnapshot
+    peakDistance: number
+    lastLapMs: number
+  } | null
+}
+
+export function initOffTrackTracker(): OffTrackTrackerState {
+  return { active: false, current: null }
+}
+
+export interface OffTrackStepInput {
+  onTrack: boolean
+  lapMs: number
+  x: number
+  z: number
+  heading: number
+  speed: number
+  steer: number
+  throttle: number
+  handbrake: boolean
+  distanceFromCenter: number
+}
+
+export interface OffTrackStepResult {
+  state: OffTrackTrackerState
+  /** Non-null on the falling edge (excursion completed this frame). */
+  emitted: OffTrackEvent | null
+}
+
+function isFiniteNumber(n: number): boolean {
+  return typeof n === 'number' && Number.isFinite(n)
+}
+
+function snapshotOf(input: OffTrackStepInput): OffTrackEntrySnapshot {
+  return {
+    lapMs: input.lapMs,
+    x: input.x,
+    z: input.z,
+    heading: input.heading,
+    speed: input.speed,
+    steer: input.steer,
+    throttle: input.throttle,
+    handbrake: !!input.handbrake,
+    distanceFromCenter: input.distanceFromCenter,
+  }
+}
+
+/**
+ * Single-frame transition. Pure: takes the previous tracker state and the
+ * per-frame inputs, returns the next state plus an optional emitted event.
+ * Consumers fire the event into a buffer; nothing here mutates the input.
+ */
+export function stepOffTrackTracker(
+  prev: OffTrackTrackerState,
+  input: OffTrackStepInput,
+): OffTrackStepResult {
+  // Defensive against non-finite inputs from a wonky physics frame. Treat
+  // non-finite numerics as on-track noise so we never push phantom events
+  // and never carry NaN into the aggregate. Mirrors drift.ts's clamp01 stance.
+  if (
+    !isFiniteNumber(input.lapMs) ||
+    !isFiniteNumber(input.x) ||
+    !isFiniteNumber(input.z) ||
+    !isFiniteNumber(input.heading) ||
+    !isFiniteNumber(input.speed) ||
+    !isFiniteNumber(input.steer) ||
+    !isFiniteNumber(input.throttle) ||
+    !isFiniteNumber(input.distanceFromCenter)
+  ) {
+    return { state: prev, emitted: null }
+  }
+
+  if (input.onTrack) {
+    if (prev.active && prev.current !== null) {
+      const c = prev.current
+      // input.speed at the on-track edge is the pre-step speed at this
+      // frame, which is the post-clamp speed from the last off-track
+      // frame. That is exactly the "speed when the car returned to the
+      // track" the player wants to see paired with the entry approach.
+      const event: OffTrackEvent = {
+        ...c.entry,
+        durationMs: Math.max(0, input.lapMs - c.entry.lapMs),
+        exitSpeed: input.speed,
+        peakDistanceFromCenter: c.peakDistance,
+        exitLapMs: input.lapMs,
+      }
+      return { state: initOffTrackTracker(), emitted: event }
+    }
+    return { state: prev, emitted: null }
+  }
+
+  // Off-track frame.
+  if (!prev.active) {
+    const entry = snapshotOf(input)
+    return {
+      state: {
+        active: true,
+        current: {
+          entry,
+          peakDistance: input.distanceFromCenter,
+          lastLapMs: input.lapMs,
+        },
+      },
+      emitted: null,
+    }
+  }
+
+  const c = prev.current!
+  const peakDistance =
+    input.distanceFromCenter > c.peakDistance
+      ? input.distanceFromCenter
+      : c.peakDistance
+  return {
+    state: {
+      active: true,
+      current: {
+        entry: c.entry,
+        peakDistance,
+        lastLapMs: input.lapMs,
+      },
+    },
+    emitted: null,
+  }
+}
+
+/**
+ * Force-close any in-flight excursion as a final event. Intended for lap
+ * completion (so an "off the track at the line" case still surfaces in the
+ * per-lap buffer instead of being silently discarded) and for the Tuning
+ * Lab's "Stop run" abort path (the rAF loop calls this through a synchronous
+ * flush ref so the in-flight excursion makes it into the feedback survey).
+ * Returns null when the tracker is idle.
+ */
+export function flushOffTrackTracker(
+  prev: OffTrackTrackerState,
+): OffTrackEvent | null {
+  if (!prev.active || prev.current === null) return null
+  const c = prev.current
+  return {
+    ...c.entry,
+    durationMs: Math.max(0, c.lastLapMs - c.entry.lapMs),
+    // No on-track-return frame was observed (lap ended mid-excursion), so
+    // we have no exit speed to report. The UI renders this as a dash.
+    exitSpeed: null,
+    peakDistanceFromCenter: c.peakDistance,
+    exitLapMs: null,
+  }
+}
+
+export const OffTrackEntrySnapshotSchema = z.object({
+  // Non-negative: lapMs is "milliseconds since the lap started" and a lap
+  // timer never runs backwards. Enforcing this here catches a hand-edited
+  // imported session before it produces negative axis coordinates in the
+  // speed-trace graph.
+  lapMs: z.number().finite().nonnegative(),
+  x: z.number().finite(),
+  z: z.number().finite(),
+  heading: z.number().finite(),
+  speed: z.number().finite(),
+  steer: z.number().finite(),
+  throttle: z.number().finite(),
+  handbrake: z.boolean(),
+  // Distance from the centerline is a non-negative magnitude by definition:
+  // the centerline is the zero point and the value grows as the car moves
+  // away from it. Enforcing the invariant here catches a hand-edited
+  // imported session that would otherwise let a negative number through.
+  distanceFromCenter: z.number().finite().nonnegative(),
+})
+
+export const OffTrackEventSchema = OffTrackEntrySnapshotSchema.extend({
+  durationMs: z.number().finite().nonnegative(),
+  exitSpeed: z.number().finite().nullable(),
+  peakDistanceFromCenter: z.number().finite().nonnegative(),
+  exitLapMs: z.number().finite().nullable(),
+})
+
+/**
+ * Per-lap telemetry envelope. `positions[i]` and `speeds[i]` correspond to
+ * the same sample, taken at sample period `sampleMs`, so a consumer can map
+ * any sample to time `i * sampleMs`.
+ */
+export interface LapTelemetry {
+  sampleMs: number
+  positions: Array<[number, number]>
+  speeds: number[]
+  lapTimeMs: number | null
+  offTrackEvents: OffTrackEvent[]
+}
+
+export const LapTelemetrySchema = z
+  .object({
+    sampleMs: z.number().positive().finite(),
+    positions: z.array(z.tuple([z.number().finite(), z.number().finite()])),
+    speeds: z.array(z.number().finite().nonnegative()),
+    lapTimeMs: z.number().int().positive().nullable(),
+    offTrackEvents: z.array(OffTrackEventSchema),
+  })
+  .refine((t) => t.positions.length === t.speeds.length, {
+    message: 'positions and speeds must be the same length',
+  })

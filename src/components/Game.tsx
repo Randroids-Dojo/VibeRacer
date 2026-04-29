@@ -195,7 +195,15 @@ import {
   sanitizeRankInfo,
   type LeaderboardRankInfo,
 } from '@/game/leaderboardRank'
-import { fireHaptic, isTouchRuntime, shouldHapticFire } from '@/lib/haptics'
+import {
+  fireGamepadImpulse,
+  fireHaptic,
+  isTouchRuntime,
+  padHasRumble,
+  shouldGamepadRumbleFire,
+  shouldTouchHapticFire,
+  stopGamepadRumble,
+} from '@/lib/haptics'
 import {
   FAVORITE_TRACKS_EVENT,
   isFavoriteTrack,
@@ -674,11 +682,24 @@ function GameSession({
   brakeLightModeRef.current = settings.brakeLights
   // Mirror the haptics mode into a ref so handleLapComplete reads the freshest
   // pick without depending on a stale closure. Mode (not a resolved boolean)
-  // is the source of truth: shouldHapticFire reconciles it against the live
-  // touch-runtime detection at fire time so a player who plugs in a phone
-  // mid-session feels the buzz on the next lap without restarting.
+  // is the source of truth: shouldTouchHapticFire reconciles it against the
+  // live touch-runtime detection at fire time so a player who plugs in a
+  // phone mid-session feels the buzz on the next lap without restarting.
+  // Gamepad rumble has its own mode and a separate shouldGamepadRumbleFire
+  // gate just below so the two device paths stay independent.
   const hapticsModeRef = useRef<HapticMode>(settings.haptics)
   hapticsModeRef.current = settings.haptics
+  // Same ref pattern for gamepad rumble. Mirrors `settings.gamepadRumble` so
+  // RaceCanvas's per-frame rumble loop reads the freshest pick without
+  // re-mounting on every Settings flip. shouldGamepadRumbleFire reconciles
+  // the mode against the active pad's rumble capability at the call site.
+  const gamepadRumbleModeRef = useRef<HapticMode>(settings.gamepadRumble)
+  gamepadRumbleModeRef.current = settings.gamepadRumble
+  // The active Gamepad, owned by the parent so callbacks declared above the
+  // useGamepad call (pause / resume) can reference it without hitting TDZ.
+  // useGamepad receives this ref as `padOutRef` further down the component
+  // and writes the live pad here every animation frame.
+  const gamepadPadRef = useRef<Gamepad | null>(null)
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -994,6 +1015,10 @@ function GameSession({
     crossfadeTo('pause', PAUSE_CROSSFADE_SEC)
     setPauseView('menu')
     setPaused(true)
+    // Stop the continuous gamepad rumble so the motor does not keep humming
+    // while the menu is up. The per-frame loop will reassert magnitudes the
+    // moment the player resumes.
+    stopGamepadRumble(gamepadPadRef.current)
   }, [])
 
   const resume = useCallback(() => {
@@ -1577,7 +1602,7 @@ function GameSession({
     if (pausedRef.current) resume()
     else pause()
   }, [phase, pause, resume])
-  useGamepad(keys, handlePadPause, settings.gamepadBindings)
+  useGamepad(keys, handlePadPause, settings.gamepadBindings, gamepadPadRef)
   useEffect(() => {
     let raf = 0
     function check() {
@@ -2105,13 +2130,25 @@ function GameSession({
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
     else playLapStinger()
-    // Tactile cue mirrors the audio outcome: a short pulse for every lap, a
-    // longer double-pulse for a fresh personal best, a triple-pulse for a
-    // fresh track-wide record. The mode picker (`settings.haptics`) plus the
-    // touch-runtime check are folded into a single shouldHapticFire decision
-    // so a desktop session with mode 'auto' never buzzes.
-    if (shouldHapticFire(hapticsModeRef.current, isTouchRuntime())) {
+    // Touch path: mirrors the audio outcome with a short pulse for every lap,
+    // a longer double-pulse for a fresh personal best, and a triple-pulse for
+    // a fresh track-wide record. shouldTouchHapticFire folds the mode picker
+    // (`settings.haptics`) and the live touch-runtime detection into a single
+    // decision, so a desktop session with mode 'auto' never buzzes the phone
+    // motor. The separate gamepad path below has its own mode and resolver.
+    if (shouldTouchHapticFire(hapticsModeRef.current, isTouchRuntime())) {
       fireHaptic(outcome)
+    }
+    // Gamepad path: layered on top of the continuous rumble loop. The per-
+    // frame loop in RaceCanvas reasserts the continuous magnitudes on the
+    // next tick, so the impulse + continuous tracks coexist cleanly.
+    if (
+      shouldGamepadRumbleFire(
+        gamepadRumbleModeRef.current,
+        padHasRumble(gamepadPadRef.current),
+      )
+    ) {
+      fireGamepadImpulse(outcome, gamepadPadRef.current)
     }
     if (outcome === 'record' || outcome === 'pb') {
       setConfettiKind(outcome)
@@ -2401,6 +2438,8 @@ function GameSession({
         racingNumberRef={racingNumberRef}
         headlightsOnRef={headlightsOnRef}
         brakeLightModeRef={brakeLightModeRef}
+        gamepadRumbleModeRef={gamepadRumbleModeRef}
+        gamepadPadRef={gamepadPadRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}

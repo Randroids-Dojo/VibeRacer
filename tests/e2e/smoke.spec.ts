@@ -62,7 +62,7 @@ test('settings tabs keep long sections inside the modal viewport', async ({
   await page.getByRole('tabpanel').evaluate((panel) => {
     panel.scrollTop = panel.scrollHeight
   })
-  await expect(page.getByText('Haptic feedback', { exact: true })).toBeVisible()
+  await expect(page.getByText('Brake lights', { exact: true })).toBeVisible()
 })
 
 test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {

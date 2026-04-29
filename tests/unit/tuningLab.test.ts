@@ -497,6 +497,80 @@ describe('buildExportPayload and parseImportedJson', () => {
     expect(parseImportedJson(null).kind).toBe('error')
     expect(parseImportedJson('a string').kind).toBe('error')
   })
+
+  it('round-trips a session that includes off-track events and telemetry', () => {
+    const payload = buildExportPayload({
+      rounds: [
+        {
+          params: cloneDefaultParams(),
+          ratings: { topSpeed: 4 },
+          notes: '',
+          lapTimeMs: 12000,
+          offTrackEvents: [
+            {
+              lapMs: 1000,
+              x: 1,
+              z: 2,
+              heading: 0.3,
+              speed: 18,
+              steer: 0.6,
+              throttle: 1,
+              handbrake: false,
+              distanceFromCenter: 5,
+              durationMs: 250,
+              exitSpeed: 13.4,
+              peakDistanceFromCenter: 6,
+              exitLapMs: 1250,
+            },
+          ],
+          telemetry: {
+            sampleMs: 33,
+            positions: [
+              [0, 0],
+              [1, 0],
+              [2, 0],
+            ],
+            speeds: [0, 5, 10],
+            lapTimeMs: 12000,
+            offTrackEvents: [],
+          },
+        },
+      ],
+      controlType: 'keyboard',
+      trackTags: [],
+      userAgent: 'test/1',
+      timestamp: '2026-04-25T00:00:00.000Z',
+    })
+    const round = parseImportedJson(JSON.parse(JSON.stringify(payload)))
+    expect(round.kind).toBe('session')
+    if (round.kind === 'session') {
+      const r = round.session.rounds[0]
+      expect(r.offTrackEvents?.length).toBe(1)
+      expect(r.offTrackEvents?.[0].durationMs).toBe(250)
+      expect(r.telemetry?.speeds).toEqual([0, 5, 10])
+    }
+  })
+
+  it('still parses legacy sessions without off-track or telemetry fields', () => {
+    const legacy = {
+      schema: TUNING_LAB_SCHEMA_TAG,
+      timestamp: '2026-04-25T00:00:00.000Z',
+      userAgent: 'legacy/1',
+      controlType: 'keyboard',
+      trackTags: [],
+      rounds: [
+        {
+          params: cloneDefaultParams(),
+          ratings: { topSpeed: 3 },
+          notes: '',
+          lapTimeMs: 12000,
+        },
+      ],
+      saved: null,
+    }
+    const round = parseImportedJson(legacy)
+    expect(round.kind).toBe('session')
+  })
 })
 
 describe('makeSavedTuning', () => {
