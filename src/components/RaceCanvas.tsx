@@ -840,6 +840,11 @@ export function RaceCanvas({
 
       const dtMs = Math.min(50, ts - lastTs)
       lastTs = ts
+      // Hoisted so the per-frame rumble loop further down can read the same
+      // drift intensity the scoring path computed inside the racing branch.
+      // Stays 0 between races so an idle / pre-countdown pad gets engine-only
+      // continuous rumble (no spurious slip cue).
+      let dIntensity = 0
 
       if (pendingRaceStartRef.current !== null) {
         state = startRace(state, pendingRaceStartRef.current)
@@ -1107,7 +1112,7 @@ export function RaceCanvas({
         // Drift scoring: independent of the skid spawn decision (we want a
         // continuous score, not just one tick per spawn). Uses the same
         // input shape so the audio cue and the score stay in sync.
-        const dIntensity = driftIntensity(
+        dIntensity = driftIntensity(
           skidSpeedAbs,
           paramsRef.current.maxSpeed,
           skidSteerAbs,
