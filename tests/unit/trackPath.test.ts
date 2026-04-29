@@ -434,4 +434,15 @@ describe('buildTrackPath cpTriggerPieceIdx', () => {
     const path = buildTrackPath(DEFAULT_TRACK_PIECES, 4)
     expect(path.cpTriggerPieceIdx).toEqual([2, 4, 6, 0])
   })
+
+  it('orders custom checkpoints by path order and finishes at the start', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES, undefined, [
+      DEFAULT_TRACK_PIECES[5],
+      DEFAULT_TRACK_PIECES[2],
+      DEFAULT_TRACK_PIECES[6],
+    ])
+    expect(path.cpTriggerPieceIdx).toEqual([2, 5, 6, 0])
+    expect(path.checkpointMarkers.map((m) => m.cpId)).toEqual([0, 1, 2])
+    expect(path.checkpointMarkers.map((m) => m.pieceIdx)).toEqual([2, 5, 6])
+  })
 })

@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { hashTrack, canonicalizePieces } from '@/lib/hashTrack'
+import {
+  canonicalizeCheckpoints,
+  canonicalizePieces,
+  hashTrack,
+} from '@/lib/hashTrack'
 import type { Piece } from '@/lib/schemas'
 
 const a: Piece = { type: 'straight', row: 0, col: 0, rotation: 0 }
@@ -59,6 +63,21 @@ describe('hashTrack', () => {
       hashTrack([a, b, c]),
     )
   })
+
+  it('includes custom checkpoints in the hash regardless of input order', () => {
+    const checkpoints = [
+      { row: 0, col: 1 },
+      { row: 1, col: 1 },
+      { row: 1, col: 0 },
+    ]
+    const reversed = checkpoints.slice().reverse()
+    expect(hashTrack([a, b, c], undefined, 'automatic', checkpoints)).toBe(
+      hashTrack([a, b, c], undefined, 'automatic', reversed),
+    )
+    expect(hashTrack([a, b, c], undefined, 'automatic', checkpoints)).not.toBe(
+      hashTrack([a, b, c]),
+    )
+  })
 })
 
 describe('canonicalizePieces', () => {
@@ -68,6 +87,22 @@ describe('canonicalizePieces', () => {
       [0, 0],
       [0, 1],
       [1, 1],
+    ])
+  })
+})
+
+describe('canonicalizeCheckpoints', () => {
+  it('sorts by row, then col', () => {
+    expect(
+      canonicalizeCheckpoints([
+        { row: 2, col: 1 },
+        { row: 0, col: 4 },
+        { row: 0, col: 2 },
+      ]),
+    ).toEqual([
+      { row: 0, col: 2 },
+      { row: 0, col: 4 },
+      { row: 2, col: 1 },
     ])
   })
 })

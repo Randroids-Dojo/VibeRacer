@@ -103,6 +103,7 @@ export async function PUT(
     track.data.pieces,
     track.data.checkpointCount,
     track.data.transmission,
+    track.data.checkpoints,
   )
   const createdAt = new Date().toISOString()
   // Drop a `mood` object that has no concrete fields so we never persist a
@@ -117,6 +118,9 @@ export async function PUT(
     pieces: track.data.pieces as Piece[],
     ...(track.data.checkpointCount !== undefined
       ? { checkpointCount: track.data.checkpointCount }
+      : {}),
+    ...(track.data.checkpoints !== undefined
+      ? { checkpoints: track.data.checkpoints }
       : {}),
     ...(moodOut !== undefined ? { mood: moodOut } : {}),
     transmission: track.data.transmission,

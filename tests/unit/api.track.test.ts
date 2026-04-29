@@ -94,6 +94,35 @@ describe('PUT /api/track/[slug]', () => {
     expect(getBody.track.checkpointCount).toBe(4)
   })
 
+  it('persists custom checkpoints and uses them in the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'custom-cp-slug'
+    const checkpoints = [
+      { row: 0, col: 1 },
+      { row: 1, col: 1 },
+      { row: 1, col: 0 },
+    ]
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: squarePieces, checkpoints }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(
+      hashTrack(squarePieces, undefined, 'automatic', checkpoints),
+    )
+    expect(putBody.versionHash).not.toBe(hashTrack(squarePieces))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: { checkpoints?: typeof checkpoints }
+    }
+    expect(getBody.track.checkpoints).toEqual(checkpoints)
+  })
+
   it('persists manual transmission and includes it in the version hash', async () => {
     const { PUT, GET } = await import('@/app/api/track/[slug]/route')
     const slug = 'manual-slug'

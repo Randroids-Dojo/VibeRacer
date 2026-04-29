@@ -176,3 +176,34 @@ describe('tick with reduced checkpointCount', () => {
     expect(r.state.hits.length).toBe(0)
   })
 })
+
+describe('tick with custom checkpoints', () => {
+  const customPath = buildTrackPath(DEFAULT_TRACK_PIECES, undefined, [
+    DEFAULT_TRACK_PIECES[5],
+    DEFAULT_TRACK_PIECES[2],
+    DEFAULT_TRACK_PIECES[6],
+  ])
+
+  it('completes the lap after custom checkpoints and the finish line', () => {
+    let s = startRace(initGameState(customPath), 0)
+    let now = 0
+    const triggers = customPath.cpTriggerPieceIdx
+    expect(triggers).toEqual([2, 5, 6, 0])
+
+    for (let k = 0; k < triggers.length; k++) {
+      now += 600
+      const cell = customPath.order[triggers[k]].center
+      s = { ...s, x: cell.x, z: cell.z }
+      const r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, now, customPath)
+      s = r.state
+      if (k < triggers.length - 1) {
+        expect(r.lapComplete).toBeNull()
+        expect(s.nextCpId).toBe(k + 1)
+      } else {
+        expect(r.lapComplete).not.toBeNull()
+        expect(r.lapComplete!.hits.map((hit) => hit.cpId)).toEqual([0, 1, 2, 3])
+        expect(s.lapCount).toBe(1)
+      }
+    }
+  })
+})

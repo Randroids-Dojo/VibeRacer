@@ -1187,6 +1187,30 @@ export function buildKerbLayer(path: TrackPath): KerbLayer {
   }
 }
 
+function buildCheckpointMarkers(path: TrackPath): Group {
+  const group = new Group()
+  const poleGeom = new CylinderGeometry(0.12, 0.12, 2.4, 8)
+  const flagGeom = new BoxGeometry(1.3, 0.7, 0.06)
+  const poleMat = new MeshStandardMaterial({ color: 0xf6f1d1, roughness: 0.65 })
+  const flagMat = new MeshStandardMaterial({ color: 0xffb347, roughness: 0.55 })
+  for (const marker of path.checkpointMarkers) {
+    const sideX = -Math.sin(marker.heading)
+    const sideZ = -Math.cos(marker.heading)
+    for (const sign of [-1, 1]) {
+      const x = marker.position.x + sideX * sign * (TRACK_WIDTH / 2 + 0.85)
+      const z = marker.position.z + sideZ * sign * (TRACK_WIDTH / 2 + 0.85)
+      const pole = new Mesh(poleGeom, poleMat)
+      pole.position.set(x, 1.2, z)
+      group.add(pole)
+      const flag = new Mesh(flagGeom, flagMat)
+      flag.position.set(x + sideX * sign * 0.55, 2.05, z + sideZ * sign * 0.55)
+      flag.rotation.y = marker.heading
+      group.add(flag)
+    }
+  }
+  return group
+}
+
 // Trackside scenery layer: trees scattered on the grass area, traffic cones
 // at the outside of every corner, and red / white barriers framing the start
 // gate. All meshes share a small set of geometries / materials cached in
@@ -2080,6 +2104,8 @@ export function buildScene(path: TrackPath): SceneBundle {
 
   const kerbs = buildKerbLayer(path)
   scene.add(kerbs.group)
+
+  scene.add(buildCheckpointMarkers(path))
 
   const scenery = buildSceneryLayer(path)
   scene.add(scenery.group)

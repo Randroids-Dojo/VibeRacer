@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto'
-import type { Piece } from './schemas'
+import type { Piece, TrackCheckpoint } from './schemas'
 import {
   DEFAULT_TRACK_TRANSMISSION,
   type TrackTransmissionMode,
@@ -20,16 +20,28 @@ export function canonicalizePieces(pieces: Piece[]): Piece[] {
 function effectiveCheckpointCount(
   pieces: Piece[],
   checkpointCount: number | undefined,
+  checkpoints: TrackCheckpoint[] | undefined,
 ): number | null {
+  if (checkpoints !== undefined) return null
   if (checkpointCount === undefined) return null
   if (checkpointCount === pieces.length) return null
   return checkpointCount
+}
+
+export function canonicalizeCheckpoints(
+  checkpoints: TrackCheckpoint[] = [],
+): TrackCheckpoint[] {
+  return [...checkpoints].sort((a, b) => {
+    if (a.row !== b.row) return a.row - b.row
+    return a.col - b.col
+  })
 }
 
 export function canonicalTrackJson(
   pieces: Piece[],
   checkpointCount?: number,
   transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
+  checkpoints?: TrackCheckpoint[],
 ): string {
   const canonical = canonicalizePieces(pieces).map((p) => ({
     type: p.type,
@@ -37,13 +49,20 @@ export function canonicalTrackJson(
     col: p.col,
     rotation: p.rotation,
   }))
-  const cp = effectiveCheckpointCount(pieces, checkpointCount)
+  const cp = effectiveCheckpointCount(pieces, checkpointCount, checkpoints)
+  const checkpointOut =
+    checkpoints !== undefined && checkpoints.length > 0
+      ? canonicalizeCheckpoints(checkpoints)
+      : null
   const transmissionOut =
     transmission === DEFAULT_TRACK_TRANSMISSION ? null : transmission
-  if (cp === null && transmissionOut === null) return JSON.stringify(canonical)
+  if (cp === null && checkpointOut === null && transmissionOut === null) {
+    return JSON.stringify(canonical)
+  }
   return JSON.stringify({
     pieces: canonical,
     checkpointCount: cp ?? undefined,
+    checkpoints: checkpointOut ?? undefined,
     transmission: transmissionOut ?? undefined,
   })
 }
@@ -52,8 +71,9 @@ export function hashTrack(
   pieces: Piece[],
   checkpointCount?: number,
   transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
+  checkpoints?: TrackCheckpoint[],
 ): string {
   return createHash('sha256')
-    .update(canonicalTrackJson(pieces, checkpointCount, transmission))
+    .update(canonicalTrackJson(pieces, checkpointCount, transmission, checkpoints))
     .digest('hex')
 }
