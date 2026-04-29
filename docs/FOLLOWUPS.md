@@ -12,5 +12,4 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Low Priority
 
-- Add deeper progress history if older archived Dots need to be summarized for future agents.
-- Gamepad rumble: collision-magnitude impulses. Requires the physics integrator to emit collision events so the rumble path can scale impact intensity to the contact magnitude. Today the rumble system carries engine, surface, slip, brake-lock, and the lap / off-track impulses, but never reacts to a hard wall hit.
+- Gamepad rumble: collision-magnitude impulses. Blocked until gameplay has a real collision event source. Current barriers, cones, trees, and decorations are visual-only, and the physics integrator only emits off-track drag state. Once the vehicle can hit a wall or obstacle, emit an impact magnitude so the rumble path can scale a one-shot cue to contact strength.
