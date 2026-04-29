@@ -174,6 +174,26 @@ export const CarParamsSchema = z.object({
 export const InputModeSchema = z.enum(['keyboard', 'touch', 'gamepad'])
 export type InputMode = z.infer<typeof InputModeSchema>
 
+export const INPUT_MODE_LABELS: Record<InputMode, string> = {
+  keyboard: 'Keyboard',
+  touch: 'Touch',
+  gamepad: 'Gamepad',
+}
+
+export const INPUT_MODE_DESCRIPTIONS: Record<InputMode, string> = {
+  keyboard: 'Raced with keyboard',
+  touch: 'Raced on touch',
+  gamepad: 'Raced with gamepad',
+}
+
+export function inputModeLabel(mode: InputMode | null): string {
+  return mode ? INPUT_MODE_LABELS[mode] : 'Unknown input'
+}
+
+export function inputModeDescription(mode: InputMode | null): string {
+  return mode ? INPUT_MODE_DESCRIPTIONS[mode] : 'Input device was not recorded'
+}
+
 export const TUNING_KEYS = TUNING_PARAM_META.map((m) => m.key)
 
 export const TUNING_PER_TRACK_PREFIX = 'viberacer.tuning.track:'
