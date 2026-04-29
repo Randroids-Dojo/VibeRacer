@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Track Biome Selection
+
+- Branch: `feature/track-biomes`
+- PR: pending
+- Changed: added optional per-track biomes for Snow, Desert, Beach, Mountains, and City; wired editor save/load support; and applied biome styling to sky tint, terrain, asphalt, and roadside scenery.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for biome presets, schemas, API track persistence, and scenery styling, `npm test`, `npm run build`, `npm run test:e2e -- tests/e2e/smoke.spec.ts`, and Playwright editor screenshot at `test-results/biome-editor.png`.
+- Assumptions: biome is visual metadata like track mood, so it does not affect physics, lap validity, anti-cheat, version hashes, or leaderboard splits. Leaving biome unset preserves the classic forest look.
+- GDD coverage: advances Section 6 track authoring and visual identity.
+- Followups: none recorded.
+
 ## 2026-04-29, Visual Checkpoint Placement
 
 - Branch: `feature/visual-checkpoints`

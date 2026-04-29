@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import {
   PieceSchema,
   TrackSchema,
+  TrackBiomeSchema,
   TrackMoodSchema,
   TrackVersionSchema,
   InitialsSchema,
@@ -250,6 +251,28 @@ describe('TrackSchema', () => {
       TrackSchema.safeParse({ pieces, mood: { weather: 'rain' } }).success,
     ).toBe(false)
   })
+
+  it('accepts a known biome', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(TrackSchema.safeParse({ pieces, biome: 'desert' }).success).toBe(true)
+  })
+
+  it('rejects an unknown biome', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(TrackSchema.safeParse({ pieces, biome: 'forest' }).success).toBe(false)
+  })
+})
+
+describe('TrackBiomeSchema', () => {
+  it('accepts every track biome option', () => {
+    for (const biome of ['snow', 'desert', 'beach', 'mountains', 'city']) {
+      expect(TrackBiomeSchema.safeParse(biome).success).toBe(true)
+    }
+  })
+
+  it('rejects unknown biome names', () => {
+    expect(TrackBiomeSchema.safeParse('forest').success).toBe(false)
+  })
 })
 
 describe('TrackMoodSchema', () => {
@@ -286,6 +309,24 @@ describe('TrackVersionSchema', () => {
         mood: { timeOfDay: 'sunset', weather: 'cloudy' },
       }).success,
     ).toBe(true)
+  })
+
+  it('round-trips a version with a biome', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        biome: 'snow',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects a version with an invalid biome', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        biome: 'forest',
+      }).success,
+    ).toBe(false)
   })
 
   it('rejects a version with an invalid mood', () => {

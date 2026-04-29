@@ -5,6 +5,7 @@ import type {
   Piece,
   PieceType,
   Rotation,
+  TrackBiome,
   TrackCheckpoint,
   TrackMood,
   TrackTransmissionMode,
@@ -18,6 +19,11 @@ import {
   type TimeOfDay,
 } from '@/lib/lighting'
 import { WEATHER_LABELS, WEATHER_NAMES, type Weather } from '@/lib/weather'
+import {
+  TRACK_BIOME_DESCRIPTIONS,
+  TRACK_BIOME_LABELS,
+  TRACK_BIOME_NAMES,
+} from '@/lib/biomes'
 import { sanitizeTrackMood } from '@/game/trackMood'
 import { recordMyTrack } from '@/lib/myTracks'
 import {
@@ -80,6 +86,7 @@ interface TrackEditorProps {
   initialPieces: Piece[]
   initialCheckpointCount?: number
   initialCheckpoints?: TrackCheckpoint[]
+  initialBiome?: TrackBiome
   // Optional baked-in author mood (timeOfDay / weather) to seed the editor's
   // pickers with. Both fields are optional inside the mood. Undefined when
   // the loaded track has no mood (legacy or never set).
@@ -103,6 +110,7 @@ export function TrackEditor({
   initialPieces,
   initialCheckpointCount,
   initialCheckpoints = [],
+  initialBiome,
   initialMood,
   initialTransmission = 'automatic',
   forkingFromHash,
@@ -149,6 +157,8 @@ export function TrackEditor({
     initialMood?.weather ?? null,
   )
   const moodActive = moodTimeOfDay !== null || moodWeather !== null
+  const [biome, setBiome] = useState<TrackBiome | null>(initialBiome ?? null)
+  const biomeActive = biome !== null
   const [transmission, setTransmission] = useState<TrackTransmissionMode>(
     initialTransmission,
   )
@@ -156,6 +166,7 @@ export function TrackEditor({
     (initialCheckpointCount !== undefined &&
       initialCheckpointCount !== initialPieces.length) ||
       initialMood !== undefined ||
+      initialBiome !== undefined ||
       initialTransmission === 'manual' ||
       initialCheckpoints.length > 0,
   )
@@ -555,6 +566,7 @@ export function TrackEditor({
         pieces: Piece[]
         checkpointCount?: number
         checkpoints?: TrackCheckpoint[]
+        biome?: TrackBiome
         mood?: TrackMood
         transmission?: TrackTransmissionMode
       } = { pieces }
@@ -569,6 +581,9 @@ export function TrackEditor({
       })
       if (sanitized !== null) {
         reqBody.mood = sanitized
+      }
+      if (biome !== null) {
+        reqBody.biome = biome
       }
       if (transmission !== 'automatic') {
         reqBody.transmission = transmission
@@ -875,6 +890,51 @@ export function TrackEditor({
           </div>
           <div style={advancedRow}>
             <div style={advancedCopy}>
+              <div style={advancedLabel}>Track biome</div>
+              <p style={advancedHelp}>
+                Pick the environment theme for this track version. The biome
+                changes terrain color, sky tint, road styling, and roadside
+                scenery. It is visual only and does not affect physics, lap
+                times, or the version hash.
+              </p>
+            </div>
+            <div style={moodControl}>
+              <label style={moodPickerRow}>
+                <span style={moodPickerLabel}>Biome</span>
+                <select
+                  value={biome ?? ''}
+                  onChange={(e) =>
+                    setBiome(
+                      e.target.value === ''
+                        ? null
+                        : (e.target.value as TrackBiome),
+                    )
+                  }
+                  style={moodSelect}
+                  aria-label="Track biome"
+                >
+                  <option value="">Classic forest</option>
+                  {TRACK_BIOME_NAMES.map((name) => (
+                    <option key={name} value={name}>
+                      {TRACK_BIOME_LABELS[name]}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p style={biomeHint}>
+                {biome
+                  ? TRACK_BIOME_DESCRIPTIONS[biome]
+                  : 'Uses the original grass, trees, blue sky, and dark asphalt.'}
+              </p>
+              {biomeActive ? (
+                <button onClick={() => setBiome(null)} style={btnGhostSmall}>
+                  Clear biome
+                </button>
+              ) : null}
+            </div>
+          </div>
+          <div style={advancedRow}>
+            <div style={advancedCopy}>
               <div style={advancedLabel}>Track mood</div>
               <p style={advancedHelp}>
                 Pick a baked-in time of day or weather and every player who
@@ -980,6 +1040,7 @@ export function TrackEditor({
               Advanced
               {checkpointCount !== null ||
               customCheckpointsActive ||
+              biomeActive ||
               moodActive ||
               transmission !== 'automatic' ? (
                 <span style={advancedDot} />
@@ -1583,6 +1644,13 @@ const moodSelect: React.CSSProperties = {
   fontFamily: 'inherit',
   fontSize: 13,
   minWidth: 130,
+}
+const biomeHint: React.CSSProperties = {
+  margin: 0,
+  maxWidth: 260,
+  fontSize: 12,
+  lineHeight: 1.4,
+  opacity: 0.75,
 }
 const btnGhostSmall: React.CSSProperties = {
   border: '1px solid #334155',

@@ -28,6 +28,7 @@ import {
 import type { GhostSource } from '@/lib/ghostSource'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
+import type { TrackBiome } from '@/lib/biomes'
 import type { RacingNumberSetting } from '@/lib/racingNumber'
 import {
   isBrakingNow,
@@ -118,6 +119,7 @@ export interface RaceCanvasProps {
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
+  biome?: TrackBiome | null
   paramsRef: MutableRefObject<CarParams>
   keys: ReturnType<typeof useKeyboard>
   pausedRef: MutableRefObject<boolean>
@@ -282,6 +284,7 @@ export function RaceCanvas({
   checkpointCount,
   checkpoints,
   transmission = 'automatic',
+  biome = null,
   paramsRef,
   keys,
   pausedRef,
@@ -350,7 +353,7 @@ export function RaceCanvas({
     // mid-race; a new pieces / checkpointCount value re-runs this effect and
     // rebuilds the table fresh.
     const paceNotesTable = buildPaceNotes(path)
-    const bundle = buildScene(path)
+    const bundle = buildScene(path, { biome })
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
@@ -1367,7 +1370,7 @@ export function RaceCanvas({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces, checkpointCount, checkpoints, transmission])
+  }, [pieces, checkpointCount, checkpoints, transmission, biome])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }

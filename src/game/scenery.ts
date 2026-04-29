@@ -22,6 +22,11 @@ import {
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+import {
+  getTrackBiomePreset,
+  type TrackBiome,
+  type TrackBiomePreset,
+} from '@/lib/biomes'
 
 // Radial keep-out from the road centerline, in world units. Items whose
 // candidate position falls inside this radius are rejected. CELL_SIZE/2 is the
@@ -95,6 +100,38 @@ export interface SceneryItem {
   // Trees use this for the foliage cone; cones use it for the body; barriers
   // use it to alternate red / white along the gate frame.
   colorHex: number
+}
+
+export interface SceneryStyle {
+  treeFoliage: readonly number[]
+  treeTrunk: number
+  coneColor: number
+  barrierA: number
+  barrierB: number
+  treeDensity: number
+}
+
+function styleFromPreset(preset: TrackBiomePreset): SceneryStyle {
+  return {
+    treeFoliage: preset.treeFoliage,
+    treeTrunk: preset.treeTrunk,
+    coneColor: preset.coneColor,
+    barrierA: preset.barrierA,
+    barrierB: preset.barrierB,
+    treeDensity: preset.treeDensity,
+  }
+}
+
+export function getSceneryStyle(
+  biome?: TrackBiome | null,
+  overrides?: Partial<SceneryStyle>,
+): SceneryStyle {
+  const base = styleFromPreset(getTrackBiomePreset(biome))
+  return {
+    ...base,
+    ...overrides,
+    treeFoliage: overrides?.treeFoliage ?? base.treeFoliage,
+  }
 }
 
 // Pure helpers exported for tests. ---------------------------------------
@@ -187,10 +224,12 @@ export function maybeTreeAt(
   opts?: {
     clearance?: number
     density?: number
+    style?: SceneryStyle
   },
 ): SceneryItem | null {
   const clearance = opts?.clearance ?? SCENERY_TRACK_CLEARANCE
-  const density = opts?.density ?? SCENERY_TREE_DENSITY
+  const style = opts?.style ?? getSceneryStyle()
+  const density = opts?.density ?? style.treeDensity
   if (rng() > density) return null
   const jx = cx + (rng() - 0.5) * 2 * SCENERY_JITTER_RANGE
   const jz = cz + (rng() - 0.5) * 2 * SCENERY_JITTER_RANGE
@@ -199,14 +238,14 @@ export function maybeTreeAt(
     SCENERY_TREE_SCALE_MIN +
     rng() * (SCENERY_TREE_SCALE_MAX - SCENERY_TREE_SCALE_MIN)
   const rotationY = rng() * Math.PI * 2
-  const foliageIdx = Math.floor(rng() * SCENERY_TREE_FOLIAGE_HEX.length)
+  const foliageIdx = Math.floor(rng() * style.treeFoliage.length)
   return {
     kind: 'tree',
     x: jx,
     z: jz,
     rotationY,
     scale,
-    colorHex: SCENERY_TREE_FOLIAGE_HEX[foliageIdx],
+    colorHex: style.treeFoliage[foliageIdx],
   }
 }
 
@@ -221,6 +260,7 @@ export function buildTreeScenery(
     spacing?: number
     clearance?: number
     density?: number
+    style?: SceneryStyle
   },
 ): SceneryItem[] {
   const spacing = opts?.spacing ?? SCENERY_GRID_SPACING
@@ -248,6 +288,7 @@ export function buildCornerCones(
   opts?: {
     radiusOffset?: number
     conesPerCorner?: number
+    style?: SceneryStyle
   },
 ): SceneryItem[] {
   const radiusOffset = opts?.radiusOffset ?? SCENERY_CONE_RADIUS_OFFSET
@@ -257,7 +298,12 @@ export function buildCornerCones(
   for (const op of path.order) {
     if (op.arcCenter === null) continue
     if (op.piece.type !== 'left90' && op.piece.type !== 'right90') continue
-    const cones = conesForCorner(op, radiusOffset, conesPerCorner)
+    const cones = conesForCorner(
+      op,
+      radiusOffset,
+      conesPerCorner,
+      opts?.style ?? getSceneryStyle(),
+    )
     for (const c of cones) items.push(c)
   }
   return items
@@ -271,6 +317,7 @@ function conesForCorner(
   op: OrderedPiece,
   radiusOffset: number,
   conesPerCorner: number,
+  style: SceneryStyle,
 ): SceneryItem[] {
   if (op.arcCenter === null) return []
   const { cx, cz } = op.arcCenter
@@ -300,7 +347,7 @@ function conesForCorner(
       z,
       rotationY,
       scale: 1,
-      colorHex: SCENERY_CONE_HEX,
+      colorHex: style.coneColor,
     })
   }
   return items
@@ -314,7 +361,11 @@ export const SCENERY_BARRIERS_PER_SIDE = 5
 export const SCENERY_BARRIER_SPACING = 1.6
 export const SCENERY_BARRIER_OFFSET = TRACK_WIDTH / 2 + 1.4
 
-export function buildStartBarriers(path: TrackPath): SceneryItem[] {
+export function buildStartBarriers(
+  path: TrackPath,
+  opts?: { style?: SceneryStyle },
+): SceneryItem[] {
+  const style = opts?.style ?? getSceneryStyle()
   const items: SceneryItem[] = []
   const finish = path.finishLine
   // Perpendicular to the heading: rotate (cos, sin) by +90 degrees to get
@@ -341,10 +392,7 @@ export function buildStartBarriers(path: TrackPath): SceneryItem[] {
         z,
         rotationY: finish.heading,
         scale: 1,
-        colorHex:
-          k % 2 === 0
-            ? SCENERY_BARRIER_HEX_RED
-            : SCENERY_BARRIER_HEX_WHITE,
+        colorHex: k % 2 === 0 ? style.barrierA : style.barrierB,
       })
     }
   }
@@ -367,19 +415,22 @@ export function buildScenery(
     includeTrees?: boolean
     includeCones?: boolean
     includeBarriers?: boolean
+    biome?: TrackBiome | null
+    style?: SceneryStyle
   },
 ): SceneryItem[] {
   const seed = opts?.seed ?? seedFromPath(path)
   const rng = makeSceneryRng(seed)
+  const style = opts?.style ?? getSceneryStyle(opts?.biome)
   const items: SceneryItem[] = []
   if (opts?.includeTrees ?? true) {
-    for (const t of buildTreeScenery(path, rng, opts)) items.push(t)
+    for (const t of buildTreeScenery(path, rng, { ...opts, style })) items.push(t)
   }
   if (opts?.includeCones ?? true) {
-    for (const c of buildCornerCones(path, opts)) items.push(c)
+    for (const c of buildCornerCones(path, { ...opts, style })) items.push(c)
   }
   if (opts?.includeBarriers ?? true) {
-    for (const b of buildStartBarriers(path)) items.push(b)
+    for (const b of buildStartBarriers(path, { style })) items.push(b)
   }
   return items
 }

@@ -3,6 +3,7 @@ import {
   SlugSchema,
   VersionHashSchema,
   type Piece,
+  type TrackBiome,
   type TrackMood,
   type TrackTransmissionMode,
 } from '@/lib/schemas'
@@ -34,6 +35,8 @@ export default async function EditPage(ctx: {
     loaded.kind === 'ok' ? loaded.checkpointCount : undefined
   const initialCheckpoints =
     loaded.kind === 'ok' ? loaded.checkpoints : undefined
+  const initialBiome: TrackBiome | undefined =
+    loaded.kind === 'ok' ? loaded.biome : undefined
   const initialMood: TrackMood | undefined =
     loaded.kind === 'ok' ? loaded.mood : undefined
   const initialTransmission: TrackTransmissionMode =
@@ -50,6 +53,7 @@ export default async function EditPage(ctx: {
       initialPieces={initialPieces}
       initialCheckpointCount={initialCheckpointCount}
       initialCheckpoints={initialCheckpoints}
+      initialBiome={initialBiome}
       initialMood={initialMood}
       initialTransmission={initialTransmission}
       forkingFromHash={forkingFromHash}

@@ -123,6 +123,7 @@ export async function PUT(
       ? { checkpoints: track.data.checkpoints }
       : {}),
     ...(moodOut !== undefined ? { mood: moodOut } : {}),
+    ...(track.data.biome !== undefined ? { biome: track.data.biome } : {}),
     transmission: track.data.transmission,
     createdByRacerId: racerId,
     createdAt,
