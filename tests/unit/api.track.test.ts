@@ -343,4 +343,50 @@ describe('GET /api/track/[slug]', () => {
     }
     expect(getBody.track.biome).toBe('beach')
   })
+
+  it('round-trips decorations without changing the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'decorations-slug'
+    const decorations = [
+      { kind: 'cactus', row: 3, col: 0 },
+      { kind: 'rock', row: -1, col: 2 },
+    ]
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pieces: squarePieces,
+        decorations,
+      }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(hashTrack(squarePieces))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: {
+        decorations?: typeof decorations
+      }
+    }
+    expect(getBody.track.decorations).toEqual(decorations)
+  })
+
+  it('rejects decorations on top of track pieces', async () => {
+    const { PUT } = await import('@/app/api/track/[slug]/route')
+    const req = new NextRequest('http://test/api/track/bad-decoration', {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pieces: squarePieces,
+        decorations: [{ kind: 'tree', row: 0, col: 0 }],
+      }),
+    })
+    const res = await PUT(req, {
+      params: Promise.resolve({ slug: 'bad-decoration' }),
+    })
+    expect(res.status).toBe(400)
+  })
 })

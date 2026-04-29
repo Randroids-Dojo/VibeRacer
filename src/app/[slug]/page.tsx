@@ -57,6 +57,7 @@ export default async function SlugPage(ctx: {
     checkpointCount,
     checkpoints,
     biome,
+    decorations,
     mood,
     transmission,
   } = loaded
@@ -85,6 +86,7 @@ export default async function SlugPage(ctx: {
       checkpoints={checkpoints}
       transmission={transmission}
       trackBiome={biome ?? null}
+      trackDecorations={decorations ?? []}
       trackMood={mood ?? null}
       initialRecord={overallRecord}
       challenge={challenge}

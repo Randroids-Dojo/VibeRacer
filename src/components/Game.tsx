@@ -13,6 +13,7 @@ import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { TrackTransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
+import type { TrackDecoration } from '@/lib/decorations'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -209,6 +210,8 @@ export interface OverallRecord {
   lapTimeMs: number
 }
 
+const EMPTY_TRACK_DECORATIONS: readonly TrackDecoration[] = []
+
 interface GameProps {
   slug: string
   versionHash: string
@@ -217,6 +220,7 @@ interface GameProps {
   checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
   trackBiome?: TrackBiome | null
+  trackDecorations?: readonly TrackDecoration[]
   // Track-author baked mood (timeOfDay / weather). Null when the author has
   // not picked one, or when the version predates this feature. When set and
   // the player has `respectTrackMood: true` in Settings (the default), the
@@ -393,6 +397,7 @@ function GameSession({
   checkpoints,
   transmission = 'automatic',
   trackBiome = null,
+  trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
   initials,
   initialRecord,
@@ -2374,6 +2379,7 @@ function GameSession({
         checkpoints={checkpoints}
         transmission={transmission}
         biome={trackBiome ?? null}
+        decorations={trackDecorations}
         paramsRef={paramsRef}
         keys={keys}
         pausedRef={pausedRef}

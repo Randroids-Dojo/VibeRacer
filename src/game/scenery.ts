@@ -18,6 +18,7 @@
 import {
   CELL_SIZE,
   TRACK_WIDTH,
+  cellCenter,
   distanceToCenterline,
   type OrderedPiece,
   type TrackPath,
@@ -27,6 +28,7 @@ import {
   type TrackBiome,
   type TrackBiomePreset,
 } from '@/lib/biomes'
+import type { TrackDecoration } from '@/lib/decorations'
 
 // Radial keep-out from the road centerline, in world units. Items whose
 // candidate position falls inside this radius are rejected. CELL_SIZE/2 is the
@@ -81,7 +83,16 @@ export const SCENERY_CONE_HEX = 0xff7a1a
 export const SCENERY_BARRIER_HEX_RED = 0xd0241b
 export const SCENERY_BARRIER_HEX_WHITE = 0xf0f0f0
 
-export type SceneryKind = 'tree' | 'cone' | 'barrier'
+export type SceneryKind =
+  | 'tree'
+  | 'cone'
+  | 'barrier'
+  | 'pine'
+  | 'rock'
+  | 'cactus'
+  | 'palm'
+  | 'building'
+  | 'snowPile'
 
 export interface SceneryItem {
   kind: SceneryKind
@@ -399,6 +410,34 @@ export function buildStartBarriers(
   return items
 }
 
+export function buildPlacedDecorations(
+  decorations: readonly TrackDecoration[] | undefined,
+): SceneryItem[] {
+  if (!decorations || decorations.length === 0) return []
+  const colors: Record<TrackDecoration['kind'], number> = {
+    tree: 0x4caf50,
+    pine: 0x2f6b46,
+    rock: 0x7b7f84,
+    cactus: 0x4f7f35,
+    palm: 0x2e8f63,
+    building: 0x444b55,
+    snowPile: 0xf1f5f9,
+  }
+  return decorations.map((decoration, index) => {
+    const center = cellCenter(decoration.row, decoration.col)
+    return {
+      kind: decoration.kind,
+      x: center.x,
+      z: center.z,
+      rotationY:
+        ((decoration.row * 13 + decoration.col * 7 + index) % 16) *
+        (Math.PI / 8),
+      scale: 1,
+      colorHex: colors[decoration.kind],
+    }
+  })
+}
+
 // Top-level builder. Combines trees (deterministic from the path's seed),
 // cones at every corner, and barriers at the start gate into one flat list
 // the renderer can drop into a single Group. The seed override is for tests;
@@ -416,6 +455,7 @@ export function buildScenery(
     includeCones?: boolean
     includeBarriers?: boolean
     biome?: TrackBiome | null
+    decorations?: readonly TrackDecoration[]
     style?: SceneryStyle
   },
 ): SceneryItem[] {
@@ -432,5 +472,6 @@ export function buildScenery(
   if (opts?.includeBarriers ?? true) {
     for (const b of buildStartBarriers(path, { style })) items.push(b)
   }
+  for (const d of buildPlacedDecorations(opts?.decorations)) items.push(d)
   return items
 }

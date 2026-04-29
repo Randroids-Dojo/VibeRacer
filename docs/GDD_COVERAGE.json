@@ -134,7 +134,8 @@
         "floating undo and redo editor controls",
         "pan and zoom",
         "difficulty rating",
-        "per-track biomes"
+        "per-track biomes",
+        "placed decorations"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -144,6 +145,7 @@
         "src/game/editorHistory.ts",
         "src/game/editorZoom.ts",
         "src/lib/biomes.ts",
+        "src/lib/decorations.ts",
         "src/lib/schemas.ts",
         "src/app/api/track/[slug]/route.ts",
         "tests/unit/track.test.ts",
@@ -152,6 +154,7 @@
         "tests/unit/editorHistory.test.ts",
         "tests/unit/editorZoom.test.ts",
         "tests/unit/biomes.test.ts",
+        "tests/unit/decorations.test.ts",
         "tests/unit/schemas.test.ts",
         "tests/unit/hashTrack.test.ts",
         "tests/unit/api.track.test.ts",

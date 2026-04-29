@@ -29,6 +29,7 @@ import type { GhostSource } from '@/lib/ghostSource'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { TrackBiome } from '@/lib/biomes'
+import type { TrackDecoration } from '@/lib/decorations'
 import type { RacingNumberSetting } from '@/lib/racingNumber'
 import {
   isBrakingNow,
@@ -113,6 +114,7 @@ export interface RaceCanvasHud {
 }
 
 const HUD_UPDATE_MS = 50
+const EMPTY_DECORATIONS: readonly TrackDecoration[] = []
 
 export interface RaceCanvasProps {
   pieces: Piece[]
@@ -120,6 +122,7 @@ export interface RaceCanvasProps {
   checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
   biome?: TrackBiome | null
+  decorations?: readonly TrackDecoration[]
   paramsRef: MutableRefObject<CarParams>
   keys: ReturnType<typeof useKeyboard>
   pausedRef: MutableRefObject<boolean>
@@ -285,6 +288,7 @@ export function RaceCanvas({
   checkpoints,
   transmission = 'automatic',
   biome = null,
+  decorations = EMPTY_DECORATIONS,
   paramsRef,
   keys,
   pausedRef,
@@ -353,7 +357,7 @@ export function RaceCanvas({
     // mid-race; a new pieces / checkpointCount value re-runs this effect and
     // rebuilds the table fresh.
     const paceNotesTable = buildPaceNotes(path)
-    const bundle = buildScene(path, { biome })
+    const bundle = buildScene(path, { biome, decorations })
     const renderer = new WebGLRenderer({ canvas, antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
 
@@ -1370,7 +1374,7 @@ export function RaceCanvas({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces, checkpointCount, checkpoints, transmission, biome])
+  }, [pieces, checkpointCount, checkpoints, transmission, biome, decorations])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }
