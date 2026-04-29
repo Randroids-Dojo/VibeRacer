@@ -75,7 +75,7 @@
           "VibeRacer-implement-q-e-2789311e"
         ],
         "manual gearing if promoted from stretch": [
-          "VibeRacer-implement-q-e-2789311e"
+          "VibeRacer-implement-manual-gearing-6c2f4d1a"
         ]
       }
     },
@@ -110,7 +110,7 @@
           "VibeRacer-evaluate-per-wheel-9337b9e7"
         ],
         "angular velocity": [
-          "VibeRacer-evaluate-per-wheel-9337b9e7"
+          "VibeRacer-add-angular-velocity-84b6d920"
         ]
       }
     },
