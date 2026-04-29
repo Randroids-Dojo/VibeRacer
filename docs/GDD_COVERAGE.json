@@ -183,6 +183,8 @@
         "version dropdown",
         "sorting",
         "PB highlight",
+        "input device metadata",
+        "clickable lap details",
         "tuning metadata",
         "rival chase",
         "rank toast",
@@ -193,9 +195,12 @@
         "src/app/api/race/submit/route.ts",
         "src/app/api/leaderboard/route.ts",
         "src/components/Leaderboard.tsx",
+        "src/lib/tuningSettings.ts",
         "tests/unit/api.raceStart.test.ts",
         "tests/unit/api.raceSubmit.test.ts",
-        "tests/unit/api.leaderboard.test.ts"
+        "tests/unit/api.leaderboard.test.ts",
+        "tests/unit/tuningSettings.test.ts",
+        "tests/e2e/smoke.spec.ts"
       ],
       "remainingGaps": [
         "admin tooling"

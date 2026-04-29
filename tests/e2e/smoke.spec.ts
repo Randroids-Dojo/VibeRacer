@@ -92,6 +92,74 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
   await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
 })
 
+test('leaderboard rows open lap details with input and setup metadata', async ({
+  page,
+}) => {
+  await page.route('**/api/track/start', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        versionHash: 'a'.repeat(64),
+        versions: [{ hash: 'a'.repeat(64), createdAt: '2026-04-29T00:00:00.000Z' }],
+      }),
+    })
+  })
+  await page.route('**/api/leaderboard?**', async (route) => {
+    await route.fulfill({
+      contentType: 'application/json',
+      body: JSON.stringify({
+        entries: [
+          {
+            rank: 1,
+            initials: 'ABC',
+            lapTimeMs: 50123,
+            ts: 1_777_444_800_000,
+            isMe: false,
+            tuning: {
+              maxSpeed: 30,
+              maxReverseSpeed: 8,
+              accel: 22,
+              brake: 36,
+              reverseAccel: 12,
+              rollingFriction: 4,
+              steerRateLow: 2.2,
+              steerRateHigh: 2.2,
+              minSpeedForSteering: 0.8,
+              offTrackMaxSpeed: 10,
+              offTrackDrag: 16,
+            },
+            inputMode: 'gamepad',
+            nonce: 'b'.repeat(32),
+          },
+        ],
+        meBestRank: null,
+        pagination: {
+          offset: 0,
+          limit: 25,
+          total: 1,
+          hasPrev: false,
+          hasNext: false,
+        },
+      }),
+    })
+  })
+
+  await page.goto('/start')
+  await page.getByRole('textbox').fill('TST')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Leaderboards' }).click()
+
+  await expect(page.getByLabel('Gamepad')).toBeVisible()
+  await page.getByRole('button', { name: /View lap details for ABC/ }).click()
+  await expect(page.getByText("ABC's LAP DETAILS")).toBeVisible()
+  await expect(page.getByText('Gamepad', { exact: true })).toBeVisible()
+  await expect(page.getByText('Raced with gamepad')).toBeVisible()
+  await expect(page.getByText('Max speed', { exact: true })).toBeVisible()
+  await expect(page.getByText('30')).toBeVisible()
+})
+
 test('race HUD keeps mirror and bottom readouts in separate lanes on mobile', async ({
   page,
 }) => {

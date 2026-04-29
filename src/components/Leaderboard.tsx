@@ -6,6 +6,8 @@ import type { CarParams } from '@/game/physics'
 import {
   TUNING_PARAM_META,
   cloneDefaultParams,
+  inputModeDescription,
+  inputModeLabel,
   isStockParams,
   type InputMode,
 } from '@/lib/tuningSettings'
@@ -284,6 +286,20 @@ export function Leaderboard({
     setSortDirection(DEFAULT_SORT_DIRECTION[key])
   }
 
+  function openEntryDetails(entry: Entry) {
+    clickSort()
+    setSetupForEntry(entry)
+  }
+
+  function handleRowKeyDown(
+    event: React.KeyboardEvent<HTMLDivElement>,
+    entry: Entry,
+  ) {
+    if (event.key !== 'Enter' && event.key !== ' ') return
+    event.preventDefault()
+    openEntryDetails(entry)
+  }
+
   return (
     <div style={overlay}>
       <div style={panel}>
@@ -434,7 +450,12 @@ export function Leaderboard({
                 return (
                   <div
                     key={`${e.rank}-${e.ts}`}
-                    style={{ ...row, ...(e.isMe ? meRow : null) }}
+                    role="button"
+                    tabIndex={0}
+                    aria-label={`View lap details for ${e.initials}, rank ${e.rank}`}
+                    onClick={() => openEntryDetails(e)}
+                    onKeyDown={(event) => handleRowKeyDown(event, e)}
+                    style={{ ...row, ...rowButton, ...(e.isMe ? meRow : null) }}
                   >
                     <div style={{ ...cell, ...rankCell }}>{e.rank}</div>
                     <div style={{ ...cell, ...inputCell }}>
@@ -443,7 +464,7 @@ export function Leaderboard({
                     <div style={{ ...cell, ...initialsCell }}>
                       <span>{e.initials}</span>
                       {e.isMe ? <span style={meBadge}>you</span> : null}
-                      <SetupChip entry={e} onView={() => setSetupForEntry(e)} />
+                      <SetupChip entry={e} onView={() => openEntryDetails(e)} />
                     </div>
                     <div style={{ ...cell, ...timeCell, fontFamily: 'monospace' }}>
                       {formatLapTime(e.lapTimeMs)}
@@ -457,7 +478,8 @@ export function Leaderboard({
                       ) : offerChase && e.nonce ? (
                         <button
                           type="button"
-                          onClick={() => {
+                          onClick={(event) => {
+                            event.stopPropagation()
                             if (!onChaseRival || !e.nonce) return
                             clickConfirm()
                             onChaseRival({
@@ -581,7 +603,11 @@ function SortHeader({
 function InputModeIcon({ mode }: { mode: InputMode | null }) {
   if (mode === 'keyboard') {
     return (
-      <span style={iconSlot} title="Raced with keyboard" aria-label="Keyboard">
+      <span
+        style={iconSlot}
+        title={inputModeDescription(mode)}
+        aria-label={inputModeLabel(mode)}
+      >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="2" y="6" width="20" height="12" rx="2" />
           <line x1="6" y1="10" x2="6" y2="10" />
@@ -595,7 +621,11 @@ function InputModeIcon({ mode }: { mode: InputMode | null }) {
   }
   if (mode === 'touch') {
     return (
-      <span style={iconSlot} title="Raced on touch" aria-label="Touch">
+      <span
+        style={iconSlot}
+        title={inputModeDescription(mode)}
+        aria-label={inputModeLabel(mode)}
+      >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <rect x="6" y="2" width="12" height="20" rx="2" />
           <line x1="11" y1="18" x2="13" y2="18" />
@@ -605,7 +635,11 @@ function InputModeIcon({ mode }: { mode: InputMode | null }) {
   }
   if (mode === 'gamepad') {
     return (
-      <span style={iconSlot} title="Raced with gamepad" aria-label="Gamepad">
+      <span
+        style={iconSlot}
+        title={inputModeDescription(mode)}
+        aria-label={inputModeLabel(mode)}
+      >
         <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
           <path d="M6 8h12a4 4 0 0 1 4 4v2a3 3 0 0 1-5.4 1.8L15 14H9l-1.6 1.8A3 3 0 0 1 2 14v-2a4 4 0 0 1 4-4z" />
           <line x1="7" y1="11" x2="7" y2="13" />
@@ -617,7 +651,11 @@ function InputModeIcon({ mode }: { mode: InputMode | null }) {
     )
   }
   return (
-    <span style={{ ...iconSlot, opacity: 0.25 }} title="Unknown input" aria-label="Unknown input">
+    <span
+      style={{ ...iconSlot, opacity: 0.25 }}
+      title={inputModeDescription(mode)}
+      aria-label={inputModeLabel(mode)}
+    >
       <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="12" cy="12" r="9" />
       </svg>
@@ -637,9 +675,12 @@ function SetupChip({
   return (
     <button
       type="button"
-      onClick={onView}
+      onClick={(event) => {
+        event.stopPropagation()
+        onView()
+      }}
       style={stock ? stockChipStyle : tunedChipStyle}
-      title={stock ? 'Stock setup' : 'Custom setup, tap to view'}
+      title={stock ? 'Stock setup' : 'Custom setup, view details'}
     >
       {stock ? 'STOCK' : 'SETUP'}
     </button>
@@ -674,10 +715,25 @@ function SetupPopover({
     <div style={popoverOverlay} onClick={onClose}>
       <div style={popoverPanel} onClick={(e) => e.stopPropagation()}>
         <div style={popoverHeader}>
-          <div style={popoverTitle}>{entry.initials}&apos;s SETUP</div>
-          <button onClick={onClose} style={closeBtn} aria-label="Close setup">
+          <div style={popoverTitle}>{entry.initials}&apos;s LAP DETAILS</div>
+          <button onClick={onClose} style={closeBtn} aria-label="Close lap details">
             CLOSE
           </button>
+        </div>
+        <div style={detailGrid}>
+          <div style={detailItem}>
+            <span style={detailLabel}>Rank</span>
+            <strong>#{entry.rank}</strong>
+          </div>
+          <div style={detailItem}>
+            <span style={detailLabel}>Input</span>
+            <strong>{inputModeLabel(entry.inputMode)}</strong>
+            <span style={detailHint}>{inputModeDescription(entry.inputMode)}</span>
+          </div>
+          <div style={detailItem}>
+            <span style={detailLabel}>Date</span>
+            <strong>{formatDate(entry.ts)}</strong>
+          </div>
         </div>
         {tuning === null ? (
           <div style={status}>No setup recorded for this lap.</div>
@@ -926,6 +982,14 @@ const row: React.CSSProperties = {
   borderRadius: 4,
   fontSize: 14,
 }
+const rowButton: React.CSSProperties = {
+  background: 'transparent',
+  border: 'none',
+  color: 'inherit',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  textAlign: 'left',
+}
 const meRow: React.CSSProperties = {
   background: 'rgba(255,107,53,0.18)',
   fontWeight: 600,
@@ -1075,6 +1139,32 @@ const popoverSubtitle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 8,
+}
+const detailGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+  gap: 8,
+}
+const detailItem: React.CSSProperties = {
+  background: '#1d1d1d',
+  border: '1px solid #2a2a2a',
+  borderRadius: 6,
+  padding: '8px 10px',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 3,
+  minWidth: 0,
+}
+const detailLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1,
+  opacity: 0.55,
+  textTransform: 'uppercase',
+}
+const detailHint: React.CSSProperties = {
+  fontSize: 10,
+  lineHeight: 1.2,
+  opacity: 0.55,
 }
 const closeBtn: React.CSSProperties = {
   border: 'none',

@@ -7,6 +7,8 @@ import {
   TUNING_PARAM_META,
   cloneDefaultParams,
   clampParams,
+  inputModeDescription,
+  inputModeLabel,
   isStockParams,
   migrateLegacyTuning,
   parseStoredParams,
@@ -78,6 +80,19 @@ describe('CarParamsSchema', () => {
     delete partial.steerRateLow
     const parsed = CarParamsSchema.safeParse(partial)
     expect(parsed.success).toBe(false)
+  })
+})
+
+describe('input mode labels', () => {
+  it('returns player-facing labels for all recorded input modes', () => {
+    expect(inputModeLabel('keyboard')).toBe('Keyboard')
+    expect(inputModeLabel('touch')).toBe('Touch')
+    expect(inputModeLabel('gamepad')).toBe('Gamepad')
+  })
+
+  it('returns a clear fallback for legacy rows without recorded input', () => {
+    expect(inputModeLabel(null)).toBe('Unknown input')
+    expect(inputModeDescription(null)).toBe('Input device was not recorded')
   })
 })
 
