@@ -20,7 +20,7 @@
 | 9 | Title, menu, pause | done (title screen, slim pause menu, session summary exit, and Settings-tab secondary race tools all ship) |
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | done (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version + sortable rank / racer / time / date columns, pagination, input-mode badges, clickable lap details, overall record in HUD, PB fanfare, record fanfare, and guarded admin tooling all live) |
-| 12 | Feedback FAB | partial (API route + React component ship, pause-only visibility wired, Playwright open / close / submit coverage live; visual polish pending) |
+| 12 | Feedback FAB | done (API route + polished React component ship, pause-only visibility wired, Playwright open / close / submit coverage live) |
 | 13 | Audio | done (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, wrong-way and achievement cues, UI click variants, haptics, channel toggles, and channel volume sliders all ship) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
@@ -737,7 +737,7 @@ Multiple players can race the same `/slug?v=<hash>` simultaneously. The system m
 
 ## 12. Feedback FAB (port from Epoch, with two modifications)
 
-**Status.** Partial. API route ships (targets `Randroids-Dojo/VibeRacer`, em-dashes stripped). `FeedbackFab.tsx` component ships with both modifications: single-click opens the input panel directly, and the component is mounted only while the pause menu is open.
+**Status.** Done. API route ships (targets `Randroids-Dojo/VibeRacer`, em-dashes stripped). `FeedbackFab.tsx` component ships with both modifications: single-click opens the input panel directly, and the component is mounted only while the pause menu is open.
 
 ### Source files to port
 
@@ -775,9 +775,8 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 - Route is on the Node.js runtime. Requires `GITHUB_PAT` to post issues; returns 500 if the env var is missing.
 - Tests: `tests/unit/api.feedback.test.ts` covers the missing-PAT path, the missing-title path, and a mocked happy path that asserts the GitHub issues URL contains `Randroids-Dojo/VibeRacer`.
 - `src/components/FeedbackFab.tsx` ports the Epoch FAB with both modifications. The `View` type dropped to `'closed' | 'feedback'`; `toggle()` flips between them directly so a single click opens the input panel. Pause-only visibility is handled at the call site: `Game.tsx` only mounts `<FeedbackFab />` inside the `paused` branch alongside `<PauseMenu />`. No `isPaused` context needed since only `Game.tsx` renders the FAB.
-- Styling: inline `React.CSSProperties` objects instead of a global stylesheet, matching the project convention (HUD, PauseMenu, Countdown). FAB pill at `bottom-right`, panel opens immediately above it. Screenshot capture and console log buffering work unchanged from Epoch.
+- Styling: inline `React.CSSProperties` objects instead of a global stylesheet, matching the project convention (HUD, PauseMenu, Countdown). FAB pill at `bottom-right`, panel opens immediately above it. The panel now uses the shared menu theme, a clear paused-report header, an inline close control, attachment chips for screenshot and console logs, a stable textarea, a message count, and clearer success and retry states. Screenshot capture and console log buffering work unchanged from Epoch.
 - Playwright: `tests/e2e/feedback.spec.ts` covers the pause-menu FAB opening, closing, focusing the textarea, submitting through a mocked `/api/feedback` response, and verifying the posted payload includes the current route.
-- **Not yet landed.** Visual polish pass on the panel.
 
 ---
 

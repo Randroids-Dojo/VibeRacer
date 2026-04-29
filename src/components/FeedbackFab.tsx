@@ -1,6 +1,8 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type CSSProperties } from 'react'
+import { createPortal } from 'react-dom'
 import { initConsoleCapture, getCapturedLogs } from '@/lib/consoleCapture'
+import { menuTheme } from './MenuUI'
 
 type View = 'closed' | 'feedback'
 type SubmitState = 'idle' | 'sending' | 'success' | 'error'
@@ -32,12 +34,14 @@ export function FeedbackFab() {
   const [view, setView] = useState<View>('closed')
   const [submitState, setSubmitState] = useState<SubmitState>('idle')
   const [message, setMessage] = useState('')
+  const [mounted, setMounted] = useState(false)
   const fabRef = useRef<HTMLButtonElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
   const textareaRef = useRef<HTMLTextAreaElement>(null)
 
   useEffect(() => {
     initConsoleCapture()
+    setMounted(true)
   }, [])
 
   useEffect(() => {
@@ -104,14 +108,19 @@ export function FeedbackFab() {
   }
 
   const isOpen = view !== 'closed'
+  const messageLength = message.trim().length
 
-  return (
+  const content = (
     <>
       <button
         ref={fabRef}
         onClick={toggle}
         aria-label={isOpen ? 'Close feedback' : 'Send feedback'}
-        style={{ ...fabStyle, background: isOpen ? '#222' : '#ff6b35' }}
+        style={{
+          ...fabStyle,
+          background: isOpen ? menuTheme.secondaryBg : menuTheme.accentBg,
+          borderColor: isOpen ? menuTheme.ghostBorder : '#ff9b75',
+        }}
       >
         {isOpen ? (
           <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round">
@@ -127,11 +136,32 @@ export function FeedbackFab() {
 
       {isOpen ? (
         <div ref={panelRef} style={panelStyle}>
-          <div style={panelHeader}>send feedback</div>
+          <div style={panelHeader}>
+            <div>
+              <div style={eyebrowStyle}>Paused report</div>
+              <div style={panelTitle}>Feedback</div>
+            </div>
+            <button
+              type="button"
+              aria-label="Close panel"
+              onClick={() => setView('closed')}
+              style={panelClose}
+            >
+              Close
+            </button>
+          </div>
 
           {submitState !== 'success' ? (
             <form onSubmit={handleSubmit} style={formStyle}>
+              <div style={panelIntro}>
+                Send the current route, a small screenshot, and recent console
+                logs with your note.
+              </div>
+              <label style={fieldLabel} htmlFor="feedback-message">
+                Message
+              </label>
               <textarea
+                id="feedback-message"
                 ref={textareaRef}
                 placeholder="What's on your mind?"
                 rows={4}
@@ -140,9 +170,16 @@ export function FeedbackFab() {
                 onChange={(e) => setMessage(e.target.value)}
                 style={textareaStyle}
               />
+              <div style={metaRow}>
+                <span>{messageLength > 0 ? `${messageLength} chars` : 'Ready'}</span>
+                <span style={capturePills}>
+                  <span style={capturePill}>Screenshot</span>
+                  <span style={capturePill}>Console logs</span>
+                </span>
+              </div>
               <button
                 type="submit"
-                disabled={submitState === 'sending' || !message.trim()}
+                disabled={submitState === 'sending' || messageLength === 0}
                 style={{
                   ...submitBtn,
                   background:
@@ -152,7 +189,7 @@ export function FeedbackFab() {
                         ? '#555'
                         : '#ff6b35',
                   cursor: submitState === 'sending' ? 'wait' : 'pointer',
-                  opacity: !message.trim() ? 0.5 : 1,
+                  opacity: messageLength === 0 ? 0.55 : 1,
                 }}
               >
                 {submitState === 'sending'
@@ -161,13 +198,15 @@ export function FeedbackFab() {
                     ? 'Failed, try again'
                     : 'Send Feedback'}
               </button>
-              <span style={hintStyle}>
-                Posted as a GitHub issue. Screenshot included.
+              <span style={hintStyle} aria-live="polite">
+                {submitState === 'error'
+                  ? 'Submission failed. Your message is still here.'
+                  : 'Posted as a GitHub issue for the current track.'}
               </span>
             </form>
           ) : (
             <div style={successStyle}>
-              <div style={{ fontSize: 36, color: '#5fe08a' }}>✓</div>
+              <div style={successMark}>✓</div>
               <p style={{ margin: '6px 0 0', fontWeight: 700 }}>
                 Thanks for the feedback!
               </p>
@@ -180,76 +219,153 @@ export function FeedbackFab() {
       ) : null}
     </>
   )
+
+  if (!mounted) return content
+  return createPortal(content, document.body)
 }
 
-const fabStyle: React.CSSProperties = {
+const fabStyle: CSSProperties = {
   position: 'fixed',
   right: 20,
   bottom: 20,
   width: 52,
   height: 52,
   borderRadius: '50%',
-  border: 'none',
+  border: '1px solid',
   color: 'white',
   cursor: 'pointer',
   display: 'grid',
   placeItems: 'center',
-  boxShadow: '0 6px 16px rgba(0,0,0,0.35)',
+  boxShadow: '0 14px 34px rgba(0,0,0,0.42)',
   zIndex: 1001,
-  fontFamily: 'system-ui, sans-serif',
+  fontFamily: menuTheme.font,
 }
-const panelStyle: React.CSSProperties = {
+const panelStyle: CSSProperties = {
   position: 'fixed',
   right: 20,
   bottom: 84,
-  width: 320,
+  width: 360,
   maxWidth: 'calc(100vw - 40px)',
-  background: '#1a1a1a',
-  color: 'white',
-  borderRadius: 10,
-  padding: 14,
-  boxShadow: '0 10px 30px rgba(0,0,0,0.5)',
+  background: menuTheme.panelBg,
+  color: menuTheme.textPrimary,
+  borderRadius: 12,
+  padding: 16,
+  boxShadow: menuTheme.panelShadow,
   zIndex: 1001,
-  fontFamily: 'system-ui, sans-serif',
-  border: '1px solid #333',
+  fontFamily: menuTheme.font,
+  border: `1px solid ${menuTheme.panelBorder}`,
+  boxSizing: 'border-box',
 }
-const panelHeader: React.CSSProperties = {
+const panelHeader: CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 16,
+  marginBottom: 12,
+}
+const eyebrowStyle: CSSProperties = {
   fontSize: 12,
-  opacity: 0.7,
   letterSpacing: 1.5,
   textTransform: 'uppercase',
-  marginBottom: 8,
+  color: menuTheme.textMuted,
 }
-const formStyle: React.CSSProperties = {
+const panelTitle: CSSProperties = {
+  fontSize: 24,
+  fontWeight: 800,
+  letterSpacing: 1.2,
+  marginTop: 2,
+}
+const panelClose: CSSProperties = {
+  border: `1px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  background: 'transparent',
+  color: '#cfcfcf',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 1,
+  padding: '7px 10px',
+  textTransform: 'uppercase',
+}
+const formStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 8,
+  gap: 10,
 }
-const textareaStyle: React.CSSProperties = {
-  background: '#111',
-  color: 'white',
-  border: '1px solid #333',
-  borderRadius: 6,
-  padding: 8,
+const panelIntro: CSSProperties = {
+  color: menuTheme.textHint,
+  fontSize: 13,
+  lineHeight: 1.45,
+}
+const fieldLabel: CSSProperties = {
+  color: menuTheme.textMuted,
+  fontSize: 12,
+  fontWeight: 700,
+  letterSpacing: 1.2,
+  textTransform: 'uppercase',
+}
+const textareaStyle: CSSProperties = {
+  background: menuTheme.inputBg,
+  color: menuTheme.textPrimary,
+  border: `1px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  padding: 11,
   fontFamily: 'inherit',
   fontSize: 14,
+  lineHeight: 1.45,
+  minHeight: 104,
   resize: 'vertical',
   outline: 'none',
+  boxSizing: 'border-box',
 }
-const submitBtn: React.CSSProperties = {
-  color: 'white',
+const metaRow: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 10,
+  color: menuTheme.textMuted,
+  fontSize: 11,
+}
+const capturePills: CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  flexWrap: 'wrap',
+  justifyContent: 'flex-end',
+}
+const capturePill: CSSProperties = {
+  border: `1px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 999,
+  padding: '3px 7px',
+  color: menuTheme.textHint,
+}
+const submitBtn: CSSProperties = {
+  color: menuTheme.accentText,
   border: 'none',
-  borderRadius: 6,
-  padding: '9px 12px',
-  fontWeight: 600,
+  borderRadius: 8,
+  padding: '11px 14px',
+  fontWeight: 800,
   fontSize: 14,
   fontFamily: 'inherit',
+  minHeight: 42,
 }
-const hintStyle: React.CSSProperties = {
-  fontSize: 11,
-  opacity: 0.55,
+const hintStyle: CSSProperties = {
+  color: menuTheme.textMuted,
+  fontSize: 12,
+  lineHeight: 1.35,
 }
-const successStyle: React.CSSProperties = {
+const successStyle: CSSProperties = {
   textAlign: 'center',
-  padding: '10px 0 4px',
+  padding: '14px 0 8px',
+}
+const successMark: CSSProperties = {
+  display: 'inline-grid',
+  placeItems: 'center',
+  width: 48,
+  height: 48,
+  borderRadius: '50%',
+  background: 'rgba(95,224,138,0.13)',
+  color: '#5fe08a',
+  fontSize: 34,
+  fontWeight: 800,
 }
