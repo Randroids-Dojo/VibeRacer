@@ -213,6 +213,29 @@ export interface DualRumbleMagnitudes {
   weakMagnitude: number
 }
 
+export interface GamepadRumbleIntensity {
+  strong: number
+  weak: number
+}
+
+export const GAMEPAD_RUMBLE_INTENSITY_MIN = 0
+export const GAMEPAD_RUMBLE_INTENSITY_MAX = 1
+export const DEFAULT_GAMEPAD_RUMBLE_INTENSITY: GamepadRumbleIntensity = {
+  strong: 1,
+  weak: 1,
+}
+
+export const GamepadRumbleIntensitySchema = z.object({
+  strong: z
+    .number()
+    .min(GAMEPAD_RUMBLE_INTENSITY_MIN)
+    .max(GAMEPAD_RUMBLE_INTENSITY_MAX),
+  weak: z
+    .number()
+    .min(GAMEPAD_RUMBLE_INTENSITY_MIN)
+    .max(GAMEPAD_RUMBLE_INTENSITY_MAX),
+})
+
 interface VibrationActuator {
   playEffect: (
     type: string,
@@ -294,17 +317,59 @@ function effectFor(outcome: HapticOutcome): DualRumbleEffect | null {
   }
 }
 
+function normalizeIntensity(
+  intensity?: GamepadRumbleIntensity,
+): GamepadRumbleIntensity {
+  return {
+    strong: clamp01(
+      intensity?.strong ?? DEFAULT_GAMEPAD_RUMBLE_INTENSITY.strong,
+    ),
+    weak: clamp01(intensity?.weak ?? DEFAULT_GAMEPAD_RUMBLE_INTENSITY.weak),
+  }
+}
+
+export function scaleRumbleMagnitudes(
+  mags: DualRumbleMagnitudes,
+  intensity?: GamepadRumbleIntensity,
+): DualRumbleMagnitudes {
+  const scale = normalizeIntensity(intensity)
+  return {
+    strongMagnitude: clamp01(mags.strongMagnitude) * scale.strong,
+    weakMagnitude: clamp01(mags.weakMagnitude) * scale.weak,
+  }
+}
+
+function scaleRumbleEffect(
+  effect: DualRumbleEffect,
+  intensity?: GamepadRumbleIntensity,
+): DualRumbleEffect {
+  const scale = normalizeIntensity(intensity)
+  return {
+    duration: effect.duration,
+    strongMagnitude: clamp01(effect.strongMagnitude) * scale.strong,
+    weakMagnitude: clamp01(effect.weakMagnitude) * scale.weak,
+  }
+}
+
 // Fire a one-shot impulse on the gamepad's motors. Returns true when the
 // effect was scheduled (or a legacy pulse was queued); false on any failure.
 // Defensive: null pad, missing actuator, thrown promise all return false.
 export function fireGamepadImpulse(
   outcome: HapticOutcome,
   pad: Gamepad | null,
+  intensity?: GamepadRumbleIntensity,
 ): boolean {
   const r = asRumblePad(pad)
   if (!r) return false
-  const effect = effectFor(outcome)
-  if (!effect || effect.duration <= 0) return false
+  const baseEffect = effectFor(outcome)
+  if (!baseEffect || baseEffect.duration <= 0) return false
+  const effect = scaleRumbleEffect(baseEffect, intensity)
+  if (
+    effect.strongMagnitude <= RUMBLE_EPSILON &&
+    effect.weakMagnitude <= RUMBLE_EPSILON
+  ) {
+    return false
+  }
   const actuator = r.vibrationActuator
   if (actuator && typeof actuator.playEffect === 'function') {
     try {
@@ -346,11 +411,13 @@ export function fireGamepadImpulse(
 export function setGamepadContinuousRumble(
   pad: Gamepad | null,
   mags: DualRumbleMagnitudes,
+  intensity?: GamepadRumbleIntensity,
 ): void {
   const r = asRumblePad(pad)
   if (!r || !pad) return
-  const strong = clamp01(mags.strongMagnitude)
-  const weak = clamp01(mags.weakMagnitude)
+  const scaled = scaleRumbleMagnitudes(mags, intensity)
+  const strong = clamp01(scaled.strongMagnitude)
+  const weak = clamp01(scaled.weakMagnitude)
   const prev = lastContinuousMags.get(pad)
   if (strong <= RUMBLE_EPSILON && weak <= RUMBLE_EPSILON) {
     // Already stopped: skip the actuator call so a steady idle does not

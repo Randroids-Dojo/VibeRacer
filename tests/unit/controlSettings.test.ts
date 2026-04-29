@@ -675,6 +675,54 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().gamepadRumble).toBe('auto')
   })
 
+  it('defaults gamepadRumbleIntensity to full strength on both motors', () => {
+    expect(DEFAULT_CONTROL_SETTINGS.gamepadRumbleIntensity).toEqual({
+      strong: 1,
+      weak: 1,
+    })
+    expect(cloneDefaultSettings().gamepadRumbleIntensity).toEqual({
+      strong: 1,
+      weak: 1,
+    })
+  })
+
+  it('round-trips gamepadRumbleIntensity', () => {
+    const custom = cloneDefaultSettings()
+    custom.gamepadRumbleIntensity = { strong: 0.35, weak: 0.8 }
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it('backfills gamepadRumbleIntensity when reading legacy storage that omits it', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().gamepadRumbleIntensity).toEqual({
+      strong: 1,
+      weak: 1,
+    })
+  })
+
+  it('rejects out-of-range gamepadRumbleIntensity and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      gamepadRumbleIntensity: { strong: 1.2, weak: 0.5 },
+    })
+    expect(readStoredControlSettings().gamepadRumbleIntensity).toEqual({
+      strong: 1,
+      weak: 1,
+    })
+  })
+
   it("defaults timeOfDayCycle to 'off'", () => {
     expect(DEFAULT_CONTROL_SETTINGS.timeOfDayCycle).toBe('off')
     expect(cloneDefaultSettings().timeOfDayCycle).toBe('off')

@@ -17,7 +17,7 @@ import type { TrackDecoration } from '@/lib/decorations'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
-import type { HapticMode } from '@/lib/haptics'
+import type { GamepadRumbleIntensity, HapticMode } from '@/lib/haptics'
 import {
   TIME_OF_DAY_CYCLE_PERIOD_MS,
   activeTimeOfDayAt,
@@ -697,6 +697,10 @@ function GameSession({
   // the mode against the active pad's rumble capability at the call site.
   const gamepadRumbleModeRef = useRef<HapticMode>(settings.gamepadRumble)
   gamepadRumbleModeRef.current = settings.gamepadRumble
+  const gamepadRumbleIntensityRef = useRef<GamepadRumbleIntensity>(
+    settings.gamepadRumbleIntensity,
+  )
+  gamepadRumbleIntensityRef.current = settings.gamepadRumbleIntensity
   // The active Gamepad, owned by the parent so callbacks declared above the
   // useGamepad call (pause / resume) can reference it without hitting TDZ.
   // useGamepad receives this ref as `padOutRef` further down the component
@@ -999,7 +1003,11 @@ function GameSession({
           padHasRumble(gamepadPadRef.current),
         )
       ) {
-        fireGamepadImpulse('wrongWay', gamepadPadRef.current)
+        fireGamepadImpulse(
+          'wrongWay',
+          gamepadPadRef.current,
+          gamepadRumbleIntensityRef.current,
+        )
       }
     }
     wrongWayAudioActiveRef.current = next.wrongWay
@@ -2164,7 +2172,11 @@ function GameSession({
         padHasRumble(gamepadPadRef.current),
       )
     ) {
-      fireGamepadImpulse(outcome, gamepadPadRef.current)
+      fireGamepadImpulse(
+        outcome,
+        gamepadPadRef.current,
+        gamepadRumbleIntensityRef.current,
+      )
     }
     if (outcome === 'record' || outcome === 'pb') {
       setConfettiKind(outcome)
@@ -2273,7 +2285,11 @@ function GameSession({
         padHasRumble(gamepadPadRef.current),
       )
     ) {
-      fireGamepadImpulse('achievement', gamepadPadRef.current)
+      fireGamepadImpulse(
+        'achievement',
+        gamepadPadRef.current,
+        gamepadRumbleIntensityRef.current,
+      )
     }
     const label =
       names.length === 1
@@ -2464,6 +2480,7 @@ function GameSession({
         headlightsOnRef={headlightsOnRef}
         brakeLightModeRef={brakeLightModeRef}
         gamepadRumbleModeRef={gamepadRumbleModeRef}
+        gamepadRumbleIntensityRef={gamepadRumbleIntensityRef}
         gamepadPadRef={gamepadPadRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}

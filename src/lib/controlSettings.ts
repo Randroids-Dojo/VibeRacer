@@ -36,8 +36,11 @@ import {
   type BrakeLightMode,
 } from './brakeLights'
 import {
+  DEFAULT_GAMEPAD_RUMBLE_INTENSITY,
   DEFAULT_HAPTIC_MODE,
+  GamepadRumbleIntensitySchema,
   HapticModeSchema,
+  type GamepadRumbleIntensity,
   type HapticMode,
 } from './haptics'
 import {
@@ -346,6 +349,11 @@ export interface ControlSettings {
   // rumble. Default 'auto' so desktop players with a controller feel it on
   // their next race without having to dig into Settings.
   gamepadRumble: HapticMode
+  // Per-motor intensity for gamepad rumble. Strong is the low-frequency
+  // motor that carries engine / chassis weight. Weak is the high-frequency
+  // motor that carries slip / drift and warning chatter. Defaults preserve
+  // the shipped 100 percent feel for both motors.
+  gamepadRumbleIntensity: GamepadRumbleIntensity
   // Auto-rotate the active time-of-day skin through noon -> morning -> sunset
   // -> night while the player races. Pure cosmetic. Default 'off' so legacy
   // stored payloads keep their existing screen exactly as it was; players who
@@ -404,6 +412,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
   haptics: DEFAULT_HAPTIC_MODE,
   gamepadRumble: DEFAULT_HAPTIC_MODE,
+  gamepadRumbleIntensity: DEFAULT_GAMEPAD_RUMBLE_INTENSITY,
   timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
 }
 
@@ -580,6 +589,11 @@ const ControlSettingsSchema = z.object({
   // players with a connected pad feel the Forza-lite rumble on the next race;
   // legacy stored payloads pick up the same default so the upgrade is opt-out.
   gamepadRumble: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
+  // Rumble intensity landed after the base gamepad rumble setting. Defaults
+  // are both 1 so legacy payloads preserve the exact shipped feel.
+  gamepadRumbleIntensity: GamepadRumbleIntensitySchema.default(
+    DEFAULT_GAMEPAD_RUMBLE_INTENSITY,
+  ),
   // Time-of-day auto cycle landed after haptics. Default 'off' so legacy stored
   // payloads keep their existing screen exactly as it was; players who want a
   // Forza Horizon-style rotating sky have to flip it on once in Settings.
@@ -624,6 +638,7 @@ export function cloneDefaultSettings(): ControlSettings {
     brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
     haptics: DEFAULT_CONTROL_SETTINGS.haptics,
     gamepadRumble: DEFAULT_CONTROL_SETTINGS.gamepadRumble,
+    gamepadRumbleIntensity: { ...DEFAULT_GAMEPAD_RUMBLE_INTENSITY },
     timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
   }
 }

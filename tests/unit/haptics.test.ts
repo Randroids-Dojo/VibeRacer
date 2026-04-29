@@ -1,8 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_HAPTIC_MODE,
+  GAMEPAD_RUMBLE_INTENSITY_MAX,
+  GAMEPAD_RUMBLE_INTENSITY_MIN,
   GAMEPAD_RUMBLE_MODE_DESCRIPTIONS,
   GAMEPAD_RUMBLE_MODE_LABELS,
+  GamepadRumbleIntensitySchema,
   HAPTIC_MODES,
   HAPTIC_MODE_DESCRIPTIONS,
   HAPTIC_MODE_LABELS,
@@ -22,6 +25,7 @@ import {
   isTouchRuntime,
   patternFor,
   patternTotalMs,
+  scaleRumbleMagnitudes,
   setGamepadContinuousRumble,
   shouldGamepadRumbleFire,
   shouldHapticFire,
@@ -506,6 +510,49 @@ describe('RUMBLE_EFFECTS', () => {
   })
 })
 
+describe('GamepadRumbleIntensitySchema', () => {
+  it('accepts per-motor intensity values in range', () => {
+    expect(
+      GamepadRumbleIntensitySchema.safeParse({ strong: 0.25, weak: 0.75 })
+        .success,
+    ).toBe(true)
+    expect(
+      GamepadRumbleIntensitySchema.safeParse({
+        strong: GAMEPAD_RUMBLE_INTENSITY_MIN,
+        weak: GAMEPAD_RUMBLE_INTENSITY_MAX,
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects out-of-range per-motor intensity values', () => {
+    expect(
+      GamepadRumbleIntensitySchema.safeParse({ strong: -0.01, weak: 1 })
+        .success,
+    ).toBe(false)
+    expect(
+      GamepadRumbleIntensitySchema.safeParse({ strong: 1, weak: 1.01 })
+        .success,
+    ).toBe(false)
+  })
+})
+
+describe('scaleRumbleMagnitudes', () => {
+  it('scales strong and weak motors independently', () => {
+    expect(
+      scaleRumbleMagnitudes(
+        { strongMagnitude: 0.8, weakMagnitude: 0.4 },
+        { strong: 0.5, weak: 0.25 },
+      ),
+    ).toEqual({ strongMagnitude: 0.4, weakMagnitude: 0.1 })
+  })
+
+  it('defaults to full intensity when no setting is supplied', () => {
+    expect(
+      scaleRumbleMagnitudes({ strongMagnitude: 0.8, weakMagnitude: 0.4 }),
+    ).toEqual({ strongMagnitude: 0.8, weakMagnitude: 0.4 })
+  })
+})
+
 describe('shouldTouchHapticFire', () => {
   it('off always suppresses', () => {
     expect(shouldTouchHapticFire('off', true)).toBe(false)
@@ -610,6 +657,24 @@ describe('fireGamepadImpulse', () => {
     })
   })
 
+  it('applies per-channel intensity to vibrationActuator impulses', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(
+      fireGamepadImpulse('record', pad, { strong: 0.5, weak: 0.25 }),
+    ).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_EFFECTS.record.duration,
+      strongMagnitude: RUMBLE_EFFECTS.record.strongMagnitude * 0.5,
+      weakMagnitude: RUMBLE_EFFECTS.record.weakMagnitude * 0.25,
+    })
+  })
+
+  it('suppresses impulses when both intensity channels are zero', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(fireGamepadImpulse('record', pad, { strong: 0, weak: 0 })).toBe(false)
+    expect(actuator.playEffect).not.toHaveBeenCalled()
+  })
+
   it('drives the wrongWay impulse through vibrationActuator.playEffect', () => {
     const { pad, actuator } = makePadWithActuator()
     expect(fireGamepadImpulse('wrongWay', pad)).toBe(true)
@@ -693,6 +758,20 @@ describe('setGamepadContinuousRumble', () => {
       duration: RUMBLE_FRAME_DURATION_MS,
       strongMagnitude: 0.4,
       weakMagnitude: 0.6,
+    })
+  })
+
+  it('applies per-channel intensity to continuous writes', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(
+      pad,
+      { strongMagnitude: 0.4, weakMagnitude: 0.6 },
+      { strong: 0.5, weak: 0.25 },
+    )
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_FRAME_DURATION_MS,
+      strongMagnitude: 0.2,
+      weakMagnitude: 0.15,
     })
   })
 

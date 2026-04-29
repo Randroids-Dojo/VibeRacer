@@ -86,6 +86,8 @@ import {
   type BrakeLightMode,
 } from '@/lib/brakeLights'
 import {
+  GAMEPAD_RUMBLE_INTENSITY_MAX,
+  GAMEPAD_RUMBLE_INTENSITY_MIN,
   GAMEPAD_RUMBLE_MODE_DESCRIPTIONS,
   GAMEPAD_RUMBLE_MODE_LABELS,
   HAPTIC_MODES,
@@ -593,6 +595,26 @@ export function SettingsPane({
     onChange({ ...settings, gamepadRumble: value })
   }
 
+  function setGamepadRumbleStrong(value: number) {
+    onChange({
+      ...settings,
+      gamepadRumbleIntensity: {
+        ...settings.gamepadRumbleIntensity,
+        strong: value,
+      },
+    })
+  }
+
+  function setGamepadRumbleWeak(value: number) {
+    onChange({
+      ...settings,
+      gamepadRumbleIntensity: {
+        ...settings.gamepadRumbleIntensity,
+        weak: value,
+      },
+    })
+  }
+
   function setHaptics(value: HapticMode) {
     clickSoft()
     onChange({ ...settings, haptics: value })
@@ -1042,8 +1064,8 @@ export function SettingsPane({
             Forza-lite rumble on a connected controller. The strong motor
             tracks engine load and surface (asphalt vs grass), the weak motor
             tracks slip and drift, with extra impulses on lap finish, PB,
-            record, and going off track. Works on Xbox 360 and any pad with
-            dual rumble motors.
+            record, wrong-way warnings, achievements, and going off track.
+            Works on Xbox 360 and any pad with dual rumble motors.
           </MenuHint>
           <div style={touchToggleRow}>
             {HAPTIC_MODES.map((mode) => {
@@ -1063,6 +1085,22 @@ export function SettingsPane({
           <MenuHint>
             {GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[settings.gamepadRumble]}
           </MenuHint>
+          <MenuSlider
+            label="Strong motor"
+            value={settings.gamepadRumbleIntensity.strong}
+            min={GAMEPAD_RUMBLE_INTENSITY_MIN}
+            max={GAMEPAD_RUMBLE_INTENSITY_MAX}
+            disabled={settings.gamepadRumble === 'off'}
+            onChange={setGamepadRumbleStrong}
+          />
+          <MenuSlider
+            label="Weak motor"
+            value={settings.gamepadRumbleIntensity.weak}
+            min={GAMEPAD_RUMBLE_INTENSITY_MIN}
+            max={GAMEPAD_RUMBLE_INTENSITY_MAX}
+            disabled={settings.gamepadRumble === 'off'}
+            onChange={setGamepadRumbleWeak}
+          />
           </MenuSection>
           </>
         ) : null}

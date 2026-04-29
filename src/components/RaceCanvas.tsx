@@ -47,6 +47,7 @@ import {
   setGamepadContinuousRumble,
   shouldGamepadRumbleFire,
   stopGamepadRumble,
+  type GamepadRumbleIntensity,
   type HapticMode,
 } from '@/lib/haptics'
 import { computeContinuousRumble } from '@/lib/gamepadRumble'
@@ -221,6 +222,7 @@ export interface RaceCanvasProps {
   // optional so the canvas keeps working in tests / standalone embeds with no
   // controller wiring.
   gamepadRumbleModeRef?: MutableRefObject<HapticMode>
+  gamepadRumbleIntensityRef?: MutableRefObject<GamepadRumbleIntensity>
   gamepadPadRef?: MutableRefObject<Gamepad | null>
   // Live time-of-day lighting override from Settings. Same poll-and-set
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
@@ -362,6 +364,7 @@ export function RaceCanvas({
   headlightsOnRef,
   brakeLightModeRef,
   gamepadRumbleModeRef,
+  gamepadRumbleIntensityRef,
   gamepadPadRef,
   timeOfDayRef,
   weatherRef,
@@ -1406,6 +1409,7 @@ export function RaceCanvas({
       // while the per-frame call reasserts the continuous magnitudes the
       // moment the impulse finishes.
       const rumbleMode = gamepadRumbleModeRef?.current ?? 'auto'
+      const rumbleIntensity = gamepadRumbleIntensityRef?.current
       const pad = gamepadPadRef?.current ?? null
       // Auto resolves against the active pad's own capability (not a global
       // navigator.getGamepads() walk) so the rAF loop never pays for a per-
@@ -1428,9 +1432,10 @@ export function RaceCanvas({
         // zero-zero result means an idle on-track straightaway with no slip;
         // skip the helper entirely and only call stopGamepadRumble on the
         // transition from active to idle so the motor settles exactly once.
-        const continuousActive = mags.strongMagnitude > 0 || mags.weakMagnitude > 0
+        const continuousActive =
+          mags.strongMagnitude > 0 || mags.weakMagnitude > 0
         if (continuousActive) {
-          setGamepadContinuousRumble(pad, mags)
+          setGamepadContinuousRumble(pad, mags, rumbleIntensity)
           rumbleWasActive = true
         } else if (rumbleWasActive) {
           stopGamepadRumble(pad)
@@ -1445,7 +1450,7 @@ export function RaceCanvas({
           !state.onTrack &&
           ts - rumbleLastOffTrackTs >= 250
         ) {
-          fireGamepadImpulse('offTrack', pad)
+          fireGamepadImpulse('offTrack', pad, rumbleIntensity)
           rumbleLastOffTrackTs = ts
         }
       } else if (rumbleWasActive) {
