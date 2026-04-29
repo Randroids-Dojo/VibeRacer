@@ -4,7 +4,7 @@
 
 ---
 
-## Status (last updated 2026-04-28)
+## Status (last updated 2026-04-29)
 
 **Status key.** Each section below carries a `**Status.**` line. Sections that have shipped also include a `### Build log` subsection recording what landed, the key files, and any non-obvious decisions. This GDD is intended as a record of truth: when code lands, the relevant section is updated.
 

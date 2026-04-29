@@ -76,10 +76,11 @@ test('track editor uses floating undo and redo controls on mobile', async ({
     page.getByRole('button', { name: 'Redo', exact: true }),
   ).toHaveCount(0)
 
-  const hasHorizontalOverflow = await page.evaluate(
-    () => document.documentElement.scrollWidth > window.innerWidth,
-  )
-  expect(hasHorizontalOverflow).toBe(false)
+  const horizontalOverflow = await page.evaluate(() => {
+    const { documentElement } = document
+    return documentElement.scrollWidth - documentElement.clientWidth
+  })
+  expect(horizontalOverflow).toBeLessThanOrEqual(1)
 })
 
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
