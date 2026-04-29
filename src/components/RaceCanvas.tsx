@@ -38,7 +38,7 @@ import {
 } from '@/lib/brakeLights'
 import {
   fireGamepadImpulse,
-  hasRumbleCapableGamepad,
+  padHasRumble,
   setGamepadContinuousRumble,
   shouldGamepadRumbleFire,
   stopGamepadRumble,
@@ -1250,13 +1250,13 @@ export function RaceCanvas({
       // moment the impulse finishes.
       const rumbleMode = gamepadRumbleModeRef?.current ?? 'auto'
       const pad = gamepadPadRef?.current ?? null
-      // Off and On short-circuit without walking navigator.getGamepads() each
-      // frame; only Auto pays the cost of capability detection (and even then
-      // only when a pad is actually connected, since the resolver short-circuits
-      // on hasGamepad === false anyway).
+      // Auto resolves against the active pad's own capability (not a global
+      // navigator.getGamepads() walk) so the rAF loop never pays for a per-
+      // frame scan, and a different non-rumble-capable pad cannot fool the
+      // resolver into thinking the active pad will buzz.
       const rumbleAllowed =
         rumbleMode === 'auto'
-          ? shouldGamepadRumbleFire(rumbleMode, hasRumbleCapableGamepad())
+          ? shouldGamepadRumbleFire(rumbleMode, padHasRumble(pad))
           : shouldGamepadRumbleFire(rumbleMode, false)
       if (rumbleAllowed && pad) {
         const speedAbs = Math.abs(state.speed)

@@ -218,7 +218,12 @@ function asRumblePad(pad: Gamepad | null): RumblePad | null {
   return pad as unknown as RumblePad
 }
 
-function padHasRumble(pad: Gamepad): boolean {
+// True when the supplied pad exposes either a `vibrationActuator` (modern
+// Chromium dual-rumble path) or a non-empty `hapticActuators` array (legacy
+// Firefox / WebKit `pulse` path). Exported so the per-frame rumble loop can
+// resolve auto-mode capability against the live active pad without walking
+// `navigator.getGamepads()` 60 fps.
+export function padHasRumble(pad: Gamepad | null): boolean {
   const r = asRumblePad(pad)
   if (!r) return false
   if (r.vibrationActuator && typeof r.vibrationActuator.playEffect === 'function') return true

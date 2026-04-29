@@ -690,9 +690,14 @@ function GameSession({
   // Same ref pattern for gamepad rumble. Mirrors `settings.gamepadRumble` so
   // RaceCanvas's per-frame rumble loop reads the freshest pick without
   // re-mounting on every Settings flip. shouldGamepadRumbleFire reconciles
-  // the mode against `hasRumbleCapableGamepad()` at the call site.
+  // the mode against the active pad's rumble capability at the call site.
   const gamepadRumbleModeRef = useRef<HapticMode>(settings.gamepadRumble)
   gamepadRumbleModeRef.current = settings.gamepadRumble
+  // The active Gamepad, owned by the parent so callbacks declared above the
+  // useGamepad call (pause / resume) can reference it without hitting TDZ.
+  // useGamepad receives this ref as `padOutRef` further down the component
+  // and writes the live pad here every animation frame.
+  const gamepadPadRef = useRef<Gamepad | null>(null)
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -1010,10 +1015,8 @@ function GameSession({
     setPaused(true)
     // Stop the continuous gamepad rumble so the motor does not keep humming
     // while the menu is up. The per-frame loop will reassert magnitudes the
-    // moment the player resumes. Ref identity is stable, so the empty deps
-    // array is correct here.
+    // moment the player resumes.
     stopGamepadRumble(gamepadPadRef.current)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const resume = useCallback(() => {
@@ -1597,11 +1600,7 @@ function GameSession({
     if (pausedRef.current) resume()
     else pause()
   }, [phase, pause, resume])
-  const { padRef: gamepadPadRef } = useGamepad(
-    keys,
-    handlePadPause,
-    settings.gamepadBindings,
-  )
+  useGamepad(keys, handlePadPause, settings.gamepadBindings, gamepadPadRef)
   useEffect(() => {
     let raf = 0
     function check() {

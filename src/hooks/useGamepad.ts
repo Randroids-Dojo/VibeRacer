@@ -1,5 +1,11 @@
 'use client'
-import { useEffect, useRef, useState, type RefObject } from 'react'
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MutableRefObject,
+  type RefObject,
+} from 'react'
 import {
   gamepadIsActive,
   gamepadToInput,
@@ -29,6 +35,12 @@ export function useGamepad(
   keys: { current: KeyInput },
   onPauseToggle?: () => void,
   bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
+  // Optional output ref. When the parent owns the ref (so it can be referenced
+  // by sibling callbacks like `pause` that are declared above the useGamepad
+  // call), pass it in and the hook writes the active Gamepad here every poll.
+  // When omitted the hook uses its own internal ref and exposes it on the
+  // return tuple.
+  padOutRef?: MutableRefObject<Gamepad | null>,
 ): {
   connected: boolean
   padId: string | null
@@ -45,10 +57,14 @@ export function useGamepad(
   // restart polling on every binding change.
   const bindingsRef = useRef<GamepadBindings>(bindings)
   bindingsRef.current = bindings
-  // The active Gamepad object, refreshed every poll. Exposed so the rumble
-  // path in Game.tsx can write to the same pad the input loop already sees,
-  // without doing a duplicate navigator.getGamepads() walk.
-  const padRef = useRef<Gamepad | null>(null)
+  // Internal ref used when the parent did not pass `padOutRef`. When the
+  // parent did pass one, we write to that one instead so the parent can
+  // reference the same live `Gamepad` object from its other callbacks
+  // without depending on this hook's return value (avoiding TDZ pitfalls
+  // when the consumer declares `pause` / `resume` callbacks above the
+  // useGamepad call).
+  const internalPadRef = useRef<Gamepad | null>(null)
+  const padRef = padOutRef ?? internalPadRef
 
   useEffect(() => {
     if (typeof window === 'undefined') return
