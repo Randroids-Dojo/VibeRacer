@@ -12,6 +12,7 @@ import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TrackBiome } from '@/lib/biomes'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -215,6 +216,7 @@ interface GameProps {
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
+  trackBiome?: TrackBiome | null
   // Track-author baked mood (timeOfDay / weather). Null when the author has
   // not picked one, or when the version predates this feature. When set and
   // the player has `respectTrackMood: true` in Settings (the default), the
@@ -390,6 +392,7 @@ function GameSession({
   checkpointCount,
   checkpoints,
   transmission = 'automatic',
+  trackBiome = null,
   trackMood = null,
   initials,
   initialRecord,
@@ -2370,6 +2373,7 @@ function GameSession({
         checkpointCount={checkpointCount}
         checkpoints={checkpoints}
         transmission={transmission}
+        biome={trackBiome ?? null}
         paramsRef={paramsRef}
         keys={keys}
         pausedRef={pausedRef}

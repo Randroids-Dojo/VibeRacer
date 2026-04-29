@@ -14,6 +14,7 @@ import {
   buildStartBarriers,
   buildTreeScenery,
   distanceToTrack,
+  getSceneryStyle,
   makeSceneryRng,
   maybeTreeAt,
   sceneryBounds,
@@ -324,6 +325,22 @@ describe('buildScenery', () => {
     // Default oval has 4 corners; cones per corner default plus barriers.
     expect(items.length).toBeGreaterThanOrEqual(
       4 * SCENERY_CONES_PER_CORNER + 2 * SCENERY_BARRIERS_PER_SIDE,
+    )
+  })
+
+  it('uses biome-specific scenery colors', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES)
+    const style = getSceneryStyle('city')
+    const items = buildScenery(path, { biome: 'city', includeTrees: false })
+    const cones = items.filter((i) => i.kind === 'cone')
+    const barriers = items.filter((i) => i.kind === 'barrier')
+    expect(cones.length).toBeGreaterThan(0)
+    expect(barriers.length).toBeGreaterThan(0)
+    expect(new Set(cones.map((i) => i.colorHex))).toEqual(
+      new Set([style.coneColor]),
+    )
+    expect(new Set(barriers.map((i) => i.colorHex))).toEqual(
+      new Set([style.barrierA, style.barrierB]),
     )
   })
 })

@@ -316,4 +316,31 @@ describe('GET /api/track/[slug]', () => {
     expect(stored).not.toBeNull()
     expect(stored!.mood).toBeUndefined()
   })
+
+  it('round-trips an author biome without changing the version hash', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'biome-slug'
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({
+        pieces: squarePieces,
+        biome: 'beach',
+      }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const putBody = (await putRes.json()) as { versionHash: string }
+    expect(putBody.versionHash).toBe(hashTrack(squarePieces))
+
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: {
+        pieces: Piece[]
+        biome?: string
+      }
+    }
+    expect(getBody.track.biome).toBe('beach')
+  })
 })

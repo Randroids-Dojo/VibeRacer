@@ -51,7 +51,15 @@ export default async function SlugPage(ctx: {
     const recent = await loadRecentTrackPreviewsSafe(slug)
     return <SlugLanding slug={slug} recent={recent} />
   }
-  const { pieces, versionHash, checkpointCount, checkpoints, mood, transmission } = loaded
+  const {
+    pieces,
+    versionHash,
+    checkpointCount,
+    checkpoints,
+    biome,
+    mood,
+    transmission,
+  } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
 
   // Parse the friend-challenge query string here on the server so the client
@@ -76,6 +84,7 @@ export default async function SlugPage(ctx: {
       checkpointCount={checkpointCount}
       checkpoints={checkpoints}
       transmission={transmission}
+      trackBiome={biome ?? null}
       trackMood={mood ?? null}
       initialRecord={overallRecord}
       challenge={challenge}
