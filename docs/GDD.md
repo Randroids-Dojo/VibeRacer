@@ -24,7 +24,7 @@
 | 13 | Audio | done (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, wrong-way and achievement cues, UI click variants, haptics, channel toggles, and channel volume sliders all ship) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
-| 16 | Architecture | partial (game loop + Three.js scene + PauseMenu + FeedbackFab + track editor + music scheduler + touch controls + SFX layer landed; minor module follow-ups still open) |
+| 16 | Architecture | done (App Router routes, API routes, pure game loop, Three.js scene, menu layer, editor, audio, controls, and storage modules are in place) |
 | 17 | Deployment (manual setup) | done |
 | 18 | Stretch and future | out of scope |
 
@@ -901,66 +901,85 @@ Do not add new dependencies in these categories without user approval. See `AGEN
 
 ## 16. Architecture
 
-**Status.** Partial. Directory layout matches the target. Infrastructure (`lib/*`, `game/track.ts`, `middleware.ts`, all API routes including `/api/leaderboard`), core game logic (`game/tick.ts`, `game/physics.ts`, `game/trackPath.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/music.ts`, `game/audioEngine.ts`, `game/audio.ts`, `game/virtual-joystick.ts`), and the React components (`Game`, `HUD`, `Countdown`, `InitialsPrompt`, `PauseMenu`, `FeedbackFab`, `Leaderboard`, `TrackEditor`, `TitleMusic`, `TouchControls`) plus the `useClickSfx` hook are all in.
+**Status.** Done. Directory layout matches the target split. Infrastructure (`lib/*`, `src/middleware.ts`, API routes), pure game modules (`game/*`), React components (`components/*`), hooks (`hooks/*`), Three.js rendering, audio, controls, track editing, and KV-backed persistence are all in place.
 
 Mirror FrackingAsteroids' clean split: pure TypeScript game engine, React UI layer, serverless API routes, KV for persistence.
 
 ```
 src/
   app/
-    page.tsx              # home (initials prompt + create/load)
-    [slug]/page.tsx       # race page
+    page.tsx              # home, play entry, recent tracks, activity
+    [slug]/page.tsx       # race page, challenge parsing
+    [slug]/edit/page.tsx  # track editor page
+    tune/page.tsx         # tuning lab route
     api/
+      admin/leaderboard/route.ts
+      feedback/route.ts
+      leaderboard/route.ts
       race/start/route.ts
       race/submit/route.ts
       track/[slug]/route.ts
-      feedback/route.ts   # ported from Epoch
+      replay/byNonce/route.ts
+      replay/top/route.ts
+      version/route.ts
   components/
-    GameCanvas.tsx        # owns the Three.js renderer
-    HUD.tsx               # lap time, best, countdown, confirmations
-    TrackEditor.tsx       # top-down piece editor
-    PauseMenu.tsx
-    TitleScreen.tsx
-    FeedbackFab.tsx       # ported from Epoch, with mods
-    Countdown.tsx         # READY-SET-GO traffic light
+    Game.tsx              # game session orchestration
+    RaceCanvas.tsx        # Three.js renderer and frame loop
+    HUD.tsx               # race HUD and alert lanes
+    PauseMenu.tsx         # race-critical top-level pause actions
+    SettingsPane.tsx      # tabbed settings and secondary race tools
+    TrackEditor.tsx       # top-down track editor
+    Leaderboard.tsx       # leaderboard, rival chase, lap details
+    FeedbackFab.tsx       # pause-only feedback panel
+    TuningSession.tsx     # tuning lab drive loop
+    TitleBackground.tsx   # title-screen 3D backdrop
+    TouchControls.tsx     # mobile virtual controls
   game/
-    tick.ts               # pure (state, input, dt) returns state (unit-testable)
-    physics.ts            # car integrator
-    collision.ts          # raycast to track
-    track.ts              # piece geometry + graph + loop validation
-    virtual-joystick.ts   # ported from FrackingAsteroids
-    music.ts              # streaming synth scheduler
-    audio.ts              # SFX
+    tick.ts               # pure race state update
+    physics.ts            # arcade car integrator
+    track.ts              # connector graph and loop validation
+    trackPath.ts          # ordered path and on-track math
+    sceneBuilder.ts       # Three.js scene construction
+    editor*.ts            # editor helpers, history, zoom
+    music.ts              # synth music scheduler
+    audioEngine.ts        # shared Web Audio context and master gain
+    audio.ts              # SFX voices and one-shots
+    virtual-joystick.ts   # custom touch stick math
   hooks/
-    useGameState.ts
     useKeyboard.ts
     useTouchControls.ts
+    useGamepad.ts
+    useControlSettings.ts
+    useAudioSettings.ts
+    useTuning.ts
+    useClickSfx.ts
   lib/
     kv.ts                 # @upstash/redis wrapper
-    schemas.ts            # zod schemas (track, submission, token)
-    hashTrack.ts          # canonical SHA-256 of piece array
-    signToken.ts          # HMAC race token sign and verify
-    racerId.ts            # read/write racerId cookie server-side
-    consoleCapture.ts     # ported from Epoch
-  middleware.ts           # ensures racerId cookie on every request
+    schemas.ts            # zod schemas
+    hashTrack.ts          # canonical track version hash
+    signToken.ts          # HMAC race tokens
+    anticheat.ts          # lap validation
+    leaderboard.ts        # board reads and row parsing
+    localBest.ts          # browser-local player records
+    controlSettings.ts    # controls and visual settings
+    tuningSettings.ts     # car setup persistence
+    consoleCapture.ts     # feedback console buffer
+  middleware.ts           # racerId cookie on every request
 ```
 
-**Game loop pattern (from FrackingAsteroids).** `tick(state, input, frameDeltaMs)` is a pure function that returns the next state. It is unit-tested in isolation. `GameCanvas` runs it each `requestAnimationFrame`. The React HUD reflects state via props and hooks.
+**Game loop pattern (from FrackingAsteroids).** `tick(state, input, dtMs, nowMs, path, params?)` is a pure function that returns the next state. It is unit-tested in isolation. `RaceCanvas` runs it each `requestAnimationFrame`, and `GameSession` coordinates phase, persistence, HUD state, menus, and server calls. The React HUD reflects throttled state via props and refs.
 
 ### Build log
 
 - Files currently under `src/`:
-  - `app/layout.tsx`, `app/page.tsx` (home), `app/[slug]/page.tsx` (race page), `app/[slug]/edit/page.tsx` (editor page), `app/api/race/start/route.ts`, `app/api/race/submit/route.ts`, `app/api/track/[slug]/route.ts`, `app/api/feedback/route.ts`, `app/api/leaderboard/route.ts`.
-  - `components/Game.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/InitialsPrompt.tsx`, `components/PauseMenu.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/SlugLanding.tsx`, `components/TitleMusic.tsx`.
-  - `game/track.ts` (direction helpers + validation), `game/trackPath.ts` (ordering + waypoints + on-track math), `game/tick.ts` (pure state update), `game/physics.ts` (arcade integrator), `game/sceneBuilder.ts` (Three.js scene + camera rig), `game/editor.ts` (cycle-piece helper + grid bounds), `game/music.ts` (Web Audio scheduler + title/game/pause tracks), `game/audioEngine.ts` (shared AudioContext + master gain + autoplay-gesture handler + noise-buffer cache), `game/audio.ts` (engine drone, tire skid, lap stinger, PB / record fanfare, UI clicks, off-track rumble + per-frame `updateDriveSfx`).
-  - `hooks/useKeyboard.ts`, `hooks/useTouchControls.ts`, `hooks/useClickSfx.ts`.
-  - `game/virtual-joystick.ts`.
-  - `components/TouchControls.tsx`.
-  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/recentTracks.ts`, `middleware.ts`.
+  - `app/layout.tsx`, `app/page.tsx`, `app/[slug]/page.tsx`, `app/[slug]/edit/page.tsx`, `app/tune/page.tsx`, plus API route handlers for race start / submit, tracks, leaderboards, feedback, replays, admin tooling, and version checks.
+  - `components/Game.tsx`, `components/RaceCanvas.tsx`, `components/HUD.tsx`, `components/Countdown.tsx`, `components/PauseMenu.tsx`, `components/SettingsPane.tsx`, `components/FeedbackFab.tsx`, `components/TrackEditor.tsx`, `components/Leaderboard.tsx`, `components/TuningSession.tsx`, `components/TouchControls.tsx`, `components/TitleBackground.tsx`, and the supporting pane / stats / home components.
+  - `game/track.ts`, `game/trackPath.ts`, `game/tick.ts`, `game/physics.ts`, `game/sceneBuilder.ts`, `game/editor.ts`, `game/editorHistory.ts`, `game/editorZoom.ts`, `game/music.ts`, `game/audioEngine.ts`, `game/audio.ts`, `game/virtual-joystick.ts`, and focused pure helpers for HUD math, achievements, weather particles, racing line, minimap, scoring, and track metadata.
+  - `hooks/useKeyboard.ts`, `hooks/useTouchControls.ts`, `hooks/useGamepad.ts`, `hooks/useControlSettings.ts`, `hooks/useAudioSettings.ts`, `hooks/useTuning.ts`, and `hooks/useClickSfx.ts`.
+  - `lib/schemas.ts`, `lib/kv.ts`, `lib/hashTrack.ts`, `lib/signToken.ts`, `lib/anticheat.ts`, `lib/rateLimit.ts`, `lib/racerId.ts`, `lib/consoleCapture.ts`, `lib/defaultTrack.ts`, `lib/loadTrack.ts`, `lib/localBest.ts`, `lib/leaderboard.ts`, `lib/replay.ts`, `lib/controlSettings.ts`, `lib/tuningSettings.ts`, and the feature-specific persistence / formatting helpers.
 - Path alias `@/*` maps to `src/*` in `tsconfig.json` and `vitest.config.ts`. All imports in code and tests use the alias.
 - Route handlers declare `export const runtime = 'nodejs'` so `node:crypto` works directly (`randomBytes`, `createHmac`, `timingSafeEqual`). Middleware stays on the default edge runtime but gates its KV write behind a dynamic import + try/catch so edge runtime limits do not matter here.
 - Game loop pattern from FrackingAsteroids holds: `tick(state, input, dtMs, nowMs, path, params?)` is a pure function, fully unit-tested in isolation. `GameSession` runs it each `requestAnimationFrame`. React HUD reflects state via props with a throttled (~20 Hz) update + reference-equality bail-out.
-- **Not yet landed.** `components/TitleScreen.tsx`, additional `hooks/*` (useGameState).
 
 ---
 

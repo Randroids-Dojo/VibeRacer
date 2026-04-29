@@ -362,7 +362,7 @@
     {
       "id": "16",
       "title": "Architecture",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "Next.js app routes",
         "serverless API routes",
@@ -372,7 +372,8 @@
         "React HUD and menu layer",
         "KV-backed persistence",
         "audio and SFX modules",
-        "custom touch and gamepad controls"
+        "custom touch and gamepad controls",
+        "current architecture file tree"
       ],
       "evidence": [
         "src/app/page.tsx",
@@ -390,9 +391,7 @@
         "src/lib/kv.ts",
         "src/lib/schemas.ts"
       ],
-      "remainingGaps": [
-        "refresh the Section 16 architecture file tree so it reflects the current module names"
-      ]
+      "remainingGaps": []
     }
   ]
 }
