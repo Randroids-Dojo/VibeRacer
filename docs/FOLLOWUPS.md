@@ -8,7 +8,7 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Medium Priority
 
-- Review `docs/GDD_COVERAGE.json` partial entries and split the remaining gaps into Dots before the next feature slice.
+- None recorded.
 
 ## Low Priority
 

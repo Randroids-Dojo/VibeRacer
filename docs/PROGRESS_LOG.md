@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Coverage Gap Backlog Split
+
+- Branch: `docs/split-coverage-gaps`
+- PR: pending
+- Changed: converted remaining GDD coverage gaps into Dots and linked the created Dots from `docs/GDD_COVERAGE.json`.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`.
+- Assumptions: the Q/E shifter item should clarify whether manual gearing is still stretch before implementation.
+- GDD coverage: no product behavior changed. Coverage ledger now points to backlog IDs for open gaps.
+- Followups: medium-priority followup for splitting coverage gaps is complete.
+
 ## 2026-04-29, Autonomous PR Loop Docs
 
 - Branch: `docs/autonomous-pr-loop`
