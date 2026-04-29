@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Per-Wheel Track Contact
+
+- Branch: `feature/per-wheel-track-contact`
+- PR: pending
+- Changed: added custom math-based wheel contact sampling and routed `tick()` off-track handling through all four wheel contacts instead of only the car center.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for wheel contact, tick, physics, and track path geometry, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: per-wheel contact should use the existing analytic centerline distance helpers instead of Three.js mesh raycasts, preserving the custom physics constraint while matching the GDD behavior.
+- GDD coverage: advances Section 5 vehicle adhesion. Quaternion heading remains tracked separately.
+- Followups: none recorded.
+
 ## 2026-04-29, Angular Velocity Handling
 
 - Branch: `feature/angular-velocity-handling`

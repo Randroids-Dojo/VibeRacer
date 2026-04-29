@@ -89,7 +89,8 @@
         "headlights with real light sources",
         "racing number",
         "manual gearing",
-        "angular velocity"
+        "angular velocity",
+        "per-wheel track contact"
       ],
       "evidence": [
         "src/game/physics.ts",
@@ -101,16 +102,14 @@
         "tests/unit/brakeLights.test.ts",
         "tests/unit/headlights.test.ts",
         "tests/unit/transmission.test.ts",
-        "tests/unit/tick.test.ts"
+        "tests/unit/tick.test.ts",
+        "src/game/wheelContact.ts",
+        "tests/unit/wheelContact.test.ts"
       ],
       "remainingGaps": [
-        "per-wheel raycast",
         "quaternion heading"
       ],
       "gapBacklog": {
-        "per-wheel raycast": [
-          "VibeRacer-evaluate-per-wheel-9337b9e7"
-        ],
         "quaternion heading": [
           "VibeRacer-evaluate-quaternion-heading-0c71504b"
         ]
