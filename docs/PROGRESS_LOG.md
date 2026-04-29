@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Stale Off-track Rumble Followup Cleanup
+
+- Branch: `docs/remove-stale-offtrack-rumble-followup`
+- PR: pending
+- Changed: removed the stale continuous off-track gamepad rumble followup after confirming `src/lib/gamepadRumble.ts` already adds an off-track strong-motor bias and `tests/unit/gamepadRumble.test.ts` covers the baseline cue.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: this is a backlog cleanup slice only; the existing implementation and GDD already document continuous off-track rumble.
+- GDD coverage: no coverage change; Section 13 already records the continuous off-track rumble mapper.
+- Followups: removed stale continuous off-track rumble item.
+
 ## 2026-04-29, Gamepad Event Rumble
 
 - Branch: `feature/gamepad-event-rumble`
