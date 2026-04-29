@@ -274,6 +274,15 @@ export interface RaceCanvasProps {
   // bundle to render the speed-trace graph alongside the off-track rows.
   // Skipped when there are fewer than two recorded samples (aborted run).
   onLapTelemetry?: (telemetry: LapTelemetry) => void
+  // Synchronous out-ref the parent can call to force-close any in-flight
+  // off-track excursion as a final event with `exitLapMs: null`. The
+  // Tuning Lab's "Stop run" button calls this from `abortDrive` so an
+  // excursion that started mid-lap and was never returned from still
+  // surfaces on the feedback survey instead of being silently dropped
+  // when the rAF loop pauses. Returns the flushed event if the tracker
+  // was active, or null when idle. The race flow ignores this ref.
+  flushOffTrackEventsRef?: MutableRefObject<(() => OffTrackEvent | null) | null>
+
   // Fired the very first frame the player presses throttle after a fresh
   // race-start (the GO light). The argument is the elapsed milliseconds
   // between `state.raceStartMs` (seeded by `pendingRaceStartRef`) and the
@@ -344,6 +353,7 @@ export function RaceCanvas({
   onLapDriftBest,
   onOffTrackEvent,
   onLapTelemetry,
+  flushOffTrackEventsRef,
   onReactionTime,
   captureScreenshotRef,
   disableMusicIntensity,
@@ -686,6 +696,26 @@ export function RaceCanvas({
     // stale active excursion forward.
     let offTrackTracker = initOffTrackTracker()
     let offTrackLapBuffer: OffTrackEvent[] = []
+    // Synchronous flush hook for the Tuning Lab's "Stop run" abort path.
+    // When the player stops mid-excursion the rAF loop is about to pause,
+    // so an off-track event that never saw a return-to-track edge would
+    // otherwise be silently dropped. The Tuning Lab calls this from its
+    // abortDrive handler before pausing so the in-flight excursion gets a
+    // final event with `exitLapMs: null` and shows up on the feedback
+    // survey. The race flow does not touch the ref.
+    if (flushOffTrackEventsRef) {
+      flushOffTrackEventsRef.current = (): OffTrackEvent | null => {
+        const flushed = flushOffTrackTracker(offTrackTracker)
+        offTrackTracker = initOffTrackTracker()
+        if (flushed) {
+          offTrackLapBuffer.push(flushed)
+          if (onOffTrackEventRef.current) {
+            onOffTrackEventRef.current(flushed)
+          }
+        }
+        return flushed
+      }
+    }
     // Hint index for the windowed ghost-gap search. Survives across HUD
     // ticks so the per-frame search stays O(W) instead of O(N). Reset on a
     // full Restart and on a lap-restart pulse so a teleport never carries a
@@ -1499,6 +1529,9 @@ export function RaceCanvas({
       // renderer is disposed.
       if (captureScreenshotRef) {
         captureScreenshotRef.current = null
+      }
+      if (flushOffTrackEventsRef) {
+        flushOffTrackEventsRef.current = null
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

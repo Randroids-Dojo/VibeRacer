@@ -134,6 +134,14 @@ export function TuningSession({
   // fresh attempt never inherits stale data.
   const offTrackEventsRef = useRef<OffTrackEvent[]>([])
   const lastTelemetryRef = useRef<LapTelemetry | null>(null)
+  // Synchronous flush hook the canvas installs while mounted. abortDrive
+  // calls it to force-close any in-flight off-track excursion as a final
+  // event before the rAF loop pauses, so the feedback survey reflects the
+  // run faithfully even when the player hits Stop run while still off the
+  // track. Null when the canvas is not mounted or the renderer torn down.
+  const flushOffTrackEventsRef = useRef<(() => OffTrackEvent | null) | null>(
+    null,
+  )
   // Mirror the player's chosen camera rig into the lab so the practice loop
   // matches the view they will race with.
   const cameraRigRef = useRef<CameraRigParams | null>(null)
@@ -242,8 +250,12 @@ export function TuningSession({
   }
 
   function abortDrive() {
-    // Capture the in-flight off-track buffer so any excursion that started
-    // before the player stopped is still visible on the feedback screen.
+    // Force-close any in-flight excursion before the rAF loop pauses so
+    // the feedback survey shows it. The canvas's flush hook re-emits the
+    // event through `onOffTrackEvent`, which has already pushed it into
+    // `offTrackEventsRef.current` by the time the call returns. Snapshot
+    // after the flush.
+    flushOffTrackEventsRef.current?.()
     // The canvas only emits a per-lap telemetry envelope at lap-complete,
     // and `lastTelemetryRef` is cleared on lap capture / countdown /
     // restart, so `telemetry` is always null on abort. The feedback form
@@ -401,6 +413,7 @@ export function TuningSession({
             onLapComplete={handleLapComplete}
             onOffTrackEvent={handleOffTrackEvent}
             onLapTelemetry={handleLapTelemetry}
+            flushOffTrackEventsRef={flushOffTrackEventsRef}
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}

@@ -201,10 +201,12 @@ export function stepOffTrackTracker(
 }
 
 /**
- * Force-close any in-flight excursion as a final event. Called by the rAF
- * loop on lap completion (and on full reset / abort) so an "off the track at
- * the line" case still surfaces in the per-lap buffer instead of being
- * silently discarded. Returns null when the tracker is idle.
+ * Force-close any in-flight excursion as a final event. Intended for lap
+ * completion (so an "off the track at the line" case still surfaces in the
+ * per-lap buffer instead of being silently discarded) and for the Tuning
+ * Lab's "Stop run" abort path (the rAF loop calls this through a synchronous
+ * flush ref so the in-flight excursion makes it into the feedback survey).
+ * Returns null when the tracker is idle.
  */
 export function flushOffTrackTracker(
   prev: OffTrackTrackerState,
@@ -223,7 +225,11 @@ export function flushOffTrackTracker(
 }
 
 export const OffTrackEntrySnapshotSchema = z.object({
-  lapMs: z.number().finite(),
+  // Non-negative: lapMs is "milliseconds since the lap started" and a lap
+  // timer never runs backwards. Enforcing this here catches a hand-edited
+  // imported session before it produces negative axis coordinates in the
+  // speed-trace graph.
+  lapMs: z.number().finite().nonnegative(),
   x: z.number().finite(),
   z: z.number().finite(),
   heading: z.number().finite(),
