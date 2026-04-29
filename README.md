@@ -5,6 +5,12 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
 ## Docs
 
 - [Game Design Document](docs/GDD.md): the full design spec. Start here.
+- [Implementation Plan](docs/IMPLEMENTATION_PLAN.md): the continuous slice loop and definition of done.
+- [Working Agreement](docs/WORKING_AGREEMENT.md): branch, PR, verification, review, merge, and deploy rules.
+- [Progress Log](docs/PROGRESS_LOG.md): newest-first continuity notes for each completed slice.
+- [Open Questions](docs/OPEN_QUESTIONS.md): decision queue for ambiguous or blocked work.
+- [Followups](docs/FOLLOWUPS.md): backlog spillover that should not expand the current slice.
+- [GDD Coverage](docs/GDD_COVERAGE.json): ledger mapping product scope to implementation evidence and gaps.
 
 More docs will land in [`docs/`](docs/) as the game comes together (setup, physics tuning, deployment, API reference).
 
