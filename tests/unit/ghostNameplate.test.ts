@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   NAMEPLATE_BG_HEX,
   NAMEPLATE_BORDER_HEX,
+  NAMEPLATE_CLOSE_FULL_DISTANCE,
+  NAMEPLATE_CLOSE_HIDE_DISTANCE,
   NAMEPLATE_SOURCE_TAGS,
   NAMEPLATE_SPRITE_HEIGHT,
   NAMEPLATE_SPRITE_WIDTH,
@@ -13,6 +15,7 @@ import {
   formatNameplateInitials,
   formatNameplateLapTime,
   nameplateCacheKey,
+  nameplateOpacityForDistance,
 } from '@/game/ghostNameplate'
 import { GHOST_SOURCES } from '@/lib/ghostSource'
 
@@ -62,10 +65,42 @@ describe('ghostNameplate constants', () => {
     expect(NAMEPLATE_Y_OFFSET).toBeGreaterThan(1)
   })
 
+  it('close-distance fade thresholds are ordered', () => {
+    expect(NAMEPLATE_CLOSE_HIDE_DISTANCE).toBeGreaterThan(0)
+    expect(NAMEPLATE_CLOSE_FULL_DISTANCE).toBeGreaterThan(
+      NAMEPLATE_CLOSE_HIDE_DISTANCE,
+    )
+  })
+
   it('source tags carry no em-dashes', () => {
     for (const src of GHOST_SOURCES) {
       expect(NAMEPLATE_SOURCE_TAGS[src]).not.toContain('\u2014')
     }
+  })
+})
+
+describe('nameplateOpacityForDistance', () => {
+  it('hides when the ghost is very close to the player', () => {
+    expect(nameplateOpacityForDistance(NAMEPLATE_CLOSE_HIDE_DISTANCE)).toBe(0)
+    expect(nameplateOpacityForDistance(0)).toBe(0)
+  })
+
+  it('shows fully when the ghost is safely far away', () => {
+    expect(nameplateOpacityForDistance(NAMEPLATE_CLOSE_FULL_DISTANCE)).toBe(1)
+    expect(nameplateOpacityForDistance(NAMEPLATE_CLOSE_FULL_DISTANCE + 10)).toBe(
+      1,
+    )
+  })
+
+  it('fades linearly between the close thresholds', () => {
+    const midpoint =
+      (NAMEPLATE_CLOSE_HIDE_DISTANCE + NAMEPLATE_CLOSE_FULL_DISTANCE) / 2
+    expect(nameplateOpacityForDistance(midpoint)).toBeCloseTo(0.5, 5)
+  })
+
+  it('treats unknown distance as fully visible', () => {
+    expect(nameplateOpacityForDistance(Number.NaN)).toBe(1)
+    expect(nameplateOpacityForDistance(Number.POSITIVE_INFINITY)).toBe(1)
   })
 })
 

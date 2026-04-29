@@ -21,7 +21,10 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
-import type { GhostMeta } from '@/game/ghostNameplate'
+import {
+  nameplateOpacityForDistance,
+  type GhostMeta,
+} from '@/game/ghostNameplate'
 import type { GhostSource } from '@/lib/ghostSource'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
@@ -948,6 +951,7 @@ export function RaceCanvas({
       const replay = activeGhostRef?.current ?? null
       const showGhost = showGhostRef?.current ?? true
       let ghostVisibleThisFrame = false
+      let ghostDistanceToPlayer = Number.POSITIVE_INFINITY
       if (replay && showGhost && state.raceStartMs !== null) {
         const tLap = ts - state.raceStartMs
         const pose = interpolateGhostPose(replay, tLap)
@@ -956,6 +960,10 @@ export function RaceCanvas({
           ghostMesh.rotation.y = pose.heading
           ghostMesh.visible = true
           ghostVisibleThisFrame = true
+          ghostDistanceToPlayer = Math.hypot(
+            pose.x - state.x,
+            pose.z - state.z,
+          )
           if (ghostPoseOutRef) {
             ghostPoseOutRef.current = {
               x: pose.x,
@@ -975,10 +983,13 @@ export function RaceCanvas({
       // Sync the floating ghost nameplate. The plate is hidden whenever the
       // ghost car itself is hidden (no ghost on screen means no name to put
       // above it) or the player turned the toggle off. Otherwise the plate
-      // shows the active meta tuple; the cache key short-circuits the
-      // canvas redraw when nothing changed since the previous frame.
+      // shows the active meta tuple, fading out when the ghost is close to
+      // the player so it cannot cover the player's car in chase cameras.
       const nameplateOn = showGhostNameplateRef?.current ?? true
-      const wantNameplate = ghostVisibleThisFrame && nameplateOn
+      const nameplateOpacity =
+        nameplateOpacityForDistance(ghostDistanceToPlayer)
+      const wantNameplate =
+        ghostVisibleThisFrame && nameplateOn && nameplateOpacity > 0
       if (wantNameplate) {
         const meta = activeGhostMetaRef?.current ?? null
         const source = ghostSourceRef?.current ?? 'auto'
@@ -995,6 +1006,7 @@ export function RaceCanvas({
           lastNameplateKey = key
           lastNameplateVisible = true
         }
+        ghostNameplate.setOpacity(nameplateOpacity)
       } else if (lastNameplateVisible) {
         ghostNameplate.setVisible(false)
         lastNameplateVisible = false
