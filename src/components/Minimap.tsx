@@ -22,6 +22,8 @@ interface MinimapProps {
   // Optional ghost overlay. When the ref is null or its current is null we
   // simply hide the marker.
   ghostPoseRef?: MutableRefObject<MinimapPose | null>
+  compact?: boolean
+  placement?: 'bottomRight' | 'topRight'
 }
 
 // Compact top-down minimap. Renders a static SVG outline of the track with
@@ -29,7 +31,14 @@ interface MinimapProps {
 // the pieces change; the markers update via direct DOM mutation in a small
 // rAF loop so dragging the camera or driving fast does not pile per-frame
 // React work into the HUD update lane.
-export function Minimap({ pieces, checkpointCount, carPoseRef, ghostPoseRef }: MinimapProps) {
+export function Minimap({
+  pieces,
+  checkpointCount,
+  carPoseRef,
+  ghostPoseRef,
+  compact = false,
+  placement = 'bottomRight',
+}: MinimapProps) {
   const geom = useMemo(() => {
     const path = buildTrackPath(pieces, checkpointCount)
     return buildMinimapGeometry(path)
@@ -93,7 +102,15 @@ export function Minimap({ pieces, checkpointCount, carPoseRef, ghostPoseRef }: M
   }, [geom, pieces, checkpointCount])
 
   return (
-    <div style={cardStyle} aria-hidden>
+    <div
+      style={{
+        ...cardStyle,
+        ...(compact ? compactCardStyle : null),
+        ...(placement === 'topRight' ? topRightCardStyle : null),
+        ...(placement === 'topRight' && compact ? compactTopRightCardStyle : null),
+      }}
+      aria-hidden
+    >
       <svg
         viewBox={`0 0 ${geom.viewSize} ${geom.viewSize}`}
         width="100%"
@@ -176,6 +193,19 @@ const cardStyle: React.CSSProperties = {
   pointerEvents: 'none',
   boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
   zIndex: 10,
+}
+const topRightCardStyle: React.CSSProperties = {
+  top: 112,
+  bottom: 'auto',
+}
+const compactTopRightCardStyle: React.CSSProperties = {
+  top: 106,
+}
+const compactCardStyle: React.CSSProperties = {
+  width: 88,
+  height: 88,
+  borderRadius: 8,
+  padding: 4,
 }
 const svgStyle: React.CSSProperties = {
   display: 'block',

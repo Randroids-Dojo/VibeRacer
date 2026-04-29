@@ -39,6 +39,7 @@ import { Minimap, type MinimapPose } from './Minimap'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { Speedometer } from './Speedometer'
 import { SpeedLinesOverlay } from './SpeedLinesOverlay'
+import { useViewportWidth } from '@/lib/useViewportWidth'
 import {
   readLocalBest,
   writeLocalBest,
@@ -755,6 +756,7 @@ function GameSession({
   // checkpoint count (one sector per checkpoint), which defaults to the
   // piece count when no override is set.
   const expectedSectorCount = checkpointCount ?? pieces.length
+  const { compact: compactHud } = useViewportWidth(600)
 
   // Per-track engagement stats (lap count, total drive time, sessions, first /
   // last played). Loaded once on mount and updated through pure helpers on
@@ -2419,6 +2421,8 @@ function GameSession({
           checkpointCount={checkpointCount}
           carPoseRef={minimapCarPoseRef}
           ghostPoseRef={settings.showGhost ? minimapGhostPoseRef : undefined}
+          compact={compactHud}
+          placement="topRight"
         />
       ) : null}
       {settings.showSpeedometer && phase === 'racing' && !paused ? (
@@ -2495,6 +2499,7 @@ function GameSession({
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
         transmission={transmission}
+        compact={compactHud}
       />
       {achievementToast ? (
         <div style={achievementToastStyle} role="status" aria-live="polite">
