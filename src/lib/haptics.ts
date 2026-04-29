@@ -370,7 +370,11 @@ export function setGamepadContinuousRumble(
       lastContinuousMags.set(pad, { strongMagnitude: strong, weakMagnitude: weak })
       return
     } catch {
-      return
+      // Fall through to the legacy hapticActuators[0].pulse(...) path so a
+      // browser that exposes vibrationActuator but throws at call time
+      // (unsupported effect, runtime permission issue, hostile shim) still
+      // gets a chance to drive the rumble through the legacy API. Matches
+      // the fallthrough behavior in fireGamepadImpulse / stopGamepadRumble.
     }
   }
   // Legacy hapticActuators only takes a single magnitude. Use the louder of

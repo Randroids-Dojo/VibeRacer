@@ -686,6 +686,26 @@ describe('setGamepadContinuousRumble', () => {
     expect(args[1]).toBe(RUMBLE_FRAME_DURATION_MS)
   })
 
+  it('falls through to legacy hapticActuators[0].pulse when playEffect throws', () => {
+    const actuator: MockActuator = {
+      playEffect: vi.fn(() => {
+        throw new Error('unsupported effect')
+      }),
+    }
+    const legacy: MockLegacyActuator = {
+      pulse: vi.fn(() => Promise.resolve(true)),
+    }
+    const pad = {
+      vibrationActuator: actuator,
+      hapticActuators: [legacy],
+    } as unknown as Gamepad
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.6, weakMagnitude: 0.3 })
+    expect(legacy.pulse).toHaveBeenCalledTimes(1)
+    const args = legacy.pulse.mock.calls[0]
+    expect(args[0]).toBeCloseTo(0.6, 5)
+    expect(args[1]).toBe(RUMBLE_FRAME_DURATION_MS)
+  })
+
   it('dedupes consecutive zero writes after the first stop (idle steady state)', () => {
     const { pad, actuator } = makePadWithActuator()
     setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
