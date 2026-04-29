@@ -25,6 +25,7 @@ export interface GameState {
   z: number
   heading: number
   speed: number
+  angularVelocity: number
   raceStartMs: number | null
   nextCpId: number
   hits: CheckpointHit[]
@@ -59,6 +60,7 @@ export function initGameState(path: TrackPath): GameState {
     z: spawn.position.z,
     heading: spawn.heading,
     speed: 0,
+    angularVelocity: 0,
     raceStartMs: null,
     nextCpId: 0,
     hits: [],
@@ -102,9 +104,21 @@ export function tick(
       TRACK_WIDTH / 2
 
   const phys = state.raceStartMs === null
-    ? { x: state.x, z: state.z, heading: state.heading, speed: 0 }
+    ? {
+        x: state.x,
+        z: state.z,
+        heading: state.heading,
+        speed: 0,
+        angularVelocity: 0,
+      }
     : stepPhysics(
-        { x: state.x, z: state.z, heading: state.heading, speed: state.speed },
+        {
+          x: state.x,
+          z: state.z,
+          heading: state.heading,
+          speed: state.speed,
+          angularVelocity: state.angularVelocity,
+        },
         input,
         dtSec,
         onTrack,
@@ -157,6 +171,7 @@ export function tick(
       z: phys.z,
       heading: phys.heading,
       speed: phys.speed,
+      angularVelocity: phys.angularVelocity ?? 0,
       raceStartMs,
       nextCpId,
       hits,

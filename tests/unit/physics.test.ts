@@ -1,5 +1,9 @@
 import { describe, it, expect } from 'vitest'
-import { DEFAULT_CAR_PARAMS, stepPhysics } from '@/game/physics'
+import {
+  ANGULAR_VELOCITY_RESPONSE,
+  DEFAULT_CAR_PARAMS,
+  stepPhysics,
+} from '@/game/physics'
 
 const s0 = { x: 0, z: 0, heading: 0, speed: 0 }
 
@@ -51,6 +55,7 @@ describe('stepPhysics', () => {
       true,
     )
     expect(s.heading).toBe(0)
+    expect(s.angularVelocity).toBe(0)
   })
 
   it('steering while moving forward turns heading', () => {
@@ -61,6 +66,44 @@ describe('stepPhysics', () => {
       true,
     )
     expect(s.heading).not.toBe(0)
+    expect(s.angularVelocity).toBeGreaterThan(0)
+  })
+
+  it('eases angular velocity toward the steering target', () => {
+    const dt = 0.1
+    const s = stepPhysics(
+      { ...s0, speed: DEFAULT_CAR_PARAMS.maxSpeed },
+      { throttle: 0, steer: 1, handbrake: false },
+      dt,
+      true,
+    )
+    const blend = 1 - Math.exp(-ANGULAR_VELOCITY_RESPONSE * dt)
+    const target = DEFAULT_CAR_PARAMS.steerRateHigh
+    expect(s.angularVelocity).toBeGreaterThan(0)
+    expect(s.angularVelocity).toBeLessThan(target)
+    expect(s.angularVelocity).toBeCloseTo(target * blend, 5)
+    expect(s.heading).toBeCloseTo(s.angularVelocity! * dt, 5)
+  })
+
+  it('damps angular velocity back toward zero without steering input', () => {
+    const s = stepPhysics(
+      { ...s0, speed: 10, angularVelocity: 2 },
+      { throttle: 0, steer: 0, handbrake: false },
+      0.1,
+      true,
+    )
+    expect(s.angularVelocity).toBeGreaterThan(0)
+    expect(s.angularVelocity).toBeLessThan(2)
+  })
+
+  it('reversing flips angular velocity direction', () => {
+    const s = stepPhysics(
+      { ...s0, speed: -5 },
+      { throttle: 0, steer: 1, handbrake: false },
+      0.1,
+      true,
+    )
+    expect(s.angularVelocity).toBeLessThan(0)
   })
 
   it('honors a custom CarParams override (higher accel reaches a higher speed)', () => {
@@ -116,9 +159,11 @@ describe('stepPhysics', () => {
 
     // Slow heading change should be much larger than fast heading change.
     expect(slow.heading).toBeGreaterThan(fast.heading)
-    // Fast heading change should be the high-speed rate exactly (clamped at max).
-    expect(fast.heading).toBeCloseTo(params.steerRateHigh * dt, 5)
-    // Slow heading change should not exceed the low-speed cap.
+    // Fast angular velocity should target the high-speed rate without snapping
+    // to it on the first frame.
+    expect(fast.angularVelocity).toBeLessThan(params.steerRateHigh)
+    expect(fast.angularVelocity).toBeGreaterThan(0)
+    // Slow heading change should not exceed the low-speed cap over the step.
     expect(slow.heading).toBeLessThanOrEqual(params.steerRateLow * dt + 1e-6)
   })
 
