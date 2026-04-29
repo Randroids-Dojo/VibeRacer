@@ -347,16 +347,20 @@
         "wrong-way SFX cue",
         "achievement unlock SFX cue",
         "wrong-way gamepad rumble impulse",
-        "achievement unlock gamepad rumble impulse"
+        "achievement unlock gamepad rumble impulse",
+        "gamepad rumble per-motor intensity sliders"
       ],
       "evidence": [
         "src/game/audioEngine.ts",
         "src/game/music.ts",
         "src/game/audio.ts",
         "src/components/Game.tsx",
+        "src/components/SettingsPane.tsx",
         "src/lib/audioSettings.ts",
+        "src/lib/controlSettings.ts",
         "tests/unit/audio.test.ts",
         "tests/unit/haptics.test.ts",
+        "tests/unit/controlSettings.test.ts",
         "tests/unit/music.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],
