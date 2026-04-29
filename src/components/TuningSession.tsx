@@ -42,6 +42,7 @@ import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { TuningFeedbackForm } from './TuningFeedbackForm'
 import type { CarParams } from '@/game/physics'
 import type { LapCompleteEvent } from '@/game/tick'
+import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
 
 export type SessionDoneReason = 'saved' | 'discarded'
 
@@ -90,6 +91,8 @@ export function TuningSession({
   const [rounds, setRounds] = useState<RoundLog[]>([])
   const [pendingRound, setPendingRound] = useState<{
     lapTimeMs: number | null
+    offTrackEvents: OffTrackEvent[]
+    telemetry: LapTelemetry | null
   } | null>(null)
   const [pendingRecommendation, setPendingRecommendation] = useState<{
     ratings: AspectRatings
@@ -123,6 +126,14 @@ export function TuningSession({
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+  // Per-lap telemetry buffers. The off-track event ref accumulates as the
+  // car leaves and returns to the track during the active lap; the
+  // telemetry ref captures the per-lap envelope (positions + speeds + final
+  // event list) the canvas emits at lap completion. Both clear on lap
+  // capture, on countdown start, on a mid-run restart, and on abort so a
+  // fresh attempt never inherits stale data.
+  const offTrackEventsRef = useRef<OffTrackEvent[]>([])
+  const lastTelemetryRef = useRef<LapTelemetry | null>(null)
   // Mirror the player's chosen camera rig into the lab so the practice loop
   // matches the view they will race with.
   const cameraRigRef = useRef<CameraRigParams | null>(null)
@@ -180,9 +191,25 @@ export function TuningSession({
 
   const handleLapComplete = useCallback((event: LapCompleteEvent) => {
     if (phaseRef.current !== 'drive') return
-    setPendingRound({ lapTimeMs: event.lapTimeMs })
+    // Snapshot whatever was sampled this lap, clear the refs for the next
+    // attempt, and hand the bundle to the feedback form via pendingRound.
+    setPendingRound({
+      lapTimeMs: event.lapTimeMs,
+      offTrackEvents: offTrackEventsRef.current.slice(),
+      telemetry: lastTelemetryRef.current,
+    })
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     pausedRef.current = true
     setPhase('feedback')
+  }, [])
+
+  const handleOffTrackEvent = useCallback((event: OffTrackEvent) => {
+    offTrackEventsRef.current.push(event)
+  }, [])
+
+  const handleLapTelemetry = useCallback((telemetry: LapTelemetry) => {
+    lastTelemetryRef.current = telemetry
   }, [])
 
   function startCountdown() {
@@ -190,6 +217,8 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     setHud({
       currentMs: 0,
       lapCount: 0,
@@ -213,7 +242,17 @@ export function TuningSession({
   }
 
   function abortDrive() {
-    setPendingRound({ lapTimeMs: null })
+    // Capture whatever telemetry was sampled before the player stopped so
+    // they can still see partial data on the feedback screen. The canvas
+    // does not emit a per-lap envelope without a finish-line crossing, so
+    // telemetry is null here unless a previous lap already populated it.
+    setPendingRound({
+      lapTimeMs: null,
+      offTrackEvents: offTrackEventsRef.current.slice(),
+      telemetry: lastTelemetryRef.current,
+    })
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     pausedRef.current = true
     setPhase('feedback')
   }
@@ -233,6 +272,8 @@ export function TuningSession({
         ratings,
         notes,
         lapTimeMs: pendingRound?.lapTimeMs ?? null,
+        offTrackEvents: pendingRound?.offTrackEvents,
+        telemetry: pendingRound?.telemetry ?? undefined,
       },
     ])
     setPrevDeltas(result.perParamDelta)
@@ -268,6 +309,8 @@ export function TuningSession({
       ratings: pendingRecommendation.ratings,
       notes: pendingRecommendation.notes,
       lapTimeMs: pendingRound?.lapTimeMs ?? null,
+      offTrackEvents: pendingRound?.offTrackEvents,
+      telemetry: pendingRound?.telemetry ?? undefined,
     }
     const saved = makeSavedTuning({
       id: makeTuningId(),
@@ -301,6 +344,8 @@ export function TuningSession({
     pendingResetRef.current = true
     pendingRaceStartRef.current = null
     setPendingRound(null)
+    offTrackEventsRef.current = []
+    lastTelemetryRef.current = null
     setHud({
       currentMs: 0,
       lapCount: 0,
@@ -352,6 +397,8 @@ export function TuningSession({
             pendingResetRef={pendingResetRef}
             pendingRaceStartRef={pendingRaceStartRef}
             onLapComplete={handleLapComplete}
+            onOffTrackEvent={handleOffTrackEvent}
+            onLapTelemetry={handleLapTelemetry}
             onHudUpdate={handleHud}
             cameraRigRef={cameraRigRef}
             carPaintRef={carPaintRef}
@@ -395,6 +442,10 @@ export function TuningSession({
         <div style={formScroll}>
           <TuningFeedbackForm
             lapTimeMs={pendingRound?.lapTimeMs ?? null}
+            offTrackEvents={pendingRound?.offTrackEvents ?? []}
+            telemetry={pendingRound?.telemetry ?? null}
+            params={params}
+            pieces={TUNING_LAB_TRACK_PIECES}
             onSubmit={onFeedbackSubmit}
             onCancel={onFeedbackCancel}
           />
