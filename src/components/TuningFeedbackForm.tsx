@@ -9,7 +9,11 @@ import {
 import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
 import type { CarParams } from '@/game/physics'
 import type { Piece } from '@/lib/schemas'
-import { formatLapTime } from '@/lib/speedTraceGraph'
+import {
+  formatDurationSec,
+  formatLapTime,
+  formatSigned,
+} from '@/lib/speedTraceGraph'
 import { SpeedTracePanel } from './SpeedTracePanel'
 
 interface Props {
@@ -295,17 +299,6 @@ function describeSteer(steer: number): string {
   // rotates heading positive for left turns when moving forward).
   const dir = steer > 0 ? 'Left' : 'Right'
   return `${dir} ${mag.toFixed(2)}`
-}
-
-function formatSigned(n: number, digits: number): string {
-  if (!Number.isFinite(n)) return '0'
-  const sign = n > 0 ? '+' : n < 0 ? '' : ''
-  return `${sign}${n.toFixed(digits)}`
-}
-
-function formatDurationSec(ms: number): string {
-  if (!Number.isFinite(ms) || ms <= 0) return '0.00s'
-  return `${(ms / 1000).toFixed(2)}s`
 }
 
 const offPanel: CSSProperties = {

@@ -101,17 +101,39 @@ export function speedColor(t: number): string {
  * given (x, y) view-space points. Empty input returns an empty string so
  * the consumer can render nothing. A single point produces a "M" command
  * only (no line segment) so a one-sample telemetry blob still renders a
- * dot via stroke-linecap.
+ * dot via stroke-linecap. The first finite point always emits the move
+ * command, even when leading samples are non-finite, so a path that drops
+ * a few NaN entries at the start still produces valid SVG.
  */
 export function buildLinePath(points: ReadonlyArray<readonly [number, number]>): string {
   if (points.length === 0) return EMPTY_PATH_D
   let d = ''
+  let hasMove = false
   for (let i = 0; i < points.length; i++) {
     const p = points[i]
     if (!Number.isFinite(p[0]) || !Number.isFinite(p[1])) continue
-    d += i === 0 ? `M${fmt(p[0])} ${fmt(p[1])}` : ` L${fmt(p[0])} ${fmt(p[1])}`
+    d += hasMove
+      ? ` L${fmt(p[0])} ${fmt(p[1])}`
+      : `M${fmt(p[0])} ${fmt(p[1])}`
+    hasMove = true
   }
   return d
+}
+
+/**
+ * Compute the index stride needed to downsample a sample array to at most
+ * `maxOut` elements. Returns 1 when no downsampling is needed (i.e.
+ * `count <= maxOut`), or `ceil(count / maxOut)` otherwise. The Track view
+ * uses this to bound the number of `<path>` elements (one per segment) it
+ * mounts: at the upper sample bound (`MAX_REPLAY_SAMPLES = 5400`) a 1:1
+ * polyline would mount thousands of SVG nodes which is slow to rasterize.
+ * Defensive against non-finite or non-positive inputs.
+ */
+export function downsampleByStride(count: number, maxOut: number): number {
+  if (!Number.isFinite(count) || !Number.isFinite(maxOut)) return 1
+  if (count <= 0 || maxOut <= 0) return 1
+  if (count <= maxOut) return 1
+  return Math.ceil(count / maxOut)
 }
 
 /**
@@ -143,4 +165,29 @@ export function formatLapTime(ms: number): string {
   const seconds = Math.floor((total % 60000) / 1000)
   const millis = total % 1000
   return `${minutes}:${seconds.toString().padStart(2, '0')}.${millis.toString().padStart(3, '0')}`
+}
+
+/**
+ * Format a signed scalar as a fixed-decimal string with an explicit sign
+ * prefix: `+0.42`, `-1.00`, `0.00`. Negative values get a minus prefix
+ * (the underlying `toFixed` would have produced one for free, but pairing
+ * the absolute value with an explicit sign keeps the output in lockstep
+ * with the positive branch and survives a future change of digits). Zero
+ * renders without a sign so a stationary stick reads as a clean `0.00`.
+ * Defensive against non-finite input.
+ */
+export function formatSigned(n: number, digits: number): string {
+  if (!Number.isFinite(n)) return '0'
+  const sign = n > 0 ? '+' : n < 0 ? '-' : ''
+  return `${sign}${Math.abs(n).toFixed(digits)}`
+}
+
+/**
+ * Format milliseconds as a 2-decimal seconds string with the `s` suffix
+ * (e.g. `0.42s`). Used for the off-track event aggregate and per-event
+ * duration. Non-finite or non-positive input collapses to `0.00s`.
+ */
+export function formatDurationSec(ms: number): string {
+  if (!Number.isFinite(ms) || ms <= 0) return '0.00s'
+  return `${(ms / 1000).toFixed(2)}s`
 }

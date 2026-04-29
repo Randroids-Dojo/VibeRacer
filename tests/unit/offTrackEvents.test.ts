@@ -229,6 +229,25 @@ describe('OffTrackEventSchema', () => {
     expect(r.success).toBe(true)
   })
 
+  it('rejects a negative distanceFromCenter (invariant: it is a magnitude)', () => {
+    const r = OffTrackEventSchema.safeParse({
+      lapMs: 100,
+      x: 0,
+      z: 0,
+      heading: 0,
+      speed: 10,
+      steer: 0,
+      throttle: 0,
+      handbrake: false,
+      distanceFromCenter: -1,
+      durationMs: 100,
+      peakSpeed: 10,
+      peakDistanceFromCenter: 4,
+      exitLapMs: 200,
+    })
+    expect(r.success).toBe(false)
+  })
+
   it('rejects non-finite numerics and negative duration', () => {
     expect(
       OffTrackEventSchema.safeParse({

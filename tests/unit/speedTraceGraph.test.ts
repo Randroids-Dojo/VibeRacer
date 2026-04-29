@@ -1,7 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   buildLinePath,
+  downsampleByStride,
+  formatDurationSec,
   formatLapTime,
+  formatSigned,
   niceTicks,
   speedColor,
   speedFraction,
@@ -133,10 +136,91 @@ describe('buildLinePath', () => {
     expect(d).not.toContain('NaN')
   })
 
+  it('emits the move command on the first finite point even when leading samples are non-finite', () => {
+    const d = buildLinePath([
+      [Number.NaN, 0],
+      [Number.NaN, 1],
+      [5, 6],
+      [10, 12],
+    ])
+    expect(d).toBe('M5 6 L10 12')
+    expect(d.startsWith('M')).toBe(true)
+  })
+
+  it('returns an empty path when every point is non-finite', () => {
+    const d = buildLinePath([
+      [Number.NaN, 0],
+      [Number.POSITIVE_INFINITY, 1],
+    ])
+    expect(d).toBe('')
+  })
+
   it('grows monotonically with sample count', () => {
     const a = buildLinePath([[0, 0], [1, 1]])
     const b = buildLinePath([[0, 0], [1, 1], [2, 2]])
     expect(b.length).toBeGreaterThan(a.length)
+  })
+})
+
+describe('formatSigned', () => {
+  it('prefixes positive values with +', () => {
+    expect(formatSigned(0.42, 2)).toBe('+0.42')
+    expect(formatSigned(1, 2)).toBe('+1.00')
+  })
+
+  it('prefixes negative values with -', () => {
+    expect(formatSigned(-0.5, 2)).toBe('-0.50')
+    expect(formatSigned(-1, 2)).toBe('-1.00')
+  })
+
+  it('renders zero without a sign', () => {
+    expect(formatSigned(0, 2)).toBe('0.00')
+  })
+
+  it('falls back to 0 on non-finite input', () => {
+    expect(formatSigned(Number.NaN, 2)).toBe('0')
+    expect(formatSigned(Number.POSITIVE_INFINITY, 2)).toBe('0')
+  })
+
+  it('honors the digits argument', () => {
+    expect(formatSigned(1 / 3, 3)).toBe('+0.333')
+    expect(formatSigned(-1 / 3, 4)).toBe('-0.3333')
+  })
+})
+
+describe('downsampleByStride', () => {
+  it('returns 1 when count is at or below maxOut', () => {
+    expect(downsampleByStride(0, 600)).toBe(1)
+    expect(downsampleByStride(1, 600)).toBe(1)
+    expect(downsampleByStride(600, 600)).toBe(1)
+  })
+
+  it('returns ceil(count / maxOut) when count exceeds maxOut', () => {
+    expect(downsampleByStride(1200, 600)).toBe(2)
+    expect(downsampleByStride(601, 600)).toBe(2)
+    expect(downsampleByStride(5400, 600)).toBe(9)
+    expect(downsampleByStride(5401, 600)).toBe(10)
+  })
+
+  it('returns 1 on non-finite or non-positive inputs', () => {
+    expect(downsampleByStride(Number.NaN, 600)).toBe(1)
+    expect(downsampleByStride(600, Number.NaN)).toBe(1)
+    expect(downsampleByStride(-10, 600)).toBe(1)
+    expect(downsampleByStride(600, 0)).toBe(1)
+  })
+})
+
+describe('formatDurationSec', () => {
+  it('formats milliseconds as 2-decimal seconds with an s suffix', () => {
+    expect(formatDurationSec(1234)).toBe('1.23s')
+    expect(formatDurationSec(420)).toBe('0.42s')
+  })
+
+  it('collapses non-finite or non-positive input to 0.00s', () => {
+    expect(formatDurationSec(0)).toBe('0.00s')
+    expect(formatDurationSec(-100)).toBe('0.00s')
+    expect(formatDurationSec(Number.NaN)).toBe('0.00s')
+    expect(formatDurationSec(Number.POSITIVE_INFINITY)).toBe('0.00s')
   })
 })
 

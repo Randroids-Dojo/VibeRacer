@@ -242,14 +242,16 @@ export function TuningSession({
   }
 
   function abortDrive() {
-    // Capture whatever telemetry was sampled before the player stopped so
-    // they can still see partial data on the feedback screen. The canvas
-    // does not emit a per-lap envelope without a finish-line crossing, so
-    // telemetry is null here unless a previous lap already populated it.
+    // Capture the in-flight off-track buffer so any excursion that started
+    // before the player stopped is still visible on the feedback screen.
+    // The canvas only emits a per-lap telemetry envelope at lap-complete,
+    // and `lastTelemetryRef` is cleared on lap capture / countdown /
+    // restart, so `telemetry` is always null on abort. The feedback form
+    // renders the "No telemetry recorded" placeholder in that case.
     setPendingRound({
       lapTimeMs: null,
       offTrackEvents: offTrackEventsRef.current.slice(),
-      telemetry: lastTelemetryRef.current,
+      telemetry: null,
     })
     offTrackEventsRef.current = []
     lastTelemetryRef.current = null

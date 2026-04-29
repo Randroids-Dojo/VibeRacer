@@ -10,9 +10,10 @@
  *    excursion. The event is emitted on the falling edge (off-track to
  *    on-track) so the consumer always sees a complete record.
  *  - Sign convention: in this codebase the keyboard's `left` key maps to
- *    `steerInput = +1` and `right` to `-1` (see RaceCanvas line 834). The
- *    physics integrator rotates heading positive for left turns when moving
- *    forward. Consumers that label steering should treat positive as LEFT.
+ *    `steerInput = +1` and `right` to `-1` (see the `steerInput` derivation
+ *    in `RaceCanvas`). The physics integrator rotates heading positive for
+ *    left turns when moving forward. Consumers that label steering should
+ *    treat positive as LEFT.
  *
  * Speed semantics. The `speed` field on the per-frame input is the speed at
  * the START of the frame, before stepPhysics applies any off-track drag /
@@ -224,7 +225,11 @@ export const OffTrackEntrySnapshotSchema = z.object({
   steer: z.number().finite(),
   throttle: z.number().finite(),
   handbrake: z.boolean(),
-  distanceFromCenter: z.number().finite(),
+  // Distance from the centerline is a non-negative magnitude by definition:
+  // the centerline is the zero point and the value grows as the car moves
+  // away from it. Enforcing the invariant here catches a hand-edited
+  // imported session that would otherwise let a negative number through.
+  distanceFromCenter: z.number().finite().nonnegative(),
 })
 
 export const OffTrackEventSchema = OffTrackEntrySnapshotSchema.extend({

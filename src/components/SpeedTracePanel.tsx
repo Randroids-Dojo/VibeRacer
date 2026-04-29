@@ -1,11 +1,12 @@
 'use client'
 import { useMemo, useState, type CSSProperties } from 'react'
 import type { Piece } from '@/lib/schemas'
-import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
+import type { LapTelemetry } from '@/game/offTrackEvents'
 import { TRACK_WIDTH, buildTrackPath } from '@/game/trackPath'
 import { buildMinimapGeometry } from '@/game/minimap'
 import {
   buildLinePath,
+  downsampleByStride,
   niceTicks,
   speedColor,
   speedFraction,
@@ -287,11 +288,19 @@ function TrackView({
   const scale = Math.min(inner / worldW, inner / worldH)
   const trackStrokePx = TRACK_WIDTH * scale
 
+  // Cap the number of mounted segment paths. With one path element per
+  // segment (each is a different stroke color), an upper-bound replay
+  // (MAX_REPLAY_SAMPLES = 5400) would otherwise create thousands of SVG
+  // nodes; bounding to 600 keeps the rasterizer happy while preserving the
+  // shape of every corner on a typical track.
+  const MAX_TRACK_SEGMENTS = 600
+  const stride = downsampleByStride(samples.length, MAX_TRACK_SEGMENTS + 1)
   const segments: Array<{ d: string; color: string }> = []
-  for (let i = 1; i < samples.length; i++) {
-    const a = geometry.worldToView(samples[i - 1][0], samples[i - 1][1])
+  for (let i = stride; i < samples.length; i += stride) {
+    const prevIdx = i - stride
+    const a = geometry.worldToView(samples[prevIdx][0], samples[prevIdx][1])
     const b = geometry.worldToView(samples[i][0], samples[i][1])
-    const sp = (speeds[i - 1] + speeds[i]) / 2
+    const sp = (speeds[prevIdx] + speeds[i]) / 2
     const t = speedFraction(sp, maxRef)
     segments.push({
       d: `M${a.x.toFixed(2)} ${a.y.toFixed(2)} L${b.x.toFixed(2)} ${b.y.toFixed(2)}`,

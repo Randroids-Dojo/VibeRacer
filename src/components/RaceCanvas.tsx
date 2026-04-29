@@ -3,7 +3,12 @@ import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 're
 import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece, TrackCheckpoint } from '@/lib/schemas'
 import type { TrackTransmissionMode } from '@/game/transmission'
-import { buildTrackPath, distanceToCenterline, worldToCell } from '@/game/trackPath'
+import {
+  TRACK_WIDTH,
+  buildTrackPath,
+  distanceToCenterline,
+  worldToCell,
+} from '@/game/trackPath'
 import { cellKey } from '@/game/track'
 import {
   expectedTangent,
@@ -978,6 +983,13 @@ export function RaceCanvas({
           orderIdxOff !== undefined
             ? distanceToCenterline(path.order[orderIdxOff], state.x, state.z)
             : Number.POSITIVE_INFINITY
+        // Off the indexed path entirely (deep off-track, no piece under the
+        // car this frame): fall back to TRACK_WIDTH / 2, which is the floor
+        // for "off the track" and avoids under-reporting an excursion as a
+        // centerline-aligned read of 0.
+        const distSafe = Number.isFinite(distFromCenter)
+          ? distFromCenter
+          : TRACK_WIDTH / 2
         const offResult = stepOffTrackTracker(offTrackTracker, {
           onTrack: state.onTrack,
           lapMs,
@@ -991,9 +1003,7 @@ export function RaceCanvas({
           steer: steerInput,
           throttle: throttleInput,
           handbrake: k.handbrake,
-          distanceFromCenter: Number.isFinite(distFromCenter)
-            ? distFromCenter
-            : 0,
+          distanceFromCenter: distSafe,
         })
         offTrackTracker = offResult.state
         if (offResult.emitted) {
