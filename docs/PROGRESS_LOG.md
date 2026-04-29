@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Architecture Tree Refresh
+
+- Branch: `docs/architecture-tree-refresh`
+- PR: pending
+- Changed: refreshed the Section 16 architecture tree and build log so they name the current App Router routes, API handlers, RaceCanvas renderer, hooks, game helpers, lib modules, and middleware layout.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
+- Assumptions: this is a docs-only reconciliation slice because the architecture gap was stale documentation, not missing runtime behavior.
+- GDD coverage: completes Section 16 Architecture.
+- Followups: none recorded.
+
 ## 2026-04-29, Feedback Panel Polish
 
 - Branch: `polish/feedback-panel`
-- PR: pending
+- PR: #48
 - Changed: polished the pause-menu feedback panel with shared menu styling, clearer header hierarchy, an inline close control, attachment chips, stable textarea sizing, message count feedback, and clearer success / retry states.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused `tests/e2e/feedback.spec.ts`, full Playwright smoke, and `npm run build`.
 - Assumptions: visual polish should preserve the existing single-click open behavior, pause-only mounting, screenshot capture, console log capture, and `/api/feedback` payload shape.
