@@ -11,6 +11,7 @@ describe('tick', () => {
     expect(s.x).toBeCloseTo(path.spawn.position.x, 6)
     expect(s.z).toBeCloseTo(path.spawn.position.z, 6)
     expect(s.heading).toBeCloseTo(path.spawn.heading, 6)
+    expect(s.angularVelocity).toBe(0)
     expect(s.raceStartMs).toBeNull()
     expect(s.nextCpId).toBe(0)
     expect(s.gear).toBe(1)
@@ -21,6 +22,20 @@ describe('tick', () => {
     const r = tick(s, { throttle: 1, steer: 0, handbrake: false }, 16, 1000, path)
     expect(r.state.x).toBeCloseTo(s.x, 6)
     expect(r.state.speed).toBe(0)
+    expect(r.state.angularVelocity).toBe(0)
+  })
+
+  it('keeps angular velocity in game state while racing', () => {
+    const s = { ...startRace(initGameState(path), 0), speed: 12 }
+    const r = tick(
+      s,
+      { throttle: 0, steer: 1, handbrake: false },
+      100,
+      100,
+      path,
+    )
+    expect(r.state.angularVelocity).toBeGreaterThan(0)
+    expect(r.state.heading).not.toBeCloseTo(s.heading, 6)
   })
 
   it('shifts gears only when manual transmission is active', () => {
