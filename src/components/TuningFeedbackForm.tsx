@@ -86,7 +86,11 @@ export function TuningFeedbackForm({
           pieces={pieces}
           maxSpeed={params?.maxSpeed}
         />
-      ) : telemetry === undefined || telemetry === null ? null : (
+      ) : telemetry === undefined ? null : (
+        // telemetry === null is the explicit "no telemetry recorded" signal
+        // (the parent set it to null on abort), so render the placeholder.
+        // telemetry === undefined means the consumer did not pass the prop
+        // at all (feature not enabled), so render nothing.
         <div style={emptyTracePanel}>No telemetry recorded for this run.</div>
       )}
 

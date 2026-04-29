@@ -100,8 +100,18 @@ function TimeView({
   telemetry: LapTelemetry
   maxRef: number
 }) {
-  const { sampleMs, speeds, offTrackEvents } = telemetry
-  const totalMs = Math.max((speeds.length - 1) * sampleMs, 1)
+  const { sampleMs, speeds, offTrackEvents, lapTimeMs } = telemetry
+  // Prefer the actual lap time when we have it: off-track event timestamps
+  // are computed against the lap clock, not the sample-derived duration,
+  // so an event near the finish line can extend a few ms past
+  // `(speeds.length - 1) * sampleMs` and would otherwise push the red
+  // band beyond the x-range. Fall back to the sample-derived duration on
+  // aborted runs where lapTimeMs is null.
+  const sampleDurationMs = Math.max((speeds.length - 1) * sampleMs, 1)
+  const totalMs = Math.max(
+    lapTimeMs && lapTimeMs > 0 ? lapTimeMs : sampleDurationMs,
+    1,
+  )
 
   const xTicks = useMemo(
     () => niceTicks(0, totalMs / 1000, 5),

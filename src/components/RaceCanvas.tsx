@@ -933,6 +933,12 @@ export function RaceCanvas({
       // the player's true approach speed on the entry frame instead of the
       // post-clamp value pinned at offTrackMaxSpeed.
       const preStepSpeed = state.speed
+      // Snapshot raceStartMs before tick(): on a lap-complete frame tick()
+      // resets raceStartMs to nowMs, so reading state.raceStartMs after the
+      // tick would make `lapMs` jump back to ~0 and produce off-track events
+      // with incorrect timestamps. Reading the pre-tick value keeps the
+      // tracker on the lap clock that was in effect during the frame.
+      const preStepRaceStartMs = state.raceStartMs
       const result = tick(
         state,
         {
@@ -1003,8 +1009,20 @@ export function RaceCanvas({
       // branch below). Distance is read off the player's current piece's
       // centerline; off the path we fall back to TRACK_WIDTH/2 so the value
       // is always non-negative without faking a fake-precise number.
-      if (state.raceStartMs !== null) {
-        const lapMs = ts - state.raceStartMs
+      //
+      // The whole block is skipped when no telemetry consumer is wired
+      // (race flow), so the normal per-frame cost of the worldToCell +
+      // distanceToCenterline + tracker step does not apply outside the
+      // Tuning Lab. We use preStepRaceStartMs so a lap-complete frame
+      // (which resets state.raceStartMs to nowMs inside tick()) still
+      // reads `lapMs` against the lap clock that was in effect during the
+      // frame, not the freshly reseeded one.
+      const offTrackTracking =
+        onOffTrackEventRef.current !== undefined ||
+        onLapTelemetryRef.current !== undefined ||
+        flushOffTrackEventsRef !== undefined
+      if (offTrackTracking && preStepRaceStartMs !== null) {
+        const lapMs = ts - preStepRaceStartMs
         const cellOff = worldToCell(state.x, state.z)
         const orderIdxOff = path.cellToOrderIdx.get(
           cellKey(cellOff.row, cellOff.col),
@@ -1071,12 +1089,17 @@ export function RaceCanvas({
       // and we reset the buffer in the lap-complete branch below.
       if (state.raceStartMs !== null && recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES) {
         const tLap = ts - state.raceStartMs
+        // Only sample speeds when a Tuning Lab telemetry consumer is wired
+        // so the race flow does not pay the per-frame buffer-push cost
+        // for data nobody reads. The position buffer (recordingBuffer)
+        // still feeds ghost replays so it always samples.
+        const collectSpeeds = onLapTelemetryRef.current !== undefined
         while (
           tLap >= nextSampleAt &&
           recordingBuffer.length / 3 < MAX_REPLAY_SAMPLES
         ) {
           recordingBuffer.push(state.x, state.z, state.heading)
-          speedSamples.push(Math.abs(state.speed))
+          if (collectSpeeds) speedSamples.push(Math.abs(state.speed))
           nextSampleAt += REPLAY_SAMPLE_MS
         }
       }
