@@ -10,6 +10,7 @@ import {
   CylinderGeometry,
   DataTexture,
   DirectionalLight,
+  DoubleSide,
   FogExp2,
   Group,
   DynamicDrawUsage,
@@ -354,15 +355,18 @@ function polylineGeometry(op: OrderedPiece): BufferGeometry {
     verts.push(s.x + px * half, 0, s.z + pz * half)
     verts.push(s.x - px * half, 0, s.z - pz * half)
   }
+  // Triangle winding must yield a +Y normal so the road is visible from above.
+  // The vert layout is [right, left] along travel; this winding pairs with that
+  // layout to produce upward-facing faces (matches cornerGeometry's ccw branch).
   const idx: number[] = []
   for (let i = 0; i < samples.length - 1; i++) {
     const base = i * 2
-    idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2)
+    idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
   }
   return buildFlatGeometry(verts, idx)
 }
 
-function pieceGeometry(op: OrderedPiece): BufferGeometry {
+export function pieceGeometry(op: OrderedPiece): BufferGeometry {
   if (op.samples !== null) return polylineGeometry(op)
   return op.piece.type === 'straight' ? straightGeometry(op) : cornerGeometry(op)
 }
@@ -1918,7 +1922,14 @@ export function buildScene(path: TrackPath): SceneBundle {
   const fog = new FogExp2(0xffffff, 0)
   scene.fog = fog
 
-  const trackMat = new MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 })
+  // DoubleSide so the road stays visible at the inside apex of sweep pieces,
+  // where the bezier curvature is sharper than the track half-width and the
+  // extruded ribbon briefly folds onto itself.
+  const trackMat = new MeshStandardMaterial({
+    color: 0x2b2b2b,
+    roughness: 0.9,
+    side: DoubleSide,
+  })
   for (const op of path.order) {
     const mesh = new Mesh(pieceGeometry(op), trackMat)
     mesh.position.y = 0.01
