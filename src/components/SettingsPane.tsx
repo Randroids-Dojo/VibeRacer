@@ -655,7 +655,7 @@ export function SettingsPane({
 
   return (
     <MenuOverlay zIndex={110}>
-      <MenuPanel width="wide">
+      <MenuPanel width="wide" overflow="hidden">
         <MenuHeader title="SETTINGS" onClose={onClose} />
 
         <div role="tablist" aria-label="Settings sections" style={tabList}>
@@ -2017,6 +2017,7 @@ const tabList: React.CSSProperties = {
   gap: 2,
   borderBottom: `1px solid ${menuTheme.ghostBorder}`,
   paddingTop: 2,
+  flex: '0 0 auto',
 }
 const tabButton: React.CSSProperties = {
   border: 'none',
@@ -2047,6 +2048,11 @@ const tabPanel: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 14,
+  flex: '1 1 auto',
+  minHeight: 0,
+  overflowY: 'auto',
+  overscrollBehavior: 'contain',
+  paddingRight: 4,
   paddingTop: 4,
 }
 const settingsActionGrid: React.CSSProperties = {
