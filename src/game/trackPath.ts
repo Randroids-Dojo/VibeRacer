@@ -281,6 +281,109 @@ const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
 const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 
 export const SWEEP_SAMPLE_COUNT = 33
+const SWEEP_OVERSAMPLE_COUNT = 257
+
+type BezierPoint = { x: number; z: number }
+
+function cubicBezierPoint(
+  p0: BezierPoint,
+  p1: BezierPoint,
+  p2: BezierPoint,
+  p3: BezierPoint,
+  t: number,
+): BezierPoint {
+  const mt = 1 - t
+  return {
+    x:
+      mt * mt * mt * p0.x +
+      3 * mt * mt * t * p1.x +
+      3 * mt * t * t * p2.x +
+      t * t * t * p3.x,
+    z:
+      mt * mt * mt * p0.z +
+      3 * mt * mt * t * p1.z +
+      3 * mt * t * t * p2.z +
+      t * t * t * p3.z,
+  }
+}
+
+function cubicBezierDerivative(
+  p0: BezierPoint,
+  p1: BezierPoint,
+  p2: BezierPoint,
+  p3: BezierPoint,
+  t: number,
+): { dx: number; dz: number } {
+  const mt = 1 - t
+  return {
+    dx:
+      3 * mt * mt * (p1.x - p0.x) +
+      6 * mt * t * (p2.x - p1.x) +
+      3 * t * t * (p3.x - p2.x),
+    dz:
+      3 * mt * mt * (p1.z - p0.z) +
+      6 * mt * t * (p2.z - p1.z) +
+      3 * t * t * (p3.z - p2.z),
+  }
+}
+
+function equalArcLengthParameters(
+  sampleCount: number,
+  evaluator: (t: number) => BezierPoint,
+): number[] {
+  const parameters: number[] = []
+  const cumulativeLengths: number[] = []
+  let totalLength = 0
+  let previous = evaluator(0)
+
+  for (let i = 0; i < SWEEP_OVERSAMPLE_COUNT; i++) {
+    const t = i / (SWEEP_OVERSAMPLE_COUNT - 1)
+    const point = evaluator(t)
+    parameters.push(t)
+    if (i === 0) {
+      cumulativeLengths.push(0)
+      continue
+    }
+    totalLength += Math.hypot(point.x - previous.x, point.z - previous.z)
+    cumulativeLengths.push(totalLength)
+    previous = point
+  }
+
+  if (totalLength <= 0 || sampleCount <= 1) {
+    return Array.from({ length: sampleCount }, (_, i) =>
+      sampleCount <= 1 ? 0 : i / (sampleCount - 1),
+    )
+  }
+
+  const remapped: number[] = []
+  let segmentIndex = 1
+  for (let i = 0; i < sampleCount; i++) {
+    const targetLength = (i / (sampleCount - 1)) * totalLength
+    while (
+      segmentIndex < cumulativeLengths.length - 1 &&
+      cumulativeLengths[segmentIndex] < targetLength
+    ) {
+      segmentIndex++
+    }
+    const prevLength = cumulativeLengths[segmentIndex - 1]
+    const nextLength = cumulativeLengths[segmentIndex]
+    const span = nextLength - prevLength
+    const localT = span <= 0 ? 0 : (targetLength - prevLength) / span
+    remapped.push(
+      parameters[segmentIndex - 1] +
+        (parameters[segmentIndex] - parameters[segmentIndex - 1]) * localT,
+    )
+  }
+  return remapped
+}
+
+function mirrorSweepSamples(samples: SampledPoint[]): SampledPoint[] {
+  return samples.map((s) => ({
+    x: -s.x,
+    z: s.z,
+    heading: Math.PI - s.heading,
+  }))
+}
 
 export function sampleSweepRightLocal(): SampledPoint[] {
   const samples: SampledPoint[] = []
@@ -288,42 +391,23 @@ export function sampleSweepRightLocal(): SampledPoint[] {
   const p1 = { x: 0, z: HALF * 0.12 }
   const p2 = { x: HALF * 0.12, z: 0 }
   const p3 = { x: HALF, z: 0 }
-  for (let i = 0; i < SWEEP_SAMPLE_COUNT; i++) {
-    const t = i / (SWEEP_SAMPLE_COUNT - 1)
-    const mt = 1 - t
-    const x =
-      mt * mt * mt * p0.x +
-      3 * mt * mt * t * p1.x +
-      3 * mt * t * t * p2.x +
-      t * t * t * p3.x
-    const z =
-      mt * mt * mt * p0.z +
-      3 * mt * mt * t * p1.z +
-      3 * mt * t * t * p2.z +
-      t * t * t * p3.z
-    const dx =
-      3 * mt * mt * (p1.x - p0.x) +
-      6 * mt * t * (p2.x - p1.x) +
-      3 * t * t * (p3.x - p2.x)
-    const dz =
-      3 * mt * mt * (p1.z - p0.z) +
-      6 * mt * t * (p2.z - p1.z) +
-      3 * t * t * (p3.z - p2.z)
+  const sampleParameters = equalArcLengthParameters(SWEEP_SAMPLE_COUNT, (t) =>
+    cubicBezierPoint(p0, p1, p2, p3, t),
+  )
+  for (const t of sampleParameters) {
+    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
+    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
     samples.push({ x, z, heading: Math.atan2(-dz, dx) })
   }
   return samples
 }
 
 export function sampleSweepLeftLocal(): SampledPoint[] {
-  return sampleSweepRightLocal().map((s) => ({
-    x: -s.x,
-    z: s.z,
-    heading: Math.PI - s.heading,
-  }))
+  return mirrorSweepSamples(SWEEP_RIGHT_LOCAL_SAMPLES)
 }
 
 const SWEEP_RIGHT_LOCAL_SAMPLES = sampleSweepRightLocal()
-const SWEEP_LEFT_LOCAL_SAMPLES = sampleSweepLeftLocal()
+const SWEEP_LEFT_LOCAL_SAMPLES = mirrorSweepSamples(SWEEP_RIGHT_LOCAL_SAMPLES)
 
 function buildScurveSamples(
   piece: Piece,

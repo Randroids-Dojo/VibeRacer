@@ -339,6 +339,24 @@ describe('sweep turn pieces', () => {
     }
   })
 
+  it('spaces right sweep samples by near-equal arc length', () => {
+    const samples = sampleSweepRightLocal()
+    const lengths: number[] = []
+    for (let i = 1; i < samples.length; i++) {
+      lengths.push(
+        Math.hypot(
+          samples[i].x - samples[i - 1].x,
+          samples[i].z - samples[i - 1].z,
+        ),
+      )
+    }
+    const average =
+      lengths.reduce((sum, length) => sum + length, 0) / lengths.length
+    for (const length of lengths) {
+      expect(Math.abs(length - average) / average).toBeLessThan(0.04)
+    }
+  })
+
   it('forms a valid loop when replacing a sharp right turn', () => {
     expect(validateClosedLoop(sweepLoop)).toEqual({ ok: true })
     const path = buildTrackPath(sweepLoop)
