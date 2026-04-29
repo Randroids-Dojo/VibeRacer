@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Real Headlight Sources
+
+- Branch: `feature/real-headlight-sources`
+- PR: pending
+- Changed: replaced visible translucent headlight cones with car-mounted Three.js SpotLight sources and scene-lit lens meshes so headlights illuminate nearby road and scenery.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm test -- tests/unit/headlights.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and `npm run test:e2e -- tests/e2e/smoke.spec.ts`.
+- Assumptions: headlight lighting remains visual only and keeps the existing Off / Auto / On player setting; shadows are not enabled in this slice to avoid an avoidable rendering cost.
+- GDD coverage: refines Section 5 headlights from cosmetic beam meshes to actual scene light sources.
+- Followups: none recorded.
+
 ## 2026-04-29, Roof Number Sticker
 
 - Branch: `fix/roof-number-sticker`

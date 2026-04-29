@@ -319,12 +319,12 @@ export interface ControlSettings {
   // turning this off snaps the scene back to those personal picks. Track
   // authors set the mood from the editor's Advanced panel.
   respectTrackMood: boolean
-  // Cosmetic headlight lamps + glowing beam cones on the front of the player
-  // car. 'auto' lights them in dim scenes (sunset / night / foggy / snowy /
-  // rainy); 'on' always lights them; 'off' keeps them dark. Pure cosmetic;
-  // never illuminates the road or affects physics. Default 'auto' matches what
-  // a player would expect ("the car turns its lights on at night") so the
-  // upgrade is opt-out, not opt-in.
+  // Headlight lamp lenses and SpotLights on the front of the player car.
+  // 'auto' lights them in dim scenes (dawn / sunset / dusk / night / foggy /
+  // snowy / rainy); 'on' always lights them; 'off' keeps them dark. Visual
+  // only and never affects physics. Default 'auto' matches what a player would
+  // expect ("the car turns its lights on at night") so the upgrade is opt-out,
+  // not opt-in.
   headlights: HeadlightMode
   // Cosmetic brake lamps + soft red glow on the rear of the player car. 'auto'
   // glows them while the player is braking (brake key while moving forward,

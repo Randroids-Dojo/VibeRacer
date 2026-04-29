@@ -1,10 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_HEADLIGHT_MODE,
-  HEADLIGHT_BEAM_COLOR_HEX,
-  HEADLIGHT_BEAM_LENGTH,
-  HEADLIGHT_BEAM_OPACITY,
-  HEADLIGHT_BEAM_RADIUS,
   HEADLIGHT_LAMP_COLOR_HEX,
   HEADLIGHT_LAMP_OFFSET_X,
   HEADLIGHT_LAMP_OFFSET_Y,
@@ -13,6 +9,13 @@ import {
   HEADLIGHT_MODES,
   HEADLIGHT_MODE_DESCRIPTIONS,
   HEADLIGHT_MODE_LABELS,
+  HEADLIGHT_SPOT_ANGLE,
+  HEADLIGHT_SPOT_COLOR_HEX,
+  HEADLIGHT_SPOT_DECAY,
+  HEADLIGHT_SPOT_DISTANCE,
+  HEADLIGHT_SPOT_INTENSITY,
+  HEADLIGHT_SPOT_PENUMBRA,
+  HEADLIGHT_SPOT_TARGET_X,
   HeadlightModeSchema,
   isHeadlightMode,
   shouldHeadlightsBeOn,
@@ -156,23 +159,32 @@ describe('headlight visual constants', () => {
     expect(HEADLIGHT_LAMP_RADIUS).toBeLessThan(0.5)
   })
 
-  it('beam length is at least three lamp widths so the cone reads as a beam, not a stub', () => {
-    expect(HEADLIGHT_BEAM_LENGTH).toBeGreaterThan(HEADLIGHT_LAMP_RADIUS * 6)
+  it('spot target sits in front of the lamp', () => {
+    expect(HEADLIGHT_SPOT_TARGET_X).toBeGreaterThan(HEADLIGHT_LAMP_OFFSET_X)
   })
 
-  it('beam radius is wider than a lamp (the cone flares outward from the lamp)', () => {
-    expect(HEADLIGHT_BEAM_RADIUS).toBeGreaterThan(HEADLIGHT_LAMP_RADIUS)
+  it('spot distance reaches well beyond the car nose', () => {
+    expect(HEADLIGHT_SPOT_DISTANCE).toBeGreaterThan(
+      HEADLIGHT_SPOT_TARGET_X - HEADLIGHT_LAMP_OFFSET_X,
+    )
   })
 
-  it('beam opacity is in (0..1), excluding both endpoints', () => {
-    expect(HEADLIGHT_BEAM_OPACITY).toBeGreaterThan(0)
-    expect(HEADLIGHT_BEAM_OPACITY).toBeLessThan(1)
+  it('spot cone angle is narrow enough to read as headlights', () => {
+    expect(HEADLIGHT_SPOT_ANGLE).toBeGreaterThan(0)
+    expect(HEADLIGHT_SPOT_ANGLE).toBeLessThan(Math.PI / 3)
   })
 
-  it('lamp / beam colors fit in the 24-bit color channel range', () => {
+  it('spot softness and falloff settings are finite and positive', () => {
+    expect(HEADLIGHT_SPOT_PENUMBRA).toBeGreaterThanOrEqual(0)
+    expect(HEADLIGHT_SPOT_PENUMBRA).toBeLessThanOrEqual(1)
+    expect(HEADLIGHT_SPOT_DECAY).toBeGreaterThan(0)
+    expect(HEADLIGHT_SPOT_INTENSITY).toBeGreaterThan(0)
+  })
+
+  it('lamp / spot colors fit in the 24-bit color channel range', () => {
     expect(HEADLIGHT_LAMP_COLOR_HEX).toBeGreaterThanOrEqual(0)
     expect(HEADLIGHT_LAMP_COLOR_HEX).toBeLessThanOrEqual(0xffffff)
-    expect(HEADLIGHT_BEAM_COLOR_HEX).toBeGreaterThanOrEqual(0)
-    expect(HEADLIGHT_BEAM_COLOR_HEX).toBeLessThanOrEqual(0xffffff)
+    expect(HEADLIGHT_SPOT_COLOR_HEX).toBeGreaterThanOrEqual(0)
+    expect(HEADLIGHT_SPOT_COLOR_HEX).toBeLessThanOrEqual(0xffffff)
   })
 })
