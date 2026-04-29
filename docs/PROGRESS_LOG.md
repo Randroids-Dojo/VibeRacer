@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Gamepad Event Rumble
 
 - Branch: `feature/gamepad-event-rumble`
-- PR: pending
+- PR: #50
 - Changed: added gamepad rumble impulses for wrong-way warning and achievement unlock events, reusing the existing gamepad rumble mode and active-pad capability checks.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/haptics.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: this is an event-cue slice only; continuous rumble shaping, collision impulses, trigger rumble, and per-channel intensity controls remain separate followups.
