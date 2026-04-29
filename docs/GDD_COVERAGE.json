@@ -112,7 +112,7 @@
     {
       "id": "6",
       "title": "Track system",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "closed-loop validation",
         "canonical hashing",
@@ -132,7 +132,8 @@
         "per-track biomes",
         "placed decorations",
         "rectangle selection",
-        "selected track transforms"
+        "selected track transforms",
+        "track templates"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -141,6 +142,7 @@
         "src/game/editor.ts",
         "src/game/editorHistory.ts",
         "src/game/editorZoom.ts",
+        "src/game/trackTemplates.ts",
         "src/lib/biomes.ts",
         "src/lib/decorations.ts",
         "src/lib/schemas.ts",
@@ -150,6 +152,7 @@
         "tests/unit/editor.test.ts",
         "tests/unit/editorHistory.test.ts",
         "tests/unit/editorZoom.test.ts",
+        "tests/unit/trackTemplates.test.ts",
         "tests/unit/biomes.test.ts",
         "tests/unit/decorations.test.ts",
         "tests/unit/schemas.test.ts",
@@ -158,14 +161,7 @@
         "tests/unit/tick.test.ts",
         "tests/e2e/smoke.spec.ts"
       ],
-      "remainingGaps": [
-        "track templates"
-      ],
-      "gapBacklog": {
-        "track templates": [
-          "docs/FOLLOWUPS.md#high-priority"
-        ]
-      }
+      "remainingGaps": []
     },
     {
       "id": "11",

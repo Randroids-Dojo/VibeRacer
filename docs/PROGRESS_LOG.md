@@ -2,15 +2,25 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Editor Track Templates
+
+- Branch: `feature/editor-track-templates`
+- PR: pending
+- Changed: added a small track template library with Starter oval, Sweep loop, and S-curve loop presets; surfaced a Templates panel in the editor; applying a template replaces the current piece layout with a valid closed loop, clears custom checkpoints and decorations, selects the new loop, and preserves advanced track settings.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/trackTemplates.test.ts`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: templates are complete starter loops rather than partial disconnected stamps, which keeps Save governed by existing closed-loop validation and avoids adding repair UX in this slice.
+- GDD coverage: completes Section 6 track system for the current grid model. Elevation ramps remain outside the current planar vehicle scope.
+- Followups: none recorded.
+
 ## 2026-04-29, Selected Track Transforms
 
 - Branch: `feature/selected-track-transforms`
-- PR: pending
+- PR: #44
 - Changed: added selected-piece movement, rotation, horizontal flip, and vertical flip actions to the track editor, including collision blocking against unselected track pieces, keyboard shortcuts, checkpoint transform carryover, and focused pure editor tests.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: transforms operate only on selected track pieces. Empty selected cells define the rectangle for flips but do not move decorations; decorations remain cosmetic and are cleared by the existing piece-overlap cleanup when a transformed piece lands on them.
-- GDD coverage: advances Section 6 advanced authoring with selected track transforms. Track templates remain open.
-- Followups: track templates remain in `docs/FOLLOWUPS.md`.
+- GDD coverage: advances Section 6 advanced authoring with selected track transforms.
+- Followups: track templates remained in `docs/FOLLOWUPS.md` until the next slice.
 
 ## 2026-04-29, Editor Rectangle Selection
 
@@ -25,7 +35,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Advanced Track Authoring Plan
 
 - Branch: `docs/plan-advanced-track-authoring`
-- PR: pending
+- PR: #42
 - Changed: chose rectangle selection, selected-piece transforms, and reusable templates as the next advanced authoring workflow; updated the GDD, followups, and coverage ledger to describe the implementation sequence without committing local Dot state.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: elevation ramps remain outside the current planar vehicle scope, so authoring improvements should first build on the existing grid and piece model.
