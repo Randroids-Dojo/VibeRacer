@@ -12,6 +12,16 @@ Newest entries first. Every implementation slice adds an entry.
 - GDD coverage: advances Section 13 (Audio / haptics) with the new gamepad rumble row alongside the existing Vibration API path.
 - Followups: collision-magnitude impulses (require collision events from the physics integrator), wrong-way and achievement-unlock outcomes, per-channel intensity slider, and trigger rumble for Xbox One / Series controllers (`trigger-rumble` effect, not 360).
 
+## 2026-04-29, Leaderboard Run Metadata Details
+
+- Branch: `feature/leaderboard-run-metadata`
+- PR: #39
+- Changed: made leaderboard rows open an accessible lap details panel with rank, input device, date, setup diffs, Copy JSON, and Try this setup, while keeping Chase as a separate row action.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for tuning labels and leaderboard metadata APIs, focused Playwright row-details smoke, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: the existing per-lap metadata side key is the right source of truth, so this slice improves surfacing and accessibility rather than changing the leaderboard storage model.
+- GDD coverage: advances Section 11 leaderboard metadata and tuning visibility. Admin tooling remains tracked separately.
+- Followups: none recorded.
+
 ## 2026-04-29, Background Audio Pause
 
 - Branch: `fix/background-audio-pause`
