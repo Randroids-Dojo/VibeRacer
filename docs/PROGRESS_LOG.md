@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Editor Rectangle Selection
+
+- Branch: `feature/editor-rectangle-selection`
+- PR: pending
+- Changed: added a Select tool to the track editor with two-click rectangular cell selection, selected-cell highlighting, anchor feedback, selected piece / cell counts, and a Clear selection action.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: this slice keeps selection non-mutating so later transform tools can build on it without changing track serialization, validation, or save payloads.
+- GDD coverage: advances Section 6 advanced authoring with rectangle selection. Selected-piece transforms and templates remain open.
+- Followups: selected track transforms and track templates remain in `docs/FOLLOWUPS.md`.
+
 ## 2026-04-29, Advanced Track Authoring Plan
 
 - Branch: `docs/plan-advanced-track-authoring`
