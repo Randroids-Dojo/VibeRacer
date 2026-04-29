@@ -1399,8 +1399,8 @@ export function SettingsPane({
 
         <MenuSection title="Headlights">
           <MenuHint>
-            Glowing front lamps and beam cones on your car. Pure cosmetic. Auto
-            turns them on at sunset, at night, and in foggy or snowy weather.
+            Front lamps with real light sources on your car. Visual only. Auto
+            turns them on around dawn, dusk, at night, and in harsh weather.
           </MenuHint>
           <div style={touchToggleRow}>
             {HEADLIGHT_MODES.map((mode) => {

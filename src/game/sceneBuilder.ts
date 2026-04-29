@@ -30,6 +30,7 @@ import {
   RGBAFormat,
   Scene,
   SphereGeometry,
+  SpotLight,
   Sprite,
   SpriteMaterial,
   type Texture,
@@ -145,15 +146,18 @@ import {
 } from './ghostNameplate'
 import type { GhostSource } from '@/lib/ghostSource'
 import {
-  HEADLIGHT_BEAM_COLOR_HEX,
-  HEADLIGHT_BEAM_LENGTH,
-  HEADLIGHT_BEAM_OPACITY,
-  HEADLIGHT_BEAM_RADIUS,
   HEADLIGHT_LAMP_COLOR_HEX,
   HEADLIGHT_LAMP_OFFSET_X,
   HEADLIGHT_LAMP_OFFSET_Y,
   HEADLIGHT_LAMP_OFFSET_Z,
   HEADLIGHT_LAMP_RADIUS,
+  HEADLIGHT_SPOT_ANGLE,
+  HEADLIGHT_SPOT_COLOR_HEX,
+  HEADLIGHT_SPOT_DECAY,
+  HEADLIGHT_SPOT_DISTANCE,
+  HEADLIGHT_SPOT_INTENSITY,
+  HEADLIGHT_SPOT_PENUMBRA,
+  HEADLIGHT_SPOT_TARGET_X,
 } from '@/lib/headlights'
 import {
   BRAKE_LIGHT_COLOR_HEX,
@@ -194,11 +198,10 @@ export interface SceneBundle {
   // plate. Cheap on no-op (single string compare); the rAF loop can poll-
   // and-set every frame without churning the GPU.
   setRacingNumber: (setting: RacingNumberSetting) => void
-  // Toggle the cosmetic headlight assembly (front lamps + glowing beam cones)
-  // on the player car. `true` shows the lamps + beams, `false` hides them.
-  // Pure cosmetic; the assembly does not actually illuminate the road. Cheap;
-  // the rAF loop can poll-and-set every frame (single boolean compare on the
-  // cached value before flipping the parent group's visibility flag).
+  // Toggle the headlight assembly on the player car. `true` shows the lamp
+  // lenses and enables the SpotLights, `false` hides the whole light group.
+  // Visual only; never affects physics or scoring. Cheap on no-op because the
+  // rAF loop compares one cached boolean before flipping group visibility.
   setHeadlights: (on: boolean) => void
   // Toggle the cosmetic brake-light glow on the rear of the player car.
   // `true` lights the rear lamps red and shows the soft additive halo, `false`
@@ -515,14 +518,9 @@ function buildRacingNumberPlate(): {
   return { group, apply, dispose }
 }
 
-// Cosmetic headlight assembly attached to the car's outer group. Two glowing
-// "lamp" spheres at the front of the chassis and two long translucent beam
-// cones projecting forward read as classic arcade headlights without paying
-// for a real Three.js SpotLight (no shadow map, no per-fragment lighting cost).
-//
-// The geometry is built once and lives behind a single visibility flag so a
-// settings flip is O(1). The beam cones use additive blending so they look
-// brighter against a dark night scene without needing a tonemapping pass.
+// Headlight assembly attached to the car's outer group. Two small lamp lenses
+// at the front of the chassis carry SpotLight sources aimed down the road so
+// nearby scenery and road surfaces pick up real light instead of fake cones.
 function buildHeadlights(): {
   group: Group
   setVisible: (value: boolean) => void
@@ -534,31 +532,17 @@ function buildHeadlights(): {
   // render-list traversal).
   group.visible = false
 
-  // Shared resources so two lamps + two beams collapse to one geometry per
-  // shape and one material per role.
+  // Shared lens resources so the visible parts remain cheap. The SpotLights
+  // are per-lamp because each source has its own target.
   const lampGeom = new SphereGeometry(HEADLIGHT_LAMP_RADIUS, 16, 12)
-  const lampMat = new MeshBasicMaterial({
+  const lampMat = new MeshStandardMaterial({
     color: HEADLIGHT_LAMP_COLOR_HEX,
-    transparent: false,
+    emissive: HEADLIGHT_LAMP_COLOR_HEX,
+    emissiveIntensity: 1.1,
+    roughness: 0.25,
+    metalness: 0,
   })
-  // Beam cone: built with the apex at the local origin and the tip pointing
-  // along +Y by default in Three.js's ConeGeometry. We rotate it so the cone
-  // lies flat along the car's +X (forward) axis with the apex at the lamp
-  // and the wide end out in front.
-  const beamGeom = new ConeGeometry(
-    HEADLIGHT_BEAM_RADIUS,
-    HEADLIGHT_BEAM_LENGTH,
-    16,
-    1,
-    true,
-  )
-  const beamMat = new MeshBasicMaterial({
-    color: HEADLIGHT_BEAM_COLOR_HEX,
-    transparent: true,
-    opacity: HEADLIGHT_BEAM_OPACITY,
-    depthWrite: false,
-    blending: AdditiveBlending,
-  })
+  const targets: Object3D[] = []
 
   function addAssembly(zSign: 1 | -1) {
     const lamp = new Mesh(lampGeom, lampMat)
@@ -569,19 +553,26 @@ function buildHeadlights(): {
     )
     group.add(lamp)
 
-    const beam = new Mesh(beamGeom, beamMat)
-    // Rotate so the cone axis aligns with +X (forward). Default cone axis is
-    // +Y; rotating -PI/2 around Z swings +Y to +X. The apex sits at the
-    // mesh's local origin, so position the mesh half-length forward of the
-    // lamp so the apex lands just in front of the lamp and the wide end sits
-    // HEADLIGHT_BEAM_LENGTH units further along.
-    beam.rotation.z = -Math.PI / 2
-    beam.position.set(
-      HEADLIGHT_LAMP_OFFSET_X + HEADLIGHT_BEAM_LENGTH / 2,
+    const target = new Group()
+    target.position.set(
+      HEADLIGHT_SPOT_TARGET_X,
       HEADLIGHT_LAMP_OFFSET_Y,
       HEADLIGHT_LAMP_OFFSET_Z * zSign,
     )
-    group.add(beam)
+    group.add(target)
+    targets.push(target)
+
+    const light = new SpotLight(
+      HEADLIGHT_SPOT_COLOR_HEX,
+      HEADLIGHT_SPOT_INTENSITY,
+      HEADLIGHT_SPOT_DISTANCE,
+      HEADLIGHT_SPOT_ANGLE,
+      HEADLIGHT_SPOT_PENUMBRA,
+      HEADLIGHT_SPOT_DECAY,
+    )
+    light.position.copy(lamp.position)
+    light.target = target
+    group.add(light)
   }
 
   addAssembly(1)
@@ -595,8 +586,7 @@ function buildHeadlights(): {
     dispose() {
       lampGeom.dispose()
       lampMat.dispose()
-      beamGeom.dispose()
-      beamMat.dispose()
+      targets.length = 0
     },
   }
 }
