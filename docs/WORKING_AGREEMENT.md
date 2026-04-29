@@ -30,7 +30,8 @@ After opening a PR:
 - Treat Copilot or bot review comments as actionable unless clearly incorrect.
 - Fix valid comments and push followup commits.
 - After every followup push, wait for Copilot or any configured bot reviewer to finish reviewing that pushed commit.
-- Re-read flat reviews and threaded inline comments after each push. Merge only after the bot review is finished or after a settled wait confirms no fresh bot feedback appeared.
+- The bot review wait is settled only when all required checks are green and at least 60 seconds have passed since the latest PR branch push or latest bot review activity, whichever is later.
+- Re-read flat reviews and threaded inline comments after each push and after the settled wait. Merge only after bot review is finished or the settled wait confirms no fresh bot feedback appeared.
 - Reply when the context would help future readers.
 - Resolve threads when fixed.
 
