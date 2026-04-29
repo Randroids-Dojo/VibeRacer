@@ -58,6 +58,31 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
   await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
 })
 
+test('track editor uses floating undo and redo controls on mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/start/edit')
+
+  await expect(
+    page.getByRole('toolbar', { name: 'Edit history' }),
+  ).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Undo edit' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Redo edit' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Undo', exact: true }),
+  ).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Redo', exact: true }),
+  ).toHaveCount(0)
+
+  const horizontalOverflow = await page.evaluate(() => {
+    const { documentElement } = document
+    return documentElement.scrollWidth - documentElement.clientWidth
+  })
+  expect(horizontalOverflow).toBeLessThanOrEqual(1)
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')

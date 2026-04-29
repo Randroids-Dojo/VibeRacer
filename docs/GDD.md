@@ -4,7 +4,7 @@
 
 ---
 
-## Status (last updated 2026-04-28)
+## Status (last updated 2026-04-29)
 
 **Status key.** Each section below carries a `**Status.**` line. Sections that have shipped also include a `### Build log` subsection recording what landed, the key files, and any non-obvious decisions. This GDD is intended as a record of truth: when code lands, the relevant section is updated.
 
@@ -14,7 +14,7 @@
 | 3 | Camera and perspective | partial (trailing third-person rig, camera presets, player-tunable camera sliders, time-of-day lighting, weather, particles, track mood, and visual toggles shipped) |
 | 4 | Controls | partial (keyboard WASD/arrows/space + Q/E shifting + Esc pause + dual-stick or single-stick touch + remappable keyboard bindings; gamepad live with remappable buttons) |
 | 5 | Vehicle | partial (arcade integrator + optional manual gearing + off-track drag; Kenney model + raycast per wheel pending) |
-| 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with save flow, version forking, S-curves, sweep turns, kerbs, undo / redo, pan / zoom, difficulty rating, and optional manual shifting) |
+| 6 | Track system | partial (default track renders in 3D; editor UI ships at `/[slug]/edit` with save flow, version forking, S-curves, sweep turns, kerbs, floating undo / redo, pan / zoom, difficulty rating, and optional manual shifting) |
 | 7 | Routing and user-owned paths | partial (middleware + `/[slug]` page + initials prompt + fresh-slug create-or-load + historical `?v=<hash>` links + Settings pane on home and pause menu live, with inline initials editing in the Settings pane) |
 | 8 | Race flow | partial (countdown with animated red/amber/green traffic light + synth beeps, per-track configurable checkpoint count, lap detection, invalid-lap reset, wrong-way warning banner, drift score HUD, and the full HUD all live) |
 | 9 | Title, menu, pause | partial (title screen with Play / Load existing / Settings ships; pause menu is slimmed to race-critical actions, with progress, track tools, setup, and visual controls grouped inside Settings tabs) |
