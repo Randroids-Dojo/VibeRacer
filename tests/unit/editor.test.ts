@@ -1,13 +1,18 @@
 import { describe, it, expect } from 'vitest'
 import {
   countSelectedPieces,
+  flipSelectedPieces,
+  flipSelectionKeys,
   getBounds,
   getStartExitDir,
   moveStartTo,
+  moveSelectedPieces,
   nextRotation,
   rectangleSelectionKeys,
   reverseStartDirection,
+  rotateSelectedPieces,
   selectedCellKey,
+  shiftSelectionKeys,
   withPiecePlaced,
   withPieceRemoved,
   withPieceRotated,
@@ -252,5 +257,130 @@ describe('countSelectedPieces', () => {
 
   it('returns zero for an empty selection', () => {
     expect(countSelectedPieces(DEFAULT_TRACK_PIECES, new Set())).toBe(0)
+  })
+})
+
+describe('moveSelectedPieces', () => {
+  it('moves only selected pieces and keeps unselected pieces in place', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'left90', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 3, col: 3, rotation: 180 },
+    ]
+    const selected = new Set(['0,0', '0,1'])
+
+    expect(moveSelectedPieces(pieces, selected, 2, -1)).toEqual([
+      { type: 'straight', row: 2, col: -1, rotation: 0 },
+      { type: 'left90', row: 2, col: 0, rotation: 90 },
+      { type: 'right90', row: 3, col: 3, rotation: 180 },
+    ])
+  })
+
+  it('allows selected pieces to move through their own current cells', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 1, rotation: 0 },
+    ]
+    const selected = new Set(['0,0', '0,1'])
+
+    expect(moveSelectedPieces(pieces, selected, 0, 1)).toEqual([
+      { type: 'straight', row: 0, col: 1, rotation: 0 },
+      { type: 'straight', row: 0, col: 2, rotation: 0 },
+    ])
+  })
+
+  it('blocks moves into unselected pieces', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 1, rotation: 0 },
+    ]
+    const selected = new Set(['0,0'])
+
+    expect(moveSelectedPieces(pieces, selected, 0, 1)).toBe(pieces)
+  })
+
+  it('shifts selected cell keys by the same delta', () => {
+    expect(shiftSelectionKeys(new Set(['0,0', '-1,2']), 2, -3)).toEqual(
+      new Set(['2,-3', '1,-1']),
+    )
+  })
+})
+
+describe('rotateSelectedPieces', () => {
+  it('rotates every selected piece by one step', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'left90', row: 1, col: 1, rotation: 270 },
+      { type: 'right90', row: 2, col: 2, rotation: 180 },
+    ]
+    const selected = new Set(['0,0', '1,1'])
+
+    expect(rotateSelectedPieces(pieces, selected)).toEqual([
+      { type: 'straight', row: 0, col: 0, rotation: 90 },
+      { type: 'left90', row: 1, col: 1, rotation: 0 },
+      { type: 'right90', row: 2, col: 2, rotation: 180 },
+    ])
+  })
+
+  it('returns the original array when no pieces are selected', () => {
+    expect(rotateSelectedPieces(DEFAULT_TRACK_PIECES, new Set())).toBe(
+      DEFAULT_TRACK_PIECES,
+    )
+  })
+})
+
+describe('flipSelectedPieces', () => {
+  it('mirrors selected positions horizontally and swaps handed piece types', () => {
+    const pieces: Piece[] = [
+      { type: 'right90', row: 0, col: 0, rotation: 0 },
+      { type: 'sweepLeft', row: 0, col: 2, rotation: 90 },
+      { type: 'straight', row: 3, col: 3, rotation: 0 },
+    ]
+    const selected = new Set(['0,0', '0,1', '0,2'])
+
+    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual([
+      { type: 'left90', row: 0, col: 2, rotation: 0 },
+      { type: 'sweepRight', row: 0, col: 0, rotation: 270 },
+      { type: 'straight', row: 3, col: 3, rotation: 0 },
+    ])
+  })
+
+  it('mirrors selected positions vertically and updates turn rotations', () => {
+    const pieces: Piece[] = [
+      { type: 'right90', row: 0, col: 0, rotation: 0 },
+      { type: 'scurve', row: 2, col: 0, rotation: 0 },
+    ]
+    const selected = new Set(['0,0', '1,0', '2,0'])
+
+    expect(flipSelectedPieces(pieces, selected, 'vertical')).toEqual([
+      { type: 'left90', row: 2, col: 0, rotation: 180 },
+      { type: 'scurveLeft', row: 0, col: 0, rotation: 0 },
+    ])
+  })
+
+  it('blocks flips into unselected pieces', () => {
+    const pieces: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 2, rotation: 0 },
+    ]
+    const selected = new Set(['0,0', '0,1', '0,2'])
+
+    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual([
+      { type: 'straight', row: 0, col: 2, rotation: 0 },
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+    ])
+
+    expect(flipSelectedPieces(pieces, new Set(['0,0', '1,2']), 'horizontal')).toBe(
+      pieces,
+    )
+  })
+
+  it('mirrors selected cell keys with the same bounds as pieces', () => {
+    expect(flipSelectionKeys(new Set(['0,0', '0,2']), 'horizontal')).toEqual(
+      new Set(['0,2', '0,0']),
+    )
+    expect(flipSelectionKeys(new Set(['0,0', '2,0']), 'vertical')).toEqual(
+      new Set(['2,0', '0,0']),
+    )
   })
 })

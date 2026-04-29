@@ -38,12 +38,18 @@ import { recordMyTrack } from '@/lib/myTracks'
 import {
   getBounds,
   getStartExitDir,
+  flipCellWithinSelection,
+  flipSelectedPieces,
+  flipSelectionKeys,
   moveStartTo,
+  moveSelectedPieces,
   nextRotation,
   countSelectedPieces,
   rectangleSelectionKeys,
   reverseStartDirection,
+  rotateSelectedPieces,
   selectedCellKey,
+  shiftSelectionKeys,
   withPiecePlaced,
   withPieceRemoved,
   withPieceRotated,
@@ -579,6 +585,61 @@ export function TrackEditor({
     setSelectedCells(new Set())
   }
 
+  const transformCheckpoints = useCallback((
+    transform: (row: number, col: number) => { row: number; col: number },
+  ) => {
+    setCheckpoints((current) =>
+      current.map((checkpoint) =>
+        selectedCells.has(selectedCellKey(checkpoint.row, checkpoint.col))
+          ? transform(checkpoint.row, checkpoint.col)
+          : checkpoint,
+      ),
+    )
+  }, [selectedCells])
+
+  const nudgeSelection = useCallback((rowDelta: number, colDelta: number) => {
+    if (selectedPieceCount === 0) return
+    const nextPieces = moveSelectedPieces(pieces, selectedCells, rowDelta, colDelta)
+    if (nextPieces === pieces) {
+      setError('selection blocked')
+      return
+    }
+    setPieces(nextPieces)
+    transformCheckpoints((row, col) => ({
+      row: row + rowDelta,
+      col: col + colDelta,
+    }))
+    setSelectedCells(shiftSelectionKeys(selectedCells, rowDelta, colDelta))
+    setSelectionAnchor(null)
+    setError(null)
+  }, [pieces, selectedCells, selectedPieceCount, setPieces, transformCheckpoints])
+
+  const rotateSelection = useCallback(() => {
+    if (selectedPieceCount === 0) return
+    const nextPieces = rotateSelectedPieces(pieces, selectedCells)
+    if (nextPieces === pieces) return
+    setPieces(nextPieces)
+    setSelectionAnchor(null)
+    setError(null)
+  }, [pieces, selectedCells, selectedPieceCount, setPieces])
+
+  const flipSelection = useCallback((axis: 'horizontal' | 'vertical') => {
+    if (selectedPieceCount === 0) return
+    const nextPieces = flipSelectedPieces(pieces, selectedCells, axis)
+    if (nextPieces === pieces) {
+      setError('selection blocked')
+      return
+    }
+    const nextSelection = flipSelectionKeys(selectedCells, axis)
+    setPieces(nextPieces)
+    transformCheckpoints((row, col) =>
+      flipCellWithinSelection(row, col, selectedCells, axis),
+    )
+    setSelectedCells(nextSelection)
+    setSelectionAnchor(null)
+    setError(null)
+  }, [pieces, selectedCells, selectedPieceCount, setPieces, transformCheckpoints])
+
   const undoEdit = useCallback(() => {
     setHistory((prev) => undoHistory(prev))
     setError(null)
@@ -633,22 +694,52 @@ export function TrackEditor({
         }
       }
       const mod = e.ctrlKey || e.metaKey
-      if (!mod) return
-      if (e.key === 'z' || e.key === 'Z') {
+      if (mod && (e.key === 'z' || e.key === 'Z')) {
         e.preventDefault()
         if (e.shiftKey) {
           if (canRedo(history)) redoEdit()
         } else {
           if (canUndo(history)) undoEdit()
         }
-      } else if (e.key === 'y' || e.key === 'Y') {
+      } else if (mod && (e.key === 'y' || e.key === 'Y')) {
         e.preventDefault()
         if (canRedo(history)) redoEdit()
+      } else if (!mod && selectedPieceCount > 0) {
+        if (e.key === 'ArrowUp') {
+          e.preventDefault()
+          nudgeSelection(-1, 0)
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault()
+          nudgeSelection(1, 0)
+        } else if (e.key === 'ArrowLeft') {
+          e.preventDefault()
+          nudgeSelection(0, -1)
+        } else if (e.key === 'ArrowRight') {
+          e.preventDefault()
+          nudgeSelection(0, 1)
+        } else if (e.key === 'r' || e.key === 'R') {
+          e.preventDefault()
+          rotateSelection()
+        } else if (e.key === 'h' || e.key === 'H') {
+          e.preventDefault()
+          flipSelection('horizontal')
+        } else if (e.key === 'v' || e.key === 'V') {
+          e.preventDefault()
+          flipSelection('vertical')
+        }
       }
     }
     window.addEventListener('keydown', onKey)
     return () => window.removeEventListener('keydown', onKey)
-  }, [history, redoEdit, undoEdit])
+  }, [
+    flipSelection,
+    history,
+    nudgeSelection,
+    redoEdit,
+    rotateSelection,
+    selectedPieceCount,
+    undoEdit,
+  ])
 
   // Clamp the override whenever piece count drops below it.
   const cpMax = pieces.length
@@ -899,6 +990,73 @@ export function TrackEditor({
             <RedoIcon />
           </button>
         </div>
+        {selectedPieceCount > 0 ? (
+          <div
+            style={selectionTransformToolbar}
+            role="toolbar"
+            aria-label="Selection transforms"
+          >
+            <span style={selectionTransformLabel}>
+              {selectedPieceCount} selected
+            </span>
+            <button
+              type="button"
+              onClick={() => nudgeSelection(-1, 0)}
+              style={transformBtn}
+              title="Move selected pieces up"
+            >
+              Up
+            </button>
+            <button
+              type="button"
+              onClick={() => nudgeSelection(1, 0)}
+              style={transformBtn}
+              title="Move selected pieces down"
+            >
+              Down
+            </button>
+            <button
+              type="button"
+              onClick={() => nudgeSelection(0, -1)}
+              style={transformBtn}
+              title="Move selected pieces left"
+            >
+              Left
+            </button>
+            <button
+              type="button"
+              onClick={() => nudgeSelection(0, 1)}
+              style={transformBtn}
+              title="Move selected pieces right"
+            >
+              Right
+            </button>
+            <button
+              type="button"
+              onClick={rotateSelection}
+              style={transformBtnWide}
+              title="Rotate selected pieces"
+            >
+              Rotate
+            </button>
+            <button
+              type="button"
+              onClick={() => flipSelection('horizontal')}
+              style={transformBtnWide}
+              title="Flip selected pieces horizontally"
+            >
+              Flip H
+            </button>
+            <button
+              type="button"
+              onClick={() => flipSelection('vertical')}
+              style={transformBtnWide}
+              title="Flip selected pieces vertically"
+            >
+              Flip V
+            </button>
+          </div>
+        ) : null}
         <div style={zoomToolbar} role="toolbar" aria-label="Zoom controls">
           <button
             type="button"
@@ -1784,6 +1942,22 @@ const editHistoryToolbar: React.CSSProperties = {
   left: 16,
   right: 'auto',
 }
+const selectionTransformToolbar: React.CSSProperties = {
+  ...zoomToolbar,
+  left: '50%',
+  right: 'auto',
+  transform: 'translateX(-50%)',
+  gap: 8,
+  flexWrap: 'wrap',
+  justifyContent: 'center',
+  maxWidth: 'calc(100% - 240px)',
+}
+const selectionTransformLabel: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.75,
+  marginRight: 2,
+  whiteSpace: 'nowrap',
+}
 const floatingIconBtn: React.CSSProperties = {
   width: 36,
   height: 36,
@@ -1818,6 +1992,16 @@ const zoomBtnWide: React.CSSProperties = {
   width: 48,
   fontSize: 12,
   letterSpacing: 0.5,
+}
+const transformBtn: React.CSSProperties = {
+  ...zoomBtn,
+  width: 48,
+  fontSize: 12,
+}
+const transformBtnWide: React.CSSProperties = {
+  ...zoomBtn,
+  width: 72,
+  fontSize: 12,
 }
 const zoomReadout: React.CSSProperties = {
   fontSize: 11,

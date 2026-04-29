@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Selected Track Transforms
+
+- Branch: `feature/selected-track-transforms`
+- PR: pending
+- Changed: added selected-piece movement, rotation, horizontal flip, and vertical flip actions to the track editor, including collision blocking against unselected track pieces, keyboard shortcuts, checkpoint transform carryover, and focused pure editor tests.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: transforms operate only on selected track pieces. Empty selected cells define the rectangle for flips but do not move decorations; decorations remain cosmetic and are cleared by the existing piece-overlap cleanup when a transformed piece lands on them.
+- GDD coverage: advances Section 6 advanced authoring with selected track transforms. Track templates remain open.
+- Followups: track templates remain in `docs/FOLLOWUPS.md`.
+
 ## 2026-04-29, Editor Rectangle Selection
 
 - Branch: `feature/editor-rectangle-selection`
-- PR: pending
+- PR: #43
 - Changed: added a Select tool to the track editor with two-click rectangular cell selection, selected-cell highlighting, anchor feedback, selected piece / cell counts, and a Clear selection action.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/editor.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke.
 - Assumptions: this slice keeps selection non-mutating so later transform tools can build on it without changing track serialization, validation, or save payloads.
