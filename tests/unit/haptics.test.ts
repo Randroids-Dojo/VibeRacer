@@ -17,7 +17,9 @@ import {
   RUMBLE_EFFECT_MAX_MS,
   RUMBLE_EPSILON,
   RUMBLE_FRAME_DURATION_MS,
+  TRIGGER_RUMBLE_EFFECTS,
   fireGamepadImpulse,
+  fireGamepadTriggerImpulse,
   fireHaptic,
   hasRumbleCapableGamepad,
   isHapticMode,
@@ -510,6 +512,41 @@ describe('RUMBLE_EFFECTS', () => {
   })
 })
 
+describe('TRIGGER_RUMBLE_EFFECTS', () => {
+  it('has an entry for every outcome', () => {
+    for (const outcome of HAPTIC_OUTCOMES) {
+      expect(TRIGGER_RUMBLE_EFFECTS[outcome]).toBeDefined()
+    }
+  })
+
+  it('every trigger magnitude is in [0, 1]', () => {
+    for (const outcome of HAPTIC_OUTCOMES) {
+      const e = TRIGGER_RUMBLE_EFFECTS[outcome]
+      expect(e.leftTrigger).toBeGreaterThanOrEqual(0)
+      expect(e.leftTrigger).toBeLessThanOrEqual(1)
+      expect(e.rightTrigger).toBeGreaterThanOrEqual(0)
+      expect(e.rightTrigger).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('every duration is positive and within RUMBLE_EFFECT_MAX_MS', () => {
+    for (const outcome of HAPTIC_OUTCOMES) {
+      const d = TRIGGER_RUMBLE_EFFECTS[outcome].duration
+      expect(d).toBeGreaterThan(0)
+      expect(d).toBeLessThanOrEqual(RUMBLE_EFFECT_MAX_MS)
+    }
+  })
+
+  it('record is the strongest celebration trigger cue', () => {
+    expect(TRIGGER_RUMBLE_EFFECTS.record.leftTrigger).toBeGreaterThan(
+      TRIGGER_RUMBLE_EFFECTS.pb.leftTrigger,
+    )
+    expect(TRIGGER_RUMBLE_EFFECTS.record.rightTrigger).toBeGreaterThan(
+      TRIGGER_RUMBLE_EFFECTS.pb.rightTrigger,
+    )
+  })
+})
+
 describe('GamepadRumbleIntensitySchema', () => {
   it('accepts per-motor intensity values in range', () => {
     expect(
@@ -631,6 +668,66 @@ function makePadWithLegacy(): { pad: Gamepad; legacy: MockLegacyActuator } {
   return { pad, legacy }
 }
 
+describe('fireGamepadTriggerImpulse', () => {
+  it('returns false when pad is null', () => {
+    expect(fireGamepadTriggerImpulse('lap', null)).toBe(false)
+  })
+
+  it('returns false for an unknown outcome', () => {
+    const { pad } = makePadWithActuator()
+    expect(fireGamepadTriggerImpulse('jingle' as never, pad)).toBe(false)
+  })
+
+  it('returns false when vibrationActuator is unavailable', () => {
+    const { pad } = makePadWithLegacy()
+    expect(fireGamepadTriggerImpulse('lap', pad)).toBe(false)
+  })
+
+  it('drives trigger-rumble with the documented trigger effect', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(fireGamepadTriggerImpulse('record', pad)).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).toHaveBeenCalledWith('trigger-rumble', {
+      duration: TRIGGER_RUMBLE_EFFECTS.record.duration,
+      leftTrigger: TRIGGER_RUMBLE_EFFECTS.record.leftTrigger,
+      rightTrigger: TRIGGER_RUMBLE_EFFECTS.record.rightTrigger,
+    })
+  })
+
+  it('scales trigger-rumble by the average gamepad rumble intensity', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(
+      fireGamepadTriggerImpulse('record', pad, { strong: 0.5, weak: 0.25 }),
+    ).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledWith('trigger-rumble', {
+      duration: TRIGGER_RUMBLE_EFFECTS.record.duration,
+      leftTrigger: TRIGGER_RUMBLE_EFFECTS.record.leftTrigger * 0.375,
+      rightTrigger: TRIGGER_RUMBLE_EFFECTS.record.rightTrigger * 0.375,
+    })
+  })
+
+  it('suppresses trigger-rumble when both intensity channels are zero', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(
+      fireGamepadTriggerImpulse('record', pad, { strong: 0, weak: 0 }),
+    ).toBe(false)
+    expect(actuator.playEffect).not.toHaveBeenCalled()
+  })
+
+  it('marks a pad unsupported after trigger-rumble throws', () => {
+    const actuator: MockActuator = {
+      playEffect: vi.fn((type: string) => {
+        if (type === 'trigger-rumble') throw new Error('unsupported effect')
+        return Promise.resolve('complete')
+      }),
+    }
+    const pad = { vibrationActuator: actuator } as unknown as Gamepad
+    expect(fireGamepadTriggerImpulse('lap', pad)).toBe(false)
+    expect(fireGamepadTriggerImpulse('lap', pad)).toBe(false)
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+  })
+})
+
 describe('fireGamepadImpulse', () => {
   it('returns false when pad is null', () => {
     expect(fireGamepadImpulse('lap', null)).toBe(false)
@@ -649,11 +746,16 @@ describe('fireGamepadImpulse', () => {
   it('drives vibrationActuator.playEffect with the documented dual-rumble effect', () => {
     const { pad, actuator } = makePadWithActuator()
     expect(fireGamepadImpulse('record', pad)).toBe(true)
-    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).toHaveBeenCalledTimes(2)
     expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
       duration: RUMBLE_EFFECTS.record.duration,
       strongMagnitude: RUMBLE_EFFECTS.record.strongMagnitude,
       weakMagnitude: RUMBLE_EFFECTS.record.weakMagnitude,
+    })
+    expect(actuator.playEffect).toHaveBeenCalledWith('trigger-rumble', {
+      duration: TRIGGER_RUMBLE_EFFECTS.record.duration,
+      leftTrigger: TRIGGER_RUMBLE_EFFECTS.record.leftTrigger,
+      rightTrigger: TRIGGER_RUMBLE_EFFECTS.record.rightTrigger,
     })
   })
 
@@ -662,10 +764,16 @@ describe('fireGamepadImpulse', () => {
     expect(
       fireGamepadImpulse('record', pad, { strong: 0.5, weak: 0.25 }),
     ).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledTimes(2)
     expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
       duration: RUMBLE_EFFECTS.record.duration,
       strongMagnitude: RUMBLE_EFFECTS.record.strongMagnitude * 0.5,
       weakMagnitude: RUMBLE_EFFECTS.record.weakMagnitude * 0.25,
+    })
+    expect(actuator.playEffect).toHaveBeenCalledWith('trigger-rumble', {
+      duration: TRIGGER_RUMBLE_EFFECTS.record.duration,
+      leftTrigger: TRIGGER_RUMBLE_EFFECTS.record.leftTrigger * 0.375,
+      rightTrigger: TRIGGER_RUMBLE_EFFECTS.record.rightTrigger * 0.375,
     })
   })
 

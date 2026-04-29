@@ -348,7 +348,8 @@
         "achievement unlock SFX cue",
         "wrong-way gamepad rumble impulse",
         "achievement unlock gamepad rumble impulse",
-        "gamepad rumble per-motor intensity sliders"
+        "gamepad rumble per-motor intensity sliders",
+        "Xbox One / Series trigger rumble impulses"
       ],
       "evidence": [
         "src/game/audioEngine.ts",

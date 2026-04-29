@@ -6,7 +6,9 @@
 //    ...)`) for connected controllers. Both impulses (lap / PB / record /
 //    offTrack / wrongWay / achievement) and a continuous physics-driven
 //    rumble loop (engine purr, surface texture, slip / drift) so a 360 pad
-//    feels Forza-lite during a race. Falls back to the legacy
+//    feels Forza-lite during a race. One-shot impulses also try
+//    `trigger-rumble` as an extra Xbox One / Series cue when the browser
+//    supports it. Falls back to the legacy
 //    `gamepad.hapticActuators[0].pulse(...)` array on browsers that have not
 //    shipped `vibrationActuator` yet.
 //
@@ -183,6 +185,12 @@ export interface DualRumbleEffect {
   weakMagnitude: number
 }
 
+export interface TriggerRumbleEffect {
+  duration: number
+  leftTrigger: number
+  rightTrigger: number
+}
+
 // Per-outcome impulse effects. Magnitudes mirror the audio escalation:
 // lap < pb < record. offTrack is a separate axis (chassis / surface cue),
 // so it sits outside the celebration ramp.
@@ -193,6 +201,21 @@ export const RUMBLE_EFFECTS: Record<HapticOutcome, DualRumbleEffect> = {
   offTrack: { duration: 90, strongMagnitude: 0.55, weakMagnitude: 0.3 },
   wrongWay: { duration: 130, strongMagnitude: 0.25, weakMagnitude: 0.75 },
   achievement: { duration: 180, strongMagnitude: 0.45, weakMagnitude: 0.9 },
+}
+
+// Extra impulse-trigger cues for browsers that support the Gamepad API
+// `trigger-rumble` effect. Xbox 360 pads simply reject this effect, so the
+// runtime suppresses future trigger attempts per pad after a failure.
+export const TRIGGER_RUMBLE_EFFECTS: Record<
+  HapticOutcome,
+  TriggerRumbleEffect
+> = {
+  lap: { duration: 80, leftTrigger: 0.22, rightTrigger: 0.22 },
+  pb: { duration: 220, leftTrigger: 0.42, rightTrigger: 0.48 },
+  record: { duration: 380, leftTrigger: 0.62, rightTrigger: 0.72 },
+  offTrack: { duration: 90, leftTrigger: 0.38, rightTrigger: 0.38 },
+  wrongWay: { duration: 130, leftTrigger: 0.5, rightTrigger: 0.72 },
+  achievement: { duration: 180, leftTrigger: 0.36, rightTrigger: 0.5 },
 }
 
 // Per-effect duration cap. Keeps a future tweak from accidentally scheduling
@@ -239,7 +262,19 @@ export const GamepadRumbleIntensitySchema = z.object({
 interface VibrationActuator {
   playEffect: (
     type: string,
-    params: { duration: number; strongMagnitude: number; weakMagnitude: number; startDelay?: number },
+    params:
+      | {
+          duration: number
+          strongMagnitude: number
+          weakMagnitude: number
+          startDelay?: number
+        }
+      | {
+          duration: number
+          leftTrigger: number
+          rightTrigger: number
+          startDelay?: number
+        },
   ) => Promise<string> | string
   reset?: () => Promise<string> | string
 }
@@ -299,6 +334,11 @@ export function hasRumbleCapableGamepad(): boolean {
 // setGamepadContinuousRumble to dedupe steady-state writes.
 const lastContinuousMags: WeakMap<Gamepad, DualRumbleMagnitudes> = new WeakMap()
 
+// Pads that rejected trigger-rumble once. Keeps the best-effort add-on from
+// retrying a known-unsupported effect every impulse on Xbox 360 or browsers
+// that expose only dual-rumble.
+const unsupportedTriggerRumblePads: WeakSet<Gamepad> = new WeakSet()
+
 function clamp01(x: number): number {
   if (!Number.isFinite(x)) return 0
   if (x < 0) return 0
@@ -314,6 +354,22 @@ function effectFor(outcome: HapticOutcome): DualRumbleEffect | null {
     duration: e.duration,
     strongMagnitude: clamp01(e.strongMagnitude),
     weakMagnitude: clamp01(e.weakMagnitude),
+  }
+}
+
+function triggerEffectFor(
+  outcome: HapticOutcome,
+  intensity?: GamepadRumbleIntensity,
+): TriggerRumbleEffect | null {
+  if (!isHapticOutcome(outcome)) return null
+  const e = TRIGGER_RUMBLE_EFFECTS[outcome]
+  if (!e) return null
+  const scale = normalizeIntensity(intensity)
+  const triggerScale = (scale.strong + scale.weak) / 2
+  return {
+    duration: e.duration,
+    leftTrigger: clamp01(e.leftTrigger) * triggerScale,
+    rightTrigger: clamp01(e.rightTrigger) * triggerScale,
   }
 }
 
@@ -351,6 +407,37 @@ function scaleRumbleEffect(
   }
 }
 
+export function fireGamepadTriggerImpulse(
+  outcome: HapticOutcome,
+  pad: Gamepad | null,
+  intensity?: GamepadRumbleIntensity,
+): boolean {
+  const r = asRumblePad(pad)
+  if (!r || !pad || unsupportedTriggerRumblePads.has(pad)) return false
+  const actuator = r.vibrationActuator
+  if (!actuator || typeof actuator.playEffect !== 'function') return false
+  const effect = triggerEffectFor(outcome, intensity)
+  if (!effect || effect.duration <= 0) return false
+  if (
+    effect.leftTrigger <= RUMBLE_EPSILON &&
+    effect.rightTrigger <= RUMBLE_EPSILON
+  ) {
+    return false
+  }
+  try {
+    const result = actuator.playEffect('trigger-rumble', { ...effect })
+    if (result && typeof (result as Promise<string>).then === 'function') {
+      ;(result as Promise<string>).catch(() => {
+        unsupportedTriggerRumblePads.add(pad)
+      })
+    }
+    return true
+  } catch {
+    unsupportedTriggerRumblePads.add(pad)
+    return false
+  }
+}
+
 // Fire a one-shot impulse on the gamepad's motors. Returns true when the
 // effect was scheduled (or a legacy pulse was queued); false on any failure.
 // Defensive: null pad, missing actuator, thrown promise all return false.
@@ -381,6 +468,7 @@ export function fireGamepadImpulse(
       if (result && typeof (result as Promise<string>).then === 'function') {
         ;(result as Promise<string>).catch(() => {})
       }
+      fireGamepadTriggerImpulse(outcome, pad, intensity)
       return true
     } catch {
       // Fall through to the legacy hapticActuators[0].pulse(...) path. A

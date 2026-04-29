@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Gamepad Trigger Rumble
+
+- Branch: `feature/gamepad-trigger-rumble`
+- PR: Pending
+- Changed: added best-effort Xbox One / Series trigger-rumble impulses on top of existing dual-rumble gamepad event cues, with per-pad unsupported-effect suppression so Xbox 360 and unsupported browser paths do not retry after failure.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/haptics.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke. The first smoke attempt overlapped with `next build` writing `.next` and failed to start its web server with a transient JSON parse error; rerunning after build completed passed.
+- Assumptions: trigger-rumble should remain an add-on to the existing dual-rumble path. The strong and weak intensity sliders scale trigger cues by their average so players can still lower the total controller feel without adding another setting.
+- GDD coverage: extends Section 13 Audio / haptics with impulse-trigger support.
+- Followups: removed the completed Xbox One / Series trigger-rumble item.
+
 ## 2026-04-29, Gamepad Rumble Intensity
 
 - Branch: `feature/gamepad-rumble-intensity`
