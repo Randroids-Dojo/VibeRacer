@@ -19,7 +19,7 @@ import {
   updateSkid,
   _resetSfxForTesting,
 } from '@/game/audio'
-import { _resetAudioEngineForTesting } from '@/game/audioEngine'
+import { _resetAudioEngineForTesting, getAudioEngine } from '@/game/audioEngine'
 
 // ---------------------------------------------------------------------------
 // Pure helpers (no Web Audio).
@@ -172,7 +172,16 @@ interface StubBufferSource {
 let oscillators: StubOscillator[] = []
 let bufferSources: StubBufferSource[] = []
 let gains: StubGainNode[] = []
-let stubCtx: { ctx: { currentTime: number; state: AudioContextState } } | null = null
+let stubCtx: {
+  ctx: {
+    currentTime: number
+    state: AudioContextState
+    resume: ReturnType<typeof vi.fn>
+    suspend: ReturnType<typeof vi.fn>
+  }
+} | null = null
+let documentHidden = false
+let documentListeners: Record<string, (() => void)[]> = {}
 
 function makeStubGainParam(): StubGain {
   return {
@@ -258,6 +267,19 @@ function installStubAudioContext() {
     sampleRate = 44100
     currentTime = 0
     destination = {}
+    resume: ReturnType<typeof vi.fn>
+    suspend: ReturnType<typeof vi.fn>
+    constructor() {
+      this.resume = vi.fn(() => {
+        this.state = 'running'
+        return Promise.resolve()
+      })
+      this.suspend = vi.fn(() => {
+        this.state = 'suspended'
+        return Promise.resolve()
+      })
+      stubCtx = { ctx: this }
+    }
     createOscillator() {
       return makeStubOscillator()
     }
@@ -276,16 +298,27 @@ function installStubAudioContext() {
         getChannelData: () => data,
       } as unknown as AudioBuffer
     }
-    resume() {
-      return Promise.resolve()
-    }
   }
-  stubCtx = { ctx: { currentTime: 0, state: 'running' } }
+  documentHidden = false
+  documentListeners = {}
   const g = globalThis as unknown as Record<string, unknown>
   g.window = {
     AudioContext: StubAudioContext,
     addEventListener: () => {},
     removeEventListener: () => {},
+  }
+  g.document = {
+    get hidden() {
+      return documentHidden
+    },
+    addEventListener: (type: string, listener: () => void) => {
+      documentListeners[type] = [...(documentListeners[type] ?? []), listener]
+    },
+    removeEventListener: (type: string, listener: () => void) => {
+      documentListeners[type] = (documentListeners[type] ?? []).filter(
+        (candidate) => candidate !== listener,
+      )
+    },
   }
   g.AudioContext = StubAudioContext
 }
@@ -294,7 +327,17 @@ function uninstallStubAudioContext() {
   const g = globalThis as unknown as Record<string, unknown>
   delete g.AudioContext
   delete g.window
+  delete g.document
   stubCtx = null
+  documentHidden = false
+  documentListeners = {}
+}
+
+function dispatchVisibilityChange(hidden: boolean): void {
+  documentHidden = hidden
+  for (const listener of documentListeners.visibilitychange ?? []) {
+    listener()
+  }
 }
 
 beforeEach(() => {
@@ -305,6 +348,33 @@ afterEach(() => {
   _resetSfxForTesting()
   _resetAudioEngineForTesting()
   uninstallStubAudioContext()
+})
+
+describe('audio context page visibility', () => {
+  it('suspends the shared context while the page is hidden', () => {
+    const engine = getAudioEngine()
+    expect(engine).not.toBeNull()
+    dispatchVisibilityChange(true)
+    expect(stubCtx!.ctx.suspend).toHaveBeenCalledTimes(1)
+    expect(stubCtx!.ctx.state).toBe('suspended')
+  })
+
+  it('resumes the shared context when the page becomes visible again', () => {
+    const engine = getAudioEngine()
+    expect(engine).not.toBeNull()
+    dispatchVisibilityChange(true)
+    dispatchVisibilityChange(false)
+    expect(stubCtx!.ctx.resume).toHaveBeenCalledTimes(1)
+    expect(stubCtx!.ctx.state).toBe('running')
+  })
+
+  it('does not resume audio while the page is still hidden', () => {
+    const engine = getAudioEngine()
+    expect(engine).not.toBeNull()
+    dispatchVisibilityChange(true)
+    playUiClick('soft')
+    expect(stubCtx!.ctx.resume).not.toHaveBeenCalled()
+  })
 })
 
 describe('startEngineDrone / updateEngine / stopEngineDrone', () => {
