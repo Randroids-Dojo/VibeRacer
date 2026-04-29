@@ -262,6 +262,18 @@ test('track editor decoration palette follows the selected biome', async ({
   await expect(page.getByText('1 decorations')).toBeVisible()
 })
 
+test('track editor applies starter templates as valid loops', async ({ page }) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Templates' }).click()
+  await expect(page.getByText('Starter oval')).toBeVisible()
+  await page.getByRole('button', { name: /Sweep loop/ }).click()
+
+  await expect(page.getByText('valid closed loop')).toBeVisible()
+  await expect(page.getByText('8 / 64 pieces')).toBeVisible()
+  await expect(page.getByText('8 selected pieces')).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')

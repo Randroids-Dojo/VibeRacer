@@ -4,7 +4,7 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## High Priority
 
-- Advanced authoring: track templates. After transforms land, add a small template or stamp library so authors can place reusable loops or sections quickly, with save-safe validation and smoke coverage.
+- None recorded.
 
 ## Medium Priority
 

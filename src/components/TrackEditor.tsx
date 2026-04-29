@@ -74,6 +74,11 @@ import {
   pinchZoom,
   shiftZoomTowardCursor,
 } from '@/game/editorZoom'
+import {
+  TRACK_TEMPLATES,
+  cloneTemplatePieces,
+  getTrackTemplate,
+} from '@/game/trackTemplates'
 
 type Tool = 'select' | 'erase' | PieceType | 'start' | 'checkpoint' | TrackDecorationKind
 const PIECE_TOOLS: PieceType[] = [
@@ -212,6 +217,7 @@ export function TrackEditor({
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
   const [selectionAnchor, setSelectionAnchor] = useState<{ row: number; col: number } | null>(null)
   const [selectedCells, setSelectedCells] = useState<Set<string>>(() => new Set())
+  const [templatePanelOpen, setTemplatePanelOpen] = useState(false)
   const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
   // Tracks an active two-finger pinch gesture. Null when no pinch is active.
@@ -585,6 +591,21 @@ export function TrackEditor({
     setSelectedCells(new Set())
   }
 
+  function applyTemplate(templateId: string) {
+    const template = getTrackTemplate(templateId)
+    if (template === null) return
+    const nextPieces = cloneTemplatePieces(template)
+    setPieces(nextPieces)
+    setCheckpointCount(null)
+    setCheckpoints([])
+    setDecorations([])
+    setSelectionAnchor(null)
+    setSelectedCells(
+      new Set(nextPieces.map((piece) => selectedCellKey(piece.row, piece.col))),
+    )
+    setError(null)
+  }
+
   const transformCheckpoints = useCallback((
     transform: (row: number, col: number) => { row: number; col: number },
   ) => {
@@ -909,6 +930,41 @@ export function TrackEditor({
         })}
         <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
+
+      {templatePanelOpen ? (
+        <div style={templatePanel}>
+          <div style={templateHeader}>
+            <div>
+              <div style={advancedTitle}>Templates</div>
+              <p style={templateHelp}>
+                Replace the current layout with a valid starter loop. Mood,
+                biome, transmission, and other advanced settings stay as-is.
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={() => setTemplatePanelOpen(false)}
+              style={btnGhostSmall}
+            >
+              Hide
+            </button>
+          </div>
+          <div style={templateGrid}>
+            {TRACK_TEMPLATES.map((template) => (
+              <button
+                key={template.id}
+                type="button"
+                onClick={() => applyTemplate(template.id)}
+                style={templateCard}
+              >
+                <TemplatePreview pieces={template.pieces} />
+                <span style={templateCardTitle}>{template.label}</span>
+                <span style={templateCardCopy}>{template.description}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       <div style={gridOuter}>
         <div style={gridWrap} ref={gridContainerRef}>
@@ -1369,6 +1425,14 @@ export function TrackEditor({
           >
             Clear selection
           </button>
+          {!templatePanelOpen ? (
+            <button
+              onClick={() => setTemplatePanelOpen(true)}
+              style={btnGhost}
+            >
+              Templates
+            </button>
+          ) : null}
           {!advancedOpen ? (
             <button onClick={() => setAdvancedOpen(true)} style={btnGhost}>
               Advanced
@@ -1547,6 +1611,31 @@ function SelectGlyph() {
       <circle cx={12} cy={12} r={4} fill="#ffd36b" />
       <circle cx={44} cy={44} r={4} fill="#58a6ff" />
     </g>
+  )
+}
+
+function TemplatePreview({ pieces }: { pieces: Piece[] }) {
+  const bounds = getBounds(pieces)
+  const width = (bounds.colMax - bounds.colMin + 1) * CELL
+  const height = (bounds.rowMax - bounds.rowMin + 1) * CELL
+  return (
+    <svg
+      width={112}
+      height={78}
+      viewBox={`0 0 ${width} ${height}`}
+      aria-hidden="true"
+      style={templatePreview}
+    >
+      {pieces.map((piece) => (
+        <g
+          key={`${piece.row},${piece.col}`}
+          transform={`translate(${(piece.col - bounds.colMin) * CELL}, ${(piece.row - bounds.rowMin) * CELL})`}
+        >
+          <rect width={CELL} height={CELL} fill="#1a2534" />
+          <PieceGlyph piece={piece} />
+        </g>
+      ))}
+    </svg>
   )
 }
 
@@ -1906,6 +1995,59 @@ const paletteHint: React.CSSProperties = {
   fontSize: 12,
   opacity: 0.6,
   marginLeft: 'auto',
+}
+const templatePanel: React.CSSProperties = {
+  borderBottom: '1px solid #1f2b3d',
+  background: '#0f1826',
+  padding: '14px 20px',
+}
+const templateHeader: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'flex-start',
+  justifyContent: 'space-between',
+  gap: 16,
+  marginBottom: 12,
+}
+const templateHelp: React.CSSProperties = {
+  margin: '4px 0 0',
+  fontSize: 12,
+  lineHeight: 1.4,
+  opacity: 0.72,
+}
+const templateGrid: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
+  gap: 10,
+}
+const templateCard: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-start',
+  gap: 8,
+  border: '1px solid #2b3a50',
+  borderRadius: 8,
+  background: '#111f30',
+  color: 'white',
+  padding: 10,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+const templatePreview: React.CSSProperties = {
+  width: '100%',
+  height: 78,
+  borderRadius: 6,
+  background: '#162233',
+  border: '1px solid #243247',
+}
+const templateCardTitle: React.CSSProperties = {
+  fontSize: 13,
+  fontWeight: 800,
+}
+const templateCardCopy: React.CSSProperties = {
+  fontSize: 11,
+  lineHeight: 1.35,
+  opacity: 0.72,
 }
 const gridOuter: React.CSSProperties = {
   flex: 1,
