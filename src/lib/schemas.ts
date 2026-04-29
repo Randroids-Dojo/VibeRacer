@@ -6,6 +6,15 @@ import { WeatherSchema } from './weather'
 import { TrackBiomeSchema } from './biomes'
 export { TrackBiomeSchema } from './biomes'
 import {
+  MAX_DECORATIONS_PER_TRACK,
+  TrackDecorationSchema,
+} from './decorations'
+export {
+  MAX_DECORATIONS_PER_TRACK,
+  TrackDecorationKindSchema,
+  TrackDecorationSchema,
+} from './decorations'
+import {
   DEFAULT_TRACK_TRANSMISSION,
   TRACK_TRANSMISSION_MODES,
 } from '@/game/transmission'
@@ -70,6 +79,7 @@ export const TrackMoodSchema = z
 export type TrackMood = z.infer<typeof TrackMoodSchema>
 
 export type TrackBiome = z.infer<typeof TrackBiomeSchema>
+export type TrackDecoration = z.infer<typeof TrackDecorationSchema>
 
 export const TrackTransmissionModeSchema = z.enum(TRACK_TRANSMISSION_MODES)
 export type TrackTransmissionMode = z.infer<typeof TrackTransmissionModeSchema>
@@ -84,6 +94,9 @@ export const TrackSchema = z
       .optional(),
     mood: TrackMoodSchema.optional(),
     biome: TrackBiomeSchema.optional(),
+    decorations: z.array(TrackDecorationSchema)
+      .max(MAX_DECORATIONS_PER_TRACK)
+      .optional(),
     transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   })
   .superRefine((track, ctx) => {
@@ -138,6 +151,29 @@ export const TrackSchema = z
         seen.add(key)
       }
     }
+    if (track.decorations !== undefined) {
+      const pieceCells = new Set(track.pieces.map((p) => `${p.row},${p.col}`))
+      const seenDecorations = new Set<string>()
+      for (let i = 0; i < track.decorations.length; i++) {
+        const decoration = track.decorations[i]
+        const key = `${decoration.row},${decoration.col}`
+        if (pieceCells.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['decorations', i],
+            message: 'decoration cannot be placed on a track piece',
+          })
+        }
+        if (seenDecorations.has(key)) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: ['decorations', i],
+            message: 'duplicate decoration cell',
+          })
+        }
+        seenDecorations.add(key)
+      }
+    }
   })
 export type Track = z.infer<typeof TrackSchema>
 
@@ -150,6 +186,9 @@ export const TrackVersionSchema = z.object({
     .optional(),
   mood: TrackMoodSchema.optional(),
   biome: TrackBiomeSchema.optional(),
+  decorations: z.array(TrackDecorationSchema)
+    .max(MAX_DECORATIONS_PER_TRACK)
+    .optional(),
   transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),

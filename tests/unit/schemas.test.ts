@@ -3,6 +3,7 @@ import {
   PieceSchema,
   TrackSchema,
   TrackBiomeSchema,
+  TrackDecorationSchema,
   TrackMoodSchema,
   TrackVersionSchema,
   InitialsSchema,
@@ -261,6 +262,60 @@ describe('TrackSchema', () => {
     const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
     expect(TrackSchema.safeParse({ pieces, biome: 'forest' }).success).toBe(false)
   })
+
+  it('accepts decorations on empty cells', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        decorations: [{ kind: 'cactus', row: 2, col: 0 }],
+      }).success,
+    ).toBe(true)
+  })
+
+  it('rejects decorations on track cells or duplicate cells', () => {
+    const pieces = [{ type: 'straight' as const, row: 0, col: 0, rotation: 0 as const }]
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        decorations: [{ kind: 'tree', row: 0, col: 0 }],
+      }).success,
+    ).toBe(false)
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        decorations: [
+          { kind: 'tree', row: 1, col: 0 },
+          { kind: 'rock', row: 1, col: 0 },
+        ],
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('TrackDecorationSchema', () => {
+  it('round-trips a decoration', () => {
+    expect(TrackDecorationSchema.parse({ kind: 'palm', row: 3, col: -1 })).toEqual({
+      kind: 'palm',
+      row: 3,
+      col: -1,
+    })
+  })
+
+  it('rejects unknown decoration kinds and fields', () => {
+    expect(
+      TrackDecorationSchema.safeParse({ kind: 'statue', row: 0, col: 0 })
+        .success,
+    ).toBe(false)
+    expect(
+      TrackDecorationSchema.safeParse({
+        kind: 'rock',
+        row: 0,
+        col: 0,
+        extra: true,
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe('TrackBiomeSchema', () => {
@@ -316,6 +371,15 @@ describe('TrackVersionSchema', () => {
       TrackVersionSchema.safeParse({
         ...validVersion,
         biome: 'snow',
+      }).success,
+    ).toBe(true)
+  })
+
+  it('round-trips a version with decorations', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        decorations: [{ kind: 'building', row: 2, col: 2 }],
       }).success,
     ).toBe(true)
   })

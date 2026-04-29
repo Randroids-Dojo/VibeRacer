@@ -3,6 +3,7 @@ import {
   type Piece,
   type TrackCheckpoint,
   type TrackBiome,
+  type TrackDecoration,
   type TrackMood,
   type TrackTransmissionMode,
 } from '@/lib/schemas'
@@ -25,6 +26,7 @@ export type LoadTrackResult =
       checkpointCount?: number
       checkpoints?: TrackCheckpoint[]
       biome?: TrackBiome
+      decorations?: TrackDecoration[]
       mood?: TrackMood
       transmission: TrackTransmissionMode
     }
@@ -61,6 +63,7 @@ export async function loadTrack(
           checkpointCount: parsed.data.checkpointCount,
           checkpoints: parsed.data.checkpoints,
           biome: parsed.data.biome,
+          decorations: parsed.data.decorations,
           mood: parsed.data.mood,
           transmission: parsed.data.transmission,
         }

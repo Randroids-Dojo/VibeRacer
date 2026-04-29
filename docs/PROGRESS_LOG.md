@@ -12,6 +12,16 @@ Newest entries first. Every implementation slice adds an entry.
 - GDD coverage: advances Section 13 (Audio / haptics) with the new gamepad rumble row alongside the existing Vibration API path.
 - Followups: collision-magnitude impulses (require collision events from the physics integrator), wrong-way and achievement-unlock outcomes, per-channel intensity slider, and trigger rumble for Xbox One / Series controllers (`trigger-rumble` effect, not 360).
 
+## 2026-04-29, Editor Decoration Placement
+
+- Branch: `feature/editor-decoration-placement`
+- PR: #35
+- Changed: added optional per-track decorations on empty editor cells, biome-adaptive decoration palettes, API save/load support, low-poly prop rendering through the scenery layer, and editor smoke coverage.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, focused Vitest coverage for decorations, schemas, track API, and scenery, focused Playwright editor decoration smoke, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: decorations are visual metadata like biome, so they do not affect physics, lap validity, anti-cheat, version hashes, or leaderboard splits.
+- GDD coverage: advances Section 6 track authoring and visual identity.
+- Followups: none recorded.
+
 ## 2026-04-29, HUD Mirror And Bottom Lane Spacing
 
 - Branch: `fix/hud-mirror-speed-overlap`
