@@ -275,6 +275,18 @@ function TrackView({
   const samples = telemetry.positions
   const speeds = telemetry.speeds
 
+  // Recover the world-to-view scale (in pixels per world unit) so the gray
+  // track band can be stroked at the actual track surface width. Without
+  // this the centerline strokes at a hardcoded pixel width and the
+  // recorded racing line (which can sit up to TRACK_WIDTH/2 world units off
+  // the centerline at the apex of a corner) appears to leave the track.
+  const padding = 8
+  const inner = Math.max(view - 2 * padding, 1)
+  const worldW = Math.max(geometry.bounds.maxX - geometry.bounds.minX, 1e-6)
+  const worldH = Math.max(geometry.bounds.maxZ - geometry.bounds.minZ, 1e-6)
+  const scale = Math.min(inner / worldW, inner / worldH)
+  const trackStrokePx = TRACK_WIDTH * scale
+
   const segments: Array<{ d: string; color: string }> = []
   for (let i = 1; i < samples.length; i++) {
     const a = geometry.worldToView(samples[i - 1][0], samples[i - 1][1])
@@ -330,12 +342,24 @@ function TrackView({
       <rect x={0} y={0} width={view} height={view} fill="#0a0a0a" />
       {geometry.pieces.map((d, i) => (
         <path
-          key={`piece-${i}`}
+          key={`surface-${i}`}
           d={d}
           fill="none"
           stroke="#2a2a2a"
-          strokeWidth={6}
+          strokeWidth={trackStrokePx}
           strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      ))}
+      {geometry.pieces.map((d, i) => (
+        <path
+          key={`center-${i}`}
+          d={d}
+          fill="none"
+          stroke="rgba(255,255,255,0.06)"
+          strokeWidth={Math.max(0.5, trackStrokePx * 0.04)}
+          strokeDasharray={`${(trackStrokePx * 0.18).toFixed(2)} ${(trackStrokePx * 0.18).toFixed(2)}`}
+          strokeLinecap="butt"
           strokeLinejoin="round"
         />
       ))}
