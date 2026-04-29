@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Stale Garage Task Closure
+
+- Branch: `fix/garage-next-race-layout`
+- PR: pending
+- Changed: closed the Garage overlap Dot as not applicable because this repo has no Garage screen, World Tour route, or matching copy to patch.
+- Verification: `rg` searches for Garage, World Tour, Next race, and the reported copy; dash checks, `git diff --check`, and `npm run type-check`.
+- Assumptions: the Dot came from a future or different surface that is not present in the current VibeRacer codebase.
+- GDD coverage: no product behavior changed.
+- Followups: none recorded.
+
 ## 2026-04-29, Close Ghost Nameplate Fade
 
 - Branch: `fix/ghost-name-bubble-close`
