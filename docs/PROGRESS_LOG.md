@@ -5,7 +5,7 @@ Newest entries first. Every implementation slice adds an entry.
 ## 2026-04-29, Close Ghost Nameplate Fade
 
 - Branch: `fix/ghost-name-bubble-close`
-- PR: pending
+- PR: #20
 - Changed: made the floating ghost nameplate fade out as the ghost gets close to the player, preventing the label from covering the player's car in chase cameras.
 - Verification: dash checks, `git diff --check`, `npm test -- tests/unit/ghostNameplate.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and `npm run test:e2e -- tests/e2e/smoke.spec.ts`.
 - Assumptions: distance-based fading preserves the existing Show nameplate setting while solving the close-ghost obstruction without adding another player-facing option.
