@@ -405,11 +405,20 @@ function mirrorSweepSamples(samples: SampledPoint[]): SampledPoint[] {
   }))
 }
 
+// Standard cubic-bezier coefficient for approximating a quarter circle:
+// 4*(sqrt(2)-1)/3 ≈ 0.5523. With this coefficient the curve's minimum
+// curvature radius stays well above TRACK_WIDTH / 2, so the extruded road
+// ribbon never folds onto itself. Tighter coefficients (e.g. the original
+// 0.12) collapsed the ribbon into a self-intersecting fan at the apex,
+// producing z-fighting and a visible seam where the fold crossed back over
+// the rest of the road.
+const SWEEP_BEZIER_K = (4 * (Math.SQRT2 - 1)) / 3
+
 export function sampleSweepRightLocal(): SampledPoint[] {
   const samples: SampledPoint[] = []
   const p0 = { x: 0, z: HALF }
-  const p1 = { x: 0, z: HALF * 0.12 }
-  const p2 = { x: HALF * 0.12, z: 0 }
+  const p1 = { x: 0, z: HALF * SWEEP_BEZIER_K }
+  const p2 = { x: HALF * SWEEP_BEZIER_K, z: 0 }
   const p3 = { x: HALF, z: 0 }
   const sampleParameters = equalArcLengthParameters(SWEEP_SAMPLE_COUNT, (t) =>
     cubicBezierPoint(p0, p1, p2, p3, t),

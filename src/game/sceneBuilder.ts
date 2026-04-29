@@ -10,7 +10,6 @@ import {
   CylinderGeometry,
   DataTexture,
   DirectionalLight,
-  DoubleSide,
   FogExp2,
   Group,
   DynamicDrawUsage,
@@ -1922,14 +1921,7 @@ export function buildScene(path: TrackPath): SceneBundle {
   const fog = new FogExp2(0xffffff, 0)
   scene.fog = fog
 
-  // DoubleSide so the road stays visible at the inside apex of sweep pieces,
-  // where the bezier curvature is sharper than the track half-width and the
-  // extruded ribbon briefly folds onto itself.
-  const trackMat = new MeshStandardMaterial({
-    color: 0x2b2b2b,
-    roughness: 0.9,
-    side: DoubleSide,
-  })
+  const trackMat = new MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 })
   for (const op of path.order) {
     const mesh = new Mesh(pieceGeometry(op), trackMat)
     mesh.position.y = 0.01
