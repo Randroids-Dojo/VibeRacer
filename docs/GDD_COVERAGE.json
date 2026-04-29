@@ -8,7 +8,7 @@
       "implemented": [
         "countdown",
         "race loop",
-        "HUD",
+        "decluttered race HUD",
         "lap auto-submit",
         "pause",
         "restart",
@@ -19,7 +19,10 @@
       "evidence": [
         "src/components/Game.tsx",
         "src/game/tick.ts",
-        "tests/unit/tick.test.ts"
+        "tests/unit/tick.test.ts",
+        "src/components/HUD.tsx",
+        "src/lib/hudNotifications.ts",
+        "tests/unit/hudNotifications.test.ts"
       ],
       "remainingGaps": []
     },

@@ -42,6 +42,7 @@ import {
 } from '@/game/lapConsistency'
 import { type SpeedUnit } from '@/lib/speedometer'
 import type { TrackTransmissionMode } from '@/game/transmission'
+import { selectHudNotificationStack } from '@/lib/hudNotifications'
 
 function formatLapTime(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
@@ -165,6 +166,7 @@ interface HudProps {
   lapConsistency?: LapConsistencyInfo | null
   transmission?: TrackTransmissionMode
   gear?: number
+  compact?: boolean
 }
 
 const HUD_ANIMATIONS_CSS = `
@@ -180,14 +182,14 @@ const HUD_ANIMATIONS_CSS = `
   100% { opacity: 0 }
 }
 @keyframes viberacer-split-pop {
-  0% { transform: translate(-50%, 0) scale(0.85); opacity: 0 }
-  15% { transform: translate(-50%, 0) scale(1.05); opacity: 1 }
-  80% { transform: translate(-50%, 0) scale(1); opacity: 1 }
-  100% { transform: translate(-50%, 0) scale(1); opacity: 0 }
+  0% { transform: scale(0.85); opacity: 0 }
+  15% { transform: scale(1.05); opacity: 1 }
+  80% { transform: scale(1); opacity: 1 }
+  100% { transform: scale(1); opacity: 0 }
 }
 @keyframes viberacer-wrongway-pulse {
-  0%, 100% { transform: translateX(-50%) scale(1); opacity: 1 }
-  50% { transform: translateX(-50%) scale(1.04); opacity: 0.85 }
+  0%, 100% { transform: scale(1); opacity: 1 }
+  50% { transform: scale(1.04); opacity: 0.85 }
 }
 @keyframes viberacer-wrongway-arrow {
   0%, 100% { transform: translateX(0) }
@@ -198,10 +200,10 @@ const HUD_ANIMATIONS_CSS = `
   50% { box-shadow: 0 0 28px rgba(255, 200, 80, 0.85), 0 4px 12px rgba(0, 0, 0, 0.4) }
 }
 @keyframes viberacer-sector-pb-pop {
-  0% { transform: translate(-50%, -8px) scale(0.6); opacity: 0 }
-  20% { transform: translate(-50%, 0) scale(1.12); opacity: 1 }
-  60% { transform: translate(-50%, 0) scale(1); opacity: 1 }
-  100% { transform: translate(-50%, -2px) scale(1); opacity: 0 }
+  0% { transform: translateY(-8px) scale(0.6); opacity: 0 }
+  20% { transform: translateY(0) scale(1.12); opacity: 1 }
+  60% { transform: translateY(0) scale(1); opacity: 1 }
+  100% { transform: translateY(-2px) scale(1); opacity: 0 }
 }
 `
 
@@ -569,12 +571,14 @@ function DriftPanel({
   multiplier,
   lapBest,
   allTimeBest,
+  compact,
 }: {
   active: boolean
   score: number
   multiplier: number
   lapBest: number | null
   allTimeBest: number | null
+  compact: boolean
 }) {
   const showLive = active || score > 0
   const liveStyle = active ? driftLiveActive : driftLiveInactive
@@ -588,27 +592,160 @@ function DriftPanel({
           {showLive ? formatDriftScore(score) : '--'}
         </div>
       </div>
-      <div style={driftSubRow}>
-        <div style={driftSubBlock}>
-          <div style={driftSubLabel}>BEST (LAP)</div>
-          <div style={driftSubValue}>
-            {lapBest !== null && lapBest > 0 ? formatDriftScore(lapBest) : '--'}
+      {!compact ? (
+        <div style={driftSubRow}>
+          <div style={driftSubBlock}>
+            <div style={driftSubLabel}>BEST (LAP)</div>
+            <div style={driftSubValue}>
+              {lapBest !== null && lapBest > 0 ? formatDriftScore(lapBest) : '--'}
+            </div>
+          </div>
+          <div style={driftSubBlock}>
+            <div style={driftSubLabel}>BEST (ALL)</div>
+            <div style={driftSubValue}>
+              {allTimeBest !== null && allTimeBest > 0
+                ? formatDriftScore(allTimeBest)
+                : '--'}
+            </div>
           </div>
         </div>
-        <div style={driftSubBlock}>
-          <div style={driftSubLabel}>BEST (ALL)</div>
-          <div style={driftSubValue}>
-            {allTimeBest !== null && allTimeBest > 0
-              ? formatDriftScore(allTimeBest)
-              : '--'}
-          </div>
+      ) : null}
+    </div>
+  )
+}
+
+type NotificationKind = 'toast' | 'reaction' | 'topSpeed' | 'sector' | 'split'
+
+interface NotificationPayload {
+  kind: NotificationKind
+  node: React.ReactNode
+}
+
+function NotificationStack({
+  entries,
+}: {
+  entries: { id: string; priority: number; createdAtMs: number; payload: NotificationPayload }[]
+}) {
+  const visible = selectHudNotificationStack(entries, 2)
+  if (visible.length === 0) return null
+  return (
+    <div style={notificationStack} aria-live="polite">
+      {visible.map((entry) => (
+        <div key={entry.id} style={notificationSlot}>
+          {entry.payload.node}
         </div>
-      </div>
+      ))}
+    </div>
+  )
+}
+
+function SessionStrip({
+  bestSession,
+  bestAllTime,
+  optimal,
+  optimalComplete,
+  record,
+  medalTier,
+  nextMedal,
+  nextMedalLabel,
+  streakLabel,
+  rank,
+  consistency,
+  compact,
+}: {
+  bestSession: string
+  bestAllTime: string
+  optimal: string
+  optimalComplete: boolean
+  record: string
+  medalTier: MedalTier | null
+  nextMedal: { tier: MedalTier; gapMs: number } | null
+  nextMedalLabel: string | null
+  streakLabel: string | null
+  rank: LeaderboardRankInfo | null
+  consistency: LapConsistencyInfo | null
+  compact: boolean
+}) {
+  return (
+    <div style={compact ? compactSessionStrip : sessionStrip}>
+      <span>BEST {bestAllTime}</span>
+      {!compact ? (
+        <>
+          <span style={stripDivider}>.</span>
+          <span>SESSION {bestSession}</span>
+          <span style={stripDivider}>.</span>
+          <span style={optimalComplete ? stripOptimalComplete : stripOptimalPending}>
+            OPT {optimal}
+          </span>
+        </>
+      ) : null}
+      <span style={stripDivider}>.</span>
+      <span>REC {record}</span>
+      <details style={stripDetails}>
+        <summary style={stripSummary} aria-label="More session details">
+          i
+        </summary>
+        <div style={stripPopover}>
+          {medalTier ? <MedalBadge tier={medalTier} /> : null}
+          {nextMedal && nextMedalLabel ? (
+            <NextMedalChip tier={nextMedal.tier} label={nextMedalLabel} />
+          ) : null}
+          {streakLabel ? <StreakBadge label={streakLabel} /> : null}
+          {rank ? <RankBadge info={rank} /> : null}
+          {consistency ? <ConsistencyBadge info={consistency} /> : null}
+          {!medalTier && !nextMedal && !streakLabel && !rank && !consistency ? (
+            <span style={stripEmpty}>No extra session detail yet</span>
+          ) : null}
+        </div>
+      </details>
+    </div>
+  )
+}
+
+function LiveBand({
+  ghostGapLabel,
+  ghostGapAhead,
+  challenge,
+  rivalLabel,
+  compact,
+}: {
+  ghostGapLabel: string | null
+  ghostGapAhead: boolean
+  challenge: { from: string; targetMs: number } | null
+  rivalLabel?: string | null
+  compact: boolean
+}) {
+  if (!ghostGapLabel && !challenge && !rivalLabel) return null
+  return (
+    <div style={compact ? compactLiveBand : liveBand}>
+      {ghostGapLabel !== null ? (
+        <div
+          style={ghostGapAhead ? livePillAhead : livePillBehind}
+          aria-live="off"
+          title="Live gap to the ghost car at your current position"
+        >
+          <span style={ghostGapChipLabelStyle}>vs GHOST</span>
+          <span style={ghostGapChipValueStyle}>{ghostGapLabel}</span>
+        </div>
+      ) : null}
+      {challenge ? (
+        <div style={livePillNeutral} role="status">
+          <span>Challenge</span>
+          <span style={challengeBannerInitials}>{challenge.from}</span>
+          <span>{formatLapTime(challenge.targetMs)}</span>
+        </div>
+      ) : null}
+      {rivalLabel ? (
+        <div style={livePillNeutral} role="status" aria-live="polite">
+          {rivalLabel}
+        </div>
+      ) : null}
     </div>
   )
 }
 
 export function HUD(props: HudProps) {
+  const compact = props.compact ?? false
   const recordValue = props.overallRecord
     ? `${props.overallRecord.initials} ${formatLapTime(props.overallRecord.lapTimeMs)}`
     : '--'
@@ -643,41 +780,136 @@ export function HUD(props: HudProps) {
   const ghostGapMsValue = props.ghostGapMs ?? null
   const ghostGapLabel = formatGhostGap(ghostGapMsValue)
   const ghostGapAhead = ghostGapMsValue !== null && ghostGapMsValue <= 0
+  const rankInfo =
+    props.leaderboardRank && isLeaderboardRankInfo(props.leaderboardRank)
+      ? props.leaderboardRank
+      : null
+  const alert =
+    props.wrongWay
+      ? 'wrongWay'
+      : !props.onTrack
+        ? 'offTrack'
+        : props.paceNote
+          ? 'pace'
+          : null
+  const notificationEntries: {
+    id: string
+    priority: number
+    createdAtMs: number
+    payload: NotificationPayload
+  }[] = []
+  if (props.toast) {
+    notificationEntries.push({
+      id: `toast-${props.toastKind ?? 'lap'}-${props.toast}`,
+      priority: props.toastKind === 'record' ? 100 : props.toastKind === 'pb' ? 90 : 60,
+      createdAtMs: Date.now(),
+      payload: { kind: 'toast', node: <div style={toastChipStyle}>{props.toast}</div> },
+    })
+  }
+  if (props.reactionTime) {
+    notificationEntries.push({
+      id: `reaction-${props.reactionTime.generatedAtMs}`,
+      priority: props.reactionTime.isPb ? 80 : 50,
+      createdAtMs: props.reactionTime.generatedAtMs,
+      payload: {
+        kind: 'reaction',
+        node: (
+          <ReactionTimeChip
+            reactionMs={props.reactionTime.reactionMs}
+            isPb={props.reactionTime.isPb}
+            generatedAtMs={props.reactionTime.generatedAtMs}
+          />
+        ),
+      },
+    })
+  }
+  if (props.topSpeedPb) {
+    notificationEntries.push({
+      id: `topspeed-${props.topSpeedPb.generatedAtMs}`,
+      priority: 70,
+      createdAtMs: props.topSpeedPb.generatedAtMs,
+      payload: {
+        kind: 'topSpeed',
+        node: (
+          <TopSpeedPbChip
+            topSpeedUs={props.topSpeedPb.topSpeedUs}
+            priorUs={props.topSpeedPb.priorUs}
+            generatedAtMs={props.topSpeedPb.generatedAtMs}
+            unit={props.speedUnit ?? 'mph'}
+            maxSpeed={props.carMaxSpeed ?? 26}
+          />
+        ),
+      },
+    })
+  }
+  if (props.sectorPb) {
+    notificationEntries.push({
+      id: `sector-${props.sectorPb.cpId}-${props.sectorPb.generatedAtMs}`,
+      priority: 65,
+      createdAtMs: props.sectorPb.generatedAtMs,
+      payload: { kind: 'sector', node: <SectorPbBadge sectorPb={props.sectorPb} /> },
+    })
+  }
+  if (showSplit) {
+    notificationEntries.push({
+      id: `split-${props.splitCpId ?? 0}`,
+      priority: 40,
+      createdAtMs: props.splitCpId ?? 0,
+      payload: {
+        kind: 'split',
+        node: (
+          <div
+            key={`split-${props.splitCpId}`}
+            style={splitAhead ? splitTileAhead : splitTileBehind}
+            aria-live="polite"
+          >
+            <div style={splitLabel}>vs PB</div>
+            <div style={splitValue}>
+              {formatSplitDelta(props.splitDeltaMs as number)}
+            </div>
+          </div>
+        ),
+      },
+    })
+  }
   return (
     <div style={wrap}>
       <style>{HUD_ANIMATIONS_CSS}</style>
-      <div style={topRow}>
+      <div style={topLeft}>
         <StatBlock label="CURRENT" value={formatLapTime(props.currentMs)} big />
-        {props.prediction ? <PredictionBlock prediction={props.prediction} /> : null}
-        <StatBlock label="LAST LAP" value={timeOrDash(props.lastLapMs)} />
-        <div style={bestBlockGroup}>
-          <StatBlock label="BEST (SESSION)" value={timeOrDash(props.bestSessionMs)} />
-          {props.lapConsistency ? (
-            <ConsistencyBadge info={props.lapConsistency} />
-          ) : null}
-        </div>
-        <div style={bestBlockGroup}>
-          <StatBlock
-            label="BEST (ALL TIME)"
-            value={timeOrDash(props.bestAllTimeMs)}
-          />
-          {medalTier ? <MedalBadge tier={medalTier} /> : null}
-          {nextMedal && nextMedalLabel ? (
-            <NextMedalChip tier={nextMedal.tier} label={nextMedalLabel} />
-          ) : null}
-          {streakLabel ? <StreakBadge label={streakLabel} /> : null}
-          {props.leaderboardRank && isLeaderboardRankInfo(props.leaderboardRank) ? (
-            <RankBadge info={props.leaderboardRank} />
-          ) : null}
-        </div>
-        <OptimalBlock
-          optimalLapMs={props.optimalLapMs}
-          complete={props.optimalLapComplete}
-        />
-        <StatBlock label="RECORD" value={recordValue} />
-        <StatBlock label="LAP" value={props.lapCount} />
+      </div>
+      <div style={topRight}>
+        <StatBlock label="LAP" value={props.lapCount} alignRight />
         <StatBlock label="RACER" value={props.initials ?? '---'} alignRight />
       </div>
+      <div style={topCenter}>
+        {alert === 'wrongWay' ? (
+          <div style={compact ? compactWrongWayBanner : wrongWayBanner} role="alert" aria-live="assertive">
+            <span style={wrongWayArrow} aria-hidden>{'<<'}</span>
+            <span>WRONG WAY</span>
+            <span style={wrongWayArrow} aria-hidden>{'<<'}</span>
+          </div>
+        ) : alert === 'offTrack' ? (
+          <div style={topCenterAlertWarning}>OFF TRACK</div>
+        ) : alert === 'pace' && props.paceNote ? (
+          <div
+            style={{
+              ...paceNoteChipStyle,
+              borderColor: hexWithAlpha(props.paceNote.accent, 0.7),
+              boxShadow: `0 0 12px ${hexWithAlpha(props.paceNote.accent, 0.4)}, 0 4px 12px rgba(0,0,0,0.4)`,
+            }}
+            role="status"
+            aria-live="polite"
+            aria-label={`Pace note: ${props.paceNote.text}`}
+          >
+            <span style={paceNoteLabelStyle}>PACE</span>
+            <span style={{ ...paceNoteValueStyle, color: props.paceNote.accent }}>
+              {props.paceNote.text}
+            </span>
+          </div>
+        ) : null}
+      </div>
+      {props.prediction ? <div style={projectedDock}><PredictionBlock prediction={props.prediction} /></div> : null}
       {props.transmission === 'manual' ? (
         <div style={gearChip} role="status" aria-live="polite">
           <span style={gearChipLabel}>GEAR</span>
@@ -692,44 +924,30 @@ export function HUD(props: HudProps) {
           multiplier={props.driftMultiplier}
           lapBest={props.driftLapBest}
           allTimeBest={props.driftAllTimeBest}
+          compact={compact}
         />
       ) : null}
-      {props.challenge ? (
-        <div style={challengeBanner} role="status">
-          <span>Challenge from</span>
-          <span style={challengeBannerInitials}>{props.challenge.from}</span>
-          <span>beat</span>
-          <span style={challengeBannerTime}>
-            {formatLapTime(props.challenge.targetMs)}
-          </span>
-        </div>
-      ) : null}
-      {props.rivalLabel ? (
-        <div
-          style={{
-            ...rivalBanner,
-            top: props.challenge ? 132 : 92,
-          }}
-          role="status"
-          aria-live="polite"
-        >
-          {props.rivalLabel}
-        </div>
-      ) : null}
-      {props.wrongWay ? (
-        <div style={wrongWayBanner} role="alert" aria-live="assertive">
-          <span style={wrongWayArrow} aria-hidden>
-            {'<<'}
-          </span>
-          <span>WRONG WAY</span>
-          <span style={wrongWayArrow} aria-hidden>
-            {'<<'}
-          </span>
-        </div>
-      ) : null}
-      {!props.onTrack && !props.wrongWay ? (
-        <div style={offTrack}>OFF TRACK</div>
-      ) : null}
+      <SessionStrip
+        bestSession={timeOrDash(props.bestSessionMs)}
+        bestAllTime={timeOrDash(props.bestAllTimeMs)}
+        optimal={props.optimalLapMs !== null && props.optimalLapComplete ? formatLapTime(props.optimalLapMs) : '--'}
+        optimalComplete={props.optimalLapComplete}
+        record={recordValue}
+        medalTier={medalTier}
+        nextMedal={nextMedal}
+        nextMedalLabel={nextMedalLabel}
+        streakLabel={streakLabel}
+        rank={rankInfo}
+        consistency={props.lapConsistency ?? null}
+        compact={compact}
+      />
+      <LiveBand
+        ghostGapLabel={ghostGapLabel}
+        ghostGapAhead={ghostGapAhead}
+        challenge={props.challenge}
+        rivalLabel={props.rivalLabel}
+        compact={compact}
+      />
       {celebrate ? (
         <>
           <div
@@ -744,65 +962,7 @@ export function HUD(props: HudProps) {
           />
         </>
       ) : null}
-      {showSplit ? (
-        <div
-          key={`split-${props.splitCpId}`}
-          style={splitAhead ? splitTileAhead : splitTileBehind}
-          aria-live="polite"
-        >
-          <div style={splitLabel}>vs PB</div>
-          <div style={splitValue}>
-            {formatSplitDelta(props.splitDeltaMs as number)}
-          </div>
-        </div>
-      ) : null}
-      {ghostGapLabel !== null ? (
-        <div
-          style={ghostGapAhead ? ghostGapChipAhead : ghostGapChipBehind}
-          aria-live="off"
-          title="Live gap to the ghost car at your current position"
-        >
-          <span style={ghostGapChipLabelStyle}>vs GHOST</span>
-          <span style={ghostGapChipValueStyle}>{ghostGapLabel}</span>
-        </div>
-      ) : null}
-      {props.sectorPb ? <SectorPbBadge sectorPb={props.sectorPb} /> : null}
-      {props.reactionTime ? (
-        <ReactionTimeChip
-          reactionMs={props.reactionTime.reactionMs}
-          isPb={props.reactionTime.isPb}
-          generatedAtMs={props.reactionTime.generatedAtMs}
-        />
-      ) : null}
-      {props.topSpeedPb ? (
-        <TopSpeedPbChip
-          topSpeedUs={props.topSpeedPb.topSpeedUs}
-          priorUs={props.topSpeedPb.priorUs}
-          generatedAtMs={props.topSpeedPb.generatedAtMs}
-          unit={props.speedUnit ?? 'mph'}
-          maxSpeed={props.carMaxSpeed ?? 26}
-        />
-      ) : null}
-      {props.paceNote ? (
-        <div
-          style={{
-            ...paceNoteChipStyle,
-            borderColor: hexWithAlpha(props.paceNote.accent, 0.7),
-            boxShadow: `0 0 12px ${hexWithAlpha(props.paceNote.accent, 0.4)}, 0 4px 12px rgba(0,0,0,0.4)`,
-          }}
-          role="status"
-          aria-live="polite"
-          aria-label={`Pace note: ${props.paceNote.text}`}
-        >
-          <span style={paceNoteLabelStyle}>PACE</span>
-          <span
-            style={{ ...paceNoteValueStyle, color: props.paceNote.accent }}
-          >
-            {props.paceNote.text}
-          </span>
-        </div>
-      ) : null}
-      {props.toast ? <div style={toastStyle}>{props.toast}</div> : null}
+      <NotificationStack entries={notificationEntries} />
     </div>
   )
 }
@@ -815,23 +975,46 @@ const wrap: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
   textShadow: '0 1px 4px rgba(0,0,0,0.6)',
   zIndex: 10,
+  ['--hud-bg' as string]: 'rgba(8, 12, 20, 0.55)',
+  ['--hud-border' as string]: 'rgba(180, 200, 230, 0.18)',
+  ['--hud-accent' as string]: 'rgba(255, 255, 255, 0.92)',
 }
-const topRow: React.CSSProperties = {
+const topLeft: React.CSSProperties = {
   position: 'absolute',
   top: 8,
   left: 8,
+}
+const topRight: React.CSSProperties = {
+  position: 'absolute',
+  top: 8,
   right: 8,
   display: 'flex',
-  flexWrap: 'wrap',
-  gap: 6,
-  rowGap: 6,
-  alignItems: 'flex-start',
+  flexDirection: 'column',
+  gap: 8,
+  alignItems: 'flex-end',
+}
+const topCenter: React.CSSProperties = {
+  position: 'absolute',
+  top: 48,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  justifyContent: 'center',
+  minWidth: 180,
+  maxWidth: 'min(640px, calc(100vw - 220px))',
+}
+const projectedDock: React.CSSProperties = {
+  position: 'absolute',
+  top: 8,
+  left: 168,
 }
 const block: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.35)',
+  background: 'var(--hud-bg)',
   padding: '4px 8px',
   borderRadius: 6,
   minWidth: 64,
+  border: '1px solid var(--hud-border)',
+  fontVariantNumeric: 'tabular-nums',
 }
 const alignRightStyle: React.CSSProperties = { marginLeft: 'auto' }
 const labelStyle: React.CSSProperties = {
@@ -882,6 +1065,153 @@ const gearChipHint: React.CSSProperties = {
   letterSpacing: 1,
   opacity: 0.72,
 }
+const notificationStack: React.CSSProperties = {
+  position: 'absolute',
+  top: 120,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  gap: 8,
+  minWidth: 160,
+  maxWidth: 'calc(100vw - 32px)',
+}
+const notificationSlot: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'center',
+}
+const toastChipStyle: React.CSSProperties = {
+  padding: '7px 18px',
+  borderRadius: 999,
+  background: 'rgba(8, 28, 18, 0.82)',
+  border: '1.5px solid rgba(95, 224, 138, 0.55)',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+  color: '#5fe08a',
+  fontSize: 22,
+  fontWeight: 900,
+  animation: 'viberacer-fade 1.6s linear',
+}
+const sessionStrip: React.CSSProperties = {
+  position: 'absolute',
+  left: 8,
+  bottom: 80,
+  display: 'flex',
+  alignItems: 'center',
+  gap: 7,
+  padding: '6px 10px',
+  borderRadius: 8,
+  background: 'var(--hud-bg)',
+  border: '1px solid var(--hud-border)',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.35)',
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 12,
+  fontWeight: 800,
+  color: 'rgba(255,255,255,0.9)',
+  pointerEvents: 'auto',
+}
+const compactSessionStrip: React.CSSProperties = {
+  ...sessionStrip,
+  bottom: 130,
+  maxWidth: 'min(260px, calc(100vw - 16px))',
+  fontSize: 11,
+  overflow: 'hidden',
+}
+const stripDivider: React.CSSProperties = {
+  opacity: 0.45,
+}
+const stripOptimalComplete: React.CSSProperties = {
+  color: '#f4d774',
+}
+const stripOptimalPending: React.CSSProperties = {
+  color: 'rgba(244, 215, 116, 0.45)',
+}
+const stripDetails: React.CSSProperties = {
+  position: 'relative',
+}
+const stripSummary: React.CSSProperties = {
+  width: 18,
+  height: 18,
+  borderRadius: '50%',
+  display: 'grid',
+  placeItems: 'center',
+  cursor: 'pointer',
+  background: 'rgba(255,255,255,0.12)',
+  color: 'white',
+  listStyle: 'none',
+  fontFamily: 'system-ui, sans-serif',
+  fontWeight: 900,
+  fontSize: 12,
+}
+const stripPopover: React.CSSProperties = {
+  position: 'absolute',
+  left: 0,
+  bottom: 26,
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  minWidth: 220,
+  maxWidth: 360,
+  padding: 8,
+  borderRadius: 8,
+  background: 'rgba(8, 12, 20, 0.92)',
+  border: '1px solid var(--hud-border)',
+  boxShadow: '0 8px 24px rgba(0,0,0,0.45)',
+}
+const stripEmpty: React.CSSProperties = {
+  fontFamily: 'system-ui, sans-serif',
+  fontSize: 12,
+  opacity: 0.78,
+}
+const liveBand: React.CSSProperties = {
+  position: 'absolute',
+  left: '50%',
+  bottom: 200,
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  maxWidth: 'calc(100vw - 32px)',
+}
+const compactLiveBand: React.CSSProperties = {
+  ...liveBand,
+  bottom: 176,
+  flexDirection: 'column',
+  gap: 6,
+}
+const livePillBase: React.CSSProperties = {
+  padding: '4px 10px',
+  borderRadius: 999,
+  background: 'rgba(8, 32, 48, 0.78)',
+  border: '1px solid rgba(120, 220, 255, 0.4)',
+  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35)',
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 8,
+  fontFamily: 'monospace',
+  fontVariantNumeric: 'tabular-nums',
+  fontWeight: 800,
+  whiteSpace: 'nowrap',
+}
+const livePillAhead: React.CSSProperties = {
+  ...livePillBase,
+  color: '#5fe08a',
+  borderColor: 'rgba(95, 224, 138, 0.5)',
+}
+const livePillBehind: React.CSSProperties = {
+  ...livePillBase,
+  color: '#ff7b6e',
+  borderColor: 'rgba(255, 123, 110, 0.5)',
+}
+const livePillNeutral: React.CSSProperties = {
+  ...livePillBase,
+  color: '#cdf2ff',
+  borderColor: 'rgba(120, 220, 255, 0.7)',
+  textTransform: 'uppercase',
+  letterSpacing: 1,
+}
 const offTrack: React.CSSProperties = {
   position: 'absolute',
   top: '18%',
@@ -892,15 +1222,22 @@ const offTrack: React.CSSProperties = {
   fontWeight: 800,
   color: '#ffb34d',
 }
+const topCenterAlertWarning: React.CSSProperties = {
+  padding: '6px 18px',
+  borderRadius: 999,
+  background: 'rgba(60, 30, 0, 0.78)',
+  border: '1.5px solid rgba(255, 179, 77, 0.75)',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+  color: '#ffb34d',
+  fontSize: 22,
+  fontWeight: 900,
+  letterSpacing: 2,
+}
 // WRONG WAY warning. Sits at the same vertical band as OFF TRACK so the two
 // alerts never visually compete (the JSX picks one or the other). Brighter
 // red plus a gentle pulse animation pulls the eye away from the cars and
 // onto the "you need to U-turn" signal.
 const wrongWayBanner: React.CSSProperties = {
-  position: 'absolute',
-  top: '18%',
-  left: '50%',
-  transform: 'translateX(-50%)',
   padding: '6px 18px',
   display: 'flex',
   alignItems: 'center',
@@ -915,6 +1252,12 @@ const wrongWayBanner: React.CSSProperties = {
   letterSpacing: 2,
   pointerEvents: 'none',
   animation: 'viberacer-wrongway-pulse 0.6s ease-in-out infinite',
+}
+const compactWrongWayBanner: React.CSSProperties = {
+  ...wrongWayBanner,
+  fontSize: 20,
+  gap: 8,
+  padding: '5px 12px',
 }
 const wrongWayArrow: React.CSSProperties = {
   display: 'inline-block',
@@ -1035,10 +1378,6 @@ const edgeFlashRecord: React.CSSProperties = {
 // down the screen). Pop-in animation runs per cpId via the React key on the
 // container element.
 const splitTileBase: React.CSSProperties = {
-  position: 'absolute',
-  top: 88,
-  left: '50%',
-  transform: 'translate(-50%, 0)',
   padding: '6px 14px',
   borderRadius: 8,
   background: 'rgba(0, 0, 0, 0.55)',
@@ -1127,10 +1466,6 @@ const ghostGapChipValueStyle: React.CSSProperties = {
 // chip auto-clears via React state in Game.tsx after REACTION_TIME_DISPLAY_MS
 // so it never crowds the mid-race HUD past the first sector.
 const reactionChipStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 60,
-  left: '50%',
-  transform: 'translate(-50%, 0)',
   padding: '5px 12px',
   borderRadius: 999,
   background: 'rgba(8, 16, 28, 0.82)',
@@ -1182,10 +1517,6 @@ const reactionPbStyle: React.CSSProperties = {
 // peak). The top offset lifts the chip just enough that the reaction chip's
 // drop shadow does not overlap.
 const topSpeedChipStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 100,
-  left: '50%',
-  transform: 'translate(-50%, 0)',
   padding: '5px 12px',
   borderRadius: 999,
   background: 'rgba(8, 16, 28, 0.82)',
@@ -1250,9 +1581,6 @@ const topSpeedPbStyle: React.CSSProperties = {
 // box shadow so a sharp call-out reads red and a flat-out call-out reads
 // green at a glance.
 const paceNoteChipStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: 96,
-  left: 16,
   padding: '5px 12px',
   borderRadius: 999,
   background: 'rgba(8, 16, 28, 0.82)',
@@ -1339,7 +1667,7 @@ const optimalValuePending: React.CSSProperties = {
 // in one scan.
 const driftPanel: React.CSSProperties = {
   position: 'absolute',
-  top: 90,
+  top: 64,
   left: 8,
   display: 'flex',
   flexDirection: 'column',
@@ -1410,10 +1738,6 @@ const driftSubValue: React.CSSProperties = {
 // animation runs per cpId via the React key on the container element so a
 // string of sector PBs through a fast section feels punchy.
 const sectorPbBadge: React.CSSProperties = {
-  position: 'absolute',
-  top: 134,
-  left: '50%',
-  transform: 'translate(-50%, 0)',
   display: 'flex',
   alignItems: 'center',
   gap: 8,
