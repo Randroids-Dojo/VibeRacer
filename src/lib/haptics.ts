@@ -1,25 +1,31 @@
-// Haptic feedback (Vibration API) for tactile confirmation on touch devices.
+// Haptic feedback for tactile confirmation. Two parallel paths:
 //
-// Web Vibration API is intentionally low-effort: navigator.vibrate(pattern)
-// schedules a single one-shot pulse pattern. Pure cosmetic; never affects
-// physics or anti-cheat. Desktop browsers and devices without a vibration
-// motor silently no-op so the helper is safe to call from any code path.
+// 1. Web Vibration API (`navigator.vibrate`) for touch devices (phones,
+//    tablets). One-shot pulse patterns; silently no-ops on desktop.
+// 2. Gamepad API rumble (`gamepad.vibrationActuator.playEffect("dual-rumble",
+//    ...)`) for connected controllers. Both impulses (lap / PB / record /
+//    offTrack) and a continuous physics-driven rumble loop (engine purr,
+//    surface texture, slip / drift) so a 360 pad feels Forza-lite during a
+//    race. Falls back to the legacy `gamepad.hapticActuators[0].pulse(...)`
+//    array on browsers that have not shipped `vibrationActuator` yet.
 //
-// We expose three named outcomes that mirror the existing PB / record / lap
-// audio cues:
-//   - 'lap'    -> a single short pulse on every completed lap.
-//   - 'pb'     -> a longer celebratory double-pulse on a fresh personal best.
-//   - 'record' -> the loudest pattern, a triple-pulse for a fresh track-wide
-//                 record (a new #1 on the leaderboard).
+// Pure cosmetic; never affects physics or anti-cheat. Both paths are
+// defensive and safe to call from any code path on any runtime.
 //
-// Patterns are tuned to be felt without being annoying on a long session: the
-// lap pulse is brief enough that a fast circuit racer is not constantly
-// buzzing, and the record pattern stays under a second so it overlaps with
-// (but does not outlive) the audio fanfare.
+// Outcomes:
+//   - 'lap'      -> single short impulse on every completed lap.
+//   - 'pb'       -> longer celebratory impulse on a fresh personal best.
+//   - 'record'   -> heaviest impulse for a fresh track-wide record.
+//   - 'offTrack' -> short tap on the on-track to off-track rising edge,
+//                   paired with the existing audio off-track rumble cue.
+//
+// Patterns / effects are tuned so a fast circuit racer is not constantly
+// buzzing, and impulses stay under a second so they overlap with (but do not
+// outlive) the audio fanfare.
 
 import { z } from 'zod'
 
-export const HAPTIC_OUTCOMES = ['lap', 'pb', 'record'] as const
+export const HAPTIC_OUTCOMES = ['lap', 'pb', 'record', 'offTrack'] as const
 export type HapticOutcome = (typeof HAPTIC_OUTCOMES)[number]
 
 export function isHapticOutcome(value: unknown): value is HapticOutcome {
@@ -37,6 +43,10 @@ export const HAPTIC_PATTERNS: Record<HapticOutcome, readonly number[]> = {
   lap: [40],
   pb: [60, 60, 120],
   record: [80, 60, 80, 60, 200],
+  // offTrack is a momentary cue, not a celebration. A single short pulse so
+  // the player feels the curb / grass without it competing with the audio
+  // off-track rumble that fires on the same edge.
+  offTrack: [55],
 }
 
 // Total budget so a future pattern tweak does not accidentally schedule a
@@ -143,4 +153,297 @@ export function fireHaptic(outcome: HapticOutcome): boolean {
   } catch {
     return false
   }
+}
+
+// =====================================================================
+// Gamepad rumble (Xbox 360 + every Standard Gamepad with motors).
+// =====================================================================
+
+// dual-rumble effect shape, matching the Web Gamepad API. `strongMagnitude`
+// drives the low-frequency motor (left side on Xbox), `weakMagnitude` drives
+// the high-frequency motor (right side). Both in [0, 1].
+export interface DualRumbleEffect {
+  duration: number
+  strongMagnitude: number
+  weakMagnitude: number
+}
+
+// Per-outcome impulse effects. Magnitudes mirror the audio escalation:
+// lap < pb < record. offTrack is a separate axis (chassis / surface cue),
+// so it sits outside the celebration ramp.
+export const RUMBLE_EFFECTS: Record<HapticOutcome, DualRumbleEffect> = {
+  lap: { duration: 80, strongMagnitude: 0.35, weakMagnitude: 0.55 },
+  pb: { duration: 220, strongMagnitude: 0.65, weakMagnitude: 0.85 },
+  record: { duration: 380, strongMagnitude: 0.85, weakMagnitude: 1.0 },
+  offTrack: { duration: 90, strongMagnitude: 0.55, weakMagnitude: 0.3 },
+}
+
+// Per-effect duration cap. Keeps a future tweak from accidentally scheduling
+// a half-second motor stall on every lap. Asserted in unit tests.
+export const RUMBLE_EFFECT_MAX_MS = 600
+
+// Per-frame continuous rumble call duration. Slightly longer than a 60 fps
+// frame so a stuttered HUD frame does not leave an audible gap.
+export const RUMBLE_FRAME_DURATION_MS = 100
+
+// Below this delta, two consecutive continuous-rumble writes are treated as
+// the same and the second is skipped. Avoids spamming playEffect 60x / sec
+// during a steady-state straightaway.
+export const RUMBLE_EPSILON = 0.02
+
+export interface DualRumbleMagnitudes {
+  strongMagnitude: number
+  weakMagnitude: number
+}
+
+interface VibrationActuator {
+  playEffect: (
+    type: string,
+    params: { duration: number; strongMagnitude: number; weakMagnitude: number; startDelay?: number },
+  ) => Promise<string> | string
+  reset?: () => Promise<string> | string
+}
+
+interface LegacyHapticActuator {
+  pulse: (value: number, duration: number) => Promise<boolean> | boolean
+}
+
+interface RumblePad {
+  vibrationActuator?: VibrationActuator
+  hapticActuators?: ReadonlyArray<LegacyHapticActuator>
+}
+
+function asRumblePad(pad: Gamepad | null): RumblePad | null {
+  if (!pad) return null
+  return pad as unknown as RumblePad
+}
+
+function padHasRumble(pad: Gamepad): boolean {
+  const r = asRumblePad(pad)
+  if (!r) return false
+  if (r.vibrationActuator && typeof r.vibrationActuator.playEffect === 'function') return true
+  if (r.hapticActuators && r.hapticActuators.length > 0) {
+    const a = r.hapticActuators[0]
+    if (a && typeof a.pulse === 'function') return true
+  }
+  return false
+}
+
+// SSR-safe: returns true when at least one connected gamepad exposes
+// vibrationActuator or a non-empty hapticActuators array. Used by the
+// 'auto' resolver so desktop with no controller stays silent.
+export function hasRumbleCapableGamepad(): boolean {
+  if (typeof navigator === 'undefined') return false
+  const getter = (navigator as Navigator & { getGamepads?: () => (Gamepad | null)[] }).getGamepads
+  if (typeof getter !== 'function') return false
+  let pads: (Gamepad | null)[]
+  try {
+    pads = getter.call(navigator) ?? []
+  } catch {
+    return false
+  }
+  for (let i = 0; i < pads.length; i++) {
+    const p = pads[i]
+    if (p && p.connected && padHasRumble(p)) return true
+  }
+  return false
+}
+
+// Module-local cache of the last continuous-rumble magnitudes written to a
+// pad. Keyed weakly so a disconnected pad gets garbage-collected. Used by
+// setGamepadContinuousRumble to dedupe steady-state writes.
+const lastContinuousMags: WeakMap<Gamepad, DualRumbleMagnitudes> = new WeakMap()
+
+function clamp01(x: number): number {
+  if (!Number.isFinite(x)) return 0
+  if (x < 0) return 0
+  if (x > 1) return 1
+  return x
+}
+
+function effectFor(outcome: HapticOutcome): DualRumbleEffect | null {
+  if (!isHapticOutcome(outcome)) return null
+  const e = RUMBLE_EFFECTS[outcome]
+  if (!e) return null
+  return {
+    duration: e.duration,
+    strongMagnitude: clamp01(e.strongMagnitude),
+    weakMagnitude: clamp01(e.weakMagnitude),
+  }
+}
+
+// Fire a one-shot impulse on the gamepad's motors. Returns true when the
+// effect was scheduled (or a legacy pulse was queued); false on any failure.
+// Defensive: null pad, missing actuator, thrown promise all return false.
+export function fireGamepadImpulse(
+  outcome: HapticOutcome,
+  pad: Gamepad | null,
+): boolean {
+  const r = asRumblePad(pad)
+  if (!r) return false
+  const effect = effectFor(outcome)
+  if (!effect || effect.duration <= 0) return false
+  const actuator = r.vibrationActuator
+  if (actuator && typeof actuator.playEffect === 'function') {
+    try {
+      const result = actuator.playEffect('dual-rumble', { ...effect })
+      // playEffect returns a Promise<string> in the spec; some legacy
+      // shims return a string directly. Either way we treat the call as
+      // having succeeded if no exception was thrown. Swallow the promise
+      // rejection to avoid leaking an unhandled rejection warning.
+      if (result && typeof (result as Promise<string>).then === 'function') {
+        ;(result as Promise<string>).catch(() => {})
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+  const legacy = r.hapticActuators && r.hapticActuators[0]
+  if (legacy && typeof legacy.pulse === 'function') {
+    try {
+      const result = legacy.pulse(effect.weakMagnitude, effect.duration)
+      if (result && typeof (result as Promise<boolean>).then === 'function') {
+        ;(result as Promise<boolean>).catch(() => {})
+      }
+      return true
+    } catch {
+      return false
+    }
+  }
+  return false
+}
+
+// Write the current frame's continuous rumble magnitudes to the pad. Called
+// every game-loop tick. No-ops when the magnitudes are within RUMBLE_EPSILON
+// of the last write so a steady-state straightaway does not spam playEffect.
+// Both-zero input routes through stopGamepadRumble() so the motor settles.
+export function setGamepadContinuousRumble(
+  pad: Gamepad | null,
+  mags: DualRumbleMagnitudes,
+): void {
+  const r = asRumblePad(pad)
+  if (!r || !pad) return
+  const strong = clamp01(mags.strongMagnitude)
+  const weak = clamp01(mags.weakMagnitude)
+  if (strong <= RUMBLE_EPSILON && weak <= RUMBLE_EPSILON) {
+    stopGamepadRumble(pad)
+    return
+  }
+  const prev = lastContinuousMags.get(pad)
+  if (
+    prev &&
+    Math.abs(prev.strongMagnitude - strong) < RUMBLE_EPSILON &&
+    Math.abs(prev.weakMagnitude - weak) < RUMBLE_EPSILON
+  ) {
+    return
+  }
+  const actuator = r.vibrationActuator
+  if (actuator && typeof actuator.playEffect === 'function') {
+    try {
+      const result = actuator.playEffect('dual-rumble', {
+        duration: RUMBLE_FRAME_DURATION_MS,
+        strongMagnitude: strong,
+        weakMagnitude: weak,
+      })
+      if (result && typeof (result as Promise<string>).then === 'function') {
+        ;(result as Promise<string>).catch(() => {})
+      }
+      lastContinuousMags.set(pad, { strongMagnitude: strong, weakMagnitude: weak })
+      return
+    } catch {
+      return
+    }
+  }
+  // Legacy hapticActuators only takes a single magnitude. Use the louder of
+  // the two so the player still feels the strongest channel.
+  const legacy = r.hapticActuators && r.hapticActuators[0]
+  if (legacy && typeof legacy.pulse === 'function') {
+    try {
+      const result = legacy.pulse(Math.max(strong, weak), RUMBLE_FRAME_DURATION_MS)
+      if (result && typeof (result as Promise<boolean>).then === 'function') {
+        ;(result as Promise<boolean>).catch(() => {})
+      }
+      lastContinuousMags.set(pad, { strongMagnitude: strong, weakMagnitude: weak })
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// Stop any active rumble on the pad and clear cached magnitudes so the next
+// setGamepadContinuousRumble write goes through. Called on pause / unmount /
+// pad disconnect / mode flip to off.
+export function stopGamepadRumble(pad: Gamepad | null): void {
+  const r = asRumblePad(pad)
+  if (!r || !pad) return
+  lastContinuousMags.delete(pad)
+  const actuator = r.vibrationActuator
+  if (actuator && typeof actuator.reset === 'function') {
+    try {
+      const result = actuator.reset()
+      if (result && typeof (result as Promise<string>).then === 'function') {
+        ;(result as Promise<string>).catch(() => {})
+      }
+      return
+    } catch {
+      // fall through to zero-magnitude effect
+    }
+  }
+  if (actuator && typeof actuator.playEffect === 'function') {
+    try {
+      const result = actuator.playEffect('dual-rumble', {
+        duration: 0,
+        strongMagnitude: 0,
+        weakMagnitude: 0,
+      })
+      if (result && typeof (result as Promise<string>).then === 'function') {
+        ;(result as Promise<string>).catch(() => {})
+      }
+      return
+    } catch {
+      return
+    }
+  }
+  const legacy = r.hapticActuators && r.hapticActuators[0]
+  if (legacy && typeof legacy.pulse === 'function') {
+    try {
+      const result = legacy.pulse(0, 0)
+      if (result && typeof (result as Promise<boolean>).then === 'function') {
+        ;(result as Promise<boolean>).catch(() => {})
+      }
+    } catch {
+      // ignore
+    }
+  }
+}
+
+// Decision resolvers. Touch haptics fires on touch runtimes only; gamepad
+// rumble fires when a rumble-capable controller is connected. 'off' always
+// suppresses; 'on' always fires; 'auto' bridges the two.
+export function shouldTouchHapticFire(mode: HapticMode, isTouch: boolean): boolean {
+  if (mode === 'off') return false
+  if (mode === 'on') return true
+  return isTouch
+}
+
+export function shouldGamepadRumbleFire(
+  mode: HapticMode,
+  hasGamepad: boolean,
+): boolean {
+  if (mode === 'off') return false
+  if (mode === 'on') return true
+  return hasGamepad
+}
+
+export const GAMEPAD_RUMBLE_MODE_LABELS: Record<HapticMode, string> = {
+  off: 'Off',
+  auto: 'Auto (gamepad only)',
+  on: 'Always on',
+}
+
+export const GAMEPAD_RUMBLE_MODE_DESCRIPTIONS: Record<HapticMode, string> = {
+  off: 'Never rumble the controller.',
+  auto: 'Rumble only when a gamepad with a vibration motor is connected.',
+  on: 'Rumble whenever a controller is connected, even if the browser cannot confirm motors.',
 }

@@ -193,7 +193,15 @@ import {
   sanitizeRankInfo,
   type LeaderboardRankInfo,
 } from '@/game/leaderboardRank'
-import { fireHaptic, isTouchRuntime, shouldHapticFire } from '@/lib/haptics'
+import {
+  fireGamepadImpulse,
+  fireHaptic,
+  hasRumbleCapableGamepad,
+  isTouchRuntime,
+  shouldGamepadRumbleFire,
+  shouldTouchHapticFire,
+  stopGamepadRumble,
+} from '@/lib/haptics'
 import {
   FAVORITE_TRACKS_EVENT,
   isFavoriteTrack,
@@ -671,6 +679,12 @@ function GameSession({
   // mid-session feels the buzz on the next lap without restarting.
   const hapticsModeRef = useRef<HapticMode>(settings.haptics)
   hapticsModeRef.current = settings.haptics
+  // Same ref pattern for gamepad rumble. Mirrors `settings.gamepadRumble` so
+  // RaceCanvas's per-frame rumble loop reads the freshest pick without
+  // re-mounting on every Settings flip. shouldGamepadRumbleFire reconciles
+  // the mode against `hasRumbleCapableGamepad()` at the call site.
+  const gamepadRumbleModeRef = useRef<HapticMode>(settings.gamepadRumble)
+  gamepadRumbleModeRef.current = settings.gamepadRumble
   // Pause-menu indicator: surfaced in the menu so the player understands why
   // the scene looks different from their own picks. True when the track
   // author baked at least one mood field AND the player has the respect
@@ -986,6 +1000,12 @@ function GameSession({
     crossfadeTo('pause', PAUSE_CROSSFADE_SEC)
     setPauseView('menu')
     setPaused(true)
+    // Stop the continuous gamepad rumble so the motor does not keep humming
+    // while the menu is up. The per-frame loop will reassert magnitudes the
+    // moment the player resumes. Ref identity is stable, so the empty deps
+    // array is correct here.
+    stopGamepadRumble(gamepadPadRef.current)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   const resume = useCallback(() => {
@@ -1569,7 +1589,11 @@ function GameSession({
     if (pausedRef.current) resume()
     else pause()
   }, [phase, pause, resume])
-  useGamepad(keys, handlePadPause, settings.gamepadBindings)
+  const { padRef: gamepadPadRef } = useGamepad(
+    keys,
+    handlePadPause,
+    settings.gamepadBindings,
+  )
   useEffect(() => {
     let raf = 0
     function check() {
@@ -2102,8 +2126,19 @@ function GameSession({
     // fresh track-wide record. The mode picker (`settings.haptics`) plus the
     // touch-runtime check are folded into a single shouldHapticFire decision
     // so a desktop session with mode 'auto' never buzzes.
-    if (shouldHapticFire(hapticsModeRef.current, isTouchRuntime())) {
+    if (shouldTouchHapticFire(hapticsModeRef.current, isTouchRuntime())) {
       fireHaptic(outcome)
+    }
+    // Layer the gamepad impulse on top of the continuous rumble loop. The
+    // per-frame loop in RaceCanvas reasserts the continuous magnitudes on
+    // the next tick, so the impulse + continuous tracks coexist cleanly.
+    if (
+      shouldGamepadRumbleFire(
+        gamepadRumbleModeRef.current,
+        hasRumbleCapableGamepad(),
+      )
+    ) {
+      fireGamepadImpulse(outcome, gamepadPadRef.current)
     }
     if (outcome === 'record' || outcome === 'pb') {
       setConfettiKind(outcome)
@@ -2391,6 +2426,8 @@ function GameSession({
         racingNumberRef={racingNumberRef}
         headlightsOnRef={headlightsOnRef}
         brakeLightModeRef={brakeLightModeRef}
+        gamepadRumbleModeRef={gamepadRumbleModeRef}
+        gamepadPadRef={gamepadPadRef}
         timeOfDayRef={timeOfDayRef}
         weatherRef={weatherRef}
         showSkidMarksRef={showSkidMarksRef}

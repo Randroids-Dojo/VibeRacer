@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type RefObject } from 'react'
 import {
   gamepadIsActive,
   gamepadToInput,
@@ -29,7 +29,11 @@ export function useGamepad(
   keys: { current: KeyInput },
   onPauseToggle?: () => void,
   bindings: GamepadBindings = DEFAULT_GAMEPAD_BINDINGS,
-): { connected: boolean; padId: string | null } {
+): {
+  connected: boolean
+  padId: string | null
+  padRef: RefObject<Gamepad | null>
+} {
   const [info, setInfo] = useState<{ connected: boolean; padId: string | null }>({
     connected: false,
     padId: null,
@@ -41,6 +45,10 @@ export function useGamepad(
   // restart polling on every binding change.
   const bindingsRef = useRef<GamepadBindings>(bindings)
   bindingsRef.current = bindings
+  // The active Gamepad object, refreshed every poll. Exposed so the rumble
+  // path in Game.tsx can write to the same pad the input loop already sees,
+  // without doing a duplicate navigator.getGamepads() walk.
+  const padRef = useRef<Gamepad | null>(null)
 
   useEffect(() => {
     if (typeof window === 'undefined') return
@@ -75,6 +83,7 @@ export function useGamepad(
 
       const padId = pad?.id ?? null
       const connected = pad !== null
+      padRef.current = pad
       if (connected !== lastConnectedFlag || padId !== lastSeenPadId) {
         lastConnectedFlag = connected
         lastSeenPadId = padId
@@ -157,8 +166,9 @@ export function useGamepad(
       window.removeEventListener('gamepadconnected', onConnect)
       window.removeEventListener('gamepaddisconnected', onDisconnect)
       clearAxes()
+      padRef.current = null
     }
   }, [keys])
 
-  return info
+  return { connected: info.connected, padId: info.padId, padRef }
 }

@@ -86,6 +86,8 @@ import {
   type BrakeLightMode,
 } from '@/lib/brakeLights'
 import {
+  GAMEPAD_RUMBLE_MODE_DESCRIPTIONS,
+  GAMEPAD_RUMBLE_MODE_LABELS,
   HAPTIC_MODES,
   HAPTIC_MODE_DESCRIPTIONS,
   HAPTIC_MODE_LABELS,
@@ -584,6 +586,11 @@ export function SettingsPane({
   function setBrakeLights(value: BrakeLightMode) {
     clickSoft()
     onChange({ ...settings, brakeLights: value })
+  }
+
+  function setGamepadRumble(value: HapticMode) {
+    if (settings.gamepadRumble === value) return
+    onChange({ ...settings, gamepadRumble: value })
   }
 
   function setHaptics(value: HapticMode) {
@@ -1444,7 +1451,7 @@ export function SettingsPane({
           <MenuHint>{BRAKE_LIGHT_MODE_DESCRIPTIONS[settings.brakeLights]}</MenuHint>
         </MenuSection>
 
-        <MenuSection title="Haptic feedback">
+        <MenuSection title="Touch haptics">
           <MenuHint>
             Buzz the device on lap completion, fresh personal best, and fresh
             track-wide record. Auto fires only on touch devices where the
@@ -1466,6 +1473,34 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>{HAPTIC_MODE_DESCRIPTIONS[settings.haptics]}</MenuHint>
+          </MenuSection>
+
+          <MenuSection title="Gamepad rumble">
+          <MenuHint>
+            Forza-lite rumble on a connected controller. The strong motor
+            tracks engine load and surface (asphalt vs grass), the weak motor
+            tracks slip and drift, with extra impulses on lap finish, PB,
+            record, and going off track. Works on Xbox 360 and any pad with
+            dual rumble motors.
+          </MenuHint>
+          <div style={touchToggleRow}>
+            {HAPTIC_MODES.map((mode) => {
+              const active = settings.gamepadRumble === mode
+              return (
+                <MenuButton
+                  key={mode}
+                  variant={active ? 'primary' : 'secondary'}
+                  onClick={() => setGamepadRumble(mode)}
+                  title={GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[mode]}
+                >
+                  {GAMEPAD_RUMBLE_MODE_LABELS[mode]}
+                </MenuButton>
+              )
+            })}
+          </div>
+          <MenuHint>
+            {GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[settings.gamepadRumble]}
+          </MenuHint>
           </MenuSection>
           </>
         ) : null}

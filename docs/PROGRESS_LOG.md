@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Forza-lite Gamepad Rumble (Xbox 360 dual rumble)
+
+- Branch: `claude/add-haptic-feedback-xbox-01QX1`
+- PR: pending
+- Changed: extended the existing haptics module with Gamepad API rumble (`vibrationActuator.playEffect('dual-rumble', ...)`, with a legacy `hapticActuators[0].pulse` fallback), added a per-frame continuous mapper (`src/lib/gamepadRumble.ts`) that drives engine purr / off-track chassis bias on the strong motor and slip / brake-lock on the weak motor, wired the per-frame loop in `RaceCanvas.tsx` plus impulse outcomes (`lap`, `pb`, `record`, `offTrack`) from `Game.tsx`, exposed the active pad as a ref from `useGamepad`, and split the Settings haptics control into two pickers (Touch haptics + Gamepad rumble) with backfill defaults for legacy stored payloads.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run test -- haptics gamepadRumble controlSettings gamepadInput`, `npm test`, `npm run type-check`, `npm run lint` (only pre-existing TouchControls warning remained).
+- Assumptions: Xbox 360 controllers expose `vibrationActuator` in modern Chromium and `hapticActuators` on legacy WebKit / Firefox builds, so the dual-path defensive helpers cover both. The `RUMBLE_EPSILON = 0.02` dedupe is small enough that a smoothly-changing speed ramp still feels continuous on the motor without flooding `playEffect` 60x/sec at steady state.
+- GDD coverage: advances Section 13 (Audio / haptics) with the new gamepad rumble row alongside the existing Vibration API path.
+- Followups: collision-magnitude impulses (require collision events from the physics integrator), wrong-way and achievement-unlock outcomes, per-channel intensity slider, and trigger rumble for Xbox One / Series controllers (`trigger-rumble` effect, not 360).
+
 ## 2026-04-29, Visual Checkpoint Placement
 
 - Branch: `feature/visual-checkpoints`

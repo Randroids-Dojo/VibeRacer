@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   DEFAULT_HAPTIC_MODE,
+  GAMEPAD_RUMBLE_MODE_DESCRIPTIONS,
+  GAMEPAD_RUMBLE_MODE_LABELS,
   HAPTIC_MODES,
   HAPTIC_MODE_DESCRIPTIONS,
   HAPTIC_MODE_LABELS,
@@ -8,18 +10,28 @@ import {
   HAPTIC_PATTERNS,
   HAPTIC_PATTERN_MAX_MS,
   HapticModeSchema,
+  RUMBLE_EFFECTS,
+  RUMBLE_EFFECT_MAX_MS,
+  RUMBLE_EPSILON,
+  RUMBLE_FRAME_DURATION_MS,
+  fireGamepadImpulse,
   fireHaptic,
+  hasRumbleCapableGamepad,
   isHapticMode,
   isHapticOutcome,
   isTouchRuntime,
   patternFor,
   patternTotalMs,
+  setGamepadContinuousRumble,
+  shouldGamepadRumbleFire,
   shouldHapticFire,
+  shouldTouchHapticFire,
+  stopGamepadRumble,
 } from '@/lib/haptics'
 
 describe('HAPTIC_OUTCOMES', () => {
-  it('exposes exactly the three documented outcomes in stable order', () => {
-    expect(HAPTIC_OUTCOMES).toEqual(['lap', 'pb', 'record'])
+  it('exposes exactly the four documented outcomes in stable order', () => {
+    expect(HAPTIC_OUTCOMES).toEqual(['lap', 'pb', 'record', 'offTrack'])
   })
 
   it('every outcome has a non-empty pattern', () => {
@@ -48,15 +60,23 @@ describe('HAPTIC_OUTCOMES', () => {
     }
   })
 
-  it('pb pattern is at least as substantial as lap pattern (escalation)', () => {
+  it('pb pattern is at least as substantial as lap pattern (celebration escalation)', () => {
     expect(patternTotalMs(HAPTIC_PATTERNS.pb)).toBeGreaterThan(
       patternTotalMs(HAPTIC_PATTERNS.lap),
     )
   })
 
-  it('record pattern is at least as substantial as pb pattern (escalation)', () => {
+  it('record pattern is at least as substantial as pb pattern (celebration escalation)', () => {
     expect(patternTotalMs(HAPTIC_PATTERNS.record)).toBeGreaterThan(
       patternTotalMs(HAPTIC_PATTERNS.pb),
+    )
+  })
+
+  it('offTrack is a separate axis from celebrations and stays a single short pulse', () => {
+    expect(HAPTIC_PATTERNS.offTrack.length).toBe(1)
+    expect(HAPTIC_PATTERNS.offTrack[0]).toBeGreaterThan(0)
+    expect(HAPTIC_PATTERNS.offTrack[0]).toBeLessThan(
+      patternTotalMs(HAPTIC_PATTERNS.record),
     )
   })
 })
@@ -402,5 +422,376 @@ describe('vi sanity', () => {
     const fn = vi.fn()
     fn()
     expect(fn).toHaveBeenCalled()
+  })
+})
+
+describe('RUMBLE_EFFECTS', () => {
+  it('has an entry for every outcome', () => {
+    for (const outcome of HAPTIC_OUTCOMES) {
+      expect(RUMBLE_EFFECTS[outcome]).toBeDefined()
+    }
+  })
+
+  it('every magnitude is in [0, 1]', () => {
+    for (const outcome of HAPTIC_OUTCOMES) {
+      const e = RUMBLE_EFFECTS[outcome]
+      expect(e.strongMagnitude).toBeGreaterThanOrEqual(0)
+      expect(e.strongMagnitude).toBeLessThanOrEqual(1)
+      expect(e.weakMagnitude).toBeGreaterThanOrEqual(0)
+      expect(e.weakMagnitude).toBeLessThanOrEqual(1)
+    }
+  })
+
+  it('every duration is positive and within RUMBLE_EFFECT_MAX_MS', () => {
+    expect(RUMBLE_EFFECT_MAX_MS).toBeGreaterThan(0)
+    for (const outcome of HAPTIC_OUTCOMES) {
+      const d = RUMBLE_EFFECTS[outcome].duration
+      expect(d).toBeGreaterThan(0)
+      expect(d).toBeLessThanOrEqual(RUMBLE_EFFECT_MAX_MS)
+    }
+  })
+
+  it('celebration escalation: lap < pb < record on the strong motor', () => {
+    expect(RUMBLE_EFFECTS.pb.strongMagnitude).toBeGreaterThan(
+      RUMBLE_EFFECTS.lap.strongMagnitude,
+    )
+    expect(RUMBLE_EFFECTS.record.strongMagnitude).toBeGreaterThan(
+      RUMBLE_EFFECTS.pb.strongMagnitude,
+    )
+  })
+
+  it('per-frame call duration covers a stuttered 60fps frame', () => {
+    expect(RUMBLE_FRAME_DURATION_MS).toBeGreaterThan(16)
+  })
+})
+
+describe('shouldTouchHapticFire', () => {
+  it('off always suppresses', () => {
+    expect(shouldTouchHapticFire('off', true)).toBe(false)
+    expect(shouldTouchHapticFire('off', false)).toBe(false)
+  })
+
+  it('on always fires', () => {
+    expect(shouldTouchHapticFire('on', true)).toBe(true)
+    expect(shouldTouchHapticFire('on', false)).toBe(true)
+  })
+
+  it('auto fires only on touch runtime', () => {
+    expect(shouldTouchHapticFire('auto', true)).toBe(true)
+    expect(shouldTouchHapticFire('auto', false)).toBe(false)
+  })
+})
+
+describe('shouldGamepadRumbleFire', () => {
+  it('off always suppresses', () => {
+    expect(shouldGamepadRumbleFire('off', true)).toBe(false)
+    expect(shouldGamepadRumbleFire('off', false)).toBe(false)
+  })
+
+  it('on always fires', () => {
+    expect(shouldGamepadRumbleFire('on', true)).toBe(true)
+    expect(shouldGamepadRumbleFire('on', false)).toBe(true)
+  })
+
+  it('auto fires only when a rumble-capable pad is present', () => {
+    expect(shouldGamepadRumbleFire('auto', true)).toBe(true)
+    expect(shouldGamepadRumbleFire('auto', false)).toBe(false)
+  })
+})
+
+describe('gamepad rumble mode labels', () => {
+  it('every mode has a non-empty label and description', () => {
+    for (const mode of HAPTIC_MODES) {
+      expect(GAMEPAD_RUMBLE_MODE_LABELS[mode]).toMatch(/\S/)
+      expect(GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[mode]).toMatch(/\S/)
+    }
+  })
+
+  it('labels and descriptions never use em or en dashes (writing rule)', () => {
+    for (const mode of HAPTIC_MODES) {
+      expect(GAMEPAD_RUMBLE_MODE_LABELS[mode]).not.toContain('\u2014')
+      expect(GAMEPAD_RUMBLE_MODE_LABELS[mode]).not.toContain('\u2013')
+      expect(GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[mode]).not.toContain('\u2014')
+      expect(GAMEPAD_RUMBLE_MODE_DESCRIPTIONS[mode]).not.toContain('\u2013')
+    }
+  })
+})
+
+interface MockActuator {
+  playEffect: ReturnType<typeof vi.fn>
+  reset?: ReturnType<typeof vi.fn>
+}
+
+interface MockLegacyActuator {
+  pulse: ReturnType<typeof vi.fn>
+}
+
+function makePadWithActuator(): { pad: Gamepad; actuator: MockActuator } {
+  const actuator: MockActuator = {
+    playEffect: vi.fn(() => Promise.resolve('complete')),
+    reset: vi.fn(() => Promise.resolve('complete')),
+  }
+  const pad = { vibrationActuator: actuator } as unknown as Gamepad
+  return { pad, actuator }
+}
+
+function makePadWithLegacy(): { pad: Gamepad; legacy: MockLegacyActuator } {
+  const legacy: MockLegacyActuator = {
+    pulse: vi.fn(() => Promise.resolve(true)),
+  }
+  const pad = { hapticActuators: [legacy] } as unknown as Gamepad
+  return { pad, legacy }
+}
+
+describe('fireGamepadImpulse', () => {
+  it('returns false when pad is null', () => {
+    expect(fireGamepadImpulse('lap', null)).toBe(false)
+  })
+
+  it('returns false for an unknown outcome', () => {
+    const { pad } = makePadWithActuator()
+    expect(fireGamepadImpulse('jingle' as never, pad)).toBe(false)
+  })
+
+  it('returns false when neither actuator path is available', () => {
+    const pad = {} as unknown as Gamepad
+    expect(fireGamepadImpulse('lap', pad)).toBe(false)
+  })
+
+  it('drives vibrationActuator.playEffect with the documented dual-rumble effect', () => {
+    const { pad, actuator } = makePadWithActuator()
+    expect(fireGamepadImpulse('record', pad)).toBe(true)
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_EFFECTS.record.duration,
+      strongMagnitude: RUMBLE_EFFECTS.record.strongMagnitude,
+      weakMagnitude: RUMBLE_EFFECTS.record.weakMagnitude,
+    })
+  })
+
+  it('falls back to hapticActuators[0].pulse when vibrationActuator is missing', () => {
+    const { pad, legacy } = makePadWithLegacy()
+    expect(fireGamepadImpulse('pb', pad)).toBe(true)
+    expect(legacy.pulse).toHaveBeenCalledTimes(1)
+    const args = legacy.pulse.mock.calls[0]
+    expect(args[0]).toBeCloseTo(RUMBLE_EFFECTS.pb.weakMagnitude, 5)
+    expect(args[1]).toBe(RUMBLE_EFFECTS.pb.duration)
+  })
+
+  it('swallows a thrown playEffect and returns false', () => {
+    const actuator: MockActuator = {
+      playEffect: vi.fn(() => {
+        throw new Error('blocked')
+      }),
+    }
+    const pad = { vibrationActuator: actuator } as unknown as Gamepad
+    expect(fireGamepadImpulse('lap', pad)).toBe(false)
+  })
+
+  it('does not leak a rejected playEffect promise as an unhandled rejection', () => {
+    const rejected = Promise.reject(new Error('blocked'))
+    // attach a noop handler so vitest does not flag the raw rejection;
+    // the function itself should also call .catch internally.
+    rejected.catch(() => {})
+    const actuator: MockActuator = {
+      playEffect: vi.fn(() => rejected),
+    }
+    const pad = { vibrationActuator: actuator } as unknown as Gamepad
+    expect(fireGamepadImpulse('lap', pad)).toBe(true)
+  })
+})
+
+describe('setGamepadContinuousRumble', () => {
+  it('no-ops when pad is null', () => {
+    setGamepadContinuousRumble(null, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
+    // No assertion needed: just confirm no throw.
+  })
+
+  it('writes the effect on the first non-zero call', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.4, weakMagnitude: 0.6 })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_FRAME_DURATION_MS,
+      strongMagnitude: 0.4,
+      weakMagnitude: 0.6,
+    })
+  })
+
+  it('dedupes consecutive identical writes (epsilon)', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.4, weakMagnitude: 0.6 })
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.4, weakMagnitude: 0.6 })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+  })
+
+  it('skips writes that differ by less than the epsilon', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
+    const tiny = RUMBLE_EPSILON / 4
+    setGamepadContinuousRumble(pad, {
+      strongMagnitude: 0.5 + tiny,
+      weakMagnitude: 0.5 + tiny,
+    })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(1)
+  })
+
+  it('writes again when magnitudes differ beyond the epsilon', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.4, weakMagnitude: 0.6 })
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.7, weakMagnitude: 0.6 })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(2)
+  })
+
+  it('routes both-zero magnitudes through reset()', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0, weakMagnitude: 0 })
+    expect(actuator.reset).toHaveBeenCalledTimes(1)
+    expect(actuator.playEffect).not.toHaveBeenCalled()
+  })
+
+  it('clamps oversize input into [0, 1]', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 5, weakMagnitude: -1 })
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: RUMBLE_FRAME_DURATION_MS,
+      strongMagnitude: 1,
+      weakMagnitude: 0,
+    })
+  })
+
+  it('uses the legacy pulse path with the stronger of the two magnitudes', () => {
+    const { pad, legacy } = makePadWithLegacy()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.7, weakMagnitude: 0.4 })
+    expect(legacy.pulse).toHaveBeenCalledTimes(1)
+    const args = legacy.pulse.mock.calls[0]
+    expect(args[0]).toBeCloseTo(0.7, 5)
+    expect(args[1]).toBe(RUMBLE_FRAME_DURATION_MS)
+  })
+})
+
+describe('stopGamepadRumble', () => {
+  it('no-ops when pad is null', () => {
+    stopGamepadRumble(null)
+  })
+
+  it('calls vibrationActuator.reset when available', () => {
+    const { pad, actuator } = makePadWithActuator()
+    stopGamepadRumble(pad)
+    expect(actuator.reset).toHaveBeenCalledTimes(1)
+  })
+
+  it('falls back to a zero playEffect when reset is missing', () => {
+    const actuator: MockActuator = {
+      playEffect: vi.fn(() => Promise.resolve('complete')),
+    }
+    const pad = { vibrationActuator: actuator } as unknown as Gamepad
+    stopGamepadRumble(pad)
+    expect(actuator.playEffect).toHaveBeenCalledWith('dual-rumble', {
+      duration: 0,
+      strongMagnitude: 0,
+      weakMagnitude: 0,
+    })
+  })
+
+  it('lets a fresh continuous write hit the wire after stop (cache cleared)', () => {
+    const { pad, actuator } = makePadWithActuator()
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
+    stopGamepadRumble(pad)
+    setGamepadContinuousRumble(pad, { strongMagnitude: 0.5, weakMagnitude: 0.5 })
+    expect(actuator.playEffect).toHaveBeenCalledTimes(2)
+  })
+})
+
+describe('hasRumbleCapableGamepad', () => {
+  const originalNavigator = globalThis.navigator
+
+  afterEach(() => {
+    if (originalNavigator) {
+      Object.defineProperty(globalThis, 'navigator', {
+        value: originalNavigator,
+        configurable: true,
+        writable: true,
+      })
+    }
+  })
+
+  it('returns false when navigator is missing (SSR)', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: undefined,
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(false)
+  })
+
+  it('returns false when getGamepads is missing', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {},
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(false)
+  })
+
+  it('returns false when no pads are connected', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { getGamepads: () => [null, null] },
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(false)
+  })
+
+  it('returns true when a connected pad exposes vibrationActuator', () => {
+    const pad = {
+      connected: true,
+      vibrationActuator: { playEffect: () => Promise.resolve('complete') },
+    }
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { getGamepads: () => [pad] },
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(true)
+  })
+
+  it('returns true when a connected pad exposes hapticActuators[0].pulse', () => {
+    const pad = {
+      connected: true,
+      hapticActuators: [{ pulse: () => Promise.resolve(true) }],
+    }
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { getGamepads: () => [pad] },
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(true)
+  })
+
+  it('skips disconnected pads', () => {
+    const pad = {
+      connected: false,
+      vibrationActuator: { playEffect: () => Promise.resolve('complete') },
+    }
+    Object.defineProperty(globalThis, 'navigator', {
+      value: { getGamepads: () => [pad] },
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(false)
+  })
+
+  it('swallows a thrown getGamepads', () => {
+    Object.defineProperty(globalThis, 'navigator', {
+      value: {
+        getGamepads: () => {
+          throw new Error('blocked')
+        },
+      },
+      configurable: true,
+      writable: true,
+    })
+    expect(hasRumbleCapableGamepad()).toBe(false)
   })
 })
