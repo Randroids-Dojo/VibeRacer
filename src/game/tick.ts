@@ -1,11 +1,6 @@
 import type { CheckpointHit } from '@/lib/schemas'
 import { cellKey } from './track'
-import {
-  TRACK_WIDTH,
-  distanceToCenterline,
-  worldToCell,
-  type TrackPath,
-} from './trackPath'
+import { worldToCell, type TrackPath } from './trackPath'
 import {
   DEFAULT_CAR_PARAMS,
   stepPhysics,
@@ -19,12 +14,14 @@ import {
   shiftManualGear,
   type TrackTransmissionMode,
 } from './transmission'
+import { vehicleTrackContact } from './wheelContact'
 
 export interface GameState {
   x: number
   z: number
   heading: number
   speed: number
+  angularVelocity: number
   raceStartMs: number | null
   nextCpId: number
   hits: CheckpointHit[]
@@ -59,6 +56,7 @@ export function initGameState(path: TrackPath): GameState {
     z: spawn.position.z,
     heading: spawn.heading,
     speed: 0,
+    angularVelocity: 0,
     raceStartMs: null,
     nextCpId: 0,
     hits: [],
@@ -93,18 +91,25 @@ export function tick(
   }
   const gearSpec = transmission === 'manual' ? manualGearSpec(gear) : null
 
-  const cellNow = worldToCell(state.x, state.z)
-  const keyNow = cellKey(cellNow.row, cellNow.col)
-  const orderIdx = path.cellToOrderIdx.get(keyNow)
-  const onTrack =
-    orderIdx !== undefined &&
-    distanceToCenterline(path.order[orderIdx], state.x, state.z) <=
-      TRACK_WIDTH / 2
+  const contactNow = vehicleTrackContact(path, state.x, state.z, state.heading)
+  const onTrack = contactNow.onTrack
 
   const phys = state.raceStartMs === null
-    ? { x: state.x, z: state.z, heading: state.heading, speed: 0 }
+    ? {
+        x: state.x,
+        z: state.z,
+        heading: state.heading,
+        speed: 0,
+        angularVelocity: 0,
+      }
     : stepPhysics(
-        { x: state.x, z: state.z, heading: state.heading, speed: state.speed },
+        {
+          x: state.x,
+          z: state.z,
+          heading: state.heading,
+          speed: state.speed,
+          angularVelocity: state.angularVelocity,
+        },
         input,
         dtSec,
         onTrack,
@@ -122,6 +127,7 @@ export function tick(
 
   const newCell = worldToCell(phys.x, phys.z)
   const newKey = cellKey(newCell.row, newCell.col)
+  const nextContact = vehicleTrackContact(path, phys.x, phys.z, phys.heading)
 
   if (raceStartMs !== null && newKey !== state.lastCellKey) {
     const K = path.cpTriggerPieceIdx.length
@@ -157,11 +163,12 @@ export function tick(
       z: phys.z,
       heading: phys.heading,
       speed: phys.speed,
+      angularVelocity: phys.angularVelocity ?? 0,
       raceStartMs,
       nextCpId,
       hits,
       lastCellKey: newKey,
-      onTrack,
+      onTrack: nextContact.onTrack,
       lapCount,
       lastLapTimeMs,
       gear,

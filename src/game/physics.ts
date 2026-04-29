@@ -30,11 +30,16 @@ export const DEFAULT_CAR_PARAMS: CarParams = {
   offTrackDrag: 16,
 }
 
+export const ANGULAR_VELOCITY_RESPONSE = 14
+export const HANDBRAKE_ANGULAR_VELOCITY_RESPONSE = 20
+export const ANGULAR_VELOCITY_EPSILON = 1e-5
+
 export interface PhysicsState {
   x: number
   z: number
   heading: number
   speed: number
+  angularVelocity?: number
 }
 
 export interface PhysicsInput {
@@ -49,6 +54,23 @@ function sign(n: number): number {
 
 function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, n))
+}
+
+function finiteOrZero(n: number | undefined): number {
+  return typeof n === 'number' && Number.isFinite(n) ? n : 0
+}
+
+function steeringRateForSpeed(
+  speed: number,
+  maxSpeed: number,
+  params: CarParams,
+): number {
+  const span = maxSpeed - params.minSpeedForSteering
+  const t =
+    span > 1e-6
+      ? clamp((Math.abs(speed) - params.minSpeedForSteering) / span, 0, 1)
+      : 0
+  return params.steerRateLow + (params.steerRateHigh - params.steerRateLow) * t
 }
 
 export function stepPhysics(
@@ -96,25 +118,28 @@ export function stepPhysics(
     speed = clamp(speed, -params.maxReverseSpeed, maxSpeed)
   }
 
-  let heading = s.heading
+  let angularVelocity = finiteOrZero(s.angularVelocity)
   if (Math.abs(speed) >= params.minSpeedForSteering) {
-    const span = maxSpeed - params.minSpeedForSteering
-    const t =
-      span > 1e-6
-        ? clamp(
-            (Math.abs(speed) - params.minSpeedForSteering) / span,
-            0,
-            1,
-          )
-        : 0
-    const rate =
-      params.steerRateLow + (params.steerRateHigh - params.steerRateLow) * t
-    heading += rate * steer * dtSec * sign(speed)
+    const rate = steeringRateForSpeed(speed, maxSpeed, params)
+    const targetAngularVelocity = rate * steer * sign(speed)
+    const response = input.handbrake
+      ? HANDBRAKE_ANGULAR_VELOCITY_RESPONSE
+      : ANGULAR_VELOCITY_RESPONSE
+    const blend = 1 - Math.exp(-response * dtSec)
+    angularVelocity += (targetAngularVelocity - angularVelocity) * blend
+  } else {
+    const blend = 1 - Math.exp(-ANGULAR_VELOCITY_RESPONSE * dtSec)
+    angularVelocity += (0 - angularVelocity) * blend
   }
+  if (Math.abs(angularVelocity) < ANGULAR_VELOCITY_EPSILON) {
+    angularVelocity = 0
+  }
+
+  const heading = s.heading + angularVelocity * dtSec
 
   // Heading: 0 = +X (east), PI/2 = -Z (north). Move along (cos, -sin) in XZ.
   const x = s.x + Math.cos(heading) * speed * dtSec
   const z = s.z - Math.sin(heading) * speed * dtSec
 
-  return { x, z, heading, speed }
+  return { x, z, heading, speed, angularVelocity }
 }

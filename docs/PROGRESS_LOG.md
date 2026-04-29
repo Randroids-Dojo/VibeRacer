@@ -12,6 +12,26 @@ Newest entries first. Every implementation slice adds an entry.
 - GDD coverage: advances Section 13 (Audio / haptics) with the new gamepad rumble row alongside the existing Vibration API path.
 - Followups: collision-magnitude impulses (require collision events from the physics integrator), wrong-way and achievement-unlock outcomes, per-channel intensity slider, and trigger rumble for Xbox One / Series controllers (`trigger-rumble` effect, not 360).
 
+## 2026-04-29, Per-Wheel Track Contact
+
+- Branch: `feature/per-wheel-track-contact`
+- PR: #37
+- Changed: added custom math-based wheel contact sampling and routed `tick()` off-track handling through all four wheel contacts instead of only the car center.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for wheel contact, tick, physics, and track path geometry, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: per-wheel contact should use the existing analytic centerline distance helpers instead of Three.js mesh raycasts, preserving the custom physics constraint while matching the GDD behavior.
+- GDD coverage: advances Section 5 vehicle adhesion. Quaternion heading remains tracked separately.
+- Followups: none recorded.
+
+## 2026-04-29, Angular Velocity Handling
+
+- Branch: `feature/angular-velocity-handling`
+- PR: #36
+- Changed: added angular velocity to vehicle and game state so steering eases into and out of yaw-rate changes instead of snapping heading directly each tick.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused Vitest coverage for physics, tick, tuning settings, and the tuning lab track, `npm test`, `npm run build`, and full Playwright smoke.
+- Assumptions: angular velocity should remain internal physics state for this slice, preserving the existing tuning schema, replay shape, and anti-cheat payloads.
+- GDD coverage: advances Section 5 vehicle state. Quaternion heading and per-wheel raycast remain tracked as separate gaps.
+- Followups: created `VibeRacer-evaluate-quaternion-heading-0c71504b` for the remaining quaternion-heading decision.
+
 ## 2026-04-29, Editor Decoration Placement
 
 - Branch: `feature/editor-decoration-placement`

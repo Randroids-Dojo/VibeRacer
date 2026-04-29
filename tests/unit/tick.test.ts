@@ -1,5 +1,7 @@
 import { describe, it, expect } from 'vitest'
-import { buildTrackPath } from '@/game/trackPath'
+import { TRACK_WIDTH, buildTrackPath } from '@/game/trackPath'
+import { DEFAULT_CAR_PARAMS } from '@/game/physics'
+import { WHEEL_CONTACT_HALF_TRACK } from '@/game/wheelContact'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { initGameState, startRace, tick } from '@/game/tick'
 
@@ -11,6 +13,7 @@ describe('tick', () => {
     expect(s.x).toBeCloseTo(path.spawn.position.x, 6)
     expect(s.z).toBeCloseTo(path.spawn.position.z, 6)
     expect(s.heading).toBeCloseTo(path.spawn.heading, 6)
+    expect(s.angularVelocity).toBe(0)
     expect(s.raceStartMs).toBeNull()
     expect(s.nextCpId).toBe(0)
     expect(s.gear).toBe(1)
@@ -21,6 +24,20 @@ describe('tick', () => {
     const r = tick(s, { throttle: 1, steer: 0, handbrake: false }, 16, 1000, path)
     expect(r.state.x).toBeCloseTo(s.x, 6)
     expect(r.state.speed).toBe(0)
+    expect(r.state.angularVelocity).toBe(0)
+  })
+
+  it('keeps angular velocity in game state while racing', () => {
+    const s = { ...startRace(initGameState(path), 0), speed: 12 }
+    const r = tick(
+      s,
+      { throttle: 0, steer: 1, handbrake: false },
+      100,
+      100,
+      path,
+    )
+    expect(r.state.angularVelocity).toBeGreaterThan(0)
+    expect(r.state.heading).not.toBeCloseTo(s.heading, 6)
   })
 
   it('shifts gears only when manual transmission is active', () => {
@@ -106,6 +123,32 @@ describe('tick', () => {
     const r = tick(s, { throttle: 0, steer: 0, handbrake: false }, 16, 100, path)
     expect(r.state.nextCpId).toBe(0)
     expect(r.state.onTrack).toBe(false)
+  })
+
+  it('applies off-track drag when any wheel leaves the road edge', () => {
+    const startPiece = path.order[0]
+    const s = {
+      ...startRace(initGameState(path), 0),
+      x:
+        startPiece.center.x +
+        TRACK_WIDTH / 2 -
+        WHEEL_CONTACT_HALF_TRACK +
+        0.1,
+      z: startPiece.center.z,
+      heading: Math.PI / 2,
+      speed: 20,
+    }
+    const r = tick(
+      s,
+      { throttle: 1, steer: 0, handbrake: false },
+      100,
+      100,
+      path,
+    )
+    expect(r.state.onTrack).toBe(false)
+    expect(r.state.speed).toBeLessThanOrEqual(
+      DEFAULT_CAR_PARAMS.offTrackMaxSpeed + 1e-6,
+    )
   })
 
   it('re-entering start piece mid-lap invalidates hits and restarts the timer', () => {
