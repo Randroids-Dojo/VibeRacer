@@ -296,6 +296,8 @@ export function Leaderboard({
     entry: Entry,
   ) {
     if (event.key !== 'Enter' && event.key !== ' ') return
+    if (event.repeat) return
+    if (event.currentTarget !== event.target) return
     event.preventDefault()
     openEntryDetails(entry)
   }
