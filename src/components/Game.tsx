@@ -682,9 +682,11 @@ function GameSession({
   brakeLightModeRef.current = settings.brakeLights
   // Mirror the haptics mode into a ref so handleLapComplete reads the freshest
   // pick without depending on a stale closure. Mode (not a resolved boolean)
-  // is the source of truth: shouldHapticFire reconciles it against the live
-  // touch-runtime detection at fire time so a player who plugs in a phone
-  // mid-session feels the buzz on the next lap without restarting.
+  // is the source of truth: shouldTouchHapticFire reconciles it against the
+  // live touch-runtime detection at fire time so a player who plugs in a
+  // phone mid-session feels the buzz on the next lap without restarting.
+  // Gamepad rumble has its own mode and a separate shouldGamepadRumbleFire
+  // gate just below so the two device paths stay independent.
   const hapticsModeRef = useRef<HapticMode>(settings.haptics)
   hapticsModeRef.current = settings.haptics
   // Same ref pattern for gamepad rumble. Mirrors `settings.gamepadRumble` so
@@ -2128,17 +2130,18 @@ function GameSession({
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
     else playLapStinger()
-    // Tactile cue mirrors the audio outcome: a short pulse for every lap, a
-    // longer double-pulse for a fresh personal best, a triple-pulse for a
-    // fresh track-wide record. The mode picker (`settings.haptics`) plus the
-    // touch-runtime check are folded into a single shouldHapticFire decision
-    // so a desktop session with mode 'auto' never buzzes.
+    // Touch path: mirrors the audio outcome with a short pulse for every lap,
+    // a longer double-pulse for a fresh personal best, and a triple-pulse for
+    // a fresh track-wide record. shouldTouchHapticFire folds the mode picker
+    // (`settings.haptics`) and the live touch-runtime detection into a single
+    // decision, so a desktop session with mode 'auto' never buzzes the phone
+    // motor. The separate gamepad path below has its own mode and resolver.
     if (shouldTouchHapticFire(hapticsModeRef.current, isTouchRuntime())) {
       fireHaptic(outcome)
     }
-    // Layer the gamepad impulse on top of the continuous rumble loop. The
-    // per-frame loop in RaceCanvas reasserts the continuous magnitudes on
-    // the next tick, so the impulse + continuous tracks coexist cleanly.
+    // Gamepad path: layered on top of the continuous rumble loop. The per-
+    // frame loop in RaceCanvas reasserts the continuous magnitudes on the
+    // next tick, so the impulse + continuous tracks coexist cleanly.
     if (
       shouldGamepadRumbleFire(
         gamepadRumbleModeRef.current,
