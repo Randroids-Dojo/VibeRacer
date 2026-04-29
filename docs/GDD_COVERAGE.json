@@ -131,7 +131,8 @@
         "difficulty rating",
         "per-track biomes",
         "placed decorations",
-        "rectangle selection"
+        "rectangle selection",
+        "selected track transforms"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -158,13 +159,9 @@
         "tests/e2e/smoke.spec.ts"
       ],
       "remainingGaps": [
-        "selected track transforms",
         "track templates"
       ],
       "gapBacklog": {
-        "selected track transforms": [
-          "docs/FOLLOWUPS.md#high-priority"
-        ],
         "track templates": [
           "docs/FOLLOWUPS.md#high-priority"
         ]
