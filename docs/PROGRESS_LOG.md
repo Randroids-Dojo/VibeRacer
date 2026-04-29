@@ -2,10 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Feedback Panel Polish
+
+- Branch: `polish/feedback-panel`
+- PR: pending
+- Changed: polished the pause-menu feedback panel with shared menu styling, clearer header hierarchy, an inline close control, attachment chips, stable textarea sizing, message count feedback, and clearer success / retry states.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, focused `tests/e2e/feedback.spec.ts`, full Playwright smoke, and `npm run build`.
+- Assumptions: visual polish should preserve the existing single-click open behavior, pause-only mounting, screenshot capture, console log capture, and `/api/feedback` payload shape.
+- GDD coverage: completes Section 12 Feedback FAB.
+- Followups: none recorded.
+
 ## 2026-04-29, Coverage Progress Cleanup
 
 - Branch: `docs/coverage-progress-cleanup`
-- PR: pending
+- PR: #47
 - Changed: reconciled stale progress-log PR numbers, promoted shipped GDD sections with no remaining user-visible gaps to done, and expanded the coverage ledger so every active GDD section has explicit status, evidence, and remaining gaps.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, and `npm run type-check`.
 - Assumptions: sections with live build logs and no recorded remaining product gaps should be marked done rather than left partial indefinitely; Feedback FAB visual polish and the stale architecture diagram remain tracked as explicit docs coverage gaps.

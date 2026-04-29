@@ -314,14 +314,15 @@
     {
       "id": "12",
       "title": "Feedback FAB",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "feedback API route",
         "console capture",
         "screenshot capture",
         "single-click feedback panel",
         "pause-only visibility",
-        "Playwright feedback smoke"
+        "Playwright feedback smoke",
+        "visual polish pass"
       ],
       "evidence": [
         "src/app/api/feedback/route.ts",
@@ -330,9 +331,7 @@
         "tests/unit/api.feedback.test.ts",
         "tests/e2e/feedback.spec.ts"
       ],
-      "remainingGaps": [
-        "visual polish pass on the feedback panel"
-      ]
+      "remainingGaps": []
     },
     {
       "id": "13",
