@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Roof Number Sticker
+
+- Branch: `fix/roof-number-sticker`
+- PR: #23
+- Changed: made the roof racing number smaller, lower, and scene-lit with polygon offset so it reads as a car sticker instead of a floating UI panel.
+- Verification: dash checks, `git diff --check`, `npm test -- tests/unit/cameraRig.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and `npm run test:e2e -- tests/e2e/smoke.spec.ts`.
+- Assumptions: keeping the existing roof-plane approach is the smallest stable fix; a true GLB decal or baked texture can remain a future visual polish path if needed.
+- GDD coverage: refines the shipped racing-number cosmetic behavior in Section 5.
+- Followups: none recorded.
+
 ## 2026-04-29, Stale Garage Task Closure
 
 - Branch: `fix/garage-next-race-layout`

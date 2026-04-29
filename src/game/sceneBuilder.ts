@@ -403,10 +403,10 @@ function buildCarFrame(
 // large GPU upload on every settings tweak.
 export const RACING_NUMBER_TEXTURE_SIZE = 256
 
-// World-space dimensions of the plate mesh on the car's roof. The plate is
+// World-space dimensions of the sticker mesh on the car's roof. The sticker is
 // square so the texture maps 1:1; height is in y above the car's pivot.
-export const RACING_NUMBER_PLATE_SIZE = 1.6
-export const RACING_NUMBER_PLATE_HEIGHT_Y = 1.55
+export const RACING_NUMBER_PLATE_SIZE = 1.18
+export const RACING_NUMBER_PLATE_HEIGHT_Y = 1.28
 
 function buildRacingNumberPlate(): {
   group: Group
@@ -414,9 +414,8 @@ function buildRacingNumberPlate(): {
   dispose: () => void
 } {
   const group = new Group()
-  // Lift to the roof; the GLB's roof sits ~1.2 world units above the chassis
-  // pivot after the inner-group scale, so 1.55 puts the plate cleanly above
-  // it without z-fighting the body mesh.
+  // Lift to the roof. Keep the sticker close enough to read as attached to
+  // the body, while still avoiding z-fighting against the GLB roof mesh.
   group.position.y = RACING_NUMBER_PLATE_HEIGHT_Y
   // Default hidden so a fresh load with the toggle off costs nothing.
   group.visible = false
@@ -432,7 +431,7 @@ function buildRacingNumberPlate(): {
   let ctx: CanvasRenderingContext2D | null = null
   let texture: CanvasTexture | null = null
   let mesh: Mesh | null = null
-  let material: MeshBasicMaterial | null = null
+  let material: MeshStandardMaterial | null = null
   // Cache the last applied tuple so a no-op call (same settings, fired by
   // the rAF loop's poll-and-set) is a single string compare instead of a
   // canvas redraw + GPU upload.
@@ -454,7 +453,14 @@ function buildRacingNumberPlate(): {
     texture.minFilter = NearestFilter
     texture.magFilter = NearestFilter
     texture.anisotropy = 1
-    material = new MeshBasicMaterial({ map: texture, transparent: false })
+    material = new MeshStandardMaterial({
+      map: texture,
+      roughness: 0.8,
+      metalness: 0,
+      polygonOffset: true,
+      polygonOffsetFactor: -1,
+      polygonOffsetUnits: -1,
+    })
     const geom = new PlaneGeometry(
       RACING_NUMBER_PLATE_SIZE,
       RACING_NUMBER_PLATE_SIZE,
