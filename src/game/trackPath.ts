@@ -280,6 +280,51 @@ export function transformSample(
 const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
 const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 
+export const SWEEP_SAMPLE_COUNT = 33
+
+export function sampleSweepRightLocal(): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  const p0 = { x: 0, z: HALF }
+  const p1 = { x: 0, z: HALF * 0.12 }
+  const p2 = { x: HALF * 0.12, z: 0 }
+  const p3 = { x: HALF, z: 0 }
+  for (let i = 0; i < SWEEP_SAMPLE_COUNT; i++) {
+    const t = i / (SWEEP_SAMPLE_COUNT - 1)
+    const mt = 1 - t
+    const x =
+      mt * mt * mt * p0.x +
+      3 * mt * mt * t * p1.x +
+      3 * mt * t * t * p2.x +
+      t * t * t * p3.x
+    const z =
+      mt * mt * mt * p0.z +
+      3 * mt * mt * t * p1.z +
+      3 * mt * t * t * p2.z +
+      t * t * t * p3.z
+    const dx =
+      3 * mt * mt * (p1.x - p0.x) +
+      6 * mt * t * (p2.x - p1.x) +
+      3 * t * t * (p3.x - p2.x)
+    const dz =
+      3 * mt * mt * (p1.z - p0.z) +
+      6 * mt * t * (p2.z - p1.z) +
+      3 * t * t * (p3.z - p2.z)
+    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
+  }
+  return samples
+}
+
+export function sampleSweepLeftLocal(): SampledPoint[] {
+  return sampleSweepRightLocal().map((s) => ({
+    x: -s.x,
+    z: s.z,
+    heading: Math.PI - s.heading,
+  }))
+}
+
+const SWEEP_RIGHT_LOCAL_SAMPLES = sampleSweepRightLocal()
+const SWEEP_LEFT_LOCAL_SAMPLES = sampleSweepLeftLocal()
+
 function buildScurveSamples(
   piece: Piece,
   center: Vec3,
@@ -294,6 +339,25 @@ function buildScurveSamples(
     piece.type === 'scurveLeft'
       ? SCURVE_LEFT_LOCAL_SAMPLES
       : SCURVE_LOCAL_SAMPLES
+  const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
+  const reversed = entryDir !== baseEntryAfterRotation
+  const transformed = localSamples.map((s) =>
+    transformSample(s, center.x, center.z, piece.rotation),
+  )
+  if (!reversed) return transformed
+  const out = transformed.slice().reverse()
+  return out.map((s) => ({ x: s.x, z: s.z, heading: s.heading + Math.PI }))
+}
+
+function buildSweepSamples(
+  piece: Piece,
+  center: Vec3,
+  entryDir: Dir,
+): SampledPoint[] {
+  const localSamples =
+    piece.type === 'sweepLeft'
+      ? SWEEP_LEFT_LOCAL_SAMPLES
+      : SWEEP_RIGHT_LOCAL_SAMPLES
   const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
   const reversed = entryDir !== baseEntryAfterRotation
   const transformed = localSamples.map((s) =>
@@ -332,6 +396,8 @@ export function buildTrackPath(
     const isCorner = current.type === 'left90' || current.type === 'right90'
     const isScurve =
       current.type === 'scurve' || current.type === 'scurveLeft'
+    const isSweep =
+      current.type === 'sweepRight' || current.type === 'sweepLeft'
     order.push({
       piece: current,
       entryDir,
@@ -340,7 +406,11 @@ export function buildTrackPath(
       entry: edgeMidpoint(current.row, current.col, entryDir),
       exit: edgeMidpoint(current.row, current.col, exitDir),
       arcCenter: isCorner ? computeArcCenter(center, entryDir, exitDir) : null,
-      samples: isScurve ? buildScurveSamples(current, center, entryDir) : null,
+      samples: isScurve
+        ? buildScurveSamples(current, center, entryDir)
+        : isSweep
+          ? buildSweepSamples(current, center, entryDir)
+          : null,
     })
 
     const { dr, dc } = DIR_OFFSETS[exitDir]
@@ -433,13 +503,24 @@ function pointAlongStartPiece(
 ): { position: Vec3; heading: number } {
   let totalLength: number
   if (first.samples !== null) {
-    totalLength = SCURVE_TOTAL_LENGTH
+    totalLength = polylineLength(first.samples)
   } else if (first.arcCenter === null) {
     totalLength = CELL_SIZE
   } else {
     totalLength = CORNER_ARC_LENGTH
   }
   return samplePieceAt(first, arcLength / totalLength)
+}
+
+function polylineLength(samples: SampledPoint[]): number {
+  let total = 0
+  for (let i = 0; i < samples.length - 1; i++) {
+    total += Math.hypot(
+      samples[i + 1].x - samples[i].x,
+      samples[i + 1].z - samples[i].z,
+    )
+  }
+  return total
 }
 
 export function trackCenter(path: TrackPath): { x: number; z: number } {

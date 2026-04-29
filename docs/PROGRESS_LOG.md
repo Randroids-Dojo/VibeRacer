@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Sweep Turn Track Pieces
+
+- Branch: `feature/wide-sweep-turn-piece`
+- PR: pending
+- Changed: added sweep-right and sweep-left track pieces with sampled centerlines, editor palette glyphs, renderer/path support, difficulty scoring, pace-note labels, and focused tests.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test`, `npm run build`, and `npm run test:e2e -- tests/e2e/smoke.spec.ts`.
+- Assumptions: the GDD's wider sweep turn maps to single-cell smooth 90-degree pieces that share connectors with the existing sharp turns, keeping URL track serialization and the editor grid model stable.
+- GDD coverage: Section 6 additional track pieces gap is implemented with sweep turns; advanced authoring tools remain open.
+- Followups: elevation ramp remains documented as not yet landed.
+
 ## 2026-04-29, Leaderboard Pagination
 
 - Branch: `feature/leaderboard-pagination-v2`

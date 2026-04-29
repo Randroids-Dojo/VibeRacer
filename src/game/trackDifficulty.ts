@@ -65,15 +65,16 @@ export const TRACK_DIFFICULTY_COLORS: Record<TrackDifficultyTier, string> = {
 // Per-piece-type complexity weight. A straight contributes nothing (it is
 // the baseline); 90-degree corners contribute the most because they demand
 // the heaviest braking / turn-in commitment; S-curves sit between because
-// they reward steady steering through two opposed arcs. Future piece types
-// (banked turns, hairpins, etc.) get their own weight here without touching
-// the scorer.
+// they reward steady steering through two opposed arcs; sweep turns are softer
+// because their sampled centerline eases the steering transition.
 export const PIECE_COMPLEXITY_WEIGHTS: Record<PieceType, number> = {
   straight: 0,
   left90: 1.5,
   right90: 1.5,
   scurve: 1.2,
   scurveLeft: 1.2,
+  sweepRight: 1.0,
+  sweepLeft: 1.0,
 }
 
 // Whether a piece type counts as a "turn" for the density and direction-flip
@@ -84,6 +85,8 @@ export const TURN_PIECE_TYPES: ReadonlySet<PieceType> = new Set<PieceType>([
   'right90',
   'scurve',
   'scurveLeft',
+  'sweepRight',
+  'sweepLeft',
 ])
 
 // Score tier thresholds. A score at-or-below the threshold lands in that
@@ -172,7 +175,10 @@ function turnHand(p: Piece): 'left' | 'right' | 'flip' | null {
     case 'left90':
       return 'left'
     case 'right90':
+    case 'sweepRight':
       return 'right'
+    case 'sweepLeft':
+      return 'left'
     case 'scurve':
     case 'scurveLeft':
       return 'flip'

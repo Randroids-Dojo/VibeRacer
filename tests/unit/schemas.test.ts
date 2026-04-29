@@ -44,6 +44,15 @@ describe('PieceSchema', () => {
       PieceSchema.parse({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 }),
     ).toEqual({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 })
   })
+
+  it('accepts the sweep turn piece types', () => {
+    expect(
+      PieceSchema.parse({ type: 'sweepRight', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'sweepRight', row: 0, col: 0, rotation: 0 })
+    expect(
+      PieceSchema.parse({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 })
+  })
 })
 
 describe('TrackSchema', () => {

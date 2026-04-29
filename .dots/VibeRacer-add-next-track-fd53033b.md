@@ -1,6 +1,6 @@
 ---
 title: Add next track piece type
-status: open
+status: active
 priority: 2
 issue-type: task
 created-at: "2026-04-28T20:12:23.696163-05:00"
