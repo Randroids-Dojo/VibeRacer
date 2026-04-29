@@ -339,6 +339,13 @@ export interface ControlSettings {
   // suppresses every buzz. Default 'auto' so phone players opt in by default
   // and desktop sessions stay quiet.
   haptics: HapticMode
+  // Gamepad rumble (vibrationActuator dual-rumble) on a connected controller.
+  // Drives the Forza-lite continuous engine / surface / slip rumble and the
+  // discrete lap / PB / record / off-track impulses. 'auto' fires only when a
+  // rumble-capable pad is connected; 'on' always fires; 'off' suppresses every
+  // rumble. Default 'auto' so desktop players with a controller feel it on
+  // their next race without having to dig into Settings.
+  gamepadRumble: HapticMode
   // Auto-rotate the active time-of-day skin through noon -> morning -> sunset
   // -> night while the player races. Pure cosmetic. Default 'off' so legacy
   // stored payloads keep their existing screen exactly as it was; players who
@@ -396,6 +403,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   headlights: DEFAULT_HEADLIGHT_MODE,
   brakeLights: DEFAULT_BRAKE_LIGHT_MODE,
   haptics: DEFAULT_HAPTIC_MODE,
+  gamepadRumble: DEFAULT_HAPTIC_MODE,
   timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
 }
 
@@ -568,6 +576,10 @@ const ControlSettingsSchema = z.object({
   // stored payloads pick up the same default so the upgrade is opt-out, not
   // opt-in.
   haptics: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
+  // Gamepad rumble landed after touch haptics. Default 'auto' so desktop
+  // players with a connected pad feel the Forza-lite rumble on the next race;
+  // legacy stored payloads pick up the same default so the upgrade is opt-out.
+  gamepadRumble: HapticModeSchema.default(DEFAULT_HAPTIC_MODE),
   // Time-of-day auto cycle landed after haptics. Default 'off' so legacy stored
   // payloads keep their existing screen exactly as it was; players who want a
   // Forza Horizon-style rotating sky have to flip it on once in Settings.
@@ -611,6 +623,7 @@ export function cloneDefaultSettings(): ControlSettings {
     headlights: DEFAULT_CONTROL_SETTINGS.headlights,
     brakeLights: DEFAULT_CONTROL_SETTINGS.brakeLights,
     haptics: DEFAULT_CONTROL_SETTINGS.haptics,
+    gamepadRumble: DEFAULT_CONTROL_SETTINGS.gamepadRumble,
     timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
   }
 }

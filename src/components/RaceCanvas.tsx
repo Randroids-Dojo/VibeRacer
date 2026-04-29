@@ -42,6 +42,15 @@ import {
   type BrakeLightMode,
 } from '@/lib/brakeLights'
 import {
+  fireGamepadImpulse,
+  padHasRumble,
+  setGamepadContinuousRumble,
+  shouldGamepadRumbleFire,
+  stopGamepadRumble,
+  type HapticMode,
+} from '@/lib/haptics'
+import { computeContinuousRumble } from '@/lib/gamepadRumble'
+import {
   initGameState,
   startRace,
   tick,
@@ -204,6 +213,15 @@ export interface RaceCanvasProps {
   // Polled each frame so a Settings flip lands on the next frame without
   // rebuilding the renderer.
   brakeLightModeRef?: MutableRefObject<BrakeLightMode>
+  // Forza-lite gamepad rumble. `gamepadRumbleModeRef` mirrors the Settings
+  // pick (off / auto / on) so the per-frame loop reads the freshest value
+  // without re-mounting on Settings changes. `gamepadPadRef` carries the live
+  // Gamepad object from useGamepad so the rumble path writes to the same pad
+  // the input loop already sees, no duplicate getGamepads() walk. Both are
+  // optional so the canvas keeps working in tests / standalone embeds with no
+  // controller wiring.
+  gamepadRumbleModeRef?: MutableRefObject<HapticMode>
+  gamepadPadRef?: MutableRefObject<Gamepad | null>
   // Live time-of-day lighting override from Settings. Same poll-and-set
   // pattern: the rAF loop checks for a change and reapplies the preset (sky
   // color, ambient, sun) without rebuilding the renderer.
@@ -343,6 +361,8 @@ export function RaceCanvas({
   racingNumberRef,
   headlightsOnRef,
   brakeLightModeRef,
+  gamepadRumbleModeRef,
+  gamepadPadRef,
   timeOfDayRef,
   weatherRef,
   showSkidMarksRef,
@@ -688,6 +708,16 @@ export function RaceCanvas({
     let droneStarted = false
     let prevHitsLen = 0
     let wrongWayState = initWrongWayDetector()
+    // Forza-lite rumble loop bookkeeping. `rumblePrevOnTrack` is independent
+    // of the audio path's `prevOnTrack` so the gamepad impulse fires even when
+    // music is disabled. `rumbleLastOffTrackTs` debounces curb-grazing so a
+    // player riding the edge does not get a stuttering buzz. `rumbleWasActive`
+    // tracks whether the per-frame loop is actively writing magnitudes so we
+    // only call `stopGamepadRumble` once on the transition from active to
+    // suppressed (settings flip, pad disconnect, race end).
+    let rumblePrevOnTrack = true
+    let rumbleLastOffTrackTs = 0
+    let rumbleWasActive = false
     // Drift scoring. The session machine accrues a score across consecutive
     // sliding frames; `lapBest` is the best single-session score this lap.
     // `lastEndedScore` is the score of the most recently finished session,
@@ -895,6 +925,11 @@ export function RaceCanvas({
 
       const dtMs = Math.min(50, ts - lastTs)
       lastTs = ts
+      // Hoisted so the per-frame rumble loop further down can read the same
+      // drift intensity the scoring path computed inside the racing branch.
+      // Stays 0 between races so an idle / pre-countdown pad gets engine-only
+      // continuous rumble (no spurious slip cue).
+      let dIntensity = 0
 
       if (pendingRaceStartRef.current !== null) {
         state = startRace(state, pendingRaceStartRef.current)
@@ -1241,7 +1276,7 @@ export function RaceCanvas({
         // Drift scoring: independent of the skid spawn decision (we want a
         // continuous score, not just one tick per spawn). Uses the same
         // input shape so the audio cue and the score stay in sync.
-        const dIntensity = driftIntensity(
+        dIntensity = driftIntensity(
           skidSpeedAbs,
           paramsRef.current.maxSpeed,
           skidSteerAbs,
@@ -1362,6 +1397,64 @@ export function RaceCanvas({
         })
         prevOnTrack = state.onTrack
       }
+
+      // Forza-lite gamepad rumble. Computes per-frame magnitudes from the
+      // same physics state that drives drift scoring and the audio off-track
+      // rumble, then writes them to the active pad's vibrationActuator. The
+      // continuous loop coexists with the impulse path (lap / PB / record /
+      // offTrack) because each impulse decays inside its own duration window
+      // while the per-frame call reasserts the continuous magnitudes the
+      // moment the impulse finishes.
+      const rumbleMode = gamepadRumbleModeRef?.current ?? 'auto'
+      const pad = gamepadPadRef?.current ?? null
+      // Auto resolves against the active pad's own capability (not a global
+      // navigator.getGamepads() walk) so the rAF loop never pays for a per-
+      // frame scan, and a different non-rumble-capable pad cannot fool the
+      // resolver into thinking the active pad will buzz.
+      const rumbleAllowed =
+        rumbleMode === 'auto'
+          ? shouldGamepadRumbleFire(rumbleMode, padHasRumble(pad))
+          : shouldGamepadRumbleFire(rumbleMode, false)
+      if (rumbleAllowed && pad) {
+        const speedAbs = Math.abs(state.speed)
+        const mags = computeContinuousRumble({
+          speedAbs,
+          maxSpeed: paramsRef.current.maxSpeed,
+          onTrack: state.onTrack,
+          driftIntensity: dIntensity,
+          brakeLock: keys.current.backward && speedAbs < 1,
+        })
+        // Only write to the actuator when the magnitudes are non-zero. A
+        // zero-zero result means an idle on-track straightaway with no slip;
+        // skip the helper entirely and only call stopGamepadRumble on the
+        // transition from active to idle so the motor settles exactly once.
+        const continuousActive = mags.strongMagnitude > 0 || mags.weakMagnitude > 0
+        if (continuousActive) {
+          setGamepadContinuousRumble(pad, mags)
+          rumbleWasActive = true
+        } else if (rumbleWasActive) {
+          stopGamepadRumble(pad)
+          rumbleWasActive = false
+        }
+        // Off-track rising edge: short tap impulse on the transition from
+        // on-track to off-track. 250 ms cooldown so dribbling along the curb
+        // does not chatter the motor.
+        if (
+          state.raceStartMs !== null &&
+          rumblePrevOnTrack &&
+          !state.onTrack &&
+          ts - rumbleLastOffTrackTs >= 250
+        ) {
+          fireGamepadImpulse('offTrack', pad)
+          rumbleLastOffTrackTs = ts
+        }
+      } else if (rumbleWasActive) {
+        // Settings flip, pad disconnect, or race ended: silence the motor
+        // exactly once instead of every frame.
+        stopGamepadRumble(pad)
+        rumbleWasActive = false
+      }
+      rumblePrevOnTrack = state.onTrack
 
       if (result.lapComplete) {
         if (onLapReplayRef.current && recordingBuffer.length >= 3) {
@@ -1541,6 +1634,10 @@ export function RaceCanvas({
       running = false
       cancelAnimationFrame(raf)
       window.removeEventListener('resize', resize)
+      // Silence the controller motor on unmount so a navigation away from the
+      // race never leaves the pad humming. Reading the freshest pad here is
+      // intentional: we want to silence whatever is connected at teardown.
+      stopGamepadRumble(gamepadPadRef?.current ?? null)
       if (!disableMusicRef.current) {
         stopEngineDrone(0.1)
         stopSkid(0.1)
