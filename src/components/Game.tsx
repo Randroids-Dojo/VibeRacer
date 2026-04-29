@@ -12,6 +12,7 @@ import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TrackBiome } from '@/lib/biomes'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -223,6 +224,7 @@ interface GameProps {
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
   transmission?: TrackTransmissionMode
+  trackBiome?: TrackBiome | null
   // Track-author baked mood (timeOfDay / weather). Null when the author has
   // not picked one, or when the version predates this feature. When set and
   // the player has `respectTrackMood: true` in Settings (the default), the
@@ -398,6 +400,7 @@ function GameSession({
   checkpointCount,
   checkpoints,
   transmission = 'automatic',
+  trackBiome = null,
   trackMood = null,
   initials,
   initialRecord,
@@ -2405,6 +2408,7 @@ function GameSession({
         checkpointCount={checkpointCount}
         checkpoints={checkpoints}
         transmission={transmission}
+        biome={trackBiome ?? null}
         paramsRef={paramsRef}
         keys={keys}
         pausedRef={pausedRef}
@@ -2457,6 +2461,7 @@ function GameSession({
               ? 'block'
               : 'none',
         }}
+        data-testid="rearview-mirror"
       />
       {settings.showMinimap ? (
         <Minimap
@@ -2826,10 +2831,9 @@ const canvasStyle: React.CSSProperties = {
 // Rear-view mirror inset. Sits at the top-center, scaled with viewport width
 // so the strip reads on phones without overwhelming the HUD on a desktop.
 // 4:1 aspect ratio matches a stretched panoramic mirror you would see in a
-// real car. Higher z-index than the HUD so the inset sits cleanly on top of
-// the HUD top-row blocks if they ever wrap into the same band.
+// real car. Fixed positioning keeps the mirror in its own viewport band.
 const rearviewStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
   top: 8,
   left: '50%',
   transform: 'translateX(-50%)',

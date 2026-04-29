@@ -1,6 +1,7 @@
 import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { Fredoka } from 'next/font/google'
+import { UpdateBanner } from '@/components/UpdateBanner'
 
 const fredoka = Fredoka({
   subsets: ['latin'],
@@ -17,7 +18,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
     <html lang="en" className={fredoka.variable}>
-      <body>{children}</body>
+      <body>
+        <UpdateBanner />
+        {children}
+      </body>
     </html>
   )
 }

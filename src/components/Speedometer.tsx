@@ -128,7 +128,7 @@ export function Speedometer({
 
   return (
     <div style={wrap} aria-hidden>
-      <div style={card}>
+      <div style={card} data-testid="hud-speedometer">
         <svg viewBox="0 0 120 64" style={gauge}>
           {/* Background arc from 180deg (left) to 0deg (right). */}
           <path
@@ -233,6 +233,7 @@ const wrap: React.CSSProperties = {
 }
 const card: React.CSSProperties = {
   position: 'relative',
+  boxSizing: 'border-box',
   background: 'rgba(0, 0, 0, 0.45)',
   border: '1px solid rgba(255, 255, 255, 0.18)',
   borderRadius: 12,

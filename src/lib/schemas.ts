@@ -3,6 +3,8 @@ import { CarParamsSchema, InputModeSchema } from './tuningSettings'
 import { ReplaySchema } from './replay'
 import { TimeOfDaySchema } from './lighting'
 import { WeatherSchema } from './weather'
+import { TrackBiomeSchema } from './biomes'
+export { TrackBiomeSchema } from './biomes'
 import {
   DEFAULT_TRACK_TRANSMISSION,
   TRACK_TRANSMISSION_MODES,
@@ -67,6 +69,8 @@ export const TrackMoodSchema = z
   .strict()
 export type TrackMood = z.infer<typeof TrackMoodSchema>
 
+export type TrackBiome = z.infer<typeof TrackBiomeSchema>
+
 export const TrackTransmissionModeSchema = z.enum(TRACK_TRANSMISSION_MODES)
 export type TrackTransmissionMode = z.infer<typeof TrackTransmissionModeSchema>
 
@@ -79,6 +83,7 @@ export const TrackSchema = z
       .max(MAX_PIECES_PER_TRACK)
       .optional(),
     mood: TrackMoodSchema.optional(),
+    biome: TrackBiomeSchema.optional(),
     transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   })
   .superRefine((track, ctx) => {
@@ -144,6 +149,7 @@ export const TrackVersionSchema = z.object({
     .max(MAX_PIECES_PER_TRACK)
     .optional(),
   mood: TrackMoodSchema.optional(),
+  biome: TrackBiomeSchema.optional(),
   transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),

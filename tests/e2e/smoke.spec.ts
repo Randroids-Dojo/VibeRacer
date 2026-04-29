@@ -31,6 +31,40 @@ test('settings menu groups options behind tabs', async ({ page }) => {
   await expect(page.getByText('Trackside scenery', { exact: true })).toBeVisible()
 })
 
+test('settings tabs keep long sections inside the modal viewport', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('tab', { name: 'Vehicle' }).click()
+
+  const panelInfo = await page.getByRole('tabpanel').evaluate((panel) => {
+    const menu = panel.parentElement
+    const menuRect = menu?.getBoundingClientRect()
+    return {
+      scrollHeight: panel.scrollHeight,
+      clientHeight: panel.clientHeight,
+      menuTop: menuRect?.top ?? Number.NEGATIVE_INFINITY,
+      menuBottom: menuRect?.bottom ?? Number.POSITIVE_INFINITY,
+      menuLeft: menuRect?.left ?? Number.NEGATIVE_INFINITY,
+      menuRight: menuRect?.right ?? Number.POSITIVE_INFINITY,
+      viewportWidth: window.innerWidth,
+      viewportHeight: window.innerHeight,
+    }
+  })
+  expect(panelInfo.menuTop).toBeGreaterThanOrEqual(15)
+  expect(panelInfo.menuBottom).toBeLessThanOrEqual(panelInfo.viewportHeight - 15)
+  expect(panelInfo.menuLeft).toBeGreaterThanOrEqual(15)
+  expect(panelInfo.menuRight).toBeLessThanOrEqual(panelInfo.viewportWidth - 15)
+  expect(panelInfo.scrollHeight).toBeGreaterThan(panelInfo.clientHeight)
+
+  await page.getByRole('tabpanel').evaluate((panel) => {
+    panel.scrollTop = panel.scrollHeight
+  })
+  await expect(page.getByText('Haptic feedback', { exact: true })).toBeVisible()
+})
+
 test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
@@ -56,6 +90,66 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
 
   await page.getByRole('tab', { name: 'Tuning' }).click()
   await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
+})
+
+test('race HUD keeps mirror and bottom readouts in separate lanes on mobile', async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.goto('/start')
+  await page.getByRole('textbox').fill('TST')
+  await page.getByRole('button', { name: 'Save' }).click()
+
+  await expect(page.getByTestId('rearview-mirror')).toBeVisible({
+    timeout: 10000,
+  })
+  await expect(page.getByTestId('hud-speedometer')).toBeVisible({
+    timeout: 10000,
+  })
+  await expect(page.getByTestId('hud-session-strip')).toBeVisible()
+
+  const layout = await page.evaluate(() => {
+    function rectFor(testId: string) {
+      const node = document.querySelector(`[data-testid="${testId}"]`)
+      const rect = node?.getBoundingClientRect()
+      return rect
+        ? {
+            left: rect.left,
+            right: rect.right,
+            top: rect.top,
+            bottom: rect.bottom,
+          }
+        : null
+    }
+    function overlaps(
+      a: { left: number; right: number; top: number; bottom: number },
+      b: { left: number; right: number; top: number; bottom: number },
+    ) {
+      return (
+        a.left < b.right &&
+        a.right > b.left &&
+        a.top < b.bottom &&
+        a.bottom > b.top
+      )
+    }
+    const mirror = rectFor('rearview-mirror')
+    const speedometer = rectFor('hud-speedometer')
+    const session = rectFor('hud-session-strip')
+    return {
+      mirror,
+      speedometer,
+      session,
+      speedometerSessionOverlap:
+        speedometer && session ? overlaps(speedometer, session) : true,
+      mirrorSessionOverlap: mirror && session ? overlaps(mirror, session) : true,
+    }
+  })
+
+  expect(layout.mirror).not.toBeNull()
+  expect(layout.speedometer).not.toBeNull()
+  expect(layout.session).not.toBeNull()
+  expect(layout.speedometerSessionOverlap).toBe(false)
+  expect(layout.mirrorSessionOverlap).toBe(false)
 })
 
 test('track editor uses floating undo and redo controls on mobile', async ({

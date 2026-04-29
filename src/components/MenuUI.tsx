@@ -1,10 +1,13 @@
 'use client'
 import {
   forwardRef,
+  useEffect,
+  useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
   type ReactNode,
 } from 'react'
+import { createPortal } from 'react-dom'
 import { useClickSfx, type ClickVariant } from '@/hooks/useClickSfx'
 
 // Shared visual language for the dark in-game / pause / settings menus.
@@ -36,7 +39,13 @@ export function MenuOverlay({
   children: ReactNode
   zIndex?: number
 }) {
-  return (
+  const [mounted, setMounted] = useState(false)
+
+  useEffect(() => {
+    setMounted(true)
+  }, [])
+
+  const overlay = (
     <div
       style={{
         position: 'fixed',
@@ -48,19 +57,26 @@ export function MenuOverlay({
         fontFamily: menuTheme.font,
         color: menuTheme.textPrimary,
         padding: 16,
+        boxSizing: 'border-box',
+        overflow: 'hidden',
       }}
     >
       {children}
     </div>
   )
+
+  if (!mounted) return overlay
+  return createPortal(overlay, document.body)
 }
 
 export function MenuPanel({
   children,
   width = 'narrow',
+  overflow = 'auto',
 }: {
   children: ReactNode
   width?: 'narrow' | 'wide'
+  overflow?: CSSProperties['overflow']
 }) {
   const minWidth = width === 'wide' ? 320 : 260
   const maxWidth = width === 'wide' ? 760 : 360
@@ -74,13 +90,15 @@ export function MenuPanel({
         minWidth,
         maxWidth,
         width: '100%',
+        boxSizing: 'border-box',
         display: 'flex',
         flexDirection: 'column',
         gap: 14,
         boxShadow: menuTheme.panelShadow,
         border: `1px solid ${menuTheme.panelBorder}`,
         maxHeight: 'calc(100vh - 32px)',
-        overflow: 'auto',
+        minHeight: 0,
+        overflow,
       }}
     >
       {children}

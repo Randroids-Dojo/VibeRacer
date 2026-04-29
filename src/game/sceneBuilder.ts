@@ -119,11 +119,14 @@ import {
 } from './snow'
 import type { Replay } from '@/lib/replay'
 import {
-  SCENERY_BARRIER_HEX_RED,
-  SCENERY_BARRIER_HEX_WHITE,
   buildScenery,
+  getSceneryStyle,
   type SceneryItem,
 } from './scenery'
+import {
+  getTrackBiomePreset,
+  type TrackBiome,
+} from '@/lib/biomes'
 import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
@@ -1238,15 +1241,19 @@ const BARRIER_LENGTH = 1.4
 const BARRIER_HEIGHT = 0.7
 const BARRIER_DEPTH = 0.55
 
-export function buildSceneryLayer(path: TrackPath): SceneryLayer {
+export function buildSceneryLayer(
+  path: TrackPath,
+  biome?: TrackBiome | null,
+): SceneryLayer {
   const group = new Group()
-  const items = buildScenery(path)
+  const sceneryStyle = getSceneryStyle(biome)
+  const items = buildScenery(path, { biome, style: sceneryStyle })
 
   // Cached materials and geometries. One entry per unique color so a hundred
   // trees with two foliage palettes collapses to two foliage materials.
   const colorMatCache = new Map<number, MeshStandardMaterial>()
   const trunkMat = new MeshStandardMaterial({
-    color: 0x6b4423,
+    color: sceneryStyle.treeTrunk,
     roughness: 0.95,
   })
   const coneBaseMat = new MeshStandardMaterial({
@@ -1337,8 +1344,8 @@ export function buildSceneryLayer(path: TrackPath): SceneryLayer {
 
   // Force the barrier color cache to exist even if a track has no barriers
   // so the dispose path stays uniform across every code path.
-  getColorMat(SCENERY_BARRIER_HEX_RED)
-  getColorMat(SCENERY_BARRIER_HEX_WHITE)
+  getColorMat(sceneryStyle.barrierA)
+  getColorMat(sceneryStyle.barrierB)
 
   return {
     group,
@@ -1898,7 +1905,11 @@ export function buildGhostNameplate(): GhostNameplate {
   return { group, apply, setOpacity, setVisible, dispose }
 }
 
-export function buildScene(path: TrackPath): SceneBundle {
+export function buildScene(
+  path: TrackPath,
+  opts?: { biome?: TrackBiome | null },
+): SceneBundle {
+  const biomePreset = getTrackBiomePreset(opts?.biome)
   const scene = new Scene()
   // Lighting preset is applied through `setTimeOfDay` below, which mutates the
   // sky color, ambient/sun lights, and ground material in place. Initialize
@@ -1918,7 +1929,10 @@ export function buildScene(path: TrackPath): SceneBundle {
   const fog = new FogExp2(0xffffff, 0)
   scene.fog = fog
 
-  const trackMat = new MeshStandardMaterial({ color: 0x2b2b2b, roughness: 0.9 })
+  const trackMat = new MeshStandardMaterial({
+    color: biomePreset.trackColor,
+    roughness: 0.9,
+  })
   for (const op of path.order) {
     const mesh = new Mesh(pieceGeometry(op), trackMat)
     mesh.position.y = 0.01
@@ -1948,10 +1962,21 @@ export function buildScene(path: TrackPath): SceneBundle {
     const weather = getWeatherPreset(activeWeather)
     // Sky: time-of-day picks the base color, weather mixes it toward the fog
     // color so the horizon blends instead of showing a hard cutoff.
-    skyBackground.setHex(
-      mixColorHex(lighting.skyColor, weather.fogColor, weather.skyTintMix),
+    const weatherSky = mixColorHex(
+      lighting.skyColor,
+      weather.fogColor,
+      weather.skyTintMix,
     )
-    groundMat.color.setHex(lighting.groundColor)
+    skyBackground.setHex(
+      mixColorHex(weatherSky, biomePreset.skyTintColor, biomePreset.skyTintMix),
+    )
+    groundMat.color.setHex(
+      mixColorHex(
+        lighting.groundColor,
+        biomePreset.groundColor,
+        biomePreset.groundTintMix,
+      ),
+    )
     // Lights: time-of-day picks the color and base intensity; weather scales
     // the intensity (overcast skies have no harsh shadows, ambient lifts to
     // keep the road readable).
@@ -2107,7 +2132,7 @@ export function buildScene(path: TrackPath): SceneBundle {
 
   scene.add(buildCheckpointMarkers(path))
 
-  const scenery = buildSceneryLayer(path)
+  const scenery = buildSceneryLayer(path, opts?.biome)
   scene.add(scenery.group)
 
   const racingLine = buildRacingLineLayer()
