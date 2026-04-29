@@ -345,7 +345,9 @@
         "per-track music personalization",
         "background tab audio suspension",
         "wrong-way SFX cue",
-        "achievement unlock SFX cue"
+        "achievement unlock SFX cue",
+        "wrong-way gamepad rumble impulse",
+        "achievement unlock gamepad rumble impulse"
       ],
       "evidence": [
         "src/game/audioEngine.ts",
@@ -354,6 +356,7 @@
         "src/components/Game.tsx",
         "src/lib/audioSettings.ts",
         "tests/unit/audio.test.ts",
+        "tests/unit/haptics.test.ts",
         "tests/unit/music.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],

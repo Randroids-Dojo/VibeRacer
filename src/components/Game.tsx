@@ -993,6 +993,14 @@ function GameSession({
     if (next.wrongWay) wrongWayTriggeredRef.current = true
     if (next.wrongWay && !wrongWayAudioActiveRef.current) {
       playWrongWayCue()
+      if (
+        shouldGamepadRumbleFire(
+          gamepadRumbleModeRef.current,
+          padHasRumble(gamepadPadRef.current),
+        )
+      ) {
+        fireGamepadImpulse('wrongWay', gamepadPadRef.current)
+      }
     }
     wrongWayAudioActiveRef.current = next.wrongWay
     setHud((prev) => ({
@@ -2259,6 +2267,14 @@ function GameSession({
       .filter((s): s is string => s !== null)
     if (names.length === 0) return
     playAchievementUnlockCue(names.length)
+    if (
+      shouldGamepadRumbleFire(
+        gamepadRumbleModeRef.current,
+        padHasRumble(gamepadPadRef.current),
+      )
+    ) {
+      fireGamepadImpulse('achievement', gamepadPadRef.current)
+    }
     const label =
       names.length === 1
         ? `Achievement: ${names[0]}`
