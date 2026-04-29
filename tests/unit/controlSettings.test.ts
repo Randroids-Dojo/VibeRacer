@@ -46,6 +46,11 @@ describe('actionForCode', () => {
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyR')).toBe('restartLap')
   })
 
+  it('resolves default shift bindings to Q and E', () => {
+    expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyQ')).toBe('shiftDown')
+    expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyE')).toBe('shiftUp')
+  })
+
   it('returns null for unbound codes', () => {
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'KeyZ')).toBeNull()
     expect(actionForCode(DEFAULT_KEY_BINDINGS, 'Tab')).toBeNull()
@@ -65,6 +70,11 @@ describe('isContinuousAction', () => {
     // useKeyboard skips one-shot actions so KeyInput stays clean. Game.tsx
     // wires its own keydown listener for restartLap.
     expect(isContinuousAction('restartLap')).toBe(false)
+  })
+
+  it('classifies shift bindings as held inputs for edge detection', () => {
+    expect(isContinuousAction('shiftDown')).toBe(true)
+    expect(isContinuousAction('shiftUp')).toBe(true)
   })
 })
 
@@ -94,6 +104,8 @@ describe('rebindKey', () => {
       left: [],
       right: [],
       handbrake: [],
+      shiftDown: [],
+      shiftUp: [],
       restartLap: [],
     }
     const next = rebindKey(empty, 'forward', 1, 'KeyT')
@@ -1222,6 +1234,8 @@ describe('gamepad bindings', () => {
       forward: [] as number[],
       backward: [] as number[],
       handbrake: [] as number[],
+      shiftDown: [] as number[],
+      shiftUp: [] as number[],
       pause: [] as number[],
     }
     const next = rebindGamepadButton(empty, 'pause', 1, 8)
@@ -1343,6 +1357,30 @@ describe('gamepad bindings storage round-trip', () => {
   it('defaults restartLap to KeyR', () => {
     expect(DEFAULT_KEY_BINDINGS.restartLap).toEqual(['KeyR'])
     expect(cloneDefaultSettings().keyBindings.restartLap).toEqual(['KeyR'])
+  })
+
+  it('defaults manual shift keys to Q and E', () => {
+    expect(DEFAULT_KEY_BINDINGS.shiftDown).toEqual(['KeyQ'])
+    expect(DEFAULT_KEY_BINDINGS.shiftUp).toEqual(['KeyE'])
+    expect(cloneDefaultSettings().keyBindings.shiftDown).toEqual(['KeyQ'])
+    expect(cloneDefaultSettings().keyBindings.shiftUp).toEqual(['KeyE'])
+  })
+
+  it('backfills shift keys when reading legacy storage that omits them', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      keyBindings: {
+        forward: ['KeyW', 'ArrowUp'],
+        backward: ['KeyS', 'ArrowDown'],
+        left: ['KeyA', 'ArrowLeft'],
+        right: ['KeyD', 'ArrowRight'],
+        handbrake: ['Space'],
+        restartLap: ['KeyR'],
+      },
+    })
+    const out = readStoredControlSettings().keyBindings
+    expect(out.shiftDown).toEqual(['KeyQ'])
+    expect(out.shiftUp).toEqual(['KeyE'])
   })
 
   it('round-trips a remapped restartLap binding', () => {

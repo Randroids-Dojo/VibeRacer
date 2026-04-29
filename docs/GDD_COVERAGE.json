@@ -56,28 +56,22 @@
         "touch controls",
         "gamepad controls",
         "remapping",
-        "restart lap"
+        "restart lap",
+        "Q/E shifter keys",
+        "manual gearing"
       ],
       "evidence": [
         "src/hooks/useKeyboard.ts",
         "src/hooks/useTouchControls.ts",
         "src/hooks/useGamepad.ts",
         "src/lib/controlSettings.ts",
+        "src/game/transmission.ts",
         "tests/unit/controlSettings.test.ts",
-        "tests/unit/gamepadInput.test.ts"
+        "tests/unit/gamepadInput.test.ts",
+        "tests/unit/transmission.test.ts",
+        "tests/unit/tick.test.ts"
       ],
-      "remainingGaps": [
-        "Q/E shifter keys",
-        "manual gearing if promoted from stretch"
-      ],
-      "gapBacklog": {
-        "Q/E shifter keys": [
-          "VibeRacer-implement-q-e-2789311e"
-        ],
-        "manual gearing if promoted from stretch": [
-          "VibeRacer-implement-manual-gearing-6c2f4d1a"
-        ]
-      }
+      "remainingGaps": []
     },
     {
       "id": "5",
@@ -90,16 +84,19 @@
         "paint palette",
         "brake lights",
         "headlights",
-        "racing number"
+        "racing number",
+        "manual gearing"
       ],
       "evidence": [
         "src/game/physics.ts",
+        "src/game/transmission.ts",
         "src/game/sceneBuilder.ts",
         "src/lib/carPaint.ts",
         "tests/unit/physics.test.ts",
         "tests/unit/carPaint.test.ts",
         "tests/unit/brakeLights.test.ts",
-        "tests/unit/headlights.test.ts"
+        "tests/unit/headlights.test.ts",
+        "tests/unit/transmission.test.ts"
       ],
       "remainingGaps": [
         "per-wheel raycast",

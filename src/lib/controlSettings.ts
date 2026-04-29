@@ -55,6 +55,8 @@ export const CONTROL_ACTIONS = [
   'left',
   'right',
   'handbrake',
+  'shiftDown',
+  'shiftUp',
   'restartLap',
 ] as const
 export type ControlAction = (typeof CONTROL_ACTIONS)[number]
@@ -70,6 +72,8 @@ export const CONTINUOUS_CONTROL_ACTIONS = [
   'left',
   'right',
   'handbrake',
+  'shiftDown',
+  'shiftUp',
 ] as const
 export type ContinuousControlAction = (typeof CONTINUOUS_CONTROL_ACTIONS)[number]
 
@@ -90,6 +94,8 @@ export const GAMEPAD_ACTIONS = [
   'forward',
   'backward',
   'handbrake',
+  'shiftDown',
+  'shiftUp',
   'pause',
 ] as const
 export type GamepadAction = (typeof GAMEPAD_ACTIONS)[number]
@@ -109,6 +115,9 @@ export const DEFAULT_GAMEPAD_BINDINGS: GamepadBindings = {
   backward: [6, 1],
   // RB primary, X face button as a thumb-friendly alt.
   handbrake: [5, 2],
+  // LB downshifts, Y upshifts.
+  shiftDown: [4],
+  shiftUp: [3],
   // Start / Options.
   pause: [9],
 }
@@ -346,6 +355,8 @@ export const DEFAULT_KEY_BINDINGS: KeyBindings = {
   left: ['KeyA', 'ArrowLeft'],
   right: ['KeyD', 'ArrowRight'],
   handbrake: ['Space'],
+  shiftDown: ['KeyQ'],
+  shiftUp: ['KeyE'],
   // R restarts only the current lap. Convenient for time-trial runs where the
   // player botches a corner and wants a fresh attempt without the full
   // countdown of a session restart. Lap counter, session PB, and lap history
@@ -398,6 +409,8 @@ const KeyBindingsSchema = z.object({
   left: z.array(KeyCodeSchema),
   right: z.array(KeyCodeSchema),
   handbrake: z.array(KeyCodeSchema),
+  shiftDown: z.array(KeyCodeSchema).default(['KeyQ']),
+  shiftUp: z.array(KeyCodeSchema).default(['KeyE']),
   // restartLap landed after the original control set. Backfill the default R
   // binding for legacy stored payloads so the upgrade is opt-out, not opt-in.
   restartLap: z.array(KeyCodeSchema).default(['KeyR']),
@@ -413,6 +426,8 @@ const GamepadBindingsSchema = z.object({
   forward: z.array(GamepadButtonIndexSchema),
   backward: z.array(GamepadButtonIndexSchema),
   handbrake: z.array(GamepadButtonIndexSchema),
+  shiftDown: z.array(GamepadButtonIndexSchema).default([4]),
+  shiftUp: z.array(GamepadButtonIndexSchema).default([3]),
   pause: z.array(GamepadButtonIndexSchema),
 })
 
@@ -605,6 +620,8 @@ export function cloneDefaultGamepadBindings(): GamepadBindings {
     forward: [...DEFAULT_GAMEPAD_BINDINGS.forward],
     backward: [...DEFAULT_GAMEPAD_BINDINGS.backward],
     handbrake: [...DEFAULT_GAMEPAD_BINDINGS.handbrake],
+    shiftDown: [...DEFAULT_GAMEPAD_BINDINGS.shiftDown],
+    shiftUp: [...DEFAULT_GAMEPAD_BINDINGS.shiftUp],
     pause: [...DEFAULT_GAMEPAD_BINDINGS.pause],
   }
 }
@@ -614,6 +631,8 @@ export function cloneGamepadBindings(b: GamepadBindings): GamepadBindings {
     forward: [...b.forward],
     backward: [...b.backward],
     handbrake: [...b.handbrake],
+    shiftDown: [...b.shiftDown],
+    shiftUp: [...b.shiftUp],
     pause: [...b.pause],
   }
 }
@@ -696,6 +715,8 @@ export function cloneDefaultBindings(): KeyBindings {
     left: [...DEFAULT_KEY_BINDINGS.left],
     right: [...DEFAULT_KEY_BINDINGS.right],
     handbrake: [...DEFAULT_KEY_BINDINGS.handbrake],
+    shiftDown: [...DEFAULT_KEY_BINDINGS.shiftDown],
+    shiftUp: [...DEFAULT_KEY_BINDINGS.shiftUp],
     restartLap: [...DEFAULT_KEY_BINDINGS.restartLap],
   }
 }
@@ -751,6 +772,8 @@ export function cloneBindings(bindings: KeyBindings): KeyBindings {
     left: [...bindings.left],
     right: [...bindings.right],
     handbrake: [...bindings.handbrake],
+    shiftDown: [...bindings.shiftDown],
+    shiftUp: [...bindings.shiftUp],
     restartLap: [...bindings.restartLap],
   }
 }
@@ -843,6 +866,8 @@ export const ACTION_LABELS: Record<ControlAction, string> = {
   left: 'Steer left',
   right: 'Steer right',
   handbrake: 'Handbrake',
+  shiftDown: 'Shift down',
+  shiftUp: 'Shift up',
   restartLap: 'Restart lap',
 }
 
@@ -850,6 +875,8 @@ export const GAMEPAD_ACTION_LABELS: Record<GamepadAction, string> = {
   forward: 'Accelerate',
   backward: 'Brake / reverse',
   handbrake: 'Handbrake',
+  shiftDown: 'Shift down',
+  shiftUp: 'Shift up',
   pause: 'Pause',
 }
 

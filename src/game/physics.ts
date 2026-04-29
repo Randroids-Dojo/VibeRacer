@@ -57,13 +57,17 @@ export function stepPhysics(
   dtSec: number,
   onTrack: boolean,
   params: CarParams = DEFAULT_CAR_PARAMS,
+  accelFactor = 1,
+  maxSpeedFactor = 1,
 ): PhysicsState {
   let speed = s.speed
   const throttle = clamp(input.throttle, -1, 1)
   const steer = clamp(input.steer, -1, 1)
+  const accel = params.accel * accelFactor
+  const maxSpeed = Math.max(1, params.maxSpeed * maxSpeedFactor)
 
   if (throttle > 0) {
-    speed += params.accel * throttle * dtSec
+    speed += accel * throttle * dtSec
   } else if (throttle < 0) {
     if (speed > 0) {
       speed += params.brake * throttle * dtSec
@@ -89,12 +93,12 @@ export function stepPhysics(
     else speed -= sign(speed) * drag
     speed = clamp(speed, -params.offTrackMaxSpeed, params.offTrackMaxSpeed)
   } else {
-    speed = clamp(speed, -params.maxReverseSpeed, params.maxSpeed)
+    speed = clamp(speed, -params.maxReverseSpeed, maxSpeed)
   }
 
   let heading = s.heading
   if (Math.abs(speed) >= params.minSpeedForSteering) {
-    const span = params.maxSpeed - params.minSpeedForSteering
+    const span = maxSpeed - params.minSpeedForSteering
     const t =
       span > 1e-6
         ? clamp(

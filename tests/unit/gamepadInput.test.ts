@@ -49,6 +49,8 @@ describe('gamepadToInput', () => {
     expect(out.keys.left).toBe(false)
     expect(out.keys.right).toBe(false)
     expect(out.keys.handbrake).toBe(false)
+    expect(out.keys.shiftDown).toBe(false)
+    expect(out.keys.shiftUp).toBe(false)
     expect(out.pausePressed).toBe(false)
   })
 
@@ -117,6 +119,13 @@ describe('gamepadToInput', () => {
     expect(rb.keys.handbrake).toBe(true)
     const xBtn = gamepadToInput(snapshot({ buttons: { 2: true } }))
     expect(xBtn.keys.handbrake).toBe(true)
+  })
+
+  it('reads manual shift buttons from LB and Y', () => {
+    const down = gamepadToInput(snapshot({ buttons: { 4: true } }))
+    expect(down.keys.shiftDown).toBe(true)
+    const up = gamepadToInput(snapshot({ buttons: { 3: true } }))
+    expect(up.keys.shiftUp).toBe(true)
   })
 
   it('emits pause on the rising edge of Start, not while held', () => {
@@ -219,5 +228,10 @@ describe('gamepadIsActive', () => {
   it('treats handbrake-only as active so the pad can lock the wheels', () => {
     const handbrake = gamepadToInput(snapshot({ buttons: { 5: true } }))
     expect(gamepadIsActive(handbrake)).toBe(true)
+  })
+
+  it('treats shift-only as active so manual gear changes are delivered', () => {
+    const shift = gamepadToInput(snapshot({ buttons: { 3: true } }))
+    expect(gamepadIsActive(shift)).toBe(true)
   })
 })

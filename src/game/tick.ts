@@ -12,6 +12,13 @@ import {
   type CarParams,
   type PhysicsInput,
 } from './physics'
+import {
+  DEFAULT_MANUAL_GEAR,
+  DEFAULT_TRACK_TRANSMISSION,
+  manualGearSpec,
+  shiftManualGear,
+  type TrackTransmissionMode,
+} from './transmission'
 
 export interface GameState {
   x: number
@@ -25,6 +32,7 @@ export interface GameState {
   onTrack: boolean
   lapCount: number
   lastLapTimeMs: number | null
+  gear: number
 }
 
 export interface LapCompleteEvent {
@@ -36,6 +44,11 @@ export interface LapCompleteEvent {
 export interface TickResult {
   state: GameState
   lapComplete: LapCompleteEvent | null
+}
+
+export interface TickInput extends PhysicsInput {
+  shiftDown?: boolean
+  shiftUp?: boolean
 }
 
 export function initGameState(path: TrackPath): GameState {
@@ -53,6 +66,7 @@ export function initGameState(path: TrackPath): GameState {
     onTrack: true,
     lapCount: 0,
     lastLapTimeMs: null,
+    gear: DEFAULT_MANUAL_GEAR,
   }
 }
 
@@ -62,13 +76,22 @@ export function startRace(state: GameState, nowMs: number): GameState {
 
 export function tick(
   state: GameState,
-  input: PhysicsInput,
+  input: TickInput,
   dtMs: number,
   nowMs: number,
   path: TrackPath,
   params: CarParams = DEFAULT_CAR_PARAMS,
+  transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
 ): TickResult {
   const dtSec = dtMs / 1000
+  let gear = state.gear
+  if (transmission === 'manual') {
+    if (input.shiftDown) gear = shiftManualGear(gear, 'down')
+    if (input.shiftUp) gear = shiftManualGear(gear, 'up')
+  } else if (gear !== DEFAULT_MANUAL_GEAR) {
+    gear = DEFAULT_MANUAL_GEAR
+  }
+  const gearSpec = transmission === 'manual' ? manualGearSpec(gear) : null
 
   const cellNow = worldToCell(state.x, state.z)
   const keyNow = cellKey(cellNow.row, cellNow.col)
@@ -86,6 +109,8 @@ export function tick(
         dtSec,
         onTrack,
         params,
+        gearSpec?.accelFactor ?? 1,
+        gearSpec?.maxSpeedFactor ?? 1,
       )
 
   let hits = state.hits
@@ -139,6 +164,7 @@ export function tick(
       onTrack,
       lapCount,
       lastLapTimeMs,
+      gear,
     },
     lapComplete,
   }
