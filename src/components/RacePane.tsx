@@ -8,6 +8,7 @@ import {
   MenuPanel,
   MenuSection,
 } from './MenuUI'
+import { MenuNavProvider } from './MenuNav'
 
 interface RacePaneProps {
   onBack: () => void
@@ -54,7 +55,8 @@ export function RacePane({
 }: RacePaneProps) {
   return (
     <MenuOverlay zIndex={100}>
-      <MenuPanel width="wide">
+      <MenuNavProvider onBack={onBack}>
+        <MenuPanel width="wide">
         <MenuHeader title="RACE" onClose={onBack} />
 
         <MenuSection title="Progress">
@@ -129,7 +131,8 @@ export function RacePane({
             ) : null}
           </div>
         </MenuSection>
-      </MenuPanel>
+        </MenuPanel>
+      </MenuNavProvider>
     </MenuOverlay>
   )
 }

@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-30, Keyboard And Gamepad Menu Navigation
+
+- Branch: `claude/controller-keyboard-navigation-xxQnc`
+- Changed: built a small `MenuNav` focus-management module (`src/components/MenuNav/`) that registers focusables, walks them with arrow keys, restores focus on close, and runs an rAF gamepad poller mapping DPad / left stick to navigation, A to activate, B to close, LB / RB to step tab bars. Updated `MenuUI.tsx` to register `MenuButton`, `MenuToggle`, `MenuSlider`, and `MenuHeader` close buttons, added a focus ring via `:focus-visible`, and shipped new `MenuRadioRow` and `MenuTabBar` primitives. Wrapped every overlay (Pause, Settings, Session Summary, Race Pane, Achievements, Track Stats, Lap History, PB History, Photo Mode, Tuning Panel, Tune Editor, Leaderboard, Initials Prompt, Feature List, How to Play, Feedback FAB) with `MenuNavProvider`. Replaced SettingsPane's ad-hoc tab bar with `MenuTabBar` and added a capture-mode suppression hook so rebind prompts still receive the next keypress. Added `useKeyboard.ts` early-return guard on `isMenuNavOpen()` so racing input does not leak through a focused menu button. Added a lightweight `TitleGamepadNav` component on the title page that walks the document tab order with DPad and clicks with A.
+- Verification: dash checks, `npm run type-check`, `npm test` (3017 tests pass), `npm run lint` (no new warnings), em-dash grep on changed files. New Playwright e2e tests at `tests/e2e/menu-keyboard.spec.ts` and `tests/e2e/menu-gamepad.spec.ts`.
+- Assumptions: gamepad menu binds (DPad, A, B, LB / RB) are intentionally not rebindable; race-control rebinding stays untouched. Sliders follow ARIA semantics: Left / Right adjust value, Up / Down move focus.
+- GDD coverage: completes Section 4 controls scope for menu-level keyboard and gamepad navigation.
+- Followups: none.
+
 ## 2026-04-29, Track Tune Automation
 
 - Branch: `feature/tune-automation`

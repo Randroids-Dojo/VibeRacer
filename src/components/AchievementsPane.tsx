@@ -15,6 +15,7 @@ import {
   type AchievementProgressMap,
 } from '@/game/achievementProgress'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
+import { MenuNavProvider } from './MenuNav'
 
 interface AchievementsPaneProps {
   // Cross-track lifetime unlock map. Empty object reads as "no unlocks yet"
@@ -71,7 +72,8 @@ export function AchievementsPane({
 
   return (
     <MenuOverlay zIndex={100}>
-      <MenuPanel width="wide">
+      <MenuNavProvider onBack={onBack}>
+        <MenuPanel width="wide">
         <div
           style={{
             display: 'flex',
@@ -125,7 +127,8 @@ export function AchievementsPane({
         <MenuButton click="back" onClick={onBack}>
           Back
         </MenuButton>
-      </MenuPanel>
+        </MenuPanel>
+      </MenuNavProvider>
     </MenuOverlay>
   )
 }

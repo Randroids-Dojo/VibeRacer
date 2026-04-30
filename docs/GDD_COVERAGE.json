@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-04-29",
+  "updatedAt": "2026-04-30",
   "sections": [
     {
       "id": "2",
@@ -61,7 +61,9 @@
         "remapping",
         "restart lap",
         "Q/E shifter keys",
-        "manual gearing"
+        "manual gearing",
+        "menu keyboard navigation",
+        "menu gamepad navigation"
       ],
       "evidence": [
         "src/hooks/useKeyboard.ts",
@@ -69,10 +71,15 @@
         "src/hooks/useGamepad.ts",
         "src/lib/controlSettings.ts",
         "src/game/transmission.ts",
+        "src/components/MenuNav/MenuNavContext.tsx",
+        "src/components/MenuNav/useMenuGamepadNav.ts",
+        "src/components/TitleGamepadNav.tsx",
         "tests/unit/controlSettings.test.ts",
         "tests/unit/gamepadInput.test.ts",
         "tests/unit/transmission.test.ts",
-        "tests/unit/tick.test.ts"
+        "tests/unit/tick.test.ts",
+        "tests/e2e/menu-keyboard.spec.ts",
+        "tests/e2e/menu-gamepad.spec.ts"
       ],
       "remainingGaps": []
     },

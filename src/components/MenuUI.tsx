@@ -2,6 +2,7 @@
 import {
   forwardRef,
   useEffect,
+  useRef,
   useState,
   type ButtonHTMLAttributes,
   type CSSProperties,
@@ -9,6 +10,8 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useClickSfx, type ClickVariant } from '@/hooks/useClickSfx'
+import { useRegisterFocusable } from './MenuNav'
+import type { FocusAxis } from './MenuNav'
 
 // Shared visual language for the dark in-game / pause / settings menus.
 // Components on the light title backdrop (SlugInput, SlugLanding) intentionally
@@ -30,7 +33,38 @@ export const menuTheme = {
   secondaryBg: '#2a2a2a',
   ghostBorder: '#3a3a3a',
   panelShadow: '0 20px 60px rgba(0,0,0,0.6)',
+  focusRing: '0 0 0 2px #161616, 0 0 0 4px #ff6b35',
 } as const
+
+// Single style block injected once so :focus-visible draws a consistent
+// keyboard / gamepad focus ring on every menu primitive.
+const FOCUS_STYLE_ID = 'menuui-focus-style'
+function injectFocusStyle() {
+  if (typeof document === 'undefined') return
+  if (document.getElementById(FOCUS_STYLE_ID)) return
+  const style = document.createElement('style')
+  style.id = FOCUS_STYLE_ID
+  style.textContent = `
+.menuui-focusable:focus { outline: none; }
+.menuui-focusable:focus-visible {
+  outline: none;
+  box-shadow: ${menuTheme.focusRing};
+}
+.menuui-radio:focus-visible {
+  outline: none;
+  box-shadow: ${menuTheme.focusRing};
+}
+.menuui-tab:focus-visible {
+  outline: none;
+  box-shadow: ${menuTheme.focusRing};
+}
+input.menuui-range:focus-visible {
+  outline: 2px solid ${menuTheme.accent};
+  outline-offset: 2px;
+}
+`
+  document.head.appendChild(style)
+}
 
 export function MenuOverlay({
   children,
@@ -43,6 +77,7 @@ export function MenuOverlay({
 
   useEffect(() => {
     setMounted(true)
+    injectFocusStyle()
   }, [])
 
   const overlay = (
@@ -129,6 +164,12 @@ export function MenuHeader({
   onClose?: () => void
 }) {
   const clickBack = useClickSfx('back')
+  const ref = useRef<HTMLButtonElement | null>(null)
+  // Close lives at the top of the panel in DOM order, but we push it to the
+  // end of the focus order with a high `order` value so auto-focus on overlay
+  // open lands on the first useful interactive element (e.g. the first tab
+  // in SettingsPane), not on Close.
+  useRegisterFocusable(ref, { axis: 'vertical', order: 1e10 })
   return (
     <div
       style={{
@@ -142,6 +183,8 @@ export function MenuHeader({
       </div>
       {onClose ? (
         <button
+          ref={ref}
+          className="menuui-focusable"
           onClick={() => {
             clickBack()
             onClose()
@@ -155,6 +198,8 @@ export function MenuHeader({
             fontSize: 12,
             letterSpacing: 1,
             fontFamily: 'inherit',
+            borderRadius: 4,
+            padding: '4px 6px',
           }}
         >
           CLOSE
@@ -212,6 +257,10 @@ interface MenuButtonProps
   click?: ClickVariant
   onClick?: () => void
   fullWidth?: boolean
+  // Optional axis hint for the parent MenuNav. Defaults to 'vertical' which
+  // matches every existing pause / settings stack. Override to 'horizontal'
+  // when used inside a row.
+  navAxis?: FocusAxis
 }
 
 // Buttons play a UI click on activation. `click` selects the variant; the
@@ -227,11 +276,26 @@ export const MenuButton = forwardRef<HTMLButtonElement, MenuButtonProps>(
       children,
       style,
       disabled,
+      navAxis,
       ...rest
     },
     ref,
   ) {
     const playClick = useClickSfx(click)
+    const localRef = useRef<HTMLButtonElement | null>(null)
+    // Forward the inner ref to the parent ref AND keep our own copy for
+    // useRegisterFocusable. The ref-forwarding pattern below mirrors the
+    // existing forwardRef behavior; we don't want to break callers like
+    // InitialsPrompt that focus the button directly.
+    const setRef = (node: HTMLButtonElement | null) => {
+      localRef.current = node
+      if (typeof ref === 'function') ref(node)
+      else if (ref) (ref as { current: HTMLButtonElement | null }).current = node
+    }
+    useRegisterFocusable(localRef, {
+      axis: navAxis ?? 'vertical',
+      disabled,
+    })
     const variantStyle: CSSProperties =
       variant === 'primary'
         ? { background: menuTheme.accentBg, color: menuTheme.accentText }
@@ -244,9 +308,10 @@ export const MenuButton = forwardRef<HTMLButtonElement, MenuButtonProps>(
           : { background: menuTheme.secondaryBg, color: 'white' }
     return (
       <button
-        ref={ref}
+        ref={setRef}
         type="button"
         disabled={disabled}
+        className="menuui-focusable"
         onClick={() => {
           playClick()
           onClick?.()
@@ -278,22 +343,40 @@ export function MenuToggle({
   value,
   onChange,
   disabled,
+  navAxis,
 }: {
   label?: ReactNode
   value: boolean
   onChange: (next: boolean) => void
   disabled?: boolean
+  navAxis?: FocusAxis
 }) {
   const click = useClickSfx('soft')
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: navAxis ?? 'vertical', disabled })
   return (
     <button
+      ref={ref}
       type="button"
       role="switch"
       aria-checked={value}
       disabled={disabled}
+      className="menuui-focusable"
       onClick={() => {
         click()
         onChange(!value)
+      }}
+      onKeyDown={(e) => {
+        // Left / right toggles when the user is on a horizontal toggle row,
+        // matching ARIA switch conventions. Up / down still moves focus via
+        // the MenuNav handler so this is purely additive.
+        if (
+          (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
+          navAxis !== 'horizontal'
+        ) {
+          // For vertical layouts, do not hijack left / right - MenuNav will
+          // ignore them anyway since axis is vertical.
+        }
       }}
       style={{
         border: 'none',
@@ -337,6 +420,11 @@ export function MenuSlider({
   step?: number
   format?: (value: number) => string
 }) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  // Sliders register as 'both' so left / right adjusts the value (handled by
+  // the native range input + MenuNav pass-through) and up / down moves focus
+  // out of the slider.
+  useRegisterFocusable(ref, { axis: 'both', disabled })
   return (
     <label
       style={{
@@ -350,7 +438,9 @@ export function MenuSlider({
       <div style={{ display: 'flex', alignItems: 'center', gap: 12 }}>
         <span style={{ fontSize: 14, minWidth: 56 }}>{label}</span>
         <input
+          ref={ref}
           type="range"
+          className="menuui-range"
           min={min}
           max={max}
           step={step}
@@ -376,6 +466,261 @@ export function MenuSlider({
         {format(value)}
       </span>
     </label>
+  )
+}
+
+// Generic "pick one of N" row used by the many settings selectors (touch
+// mode, time-of-day, weather, ghost source, camera preset, headlight mode,
+// brake light mode, time-of-day cycle, speed unit, plate / text colors,
+// gamepad rumble mode, haptic mode, paint swatches). Each option is a real
+// button with role=radio and arrow-key roving handled through MenuNav.
+export interface MenuRadioOption<T extends string> {
+  value: T
+  label: ReactNode
+  disabled?: boolean
+  // Optional hint shown under the row when this option is selected.
+  description?: ReactNode
+  // Optional inline render override (e.g. color swatches). When provided this
+  // replaces the default text label rendering. The button wrapper still
+  // supplies role and focus.
+  render?: (selected: boolean) => ReactNode
+  // Optional title attribute (tooltip).
+  title?: string
+}
+
+export function MenuRadioRow<T extends string>({
+  label,
+  value,
+  options,
+  onChange,
+  ariaLabel,
+  columns,
+}: {
+  label?: ReactNode
+  value: T
+  options: ReadonlyArray<MenuRadioOption<T>>
+  onChange: (next: T) => void
+  ariaLabel?: string
+  // Optional grid column count. When set the options render in a grid; else
+  // they wrap horizontally.
+  columns?: number
+}) {
+  const click = useClickSfx('soft')
+  const selected = options.find((o) => o.value === value)
+  return (
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
+      {label ? (
+        <div
+          style={{
+            fontSize: 12,
+            color: menuTheme.textMuted,
+            textTransform: 'uppercase',
+            letterSpacing: 1.2,
+          }}
+        >
+          {label}
+        </div>
+      ) : null}
+      <div
+        role="radiogroup"
+        aria-label={ariaLabel ?? (typeof label === 'string' ? label : undefined)}
+        style={{
+          display: columns ? 'grid' : 'flex',
+          gridTemplateColumns: columns
+            ? `repeat(${columns}, minmax(0, 1fr))`
+            : undefined,
+          flexWrap: columns ? undefined : 'wrap',
+          gap: 6,
+        }}
+      >
+        {options.map((opt) => (
+          <RadioOption
+            key={opt.value}
+            opt={opt}
+            selected={opt.value === value}
+            onPick={() => {
+              if (opt.disabled) return
+              click()
+              onChange(opt.value)
+            }}
+          />
+        ))}
+      </div>
+      {selected?.description ? (
+        <div
+          style={{
+            fontSize: 11,
+            opacity: 0.7,
+            lineHeight: 1.4,
+          }}
+        >
+          {selected.description}
+        </div>
+      ) : null}
+    </div>
+  )
+}
+
+function RadioOption<T extends string>({
+  opt,
+  selected,
+  onPick,
+}: {
+  opt: MenuRadioOption<T>
+  selected: boolean
+  onPick: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, {
+    axis: 'horizontal',
+    disabled: opt.disabled,
+    onActivate: onPick,
+  })
+  if (opt.render) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        role="radio"
+        aria-checked={selected}
+        title={opt.title}
+        disabled={opt.disabled}
+        className="menuui-radio"
+        onClick={onPick}
+        style={{
+          border: 'none',
+          background: 'transparent',
+          padding: 0,
+          cursor: opt.disabled ? 'not-allowed' : 'pointer',
+          fontFamily: 'inherit',
+          opacity: opt.disabled ? 0.4 : 1,
+          borderRadius: 6,
+        }}
+      >
+        {opt.render(selected)}
+      </button>
+    )
+  }
+  return (
+    <button
+      ref={ref}
+      type="button"
+      role="radio"
+      aria-checked={selected}
+      title={opt.title}
+      disabled={opt.disabled}
+      className="menuui-radio"
+      onClick={onPick}
+      style={{
+        border: `1px solid ${selected ? menuTheme.accent : menuTheme.ghostBorder}`,
+        background: selected ? menuTheme.accentBg : 'transparent',
+        color: selected ? menuTheme.accentText : '#cfcfcf',
+        borderRadius: 8,
+        padding: '8px 12px',
+        fontSize: 13,
+        fontWeight: 600,
+        cursor: opt.disabled ? 'not-allowed' : 'pointer',
+        fontFamily: 'inherit',
+        opacity: opt.disabled ? 0.4 : 1,
+        textAlign: 'center',
+      }}
+    >
+      {opt.label}
+    </button>
+  )
+}
+
+// Horizontal tab strip. Each tab is a button with role=tab. Arrow Left / Right
+// (via MenuNav since axis='horizontal') and gamepad LB / RB (the parent
+// MenuNavProvider supplies onTabPrev / onTabNext) move between tabs.
+export interface MenuTabDef<T extends string> {
+  value: T
+  label: ReactNode
+  disabled?: boolean
+}
+
+export function MenuTabBar<T extends string>({
+  tabs,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  tabs: ReadonlyArray<MenuTabDef<T>>
+  value: T
+  onChange: (next: T) => void
+  ariaLabel?: string
+}) {
+  const click = useClickSfx('soft')
+  return (
+    <div
+      role="tablist"
+      aria-label={ariaLabel}
+      style={{
+        display: 'flex',
+        flexWrap: 'wrap',
+        gap: 6,
+        borderBottom: `1px solid ${menuTheme.panelBorder}`,
+        paddingBottom: 8,
+      }}
+    >
+      {tabs.map((tab) => (
+        <TabButton
+          key={tab.value}
+          tab={tab}
+          selected={tab.value === value}
+          onPick={() => {
+            if (tab.disabled || tab.value === value) return
+            click()
+            onChange(tab.value)
+          }}
+        />
+      ))}
+    </div>
+  )
+}
+
+function TabButton<T extends string>({
+  tab,
+  selected,
+  onPick,
+}: {
+  tab: MenuTabDef<T>
+  selected: boolean
+  onPick: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, {
+    axis: 'horizontal',
+    group: 'tabbar',
+    disabled: tab.disabled,
+    onActivate: onPick,
+  })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      role="tab"
+      aria-selected={selected}
+      disabled={tab.disabled}
+      className="menuui-tab"
+      onClick={onPick}
+      style={{
+        border: 'none',
+        background: selected ? menuTheme.accentBg : 'transparent',
+        color: selected ? menuTheme.accentText : '#cfcfcf',
+        borderRadius: 6,
+        padding: '6px 12px',
+        fontSize: 13,
+        fontWeight: 700,
+        letterSpacing: 0.6,
+        textTransform: 'uppercase',
+        cursor: tab.disabled ? 'not-allowed' : 'pointer',
+        fontFamily: 'inherit',
+        opacity: tab.disabled ? 0.4 : 1,
+      }}
+    >
+      {tab.label}
+    </button>
   )
 }
 

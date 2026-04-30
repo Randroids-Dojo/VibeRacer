@@ -14,6 +14,7 @@ import {
   labelForConsistencyTier,
 } from '@/game/lapConsistency'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
+import { MenuNavProvider } from './MenuNav'
 
 interface SessionSummaryProps {
   stats: SessionSummaryStats
@@ -55,7 +56,8 @@ export function SessionSummary({
       : menuTheme.textPrimary
   return (
     <MenuOverlay zIndex={100}>
-      <MenuPanel width="wide">
+      <MenuNavProvider onBack={onBack}>
+        <MenuPanel width="wide">
         <div
           style={{
             display: 'flex',
@@ -184,7 +186,8 @@ export function SessionSummary({
             Back
           </MenuButton>
         </div>
-      </MenuPanel>
+        </MenuPanel>
+      </MenuNavProvider>
     </MenuOverlay>
   )
 }

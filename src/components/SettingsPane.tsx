@@ -119,10 +119,13 @@ import {
   MenuPanel,
   MenuSection,
   MenuSlider,
+  MenuTabBar,
   MenuToggle,
   menuTheme,
+  type MenuTabDef,
 } from './MenuUI'
 import { FeatureListOverlay } from './FeatureListOverlay'
+import { MenuNavProvider, useMenuNav } from './MenuNav'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -705,33 +708,37 @@ export function SettingsPane({
     setPadCapture(null)
   }
 
+  function shiftTab(delta: 1 | -1) {
+    const idx = settingsTabs.findIndex((t) => t.id === activeTab)
+    if (idx < 0) return
+    const next = settingsTabs[(idx + delta + settingsTabs.length) % settingsTabs.length]
+    selectTab(next.id)
+  }
+
+  const tabBarTabs: MenuTabDef<SettingsTabId>[] = settingsTabs.map((t) => ({
+    value: t.id,
+    label: t.label,
+  }))
+
+  const captureActive = capture !== null || padCapture !== null
+
   return (
     <MenuOverlay zIndex={110}>
-      <MenuPanel width="wide" overflow="hidden">
+      <MenuNavProvider
+        onBack={onClose}
+        onTabPrev={() => shiftTab(-1)}
+        onTabNext={() => shiftTab(1)}
+      >
+        <CaptureSuppression active={captureActive} />
+        <MenuPanel width="wide" overflow="hidden">
         <MenuHeader title="SETTINGS" onClose={onClose} />
 
-        <div role="tablist" aria-label="Settings sections" style={tabList}>
-          {settingsTabs.map((tab) => {
-            const selected = activeTab === tab.id
-            return (
-              <button
-                key={tab.id}
-                id={`settings-tab-${tab.id}`}
-                role="tab"
-                type="button"
-                aria-selected={selected}
-                aria-controls={`settings-panel-${tab.id}`}
-                onClick={() => selectTab(tab.id)}
-                style={{
-                  ...tabButton,
-                  ...(selected ? tabButtonActive : null),
-                }}
-              >
-                {tab.label}
-              </button>
-            )
-          })}
-        </div>
+        <MenuTabBar
+          tabs={tabBarTabs}
+          value={activeTab}
+          onChange={selectTab}
+          ariaLabel="Settings sections"
+        />
 
         <div
           id={`settings-panel-${activeTab}`}
@@ -1704,8 +1711,24 @@ export function SettingsPane({
       {featureListOpen ? (
         <FeatureListOverlay onClose={closeFeatureList} />
       ) : null}
+      </MenuNavProvider>
     </MenuOverlay>
   )
+}
+
+// While the user is mid-rebind (waiting for a key or gamepad button), the
+// existing capture handler in SettingsPane needs to swallow the next press.
+// Suspending MenuNav's keyboard listener prevents Esc / arrow keys from
+// double-firing into both the rebind handler and the focus mover.
+function CaptureSuppression({ active }: { active: boolean }) {
+  const nav = useMenuNav()
+  useEffect(() => {
+    nav?.setSuppressed(active)
+    return () => {
+      nav?.setSuppressed(false)
+    }
+  }, [active, nav])
+  return null
 }
 
 function truncatePadId(id: string | null): string {
@@ -2042,39 +2065,6 @@ const subSection: React.CSSProperties = {
 const subTitle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
-}
-const tabList: React.CSSProperties = {
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 2,
-  borderBottom: `1px solid ${menuTheme.ghostBorder}`,
-  paddingTop: 2,
-  flex: '0 0 auto',
-}
-const tabButton: React.CSSProperties = {
-  border: 'none',
-  borderBottom: '3px solid transparent',
-  borderRadius: '8px 8px 0 0',
-  background: 'transparent',
-  color: menuTheme.textHint,
-  cursor: 'pointer',
-  flex: '0 0 auto',
-  fontFamily: 'inherit',
-  fontSize: 11,
-  fontWeight: 800,
-  letterSpacing: 0.7,
-  lineHeight: 1,
-  minHeight: 34,
-  minWidth: 0,
-  padding: '10px 13px 9px',
-  textAlign: 'center',
-  textTransform: 'uppercase',
-  whiteSpace: 'nowrap',
-}
-const tabButtonActive: React.CSSProperties = {
-  background: 'rgba(255,107,53,0.16)',
-  borderBottomColor: menuTheme.accentBg,
-  color: '#ffffff',
 }
 const tabPanel: React.CSSProperties = {
   display: 'flex',

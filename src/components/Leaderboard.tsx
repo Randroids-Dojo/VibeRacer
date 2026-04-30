@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { formatDate, formatIsoDate } from '@/lib/formatDate'
 import type { CarParams } from '@/game/physics'
@@ -20,6 +20,7 @@ import {
 } from '@/lib/leaderboard'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { shouldOfferChase, type RivalSelection } from '@/lib/rivalGhost'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 
 interface LeaderboardProps {
   slug: string
@@ -303,22 +304,16 @@ export function Leaderboard({
   }
 
   return (
-    <div style={overlay}>
+    <MenuNavProvider onBack={onBack}>
+      <div style={overlay}>
       <div style={panel}>
         <div style={header}>
-          <button
+          <LeaderboardBackButton
             onClick={() => {
               clickBack()
               onBack()
             }}
-            style={backBtn}
-            aria-label="Back"
-          >
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <polyline points="15 18 9 12 15 6" />
-            </svg>
-            Back
-          </button>
+          />
           <div style={titleStyle}>LEADERBOARD</div>
           <div style={versionStyle}>v{shortHash(selectedHash)}</div>
         </div>
@@ -562,6 +557,26 @@ export function Leaderboard({
         />
       ) : null}
     </div>
+    </MenuNavProvider>
+  )
+}
+
+function LeaderboardBackButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={backBtn}
+      aria-label="Back"
+      className="menuui-focusable"
+    >
+      <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+        <polyline points="15 18 9 12 15 6" />
+      </svg>
+      Back
+    </button>
   )
 }
 

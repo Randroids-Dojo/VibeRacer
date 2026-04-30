@@ -23,6 +23,7 @@ import {
   MenuSection,
   menuTheme,
 } from './MenuUI'
+import { MenuNavProvider } from './MenuNav'
 
 interface Props {
   keyBindings: KeyBindings
@@ -46,7 +47,8 @@ export function HowToPlay({
   const touch = buildTouchHelp(touchMode)
   return (
     <MenuOverlay zIndex={120}>
-      <MenuPanel width="wide">
+      <MenuNavProvider onBack={onClose}>
+        <MenuPanel width="wide">
         <MenuHeader title="HOW TO PLAY" onClose={onClose} />
 
         <MenuSection title={HOW_TO_PLAY_GOAL_TITLE}>
@@ -93,7 +95,8 @@ export function HowToPlay({
         <MenuButton click="back" onClick={onClose}>
           Done
         </MenuButton>
-      </MenuPanel>
+        </MenuPanel>
+      </MenuNavProvider>
     </MenuOverlay>
   )
 }

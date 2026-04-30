@@ -8,6 +8,7 @@ import {
   isStockParams,
 } from '@/lib/tuningSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 
 interface TuningPanelProps {
   params: CarParams
@@ -32,20 +33,17 @@ export function TuningPanel({
   }
 
   return (
-    <div style={overlay}>
+    <MenuNavProvider onBack={onClose}>
+      <div style={overlay}>
       <div style={panel}>
         <div style={header}>
           <div style={title}>SETUP</div>
-          <button
+          <TuningCloseButton
             onClick={() => {
               clickBack()
               onClose()
             }}
-            style={closeBtn}
-            aria-label="Close tuning"
-          >
-            CLOSE
-          </button>
+          />
         </div>
 
         <div style={status}>
@@ -103,18 +101,80 @@ export function TuningPanel({
           >
             Reset to defaults
           </button>
-          <button
+          <TuningDoneButton
             onClick={() => {
               clickConfirm()
               onClose()
             }}
-            style={doneBtn}
-          >
-            Done
-          </button>
+          />
         </div>
       </div>
-    </div>
+      </div>
+    </MenuNavProvider>
+  )
+}
+
+function ParamRangeInput({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  min: number
+  max: number
+  step: number
+  value: number
+  onChange: (next: number) => void
+  ariaLabel: string
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
+  return (
+    <input
+      ref={ref}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={range}
+      aria-label={ariaLabel}
+      className="menuui-range"
+    />
+  )
+}
+
+function TuningCloseButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={closeBtn}
+      aria-label="Close tuning"
+      className="menuui-focusable"
+    >
+      CLOSE
+    </button>
+  )
+}
+
+function TuningDoneButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={doneBtn}
+      className="menuui-focusable"
+    >
+      Done
+    </button>
   )
 }
 
@@ -151,15 +211,13 @@ function ParamRow({
           <div style={unit}>{meta.unit}</div>
         </div>
       </div>
-      <input
-        type="range"
+      <ParamRangeInput
         min={meta.min}
         max={meta.max}
         step={meta.step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={range}
-        aria-label={`${meta.label} slider`}
+        onChange={onChange}
+        ariaLabel={`${meta.label} slider`}
       />
       <div style={metaRow}>
         <span style={metaText}>

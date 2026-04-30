@@ -8,6 +8,7 @@ import {
   MenuOverlay,
   MenuSection,
 } from './MenuUI'
+import { MenuNavProvider } from './MenuNav'
 import {
   PHOTO_JPG_QUALITY,
   buildPhotoFilename,
@@ -85,7 +86,8 @@ export function PhotoMode({ slug, captureRef, onClose }: PhotoModeProps) {
 
   return (
     <MenuOverlay zIndex={100}>
-      <MenuPanel>
+      <MenuNavProvider onBack={onClose}>
+        <MenuPanel>
         <MenuHeader title="PHOTO MODE" onClose={onClose} />
         <MenuHint>
           Saves a screenshot of just the 3D scene (no HUD, no menu overlay).
@@ -138,7 +140,8 @@ export function PhotoMode({ slug, captureRef, onClose }: PhotoModeProps) {
               ? status.message
               : 'Pick a format to save the current frame.'}
         </div>
-      </MenuPanel>
+        </MenuPanel>
+      </MenuNavProvider>
     </MenuOverlay>
   )
 }
