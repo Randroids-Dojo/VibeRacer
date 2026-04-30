@@ -1184,10 +1184,16 @@ export function buildKerbLayer(path: TrackPath): KerbLayer {
 
 function buildCheckpointMarkers(path: TrackPath): Group {
   const group = new Group()
-  const poleGeom = new CylinderGeometry(0.12, 0.12, 2.4, 8)
-  const flagGeom = new BoxGeometry(1.3, 0.7, 0.06)
+  const poleRadius = 0.12
+  const poleGeom = new CylinderGeometry(poleRadius, poleRadius, 2.4, 8)
+  const flagWidth = 1.3
+  const flagGeom = new BoxGeometry(flagWidth, 0.7, 0.06)
   const poleMat = new MeshStandardMaterial({ color: 0xf6f1d1, roughness: 0.65 })
   const flagMat = new MeshStandardMaterial({ color: 0xffb347, roughness: 0.55 })
+  // Offset from pole center to flag center: half the flag's span plus the
+  // pole's radius so the flag's near edge sits flush against the pole's
+  // outer surface rather than clipping into it.
+  const flagCenterOffset = flagWidth / 2 + poleRadius
   for (const marker of path.checkpointMarkers) {
     const sideX = -Math.sin(marker.heading)
     const sideZ = -Math.cos(marker.heading)
@@ -1198,8 +1204,15 @@ function buildCheckpointMarkers(path: TrackPath): Group {
       pole.position.set(x, 1.2, z)
       group.add(pole)
       const flag = new Mesh(flagGeom, flagMat)
-      flag.position.set(x + sideX * sign * 0.55, 2.05, z + sideZ * sign * 0.55)
-      flag.rotation.y = marker.heading
+      // Flag hangs off the pole: long edge extends outward away from the
+      // road, near edge sits flush against the pole, faces perpendicular
+      // to travel so drivers see the broad rectangle as they pass.
+      flag.position.set(
+        x + sideX * sign * flagCenterOffset,
+        2.05,
+        z + sideZ * sign * flagCenterOffset,
+      )
+      flag.rotation.y = marker.heading + (sign * Math.PI) / 2
       group.add(flag)
     }
   }
@@ -2198,10 +2211,10 @@ export function buildScene(
     FINISH_GATE_POLE_HEIGHT - FINISH_GATE_BANNER_HEIGHT / 2,
     path.finishLine.position.z,
   )
-  // Default banner long-axis is +X. Rotate around +Y so it spans from one
-  // pole to the other. Heading 0 means travel along +X (poles on +/- Z), so
-  // the banner needs to turn 90 degrees from default to span Z. The general
-  // formula is `heading + PI/2` (perpendicular to travel).
+  // Default banner long-axis is +X. Rotate around +Y so it spans pole-to-pole.
+  // The banner is symmetric, so rotating by `heading + PI/2` lands the long
+  // axis on the same line as the perpendicular `(sin h, 0, cos h)` returned
+  // by computeGatePolePositions, regardless of which side it points toward.
   banner.rotation.y = path.finishLine.heading + Math.PI / 2
   scene.add(banner)
 

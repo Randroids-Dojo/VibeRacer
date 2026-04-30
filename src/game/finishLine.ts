@@ -82,11 +82,16 @@ export function computeGatePolePositions(
   trackHalfWidth: number,
   inset: number = FINISH_GATE_POLE_INSET,
 ): PolePositions {
-  // Right-hand perpendicular for a +Y-up frame heading in (cos h, 0, sin h):
-  // perpendicular is (sin h, 0, -cos h). The left side is the negation.
+  // Game heading convention (atan2(-z, x)): travel direction is
+  // (cos h, 0, -sin h). Right-hand perpendicular (CCW 90 around +Y, i.e.
+  // the driver's right when +X is east and +Z is south) is (sin h, 0, cos h).
+  // The previous formula used (sin h, 0, -cos h), which only happens to
+  // produce a perpendicular line at axis-aligned headings (sin h = 0 or
+  // cos h = 0); on diagonal stretches it collapsed onto the travel axis,
+  // putting the poles in front of and behind the line instead of beside it.
   const offset = trackHalfWidth + inset
   const px = Math.sin(heading) * offset
-  const pz = -Math.cos(heading) * offset
+  const pz = Math.cos(heading) * offset
   return {
     left: { x: finishX - px, z: finishZ - pz },
     right: { x: finishX + px, z: finishZ + pz },
