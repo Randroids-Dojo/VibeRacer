@@ -157,10 +157,11 @@ export function summarizeChangedKeys(
 }
 
 /**
- * Append a fresh history entry to the list. Pure: returns a new array, never
- * mutates the input. Drops the oldest entries when the list exceeds the cap
- * so the most-recent window always survives. Skips appends whose params match
- * the existing head (a no-op write).
+ * Append a fresh history entry to the list. Returns the same array reference
+ * on no-op cases (rejected entry or head-match) so React state setters can
+ * skip a re-render via referential equality. Returns a fresh array when the
+ * entry is actually appended; truncates from the tail at the cap so the
+ * most-recent window always survives.
  *
  * The history is stored newest-first so the list reads like a stack.
  */
@@ -169,9 +170,11 @@ export function appendTuningHistory(
   next: TuningHistoryEntry,
 ): TuningHistoryEntry[] {
   const parsed = TuningHistoryEntrySchema.safeParse(next)
-  if (!parsed.success) return [...prev]
+  if (!parsed.success) return prev as TuningHistoryEntry[]
   const head = prev[0]
-  if (head && paramsEqual(head.params, parsed.data.params)) return [...prev]
+  if (head && paramsEqual(head.params, parsed.data.params)) {
+    return prev as TuningHistoryEntry[]
+  }
   const combined = [parsed.data, ...prev]
   if (combined.length <= MAX_TUNING_HISTORY_ENTRIES) return combined
   return combined.slice(0, MAX_TUNING_HISTORY_ENTRIES)
@@ -218,7 +221,12 @@ export function readTuningHistory(): TuningHistoryEntry[] {
       out.push({ ...result.data, params: clampParams(result.data.params) })
     }
   }
-  return sortTuningHistoryNewestFirst(out)
+  // Cap on read so a hand-edited or corrupt blob with more than the cap
+  // never feeds a giant array into the UI. Sort first so the cap drops the
+  // oldest tail rather than slicing arbitrary positions.
+  const sorted = sortTuningHistoryNewestFirst(out)
+  if (sorted.length <= MAX_TUNING_HISTORY_ENTRIES) return sorted
+  return sorted.slice(0, MAX_TUNING_HISTORY_ENTRIES)
 }
 
 /**
@@ -238,17 +246,25 @@ export function appendStoredTuningHistory(
 ): TuningHistoryEntry[] {
   if (typeof window === 'undefined') return []
   const prev = readTuningHistory()
+  // Clamp once so the stored snapshot and the diff fallback agree. A caller
+  // that passes out-of-bound numbers should see the post-clamp delta, not a
+  // delta against the unclamped input that the live car never saw.
+  const safeParams = clampParams(partial.params)
   const entry: TuningHistoryEntry = {
     id: partial.id ?? makeTuningId(),
-    params: clampParams(partial.params),
+    params: safeParams,
     source: partial.source,
     label: partial.label ?? null,
-    changedKeys: partial.changedKeys ?? diffParams(prevParams, partial.params),
+    changedKeys: partial.changedKeys ?? diffParams(prevParams, safeParams),
     slug: partial.slug,
     changedAt: partial.changedAt ?? Date.now(),
   }
   const next = appendTuningHistory(prev, entry)
-  if (next.length === prev.length) return next
+  // No-op detection by reference: appendTuningHistory returns the same array
+  // when the entry was rejected or matched the head. Length comparison would
+  // false-positive when prev is at the cap and a real entry rotates the tail
+  // out, leaving lengths equal.
+  if (next === prev) return next
   try {
     window.localStorage.setItem(TUNING_HISTORY_KEY, JSON.stringify(next))
   } catch {

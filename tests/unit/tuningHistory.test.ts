@@ -184,6 +184,41 @@ describe('tuningHistory: appendTuningHistory', () => {
     expect(next[0].id).toBe('t-1')
   })
 
+  it('returns the same reference on a head-match no-op so React can skip', () => {
+    const prev = [
+      makeEntry({ id: 't-1', params: makeParams({ maxSpeed: 30 }) }),
+    ]
+    const next = appendTuningHistory(
+      prev,
+      makeEntry({ id: 't-2', params: makeParams({ maxSpeed: 30 }) }),
+    )
+    expect(next).toBe(prev)
+  })
+
+  it('returns the same reference when the entry is rejected by the schema', () => {
+    const prev = [makeEntry({ id: 't-1' })]
+    const invalid = {
+      ...makeEntry(),
+      params: { ...makeParams(), maxSpeed: 999 },
+    } as TuningHistoryEntry
+    const next = appendTuningHistory(prev, invalid)
+    expect(next).toBe(prev)
+  })
+
+  it('returns a fresh array when an entry is actually appended', () => {
+    const prev = [makeEntry({ id: 't-1' })]
+    const next = appendTuningHistory(
+      prev,
+      makeEntry({
+        id: 't-2',
+        params: makeParams({ maxSpeed: 30 }),
+        changedAt: 2000,
+      }),
+    )
+    expect(next).not.toBe(prev)
+    expect(next).toHaveLength(2)
+  })
+
   it('drops the oldest entry when the cap is exceeded', () => {
     let acc: TuningHistoryEntry[] = []
     for (let i = 0; i < MAX_TUNING_HISTORY_ENTRIES; i++) {
@@ -278,6 +313,48 @@ describe('tuningHistory: readTuningHistory + appendStoredTuningHistory', () => {
     const result = readTuningHistory()
     expect(result).toHaveLength(1)
     expect(result[0].id).toBe('t-valid')
+  })
+
+  it('caps a hand-edited oversized blob at MAX_TUNING_HISTORY_ENTRIES', () => {
+    const oversized: TuningHistoryEntry[] = []
+    for (let i = 0; i < MAX_TUNING_HISTORY_ENTRIES * 3; i++) {
+      oversized.push(
+        makeEntry({
+          id: `t-${i}`,
+          changedAt: 1000 + i,
+          params: makeParams({ maxSpeed: 12 + (i % 70) * 0.5 }),
+        }),
+      )
+    }
+    const blob = JSON.stringify(oversized)
+    ;(globalThis as { window?: unknown }).window = {
+      localStorage: {
+        getItem: (k: string) => (k === TUNING_HISTORY_KEY ? blob : null),
+        setItem: () => {},
+        removeItem: () => {},
+      },
+    }
+    const result = readTuningHistory()
+    expect(result).toHaveLength(MAX_TUNING_HISTORY_ENTRIES)
+    // Newest survived: the last id pushed should sit at the head.
+    expect(result[0].id).toBe(`t-${MAX_TUNING_HISTORY_ENTRIES * 3 - 1}`)
+  })
+
+  it('keeps the changedKeys diff aligned with the clamped stored params', () => {
+    // Caller passes an out-of-bound maxSpeed (clamp will pull it to 50).
+    const list = appendStoredTuningHistory(
+      {
+        params: makeParams({ maxSpeed: 999 }),
+        source: 'imported',
+        label: 'oob',
+        slug: 'oval',
+      },
+      makeParams(),
+    )
+    expect(list).toHaveLength(1)
+    expect(list[0].params.maxSpeed).toBe(50)
+    // Diff fallback should report the clamped target, not the raw 999.
+    expect(list[0].changedKeys.maxSpeed).toEqual({ from: 26, to: 50 })
   })
 
   it('round-trips an append via storage', () => {
