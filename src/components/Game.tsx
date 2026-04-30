@@ -11,7 +11,7 @@ import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
-import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
 import type { TrackTune } from '@/lib/tunes'
@@ -241,7 +241,6 @@ interface GameProps {
   pieces: Piece[]
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
-  transmission?: TrackTransmissionMode
   trackBiome?: TrackBiome | null
   trackDecorations?: readonly TrackDecoration[]
   // Track-author baked mood (timeOfDay / weather). Null when the author has
@@ -420,7 +419,6 @@ function GameSession({
   pieces,
   checkpointCount,
   checkpoints,
-  transmission = 'automatic',
   trackBiome = null,
   trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
@@ -646,6 +644,12 @@ function GameSession({
   // reference changes.
   const showRacingLineRef = useRef<boolean>(settings.showRacingLine)
   showRacingLineRef.current = settings.showRacingLine
+  // Mirrors settings.transmission into the rAF loop so a flip from automatic
+  // to manual (or back) takes effect on the next physics tick without
+  // re-initing the canvas mid-race. HUD + TouchControls read the live value
+  // straight off `settings` since they re-render on settings changes.
+  const transmissionRef = useRef<TransmissionMode>(settings.transmission)
+  transmissionRef.current = settings.transmission
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -2501,7 +2505,7 @@ function GameSession({
         pieces={pieces}
         checkpointCount={checkpointCount}
         checkpoints={checkpoints}
-        transmission={transmission}
+        transmissionRef={transmissionRef}
         biome={trackBiome ?? null}
         decorations={trackDecorations}
         paramsRef={paramsRef}
@@ -2643,7 +2647,7 @@ function GameSession({
         carMaxSpeed={tuning.maxSpeed}
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
-        transmission={transmission}
+        transmission={settings.transmission}
         compact={compactHud}
       />
       {achievementToast ? (
@@ -2657,7 +2661,7 @@ function GameSession({
         keys={keys}
         enabled={phase === 'racing' && !paused}
         mode={settings.touchMode}
-        showShifter={transmission === 'manual'}
+        showShifter={settings.transmission === 'manual'}
       />
       {phase === 'racing' && !paused ? (
         <>

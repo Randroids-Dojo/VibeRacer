@@ -1,9 +1,9 @@
 import type { CarParams } from './physics'
 
-export const TRACK_TRANSMISSION_MODES = ['automatic', 'manual'] as const
-export type TrackTransmissionMode = (typeof TRACK_TRANSMISSION_MODES)[number]
+export const TRANSMISSION_MODES = ['automatic', 'manual'] as const
+export type TransmissionMode = (typeof TRANSMISSION_MODES)[number]
 
-export const DEFAULT_TRACK_TRANSMISSION: TrackTransmissionMode = 'automatic'
+export const DEFAULT_TRANSMISSION: TransmissionMode = 'automatic'
 
 export const MANUAL_GEAR_MIN = 1
 export const MANUAL_GEAR_MAX = 5
@@ -23,12 +23,10 @@ export const MANUAL_GEAR_SPECS: readonly ManualGearSpec[] = [
   { gear: 5, maxSpeedFactor: 1, accelFactor: 0.78 },
 ] as const
 
-export function isTrackTransmissionMode(
-  value: unknown,
-): value is TrackTransmissionMode {
+export function isTransmissionMode(value: unknown): value is TransmissionMode {
   return (
     typeof value === 'string' &&
-    (TRACK_TRANSMISSION_MODES as readonly string[]).includes(value)
+    (TRANSMISSION_MODES as readonly string[]).includes(value)
   )
 }
 
@@ -52,7 +50,7 @@ export function manualGearSpec(gear: number): ManualGearSpec {
 
 export function carParamsForTransmission(
   params: CarParams,
-  mode: TrackTransmissionMode,
+  mode: TransmissionMode,
   gear: number,
 ): CarParams {
   if (mode !== 'manual') return params

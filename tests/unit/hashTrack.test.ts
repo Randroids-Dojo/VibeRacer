@@ -54,16 +54,6 @@ describe('hashTrack', () => {
     expect(legacy).toBe(overridden)
   })
 
-  it('preserves legacy hash for automatic transmission', () => {
-    expect(hashTrack([a, b, c], undefined, 'automatic')).toBe(hashTrack([a, b, c]))
-  })
-
-  it('produces a different hash for manual transmission', () => {
-    expect(hashTrack([a, b, c], undefined, 'manual')).not.toBe(
-      hashTrack([a, b, c]),
-    )
-  })
-
   it('includes custom checkpoints in the hash regardless of input order', () => {
     const checkpoints = [
       { row: 0, col: 1 },
@@ -71,10 +61,10 @@ describe('hashTrack', () => {
       { row: 1, col: 0 },
     ]
     const reversed = checkpoints.slice().reverse()
-    expect(hashTrack([a, b, c], undefined, 'automatic', checkpoints)).toBe(
-      hashTrack([a, b, c], undefined, 'automatic', reversed),
+    expect(hashTrack([a, b, c], undefined, checkpoints)).toBe(
+      hashTrack([a, b, c], undefined, reversed),
     )
-    expect(hashTrack([a, b, c], undefined, 'automatic', checkpoints)).not.toBe(
+    expect(hashTrack([a, b, c], undefined, checkpoints)).not.toBe(
       hashTrack([a, b, c]),
     )
   })

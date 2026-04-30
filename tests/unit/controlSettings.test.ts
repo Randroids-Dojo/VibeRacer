@@ -766,6 +766,42 @@ describe('localStorage round-trip', () => {
     expect(readStoredControlSettings().timeOfDayCycle).toBe('off')
   })
 
+  it("defaults transmission to 'automatic'", () => {
+    expect(DEFAULT_CONTROL_SETTINGS.transmission).toBe('automatic')
+    expect(cloneDefaultSettings().transmission).toBe('automatic')
+  })
+
+  it("round-trips a transmission pick of 'manual'", () => {
+    const custom = cloneDefaultSettings()
+    custom.transmission = 'manual'
+    writeStoredControlSettings(custom)
+    expect(readStoredControlSettings()).toEqual(custom)
+  })
+
+  it("backfills transmission to 'automatic' when reading legacy storage that omits it", () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      keyBindings: DEFAULT_KEY_BINDINGS,
+      touchMode: 'single',
+      showGhost: true,
+      showMinimap: true,
+      showSkidMarks: true,
+      showSpeedometer: true,
+      showRearview: true,
+      showKerbs: true,
+      showScenery: true,
+      showDrift: true,
+    })
+    expect(readStoredControlSettings().transmission).toBe('automatic')
+  })
+
+  it('rejects an unknown stored transmission value and falls back to defaults', () => {
+    store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...cloneDefaultSettings(),
+      transmission: 'sequential',
+    })
+    expect(readStoredControlSettings().transmission).toBe('automatic')
+  })
+
   it('backfills camera when reading legacy storage that omits it', () => {
     store[CONTROL_SETTINGS_STORAGE_KEY] = JSON.stringify({
       keyBindings: DEFAULT_KEY_BINDINGS,
