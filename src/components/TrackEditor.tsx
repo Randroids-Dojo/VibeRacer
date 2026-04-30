@@ -1918,6 +1918,11 @@ const root: React.CSSProperties = {
   fontFamily: 'system-ui, sans-serif',
   display: 'flex',
   flexDirection: 'column',
+  // Allow the page to scroll on small viewports when the Advanced or
+  // Templates panel grows past the viewport. Combined with `gridOuter`'s
+  // basis below, desktop still sees the canvas filling the screen while
+  // mobile can scroll down to reach the bottom advanced rows.
+  overflowY: 'auto',
 }
 const header: React.CSSProperties = {
   padding: '14px 20px 10px',
@@ -2087,10 +2092,13 @@ const templateCardCopy: React.CSSProperties = {
   opacity: 0.72,
 }
 const gridOuter: React.CSSProperties = {
-  flex: 1,
+  // Grow to fill remaining space on desktop, but lock a minimum height on
+  // small viewports so the canvas does not get squashed when the Advanced
+  // panel pushes the layout past the viewport (root scrolls instead).
+  flex: '1 0 320px',
   position: 'relative',
   display: 'flex',
-  minHeight: 0,
+  minHeight: 320,
 }
 const gridWrap: React.CSSProperties = {
   flex: 1,
@@ -2233,6 +2241,9 @@ const advancedPanel: React.CSSProperties = {
   borderTop: '1px solid #1f2b3d',
   background: '#111a28',
   padding: '14px 20px',
+  // Natural height; the root container scrolls when total content
+  // overflows the viewport (mobile path).
+  flexShrink: 0,
 }
 const advancedHeader: React.CSSProperties = {
   display: 'flex',

@@ -63,7 +63,19 @@ export interface TrackTune {
   seedWord?: string
 }
 
-const TuneStepSchema = z.number().int().or(z.null())
+// Bound step degrees so `scaleDeg` cannot push the resolved MIDI value
+// far enough to overflow `midiFreq` to Infinity. Each degree adds at most
+// (degree / scale.length) octaves on top of the configured root, and the
+// root is already bounded by TUNE_ROOT_MIDI_*.
+export const TUNE_STEP_DEGREE_MIN = -32
+export const TUNE_STEP_DEGREE_MAX = 32
+
+const TuneStepSchema = z
+  .number()
+  .int()
+  .min(TUNE_STEP_DEGREE_MIN)
+  .max(TUNE_STEP_DEGREE_MAX)
+  .or(z.null())
 
 export const TuneStepPatternSchema = z
   .array(TuneStepSchema)
