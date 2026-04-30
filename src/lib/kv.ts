@@ -28,9 +28,9 @@ export const kvKeys = {
   trackVersion: (slug: Slug, hash: VersionHash) =>
     `track:${slug}:version:${hash}`,
   trackVersions: (slug: Slug) => `track:${slug}:versions`,
-  tuneLatest: (slug: Slug) => `tune:${slug}:latest`,
-  tuneVersion: (slug: Slug, hash: string) => `tune:${slug}:version:${hash}`,
-  tuneVersions: (slug: Slug) => `tune:${slug}:versions`,
+  musicLatest: (slug: Slug) => `music:${slug}:latest`,
+  musicVersion: (slug: Slug, hash: string) => `music:${slug}:version:${hash}`,
+  musicVersions: (slug: Slug) => `music:${slug}:versions`,
   trackIndex: () => 'track:index',
   leaderboard: (slug: Slug, hash: VersionHash) => `lb:${slug}:${hash}`,
   raceToken: (nonce: string) => `race:token:${nonce}`,
