@@ -13,6 +13,7 @@ interface PauseMenuProps {
   // restarting an empty lap on the first frame).
   onRestartLap: () => void
   onEditTrack: () => void
+  onRace: () => void
   onSettings: () => void
   // Short label describing the active track-author mood (e.g. "Sunset, Foggy")
   // when the player is racing under a baked-in author mood. Renders as a
@@ -33,6 +34,7 @@ export function PauseMenu({
   onRestart,
   onRestartLap,
   onEditTrack,
+  onRace,
   onSettings,
   trackMoodLabel,
   pieces,
@@ -63,6 +65,7 @@ export function PauseMenu({
         <MenuButton click="confirm" onClick={onRestart}>
           Restart
         </MenuButton>
+        <MenuButton onClick={onRace}>Race</MenuButton>
         <MenuButton onClick={onEditTrack}>Edit Track</MenuButton>
         <MenuButton onClick={onSettings}>Settings</MenuButton>
         <MenuButton click="back" onClick={onExit}>

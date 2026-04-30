@@ -68,8 +68,12 @@ test('settings menu groups options behind tabs', async ({ page }) => {
   await expect(page.getByText('Tune the trailing chase camera')).toBeVisible()
 
   await page.getByRole('tab', { name: 'HUD' }).click()
-  await expect(page.getByText('Ghost car', { exact: true })).toBeVisible()
+  await expect(page.getByText('Minimap', { exact: true })).toBeVisible()
   await expect(page.getByText('Speedometer', { exact: true })).toBeVisible()
+
+  await page.getByRole('tab', { name: 'Ghost' }).click()
+  await expect(page.getByText('Ghost car', { exact: true })).toBeVisible()
+  await expect(page.getByText('Racing line', { exact: true })).toBeVisible()
 
   await page.getByRole('tab', { name: 'Effects' }).click()
   await expect(page.getByText('Skid marks', { exact: true })).toBeVisible()
@@ -141,7 +145,7 @@ test('settings tabs keep long sections inside the modal viewport', async ({
   await expect(page.getByText('Brake lights', { exact: true })).toBeVisible()
 })
 
-test('pause menu keeps secondary actions inside settings tabs', async ({ page }) => {
+test('pause menu surfaces race actions behind a Race option', async ({ page }) => {
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
@@ -149,6 +153,7 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
 
   await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Restart Lap' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Race' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Edit Track' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Settings' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Exit to title' })).toBeVisible()
@@ -156,16 +161,9 @@ test('pause menu keeps secondary actions inside settings tabs', async ({ page })
     page.getByRole('button', { name: 'Leaderboards' }),
   ).toHaveCount(0)
 
-  await page.getByRole('button', { name: 'Settings' }).click()
-  await expect(page.getByRole('tab', { name: 'Race' })).toHaveAttribute(
-    'aria-selected',
-    'true',
-  )
+  await page.getByRole('button', { name: 'Race', exact: true }).click()
   await expect(page.getByRole('button', { name: 'Leaderboards' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Stats' })).toBeVisible()
-
-  await page.getByRole('tab', { name: 'Tuning' }).click()
-  await expect(page.getByRole('button', { name: 'Open Setup' })).toBeVisible()
 })
 
 test('leaderboard rows open lap details with input and setup metadata', async ({
@@ -224,7 +222,7 @@ test('leaderboard rows open lap details with input and setup metadata', async ({
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
   await page.getByRole('button', { name: 'Pause' }).click()
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('button', { name: 'Race', exact: true }).click()
   await page.getByRole('button', { name: 'Leaderboards' }).click()
 
   await expect(page.getByLabel('Gamepad')).toBeVisible()
