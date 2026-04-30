@@ -5,6 +5,7 @@ import {
   TrackBiomeSchema,
   TrackDecorationSchema,
   TrackMoodSchema,
+  TrackTuneSchema,
   TrackVersionSchema,
   InitialsSchema,
   SlugSchema,
@@ -13,6 +14,7 @@ import {
   SubmissionSchema,
   MAX_PIECES_PER_TRACK,
 } from '@/lib/schemas'
+import { DEFAULT_TRACK_TUNE } from '@/lib/tunes'
 
 describe('PieceSchema', () => {
   it('accepts a valid piece', () => {
@@ -398,6 +400,21 @@ describe('TrackVersionSchema', () => {
       TrackVersionSchema.safeParse({
         ...validVersion,
         mood: { weather: 'tornado' },
+      }).success,
+    ).toBe(false)
+  })
+})
+
+describe('TrackTuneSchema', () => {
+  it('accepts the default track tune', () => {
+    expect(TrackTuneSchema.parse(DEFAULT_TRACK_TUNE)).toEqual(DEFAULT_TRACK_TUNE)
+  })
+
+  it('rejects an invalid scale', () => {
+    expect(
+      TrackTuneSchema.safeParse({
+        ...DEFAULT_TRACK_TUNE,
+        scale: 'phrygian',
       }).success,
     ).toBe(false)
   })

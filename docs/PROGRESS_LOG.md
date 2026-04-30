@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Track Tune Engine Foundation
+
+- Branch: `feature/tune-engine-foundation`
+- PR: #57
+- Changed: added the TrackTune value model, Zod schema exports, deterministic seed-word tune generator, shared FNV-1a helper, and a tune-driven game-step renderer with `setActiveTune(tune | null)` for the game music track. The race page now clears any authored tune on slug changes as the Slice 1 integration point, preserving legacy per-slug personalization when no authored tune is active.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/tunes.test.ts`, `tests/unit/music.test.ts`, `tests/unit/musicPersonalization.test.ts`, and `tests/unit/schemas.test.ts`, `npm run type-check`, `npm test`, and `npm run build` pass. Build reports existing React hook lint warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: authored tunes should own root, scale, and BPM when active. Existing slug and initials personalization continues to apply only to the default tune path until the tune override UX ships.
+- GDD coverage: moves Section 13 Audio to partial for the new Track Tune Editor scope and records the engine foundation as implemented.
+- Followups: Slice 2 persistence and editor UI, then Slice 3 automation features.
+
 ## 2026-04-29, Feature List Credits
 
 - Branch: `feature/feature-list-credits`

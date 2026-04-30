@@ -343,7 +343,7 @@
     {
       "id": "13",
       "title": "Audio",
-      "status": "done",
+      "status": "partial",
       "implemented": [
         "music",
         "sound effects",
@@ -356,11 +356,16 @@
         "wrong-way gamepad rumble impulse",
         "achievement unlock gamepad rumble impulse",
         "gamepad rumble per-motor intensity sliders",
-        "Xbox One / Series trigger rumble impulses"
+        "Xbox One / Series trigger rumble impulses",
+        "TrackTune data model and schema",
+        "seed-word tune generator",
+        "tune-driven game step scheduler"
       ],
       "evidence": [
         "src/game/audioEngine.ts",
         "src/game/music.ts",
+        "src/lib/tunes.ts",
+        "src/lib/fnv1a.ts",
         "src/game/audio.ts",
         "src/components/Game.tsx",
         "src/components/SettingsPane.tsx",
@@ -370,9 +375,15 @@
         "tests/unit/haptics.test.ts",
         "tests/unit/controlSettings.test.ts",
         "tests/unit/music.test.ts",
+        "tests/unit/tunes.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],
-      "remainingGaps": []
+      "remainingGaps": [
+        "Track Tune Editor persistence",
+        "Track Tune Editor UI",
+        "personal tune overrides",
+        "music automation wiring"
+      ]
     },
     {
       "id": "16",

@@ -21,6 +21,13 @@ import {
   type MusicPersonalization,
   type ScaleFlavor,
 } from './musicPersonalization'
+import {
+  DEFAULT_TRACK_TUNE,
+  cloneTrackTune,
+  type TrackTune,
+  type TrackTuneScaleFlavor,
+  type TuneVoice,
+} from '@/lib/tunes'
 
 const LOOKAHEAD_SEC = 0.12
 const SCHEDULE_INTERVAL_MS = 50
@@ -61,6 +68,7 @@ interface Track {
   gain: GainNode
   targetGain: number
   intensity: number
+  tune: TrackTune | null
   pruneHandle: ReturnType<typeof setTimeout> | null
 }
 
@@ -71,6 +79,7 @@ interface MusicSystem {
   // Active per-slug personalization for the game track. Only the game track
   // is personalized today; title and pause use their fixed configs.
   personalization: MusicPersonalization
+  activeTune: TrackTune | null
 }
 
 let system: MusicSystem | null = null
@@ -78,8 +87,12 @@ let system: MusicSystem | null = null
 // Map a personalization scale-flavor name to the SCALES table entry. Kept
 // here rather than in `musicPersonalization.ts` so the personalization
 // module stays a pure value object with no audio dependency.
-function scaleForFlavor(flavor: ScaleFlavor): readonly number[] {
+function scaleForFlavor(
+  flavor: ScaleFlavor | TrackTuneScaleFlavor,
+): readonly number[] {
   switch (flavor) {
+    case 'major':
+      return SCALES.major
     case 'minor':
       return SCALES.minor
     case 'dorian':
@@ -126,6 +139,7 @@ function getSystem(): MusicSystem | null {
     schedulerHandle: null,
     tracks: new Map(),
     personalization: { ...NEUTRAL_PERSONALIZATION },
+    activeTune: null,
   }
   return system
 }
@@ -303,47 +317,134 @@ function playPauseStep(track: Track, step: number, time: number): void {
 }
 
 // Game: driving, upbeat, minor. Counter-melody fades in with intensity.
-const GAME_BASS: Step[] = [
-   0,  R,  0,  R,   4,  R,  0,  R,   3,  R,  3,  R,   4,  R,  4,  R,
-]
-const GAME_MELODY: Step[] = [
-   R,  R,  4,  R,   3,  R,  2,  R,   4,  R,  6,  R,   4,  3,  R,  R,
-]
-const GAME_COUNTER: Step[] = [
-   0,  R,  R,  R,   2,  R,  R,  R,   3,  R,  R,  R,   2,  R,  R,  R,
-]
 const GAME_KICK_STEPS = new Set([0, 4, 8, 12])
 const GAME_SNARE_STEPS = new Set([4, 12])
 const GAME_HAT_STEPS = new Set([2, 6, 10, 14])
 
+export type GameStepEvent =
+  | {
+      kind: 'note'
+      voice: TuneVoice
+      degree: number
+      octave: number
+      wave: OscillatorType
+      volume: number
+      durationBeats: number
+    }
+  | {
+      kind: 'kick' | 'snare' | 'hat'
+      volume: number
+    }
+
+function voiceVolume(
+  voice: TuneVoice,
+  intensity: number,
+  multiplier: number,
+): number {
+  switch (voice) {
+    case 'bass':
+      return (0.09 + intensity * 0.08) * multiplier
+    case 'melody':
+      return (0.04 + intensity * 0.12) * multiplier
+    case 'counter':
+      return (0.05 + intensity * 0.09) * multiplier
+    case 'arp':
+      return (0.03 + intensity * 0.06) * multiplier
+  }
+}
+
+function voiceDurationBeats(voice: TuneVoice): number {
+  switch (voice) {
+    case 'bass':
+      return 2.6
+    case 'melody':
+      return 1.7
+    case 'counter':
+      return 3.6
+    case 'arp':
+      return 0.6
+  }
+}
+
+function counterVoiceIsAllowed(voice: TuneVoice, intensity: number): boolean {
+  return voice !== 'counter' || intensity > COUNTER_MELODY_INTENSITY_THRESHOLD
+}
+
+export function gameStepEventsForTune(
+  tune: TrackTune,
+  step: number,
+  intensity: number,
+): GameStepEvent[] {
+  const events: GameStepEvent[] = []
+  const normalizedStep = ((step % STEPS_PER_BAR) + STEPS_PER_BAR) % STEPS_PER_BAR
+  for (const voiceName of ['bass', 'melody', 'counter', 'arp'] as const) {
+    const voice = tune.voices[voiceName]
+    if (!voice.enabled || !counterVoiceIsAllowed(voiceName, intensity)) continue
+    const degree = voice.steps[normalizedStep]
+    if (degree === null || degree === undefined) continue
+    events.push({
+      kind: 'note',
+      voice: voiceName,
+      degree,
+      octave: voice.octave,
+      wave: voice.wave,
+      volume: voiceVolume(voiceName, intensity, voice.volume),
+      durationBeats: voiceDurationBeats(voiceName),
+    })
+  }
+
+  const drumDensity = tune.drums.density
+  const drumThreshold =
+    drumDensity <= 0
+      ? Number.POSITIVE_INFINITY
+      : GAME_DRUMS_INTENSITY_THRESHOLD / drumDensity
+  if (tune.drums.kick && GAME_KICK_STEPS.has(normalizedStep)) {
+    events.push({
+      kind: 'kick',
+      volume: (0.1 + intensity * 0.1) * drumDensity,
+    })
+  }
+  if (intensity > drumThreshold) {
+    if (tune.drums.snare && GAME_SNARE_STEPS.has(normalizedStep)) {
+      events.push({
+        kind: 'snare',
+        volume: (0.04 + intensity * 0.1) * drumDensity,
+      })
+    }
+    if (tune.drums.hat && GAME_HAT_STEPS.has(normalizedStep)) {
+      events.push({
+        kind: 'hat',
+        volume: (0.02 + intensity * 0.09) * drumDensity,
+      })
+    }
+  }
+  return events
+}
+
 function playGameStep(track: Track, step: number, time: number): void {
   const { rootMidi, scale, stepDur, intensity } = track
-  const qn = stepDur * 4
-
-  const bd = GAME_BASS[step]
-  if (bd !== null) {
-    const bassVol = 0.09 + intensity * 0.08
-    schedNote(track, scaleDeg(rootMidi, scale, bd, -1), time, qn * 0.65, 'sawtooth', bassVol)
-  }
-
-  const md = GAME_MELODY[step]
-  if (md !== null) {
-    const melodyVol = 0.04 + intensity * 0.12
-    schedNote(track, scaleDeg(rootMidi, scale, md, 1), time, stepDur * 1.7, 'square', melodyVol)
-  }
-
-  if (GAME_KICK_STEPS.has(step)) schedKick(track, time, 0.1 + intensity * 0.1)
-
-  if (intensity > GAME_DRUMS_INTENSITY_THRESHOLD) {
-    if (GAME_SNARE_STEPS.has(step)) schedSnare(track, time, 0.04 + intensity * 0.1)
-    if (GAME_HAT_STEPS.has(step)) schedHat(track, time, 0.02 + intensity * 0.09)
-  }
-
-  if (intensity > COUNTER_MELODY_INTENSITY_THRESHOLD) {
-    const cd = GAME_COUNTER[step]
-    if (cd !== null) {
-      const counterVol = 0.05 + intensity * 0.09
-      schedNote(track, scaleDeg(rootMidi, scale, cd, 0), time, qn * 0.9, 'triangle', counterVol)
+  const tune = track.tune ?? DEFAULT_TRACK_TUNE
+  for (const event of gameStepEventsForTune(tune, step, intensity)) {
+    switch (event.kind) {
+      case 'note':
+        schedNote(
+          track,
+          scaleDeg(rootMidi, scale, event.degree, event.octave),
+          time,
+          stepDur * event.durationBeats,
+          event.wave,
+          event.volume,
+        )
+        break
+      case 'kick':
+        schedKick(track, time, event.volume)
+        break
+      case 'snare':
+        schedSnare(track, time, event.volume)
+        break
+      case 'hat':
+        schedHat(track, time, event.volume)
+        break
     }
   }
 }
@@ -387,7 +488,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
   gain.connect(s.audio.musicBus)
   const personalized =
     name === 'game'
-      ? applyPersonalizationToConfig(cfg, s.personalization)
+      ? resolveGameTrackParams(s)
       : { rootMidi: cfg.rootMidi, scale: cfg.scale, bpm: cfg.bpm }
   const stepDur = 60 / personalized.bpm / 4
   return {
@@ -402,6 +503,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
     gain,
     targetGain: cfg.targetGain,
     intensity: 0,
+    tune: name === 'game' ? s.activeTune ?? DEFAULT_TRACK_TUNE : null,
     pruneHandle: null,
   }
 }
@@ -426,9 +528,35 @@ function applyPersonalizationToConfig(
   }
 }
 
+function paramsFromTune(tune: TrackTune): ResolvedTrackParams {
+  return {
+    rootMidi: tune.rootMidi,
+    scale: scaleForFlavor(tune.scale),
+    bpm: tune.bpm,
+  }
+}
+
+function resolveGameTrackParams(s: MusicSystem): ResolvedTrackParams {
+  if (s.activeTune) return paramsFromTune(s.activeTune)
+  return applyPersonalizationToConfig(TRACK_CONFIG.game, s.personalization)
+}
+
+function applyResolvedParamsToTrack(
+  track: Track,
+  resolved: ResolvedTrackParams,
+): void {
+  track.rootMidi = resolved.rootMidi
+  track.scale = resolved.scale
+  track.baseStepDur = 60 / resolved.bpm / 4
+  updateTempo(track)
+}
+
 function updateTempo(track: Track): void {
   if (track.name !== 'game') return
-  const factor = GAME_MIN_TEMPO_FACTOR + track.intensity * (1 - GAME_MIN_TEMPO_FACTOR)
+  const tune = track.tune ?? DEFAULT_TRACK_TUNE
+  const minFactor = tune.automation.tempoMinFactor
+  const maxFactor = tune.automation.tempoMaxFactor
+  const factor = minFactor + track.intensity * (maxFactor - minFactor)
   track.stepDur = track.baseStepDur / factor
 }
 
@@ -542,14 +670,23 @@ export function setMusicPersonalization(
   s.personalization = target
   const live = s.tracks.get('game')
   if (!live) return
-  const cfg = TRACK_CONFIG.game
-  const resolved = applyPersonalizationToConfig(cfg, target)
-  live.rootMidi = resolved.rootMidi
-  live.scale = resolved.scale
-  live.baseStepDur = 60 / resolved.bpm / 4
-  // Re-seed stepDur from the new base so a current intensity does not
-  // linger at the old tempo until the next updateTempo() call.
-  updateTempo(live)
+  if (s.activeTune) return
+  applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
+}
+
+/**
+ * Apply a concrete authored tune to the game track. Passing null clears the
+ * tune and restores the legacy default loop with the active per-slug
+ * personalization layered on top. Title and pause tracks are unaffected.
+ */
+export function setActiveTune(tune: TrackTune | null): void {
+  const s = getSystem()
+  if (!s) return
+  s.activeTune = tune ? cloneTrackTune(tune) : null
+  const live = s.tracks.get('game')
+  if (!live) return
+  live.tune = s.activeTune ?? DEFAULT_TRACK_TUNE
+  applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
 }
 
 /** Fade out all tracks. Each track auto-prunes after its fade completes. */
