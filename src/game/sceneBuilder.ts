@@ -1184,11 +1184,16 @@ export function buildKerbLayer(path: TrackPath): KerbLayer {
 
 function buildCheckpointMarkers(path: TrackPath): Group {
   const group = new Group()
-  const poleGeom = new CylinderGeometry(0.12, 0.12, 2.4, 8)
+  const poleRadius = 0.12
+  const poleGeom = new CylinderGeometry(poleRadius, poleRadius, 2.4, 8)
   const flagWidth = 1.3
   const flagGeom = new BoxGeometry(flagWidth, 0.7, 0.06)
   const poleMat = new MeshStandardMaterial({ color: 0xf6f1d1, roughness: 0.65 })
   const flagMat = new MeshStandardMaterial({ color: 0xffb347, roughness: 0.55 })
+  // Offset from pole center to flag center: half the flag's span plus the
+  // pole's radius so the flag's near edge sits flush against the pole's
+  // outer surface rather than clipping into it.
+  const flagCenterOffset = flagWidth / 2 + poleRadius
   for (const marker of path.checkpointMarkers) {
     const sideX = -Math.sin(marker.heading)
     const sideZ = -Math.cos(marker.heading)
@@ -1203,9 +1208,9 @@ function buildCheckpointMarkers(path: TrackPath): Group {
       // road, near edge sits flush against the pole, faces perpendicular
       // to travel so drivers see the broad rectangle as they pass.
       flag.position.set(
-        x + sideX * sign * (flagWidth / 2),
+        x + sideX * sign * flagCenterOffset,
         2.05,
-        z + sideZ * sign * (flagWidth / 2),
+        z + sideZ * sign * flagCenterOffset,
       )
       flag.rotation.y = marker.heading + (sign * Math.PI) / 2
       group.add(flag)
