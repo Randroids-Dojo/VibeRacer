@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Feature List Credits
+
+- Branch: `feature/feature-list-credits`
+- PR: pending
+- Changed: added a full-screen scrolling Feature List overlay that can be opened from the title screen or Settings Profile tab, backed by the same player-facing feature catalog as the README.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/featureList.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and full Playwright smoke. The first smoke run exposed an existing strict text locator in the leaderboard metadata test; tightening it to the visible `30u/s` setup value made the rerun pass.
+- Assumptions: Feature List belongs with player info on the title screen and Profile tab, while in-race pause stays focused on critical race actions.
+- GDD coverage: extends Section 9 Title screen, menu, and pause with the Feature List credits entry point.
+- Followups: none recorded.
+
 ## 2026-04-29, Archived Dot Progress Summary
 
 - Branch: `docs/archive-progress-summary`

@@ -112,6 +112,7 @@ import {
   MenuToggle,
   menuTheme,
 } from './MenuUI'
+import { FeatureListOverlay } from './FeatureListOverlay'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -209,6 +210,7 @@ export function SettingsPane({
   )
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
+  const [featureListOpen, setFeatureListOpen] = useState(false)
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
   const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
@@ -717,49 +719,62 @@ export function SettingsPane({
           style={tabPanel}
         >
           {activeTab === 'profile' ? (
-            <MenuSection title="Identity">
-              <MenuHint>
-                Three letters tag your lap times on the leaderboards. Editing
-                them only affects future laps. Past entries keep their old tag.
-              </MenuHint>
-              <div style={initialsRow}>
-                <input
-                  value={initialsDraft}
-                  maxLength={3}
-                  onChange={(e) => {
-                    setInitialsDraft(
-                      e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
-                    )
-                    setInitialsError(null)
-                    setInitialsSaved(false)
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && initialsDirty) {
-                      e.preventDefault()
-                      saveInitials()
-                    }
-                  }}
-                  autoComplete="off"
-                  spellCheck={false}
-                  aria-label="Initials"
-                  style={initialsInput}
-                />
-                <MenuButton
-                  variant="primary"
-                  click="confirm"
-                  fullWidth={false}
-                  disabled={!initialsDirty}
-                  onClick={saveInitials}
-                >
-                  Save
+            <>
+              <MenuSection title="Identity">
+                <MenuHint>
+                  Three letters tag your lap times on the leaderboards. Editing
+                  them only affects future laps. Past entries keep their old
+                  tag.
+                </MenuHint>
+                <div style={initialsRow}>
+                  <input
+                    value={initialsDraft}
+                    maxLength={3}
+                    onChange={(e) => {
+                      setInitialsDraft(
+                        e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
+                      )
+                      setInitialsError(null)
+                      setInitialsSaved(false)
+                    }}
+                    onKeyDown={(e) => {
+                      if (e.key === 'Enter' && initialsDirty) {
+                        e.preventDefault()
+                        saveInitials()
+                      }
+                    }}
+                    autoComplete="off"
+                    spellCheck={false}
+                    aria-label="Initials"
+                    style={initialsInput}
+                  />
+                  <MenuButton
+                    variant="primary"
+                    click="confirm"
+                    fullWidth={false}
+                    disabled={!initialsDirty}
+                    onClick={saveInitials}
+                  >
+                    Save
+                  </MenuButton>
+                </div>
+                {initialsError ? (
+                  <div style={initialsErr}>{initialsError}</div>
+                ) : initialsSaved ? (
+                  <div style={initialsOk}>Saved.</div>
+                ) : null}
+              </MenuSection>
+
+              <MenuSection title="Game info">
+                <MenuHint>
+                  Watch the full player-facing feature list in a credits-style
+                  scroll.
+                </MenuHint>
+                <MenuButton onClick={() => setFeatureListOpen(true)}>
+                  Feature List
                 </MenuButton>
-              </div>
-              {initialsError ? (
-                <div style={initialsErr}>{initialsError}</div>
-              ) : initialsSaved ? (
-                <div style={initialsOk}>Saved.</div>
-              ) : null}
-            </MenuSection>
+              </MenuSection>
+            </>
           ) : null}
 
         {activeTab === 'race' && inRace ? (
@@ -1747,6 +1762,9 @@ export function SettingsPane({
           </MenuButton>
         </div>
       </MenuPanel>
+      {featureListOpen ? (
+        <FeatureListOverlay onClose={() => setFeatureListOpen(false)} />
+      ) : null}
     </MenuOverlay>
   )
 }
