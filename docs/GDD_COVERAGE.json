@@ -359,16 +359,28 @@
         "Xbox One / Series trigger rumble impulses",
         "TrackTune data model and schema",
         "seed-word tune generator",
-        "tune-driven game step scheduler"
+        "tune-driven game step scheduler",
+        "track tune KV persistence",
+        "personal tune storage",
+        "per-slug tune overrides",
+        "Tune Editor route",
+        "Settings tune picker",
+        "Track Editor tune entry point"
       ],
       "evidence": [
         "src/game/audioEngine.ts",
         "src/game/music.ts",
         "src/lib/tunes.ts",
+        "src/lib/myTunes.ts",
+        "src/lib/loadTune.ts",
         "src/lib/fnv1a.ts",
         "src/game/audio.ts",
         "src/components/Game.tsx",
         "src/components/SettingsPane.tsx",
+        "src/components/TuneEditor.tsx",
+        "src/components/TuneStepGrid.tsx",
+        "src/app/tune/[slug]/page.tsx",
+        "src/app/api/track/[slug]/tune/route.ts",
         "src/lib/audioSettings.ts",
         "src/lib/controlSettings.ts",
         "tests/unit/audio.test.ts",
@@ -376,12 +388,11 @@
         "tests/unit/controlSettings.test.ts",
         "tests/unit/music.test.ts",
         "tests/unit/tunes.test.ts",
+        "tests/unit/myTunes.test.ts",
+        "tests/unit/api.trackTune.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],
       "remainingGaps": [
-        "Track Tune Editor persistence",
-        "Track Tune Editor UI",
-        "personal tune overrides",
         "music automation wiring"
       ]
     },

@@ -14,6 +14,14 @@ import type { Weather } from '@/lib/weather'
 import type { TrackTransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
+import type { TrackTune } from '@/lib/tunes'
+import {
+  KNOWN_TUNES_EVENT,
+  MY_TUNES_EVENT,
+  TUNE_OVERRIDES_EVENT,
+  recordKnownTune,
+  resolvePersonalTune,
+} from '@/lib/myTunes'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -238,6 +246,7 @@ interface GameProps {
   // resolver overrides the player's own picks for whichever fields the
   // author set. Pure cosmetic; does not affect physics or hashing.
   trackMood?: TrackMood | null
+  initialTune?: TrackTune | null
   initialRecord: OverallRecord | null
   // Friend-challenge payload parsed from the URL (?challenge=...&from=...&time=...).
   // Null when the player landed on the page through a normal link. When
@@ -410,6 +419,7 @@ function GameSession({
   trackBiome = null,
   trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
+  initialTune = null,
   initials,
   initialRecord,
   challenge = null,
@@ -424,8 +434,23 @@ function GameSession({
     resetParams: resetTuning,
   } = useTuning(slug)
   useEffect(() => {
-    setActiveTune(null)
-  }, [slug])
+    recordKnownTune(slug, initialTune)
+    setActiveTune(resolvePersonalTune(slug, initialTune))
+    function refreshTune() {
+      setActiveTune(resolvePersonalTune(slug, initialTune))
+    }
+    window.addEventListener(MY_TUNES_EVENT, refreshTune)
+    window.addEventListener(TUNE_OVERRIDES_EVENT, refreshTune)
+    window.addEventListener(KNOWN_TUNES_EVENT, refreshTune)
+    window.addEventListener('storage', refreshTune)
+    return () => {
+      window.removeEventListener(MY_TUNES_EVENT, refreshTune)
+      window.removeEventListener(TUNE_OVERRIDES_EVENT, refreshTune)
+      window.removeEventListener(KNOWN_TUNES_EVENT, refreshTune)
+      window.removeEventListener('storage', refreshTune)
+      setActiveTune(null)
+    }
+  }, [slug, initialTune])
 
   // Apply per-slug music personalization. The music engine treats this as
   // idempotent (a no-op when the value matches the active one) so the effect
@@ -2754,6 +2779,7 @@ function GameSession({
               onClose={() => setPauseView('menu')}
               onReset={resetSettings}
               inRace
+              slug={slug}
               onLeaderboards={() => setPauseView('leaderboard')}
               onLapHistory={() => setPauseView('lapHistory')}
               lapCount={lapHistory.length}

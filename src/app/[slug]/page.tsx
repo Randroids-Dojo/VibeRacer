@@ -2,6 +2,7 @@ import { notFound } from 'next/navigation'
 import { SlugSchema, VersionHashSchema } from '@/lib/schemas'
 import { hasKvConfigured } from '@/lib/kv'
 import { loadTrack } from '@/lib/loadTrack'
+import { loadTune } from '@/lib/loadTune'
 import { Game, type OverallRecord } from '@/components/Game'
 import { SlugLanding } from '@/components/SlugLanding'
 import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
@@ -62,6 +63,7 @@ export default async function SlugPage(ctx: {
     transmission,
   } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
+  const tuneLoaded = await loadTune(slug)
 
   // Parse the friend-challenge query string here on the server so the client
   // bundle never has to. Validation is defensive: a tampered or malformed
@@ -88,6 +90,7 @@ export default async function SlugPage(ctx: {
       trackBiome={biome ?? null}
       trackDecorations={decorations ?? []}
       trackMood={mood ?? null}
+      initialTune={tuneLoaded.kind === 'ok' ? tuneLoaded.tune : null}
       initialRecord={overallRecord}
       challenge={challenge}
     />

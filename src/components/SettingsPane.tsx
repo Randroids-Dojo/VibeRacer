@@ -33,6 +33,16 @@ import {
 } from '@/lib/controlSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
+import {
+  KNOWN_TUNES_EVENT,
+  MY_TUNES_EVENT,
+  TUNE_OVERRIDES_EVENT,
+  readKnownTunes,
+  readMyTunes,
+  readTuneOverride,
+  writeTuneOverride,
+  type MyTuneEntry,
+} from '@/lib/myTunes'
 import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import { CAR_PAINTS } from '@/lib/carPaint'
@@ -141,6 +151,7 @@ interface SettingsPaneProps {
   challengeLabel?: string
   onToggleFavorite?: () => void
   isFavorite?: boolean
+  slug?: string
 }
 
 interface CaptureTarget {
@@ -203,6 +214,7 @@ export function SettingsPane({
   challengeLabel,
   onToggleFavorite,
   isFavorite,
+  slug,
 }: SettingsPaneProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<SettingsTabId>(() =>
@@ -211,6 +223,9 @@ export function SettingsPane({
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [featureListOpen, setFeatureListOpen] = useState(false)
+  const [myTunes, setMyTunes] = useState<MyTuneEntry[]>([])
+  const [knownTunes, setKnownTunes] = useState<Record<string, unknown>>({})
+  const [tuneChoice, setTuneChoice] = useState('default')
   const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
   const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
@@ -227,6 +242,49 @@ export function SettingsPane({
   const settingsTabs = inRace
     ? SETTINGS_TABS
     : SETTINGS_TABS.filter((tab) => tab.id !== 'race')
+
+  useEffect(() => {
+    function refreshTunes() {
+      setMyTunes(readMyTunes())
+      setKnownTunes(readKnownTunes())
+      if (slug) {
+        const override = readTuneOverride(slug)
+        if (override.source === 'mine') setTuneChoice(`mine:${override.id}`)
+        else if (override.source === 'visited') {
+          setTuneChoice(`visited:${override.slug}`)
+        } else setTuneChoice('default')
+      } else {
+        setTuneChoice('default')
+      }
+    }
+    refreshTunes()
+    window.addEventListener(MY_TUNES_EVENT, refreshTunes)
+    window.addEventListener(KNOWN_TUNES_EVENT, refreshTunes)
+    window.addEventListener(TUNE_OVERRIDES_EVENT, refreshTunes)
+    window.addEventListener('storage', refreshTunes)
+    return () => {
+      window.removeEventListener(MY_TUNES_EVENT, refreshTunes)
+      window.removeEventListener(KNOWN_TUNES_EVENT, refreshTunes)
+      window.removeEventListener(TUNE_OVERRIDES_EVENT, refreshTunes)
+      window.removeEventListener('storage', refreshTunes)
+    }
+  }, [slug])
+
+  function chooseTune(value: string): void {
+    setTuneChoice(value)
+    if (!slug) return
+    if (value === 'default') {
+      writeTuneOverride(slug, { source: 'default' })
+      return
+    }
+    if (value.startsWith('mine:')) {
+      writeTuneOverride(slug, { source: 'mine', id: value.slice(5) })
+      return
+    }
+    if (value.startsWith('visited:')) {
+      writeTuneOverride(slug, { source: 'visited', slug: value.slice(8) })
+    }
+  }
   // Identity: editable inline. Hydrated from localStorage on mount; saving
   // dispatches the INITIALS_EVENT (via writeStoredInitials) so the HUD picks
   // up the new tag on the next frame without a page reload. Mid-race edits
@@ -920,6 +978,39 @@ export function SettingsPane({
                 onChange={(v) => setAudio({ ...audio, musicMixInitials: v })}
               />
             </div>
+          </div>
+          <div style={subSection}>
+            <div style={subTitle}>Track tune</div>
+            <MenuHint>
+              Pick the authored tune for this track, or override it with one
+              of your saved or visited tunes on this browser.
+            </MenuHint>
+            <select
+              value={tuneChoice}
+              disabled={!slug}
+              onChange={(event) => chooseTune(event.target.value)}
+              style={tuneSelect}
+            >
+              <option value="default">Default for this track</option>
+              {myTunes.map((entry) => (
+                <option key={entry.id} value={`mine:${entry.id}`}>
+                  My tune: {entry.name}
+                </option>
+              ))}
+              {Object.keys(knownTunes).map((knownSlug) => (
+                <option key={knownSlug} value={`visited:${knownSlug}`}>
+                  Visited: /{knownSlug}
+                </option>
+              ))}
+            </select>
+            <MenuButton
+              onClick={() => {
+                if (slug) router.push(`/tune/${slug}`)
+              }}
+              disabled={!slug}
+            >
+              Edit this track&apos;s tune
+            </MenuButton>
           </div>
           </MenuSection>
         ) : null}
@@ -2165,6 +2256,14 @@ const audioRow: React.CSSProperties = {
 const audioLabel: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
+}
+const tuneSelect: React.CSSProperties = {
+  background: menuTheme.inputBg,
+  color: menuTheme.textPrimary,
+  border: `1px solid ${menuTheme.ghostBorder}`,
+  borderRadius: 8,
+  padding: '10px 12px',
+  font: 'inherit',
 }
 const bindingTable: React.CSSProperties = {
   display: 'flex',
