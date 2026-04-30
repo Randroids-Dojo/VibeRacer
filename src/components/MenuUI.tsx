@@ -190,13 +190,6 @@ export function MenuHeader({
   title: ReactNode
   onClose?: () => void
 }) {
-  const clickBack = useClickSfx('back')
-  const ref = useRef<HTMLButtonElement | null>(null)
-  // Close lives at the top of the panel in DOM order, but we push it to the
-  // end of the focus order with a high `order` value so auto-focus on overlay
-  // open lands on the first useful interactive element (e.g. the first tab
-  // in SettingsPane), not on Close.
-  useRegisterFocusable(ref, { axis: 'vertical', order: 1e10 })
   return (
     <div
       style={{
@@ -208,31 +201,44 @@ export function MenuHeader({
       <div style={{ fontSize: 22, fontWeight: 800, letterSpacing: 2 }}>
         {title}
       </div>
-      {onClose ? (
-        <button
-          ref={ref}
-          className="menuui-focusable"
-          onClick={() => {
-            clickBack()
-            onClose()
-          }}
-          aria-label="Close"
-          style={{
-            border: 'none',
-            background: 'transparent',
-            color: '#ccc',
-            cursor: 'pointer',
-            fontSize: 12,
-            letterSpacing: 1,
-            fontFamily: 'inherit',
-            borderRadius: 4,
-            padding: '4px 6px',
-          }}
-        >
-          CLOSE
-        </button>
-      ) : null}
+      {onClose ? <MenuHeaderClose onClose={onClose} /> : null}
     </div>
+  )
+}
+
+// Split out so the focusable registration only fires when the button is
+// actually rendered. Otherwise an unrendered close ref would sit in the
+// MenuNav registry with `ref.current === null` and trip arrow nav.
+function MenuHeaderClose({ onClose }: { onClose: () => void }) {
+  const clickBack = useClickSfx('back')
+  const ref = useRef<HTMLButtonElement | null>(null)
+  // Push close to the end of the focus order with a high `order` value so
+  // auto-focus on overlay open lands on the first useful interactive element
+  // (e.g. the first tab in SettingsPane), not on Close.
+  useRegisterFocusable(ref, { axis: 'vertical', order: 1e10 })
+  return (
+    <button
+      ref={ref}
+      className="menuui-focusable"
+      onClick={() => {
+        clickBack()
+        onClose()
+      }}
+      aria-label="Close"
+      style={{
+        border: 'none',
+        background: 'transparent',
+        color: '#ccc',
+        cursor: 'pointer',
+        fontSize: 12,
+        letterSpacing: 1,
+        fontFamily: 'inherit',
+        borderRadius: 4,
+        padding: '4px 6px',
+      }}
+    >
+      CLOSE
+    </button>
   )
 }
 
@@ -659,6 +665,12 @@ export interface MenuTabDef<T extends string> {
   value: T
   label: ReactNode
   disabled?: boolean
+  // Optional DOM id for the tab button. Pair with `controlsId` when the
+  // matching tab panel uses `aria-labelledby` to point back at the tab.
+  id?: string
+  // Optional id of the panel this tab controls. Sets `aria-controls` so
+  // screen readers wire the tab ↔ panel relationship correctly.
+  controlsId?: string
 }
 
 export function MenuTabBar<T extends string>({
@@ -728,7 +740,9 @@ function TabButton<T extends string>({
       ref={ref}
       type="button"
       role="tab"
+      id={tab.id}
       aria-selected={selected}
+      aria-controls={tab.controlsId}
       disabled={tab.disabled}
       className="menuui-tab"
       onClick={onPick}

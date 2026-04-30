@@ -296,6 +296,7 @@ function LapRow({
         type="button"
         onClick={hasSectors ? onToggle : undefined}
         disabled={!hasSectors}
+        className="menuui-focusable"
         aria-expanded={hasSectors ? isExpanded : undefined}
         aria-label={
           hasSectors

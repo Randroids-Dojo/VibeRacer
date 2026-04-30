@@ -716,6 +716,8 @@ export function SettingsPane({
   const tabBarTabs: MenuTabDef<SettingsTabId>[] = settingsTabs.map((t) => ({
     value: t.id,
     label: t.label,
+    id: `settings-tab-${t.id}`,
+    controlsId: `settings-panel-${t.id}`,
   }))
 
   const captureActive = capture !== null || padCapture !== null
