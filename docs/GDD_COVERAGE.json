@@ -355,6 +355,7 @@
         "music",
         "sound effects",
         "channel volume controls",
+        "engine-noise choices",
         "haptics",
         "per-track music personalization",
         "background tab audio suspension",
@@ -401,7 +402,8 @@
         "tests/unit/tunes.test.ts",
         "tests/unit/myTunes.test.ts",
         "tests/unit/api.trackTune.test.ts",
-        "tests/unit/audioSettings.test.ts"
+        "tests/unit/audioSettings.test.ts",
+        "src/components/RaceCanvas.tsx"
       ],
       "remainingGaps": []
     },

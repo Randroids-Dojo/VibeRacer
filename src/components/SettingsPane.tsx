@@ -35,6 +35,11 @@ import {
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
+  ENGINE_NOISE_DESCRIPTIONS,
+  ENGINE_NOISE_LABELS,
+  ENGINE_NOISE_MODES,
+} from '@/lib/audioSettings'
+import {
   KNOWN_MUSIC_EVENT,
   MY_MUSIC_EVENT,
   MUSIC_OVERRIDES_EVENT,
@@ -831,6 +836,25 @@ export function SettingsPane({
             disabled={!audio.sfxEnabled}
             onChange={(v) => setAudio({ ...audio, sfxVolume: v })}
           />
+          <div style={subSection}>
+            <div style={subTitle}>Engine noise</div>
+            <MenuHint>
+              Pick how the continuous engine drone sounds while racing.
+            </MenuHint>
+            <div style={touchToggleRow}>
+              {ENGINE_NOISE_MODES.map((mode) => (
+                <MenuButton
+                  key={mode}
+                  variant={audio.engineNoise === mode ? 'primary' : 'secondary'}
+                  disabled={!audio.sfxEnabled}
+                  onClick={() => setAudio({ ...audio, engineNoise: mode })}
+                >
+                  {ENGINE_NOISE_LABELS[mode]}
+                </MenuButton>
+              ))}
+            </div>
+            <MenuHint>{ENGINE_NOISE_DESCRIPTIONS[audio.engineNoise]}</MenuHint>
+          </div>
           <div style={subSection}>
             <div style={subTitle}>Per-track flavor</div>
             <MenuHint>

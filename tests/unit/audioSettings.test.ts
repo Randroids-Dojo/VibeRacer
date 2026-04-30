@@ -2,6 +2,10 @@ import { describe, it, expect, beforeEach, afterEach } from 'vitest'
 import {
   AUDIO_SETTINGS_STORAGE_KEY,
   DEFAULT_AUDIO_SETTINGS,
+  DEFAULT_ENGINE_NOISE_MODE,
+  ENGINE_NOISE_DESCRIPTIONS,
+  ENGINE_NOISE_LABELS,
+  ENGINE_NOISE_MODES,
   cloneDefaultAudioSettings,
   effectiveMusicGain,
   effectiveSfxGain,
@@ -99,6 +103,47 @@ describe('localStorage round-trip', () => {
     custom.sfxVolume = 0.4
     writeStoredAudioSettings(custom)
     expect(readStoredAudioSettings()).toEqual(custom)
+  })
+
+  it('defaults engineNoise to the quieter smooth profile', () => {
+    expect(DEFAULT_ENGINE_NOISE_MODE).toBe('smooth')
+    expect(DEFAULT_AUDIO_SETTINGS.engineNoise).toBe('smooth')
+  })
+
+  it('has labels and descriptions for every engine noise mode', () => {
+    for (const mode of ENGINE_NOISE_MODES) {
+      expect(ENGINE_NOISE_LABELS[mode]).toBeTruthy()
+      expect(ENGINE_NOISE_DESCRIPTIONS[mode]).toBeTruthy()
+    }
+  })
+
+  it('round-trips engineNoise: classic', () => {
+    const custom = cloneDefaultAudioSettings()
+    custom.engineNoise = 'classic'
+    writeStoredAudioSettings(custom)
+    expect(readStoredAudioSettings().engineNoise).toBe('classic')
+  })
+
+  it('backfills engineNoise to smooth when missing from a legacy stored payload', () => {
+    store[AUDIO_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      musicEnabled: true,
+      sfxEnabled: true,
+      musicVolume: 0.6,
+      sfxVolume: 0.5,
+      musicPerTrack: true,
+      musicMixInitials: false,
+    })
+    const read = readStoredAudioSettings()
+    expect(read.engineNoise).toBe('smooth')
+    expect(read.musicVolume).toBeCloseTo(0.6, 6)
+  })
+
+  it('rejects an unknown engineNoise value', () => {
+    store[AUDIO_SETTINGS_STORAGE_KEY] = JSON.stringify({
+      ...DEFAULT_AUDIO_SETTINGS,
+      engineNoise: 'buzzsaw',
+    })
+    expect(readStoredAudioSettings()).toEqual(DEFAULT_AUDIO_SETTINGS)
   })
 
   it('defaults musicPerTrack to true on a fresh defaults object', () => {

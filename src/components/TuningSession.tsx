@@ -32,6 +32,7 @@ import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
@@ -79,6 +80,7 @@ export function TuningSession({
   onDiscard,
 }: Props) {
   const { settings } = useControlSettings()
+  const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
   const { record: recordTuningChange } = useTuningRecorder()
   // Gamepad polling shares the same KeyInput ref so analog axes feed straight
@@ -193,6 +195,8 @@ export function TuningSession({
   // lab car visually matches the race car.
   const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
   brakeLightModeRef.current = settings.brakeLights
+  const engineNoiseRef = useRef(audioSettings.engineNoise)
+  engineNoiseRef.current = audioSettings.engineNoise
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -430,6 +434,7 @@ export function TuningSession({
             racingNumberRef={racingNumberRef}
             headlightsOnRef={headlightsOnRef}
             brakeLightModeRef={brakeLightModeRef}
+            engineNoiseRef={engineNoiseRef}
             timeOfDayRef={timeOfDayRef}
             weatherRef={weatherRef}
             disableMusicIntensity

@@ -36,6 +36,7 @@ import type { Weather } from '@/lib/weather'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
 import type { RacingNumberSetting } from '@/lib/racingNumber'
+import type { EngineNoiseMode } from '@/lib/audioSettings'
 import {
   isBrakingNow,
   shouldBrakeLightsLight,
@@ -217,6 +218,9 @@ export interface RaceCanvasProps {
   // Polled each frame so a Settings flip lands on the next frame without
   // rebuilding the renderer.
   brakeLightModeRef?: MutableRefObject<BrakeLightMode>
+  // Live engine-noise profile from Audio settings. Polled each frame so a
+  // race can switch between Classic and softer profiles without remounting.
+  engineNoiseRef?: MutableRefObject<EngineNoiseMode>
   // Forza-lite gamepad rumble. `gamepadRumbleModeRef` mirrors the Settings
   // pick (off / auto / on) so the per-frame loop reads the freshest value
   // without re-mounting on Settings changes. `gamepadPadRef` carries the live
@@ -366,6 +370,7 @@ export function RaceCanvas({
   racingNumberRef,
   headlightsOnRef,
   brakeLightModeRef,
+  engineNoiseRef,
   gamepadRumbleModeRef,
   gamepadRumbleIntensityRef,
   gamepadPadRef,
@@ -911,6 +916,7 @@ export function RaceCanvas({
             onTrack: true,
             prevOnTrack: true,
             racing: false,
+            engineNoise: engineNoiseRef?.current,
           })
         }
         lastTs = ts
@@ -1400,6 +1406,7 @@ export function RaceCanvas({
           onTrack: state.onTrack,
           prevOnTrack,
           racing,
+          engineNoise: engineNoiseRef?.current,
         })
         prevOnTrack = state.onTrack
       }

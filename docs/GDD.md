@@ -21,7 +21,7 @@
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | done (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version + sortable rank / racer / time / date columns, pagination, input-mode badges, clickable lap details, overall record in HUD, PB fanfare, record fanfare, and guarded admin tooling all live) |
 | 12 | Feedback FAB | done (API route + polished React component ship, pause-only visibility wired, Playwright open / close / submit coverage live) |
-| 13 | Audio | done (music, SFX, haptics, volume controls, gamepad trigger rumble, tab-background suspension, and Track Tune Editor all ship) |
+| 13 | Audio | done (music, SFX, haptics, volume controls, engine-noise choices, gamepad trigger rumble, tab-background suspension, and Track Tune Editor all ship) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
 | 16 | Architecture | done (App Router routes, API routes, pure game loop, Three.js scene, menu layer, editor, audio, controls, and storage modules are in place) |
@@ -789,7 +789,7 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 
 ## 13. Audio
 
-**Status.** Done. Music, SFX, haptics, channel volume controls, gamepad trigger rumble, tab-background audio suspension, and Track Tune Editor ship. Track tunes now cover authored defaults, personal overrides, seed-word starts, voice and drum editing, intensity tempo curves, per-lap key changes, off-track flavor swaps, volume ducking, and custom finish stinger phrases.
+**Status.** Done. Music, SFX, haptics, channel volume controls, engine-noise choices, gamepad trigger rumble, tab-background audio suspension, and Track Tune Editor ship. Track tunes now cover authored defaults, personal overrides, seed-word starts, voice and drum editing, intensity tempo curves, per-lap key changes, off-track flavor swaps, volume ducking, and custom finish stinger phrases.
 
 Pure Web Audio API. No Tone.js. One shared `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead.
 
@@ -821,7 +821,8 @@ Three named tracks live in one engine (`src/game/music.ts`) and share the schedu
 ### SFX
 
 - Countdown beeps: shipped. `playCountdownBeep(isGo)` in `src/game/music.ts` plays a one-shot tone through the shared master gain. A4 square for 3/2/1, A5 triangle for GO.
-- Engine drone, pitch-shifted by speed: shipped. `startEngineDrone` / `updateEngine` / `stopEngineDrone` in `src/game/audio.ts`. One persistent sawtooth oscillator into a lowpass biquad and a per-voice GainNode. `RaceCanvas` calls `updateDriveSfx` every rAF frame, which feeds drone frequency, cutoff, and volume from `|speed| / maxSpeed`. `setTargetAtTime` smoothing keeps per-frame writes click-free. Volume ducks to 0 when paused or pre-race; off-track applies an additional small duck so going off the road sounds drier.
+- Engine drone, pitch-shifted by speed: shipped. `startEngineDrone` / `updateEngine` / `stopEngineDrone` in `src/game/audio.ts`. One persistent oscillator into a lowpass biquad and a per-voice GainNode. `RaceCanvas` calls `updateDriveSfx` every rAF frame, which feeds drone frequency, cutoff, and volume from `|speed| / maxSpeed`. `setTargetAtTime` smoothing keeps per-frame writes click-free. Volume ducks to 0 when paused or pre-race; off-track applies an additional small duck so going off the road sounds drier.
+- Engine-noise picker: live. Audio settings now include Smooth, Classic, Warm, and Electric profiles for the continuous engine drone. Smooth is the quieter default for long races; Classic keeps the original bright sawtooth implementation available for players who prefer it. The choice is persisted in `viberacer.audio` and polled by `RaceCanvas` each frame, so a Settings change applies without remounting the renderer.
 - Tire skid: shipped. `startSkid` / `updateSkid` / `stopSkid` in `src/game/audio.ts`. One looping noise buffer through a lowpass biquad and a GainNode. The pure helper `skidIntensity(speed, maxSpeed, steerAbs, onTrack)` proxies a slip-angle-style cue from `steerAbs * speedRatio + (offTrack ? 0.4 : 0)`. Justification: scalar physics has no real slip angle, so we surface the visible cues a player associates with skid (sharp steering at speed, leaving the road).
 - Finish-line stinger: shipped. `playLapStinger()` plays a three-note triangle arpeggio (E5, G5, C6) on every completed lap that is not already a PB.
 - PB celebration jingle: shipped. `playPbFanfare('pb')` plays a 5-note major arpeggio with a sub-octave triangle layer; `playPbFanfare('record')` adds octave-up doublings on the final two notes plus a kick on beat one. Wired in `Game.tsx::handleLapComplete`: `record` outcome plays the bigger fanfare, `pb` plays the smaller one, otherwise the lap stinger. The visual side lives in `HUD.tsx`: a centered radial-gradient burst plus an inset edge-flash, gold for `record`, green for `pb`. Total animation under 1.2s.

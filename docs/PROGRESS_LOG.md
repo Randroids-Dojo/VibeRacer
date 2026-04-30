@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-30, Engine Noise Options
+
+- Branch: `feature/engine-sound-options`
+- Changed: added a persisted engine-noise picker to Audio settings with Smooth, Classic, Warm, and Electric profiles. Smooth is now the default and lowers the continuous engine drone's volume and brightness for long full-speed races. Classic preserves the original sawtooth engine behavior as an explicit player choice. Race and Tuning Lab canvases poll the profile through a ref so Settings changes apply without remounting.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/audio.test.ts` and `tests/unit/audioSettings.test.ts`, `npm run type-check`, `npm test`, `npm run lint`, `npm run build`, and focused Playwright settings smoke pass. Lint and build still report the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: Smooth is the least fatiguing default because it uses a lower-volume triangle profile with a softer filter range, while Classic remains available for players who liked the original aggressive sound.
+- GDD coverage: extends Section 13 Audio with engine-noise choices.
+- Followups: none.
+
 ## 2026-04-30, Keyboard And Gamepad Menu Navigation
 
 - Branch: `claude/controller-keyboard-navigation-xxQnc`

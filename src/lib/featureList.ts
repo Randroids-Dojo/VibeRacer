@@ -261,6 +261,7 @@ export const FEATURE_LIST: readonly FeatureCategory[] = [
       'Per-lap tune key changes.',
       'Off-track tune flavor swaps.',
       'Custom finish stinger phrases.',
+      'Engine noise choices.',
       'Countdown beeps.',
       'Engine sound.',
       'Tire skid sound.',

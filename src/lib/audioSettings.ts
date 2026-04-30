@@ -12,6 +12,7 @@ export interface AudioSettings {
   sfxEnabled: boolean
   musicVolume: number
   sfxVolume: number
+  engineNoise: EngineNoiseMode
   // Per-track music personalization. When true, the in-game music's root
   // key, scale flavor, and tempo are nudged from a stable hash of the
   // current slug so each track has its own musical identity. When false,
@@ -25,11 +26,37 @@ export interface AudioSettings {
   musicMixInitials: boolean
 }
 
+export const ENGINE_NOISE_MODES = [
+  'smooth',
+  'classic',
+  'warm',
+  'electric',
+] as const
+
+export type EngineNoiseMode = (typeof ENGINE_NOISE_MODES)[number]
+
+export const DEFAULT_ENGINE_NOISE_MODE: EngineNoiseMode = 'smooth'
+
+export const ENGINE_NOISE_LABELS: Record<EngineNoiseMode, string> = {
+  smooth: 'Smooth',
+  classic: 'Classic',
+  warm: 'Warm',
+  electric: 'Electric',
+}
+
+export const ENGINE_NOISE_DESCRIPTIONS: Record<EngineNoiseMode, string> = {
+  smooth: 'Lower, softer drone for long races.',
+  classic: 'Original bright sawtooth engine.',
+  warm: 'Rounder vintage hum with less edge.',
+  electric: 'Clean synthetic whine with a light body.',
+}
+
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   musicEnabled: true,
   sfxEnabled: true,
   musicVolume: 0.7,
   sfxVolume: 0.8,
+  engineNoise: DEFAULT_ENGINE_NOISE_MODE,
   musicPerTrack: true,
   musicMixInitials: false,
 }
@@ -47,6 +74,7 @@ const AudioSettingsSchema = z.object({
   sfxEnabled: z.boolean(),
   musicVolume: VolumeSchema,
   sfxVolume: VolumeSchema,
+  engineNoise: z.enum(ENGINE_NOISE_MODES).default(DEFAULT_ENGINE_NOISE_MODE),
   // musicPerTrack landed after the original audio settings shape. Default
   // true so legacy stored payloads opt in to the per-track flavor on their
   // next race without losing any other choices; players who hated it can

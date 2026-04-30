@@ -779,6 +779,11 @@ function GameSession({
   // live driver input against the player's preference each frame.
   const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
   brakeLightModeRef.current = settings.brakeLights
+  // Engine-noise profile lives in Audio settings rather than vehicle
+  // settings. The renderer polls it each frame so switching sound profiles
+  // during a pause takes effect as soon as the race resumes.
+  const engineNoiseRef = useRef(audioSettings.engineNoise)
+  engineNoiseRef.current = audioSettings.engineNoise
   // Mirror the haptics mode into a ref so handleLapComplete reads the freshest
   // pick without depending on a stale closure. Mode (not a resolved boolean)
   // is the source of truth: shouldTouchHapticFire reconciles it against the
@@ -2594,6 +2599,7 @@ function GameSession({
         racingNumberRef={racingNumberRef}
         headlightsOnRef={headlightsOnRef}
         brakeLightModeRef={brakeLightModeRef}
+        engineNoiseRef={engineNoiseRef}
         gamepadRumbleModeRef={gamepadRumbleModeRef}
         gamepadRumbleIntensityRef={gamepadRumbleIntensityRef}
         gamepadPadRef={gamepadPadRef}
