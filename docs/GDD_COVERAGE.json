@@ -356,6 +356,8 @@
         "sound effects",
         "channel volume controls",
         "engine-noise choices",
+        "high-speed engine tone modulation",
+        "global SFX attenuation",
         "haptics",
         "per-track music personalization",
         "background tab audio suspension",

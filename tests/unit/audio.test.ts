@@ -4,6 +4,8 @@ import {
   droneFilterHz,
   droneFreqHz,
   droneVolume,
+  engineToneTargets,
+  highSpeedModAmount,
   playAchievementUnlockCue,
   playLapStinger,
   playOffTrackRumble,
@@ -30,8 +32,8 @@ import { _resetAudioEngineForTesting, getAudioEngine } from '@/game/audioEngine'
 // ---------------------------------------------------------------------------
 
 describe('droneFreqHz', () => {
-  it('uses the quieter smooth profile by default', () => {
-    expect(droneFreqHz(0, 26)).toBeCloseTo(52, 6)
+  it('uses the warm profile by default', () => {
+    expect(droneFreqHz(0, 26)).toBeCloseTo(48, 6)
   })
 
   it('keeps the original implementation available as Classic', () => {
@@ -53,13 +55,13 @@ describe('droneFreqHz', () => {
   })
 
   it('handles zero or negative max gracefully', () => {
-    expect(droneFreqHz(10, 0)).toBeCloseTo(52, 6)
+    expect(droneFreqHz(10, 0)).toBeCloseTo(48, 6)
   })
 })
 
 describe('droneFilterHz', () => {
   it('uses a softer default cutoff than Classic', () => {
-    expect(droneFilterHz(0, 26)).toBeCloseTo(380, 6)
+    expect(droneFilterHz(0, 26)).toBeCloseTo(280, 6)
     expect(droneFilterHz(0, 26, 'classic')).toBeCloseTo(600, 6)
   })
 
@@ -87,6 +89,12 @@ describe('droneVolume', () => {
   })
 
   it('sets Smooth quieter than Classic at full speed', () => {
+    expect(droneVolume(26, 26, true, 'smooth')).toBeLessThan(
+      droneVolume(26, 26, true, 'classic'),
+    )
+  })
+
+  it('keeps Warm quieter than Classic at full speed', () => {
     expect(droneVolume(26, 26, true)).toBeLessThan(
       droneVolume(26, 26, true, 'classic'),
     )
@@ -94,6 +102,36 @@ describe('droneVolume', () => {
 
   it('returns 0 when maxSpeed is zero', () => {
     expect(droneVolume(10, 0, true)).toBe(0)
+  })
+})
+
+describe('engineToneTargets', () => {
+  it('does not modulate below high speed', () => {
+    expect(highSpeedModAmount(10, 26)).toBe(0)
+    expect(engineToneTargets(10, 26, 'warm', 0)).toEqual({
+      freqHz: droneFreqHz(10, 26, 'warm'),
+      filterHz: droneFilterHz(10, 26, 'warm'),
+    })
+  })
+
+  it('fluctuates tone at max speed', () => {
+    const a = engineToneTargets(26, 26, 'warm', 0.1)
+    const b = engineToneTargets(26, 26, 'warm', 0.2)
+    expect(a.freqHz).not.toBeCloseTo(b.freqHz, 6)
+    expect(a.filterHz).not.toBeCloseTo(b.filterHz, 6)
+  })
+
+  it('makes Electric brighter and more animated than Warm', () => {
+    expect(droneFreqHz(26, 26, 'electric')).toBeGreaterThan(
+      droneFreqHz(26, 26, 'warm') * 2,
+    )
+    const warmA = engineToneTargets(26, 26, 'warm', 0.1)
+    const warmB = engineToneTargets(26, 26, 'warm', 0.2)
+    const electricA = engineToneTargets(26, 26, 'electric', 0.1)
+    const electricB = engineToneTargets(26, 26, 'electric', 0.2)
+    expect(Math.abs(electricA.freqHz - electricB.freqHz)).toBeGreaterThan(
+      Math.abs(warmA.freqHz - warmB.freqHz),
+    )
   })
 })
 

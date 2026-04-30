@@ -29,7 +29,7 @@ describe('effectiveMusicGain / effectiveSfxGain', () => {
     ).toBeCloseTo(0.5, 6)
     expect(
       effectiveSfxGain({ ...DEFAULT_AUDIO_SETTINGS, sfxVolume: 0.25 }),
-    ).toBeCloseTo(0.25, 6)
+    ).toBeCloseTo(0.18, 6)
   })
 
   it('clamps out-of-range volumes', () => {
@@ -105,9 +105,10 @@ describe('localStorage round-trip', () => {
     expect(readStoredAudioSettings()).toEqual(custom)
   })
 
-  it('defaults engineNoise to the quieter smooth profile', () => {
-    expect(DEFAULT_ENGINE_NOISE_MODE).toBe('smooth')
-    expect(DEFAULT_AUDIO_SETTINGS.engineNoise).toBe('smooth')
+  it('defaults engineNoise to the warm profile', () => {
+    expect(DEFAULT_ENGINE_NOISE_MODE).toBe('warm')
+    expect(DEFAULT_AUDIO_SETTINGS.engineNoise).toBe('warm')
+    expect(DEFAULT_AUDIO_SETTINGS.sfxVolume).toBe(0.6)
   })
 
   it('has labels and descriptions for every engine noise mode', () => {
@@ -124,7 +125,7 @@ describe('localStorage round-trip', () => {
     expect(readStoredAudioSettings().engineNoise).toBe('classic')
   })
 
-  it('backfills engineNoise to smooth when missing from a legacy stored payload', () => {
+  it('backfills engineNoise to warm when missing from a legacy stored payload', () => {
     store[AUDIO_SETTINGS_STORAGE_KEY] = JSON.stringify({
       musicEnabled: true,
       sfxEnabled: true,
@@ -134,7 +135,7 @@ describe('localStorage round-trip', () => {
       musicMixInitials: false,
     })
     const read = readStoredAudioSettings()
-    expect(read.engineNoise).toBe('smooth')
+    expect(read.engineNoise).toBe('warm')
     expect(read.musicVolume).toBeCloseTo(0.6, 6)
   })
 
