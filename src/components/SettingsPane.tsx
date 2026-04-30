@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   ACTION_LABELS,
@@ -242,6 +242,9 @@ export function SettingsPane({
     const current = readStoredInitials() ?? ''
     setStoredInitials(current)
     setInitialsDraft(current)
+  }, [])
+  const closeFeatureList = useCallback(() => {
+    setFeatureListOpen(false)
   }, [])
   useEffect(() => {
     return () => {
@@ -1763,7 +1766,7 @@ export function SettingsPane({
         </div>
       </MenuPanel>
       {featureListOpen ? (
-        <FeatureListOverlay onClose={() => setFeatureListOpen(false)} />
+        <FeatureListOverlay onClose={closeFeatureList} />
       ) : null}
     </MenuOverlay>
   )

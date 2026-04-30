@@ -33,6 +33,7 @@ test('Feature List has a direct URL', async ({ page }) => {
   await expect(page.getByLabel('Feature List credits')).toContainText(
     'Feature List credits screen.',
   )
+  await expect(page.getByRole('button', { name: 'Pause scroll' })).toBeVisible()
 })
 
 test('settings menu groups options behind tabs', async ({ page }) => {

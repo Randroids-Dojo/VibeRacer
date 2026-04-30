@@ -46,6 +46,7 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
         onClose()
       }
       if (event.key === ' ') {
+        if (isKeyboardControlTarget(event.target)) return
         event.preventDefault()
         setPaused((value) => !value)
       }
@@ -121,7 +122,6 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
         style={scrollerStyle}
         onPointerDown={() => setPaused(true)}
         onWheel={() => setPaused(true)}
-        onFocus={() => setPaused(true)}
         tabIndex={0}
         aria-label="Feature List credits"
       >
@@ -158,10 +158,16 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
   return createPortal(overlay, document.body)
 }
 
+function isKeyboardControlTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  return ['BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(target.tagName)
+}
+
 const overlayStyle: CSSProperties = {
   position: 'fixed',
   inset: 0,
-  zIndex: 240,
+  zIndex: 1100,
   background:
     'linear-gradient(180deg, #040404 0%, #111 38%, #070707 100%)',
   color: '#f7f3da',
