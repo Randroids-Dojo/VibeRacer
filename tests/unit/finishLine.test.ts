@@ -78,32 +78,45 @@ describe('buildCheckerTexturePixels', () => {
 
 describe('computeGatePolePositions', () => {
   it('places poles perpendicular to heading on each side of the road', () => {
-    // Heading 0 means traveling along +X; perpendicular is the Z axis. Road
-    // half-width 4 + inset 0.6 -> poles at z = +/-4.6.
+    // Heading 0 means traveling along +X (east); perpendicular is the Z axis.
+    // Road half-width 4 + inset 0.6 -> poles at z = +/-4.6.
     const out = computeGatePolePositions(0, 0, 0, 4)
     expect(out.left.x).toBeCloseTo(0, 6)
     expect(out.right.x).toBeCloseTo(0, 6)
-    expect(out.left.z).toBeCloseTo(4 + FINISH_GATE_POLE_INSET, 6)
-    expect(out.right.z).toBeCloseTo(-(4 + FINISH_GATE_POLE_INSET), 6)
+    expect(out.left.z).toBeCloseTo(-(4 + FINISH_GATE_POLE_INSET), 6)
+    expect(out.right.z).toBeCloseTo(4 + FINISH_GATE_POLE_INSET, 6)
   })
 
   it('respects custom inset', () => {
     const out = computeGatePolePositions(10, 20, 0, 4, 1)
-    expect(out.left.z).toBeCloseTo(20 + 5, 6)
-    expect(out.right.z).toBeCloseTo(20 - 5, 6)
+    expect(out.left.z).toBeCloseTo(20 - 5, 6)
+    expect(out.right.z).toBeCloseTo(20 + 5, 6)
     expect(out.left.x).toBeCloseTo(10, 6)
     expect(out.right.x).toBeCloseTo(10, 6)
   })
 
   it('rotates with heading so a north-bound stretch puts poles east / west', () => {
-    // Heading PI/2 means traveling along +Z (south in a world where +Z is
-    // south). Perpendicular is the X axis: left is -X, right is +X (because
-    // the right-hand perpendicular of (0, 0, 1) under +Y up is (1, 0, 0)).
+    // Game convention: heading PI/2 means traveling along -Z (north). The
+    // driver's right is +X (east), left is -X (west).
     const out = computeGatePolePositions(0, 0, Math.PI / 2, 4, 0)
     expect(out.left.x).toBeCloseTo(-4, 6)
     expect(out.right.x).toBeCloseTo(4, 6)
     expect(out.left.z).toBeCloseTo(0, 6)
     expect(out.right.z).toBeCloseTo(0, 6)
+  })
+
+  it('places poles perpendicular to travel on diagonal headings', () => {
+    // Regression: the previous formula (sin h, -cos h) collapsed onto the
+    // travel axis at heading PI/4, putting both poles in front of and behind
+    // the finish line instead of beside it. The fix is (sin h, cos h).
+    const out = computeGatePolePositions(0, 0, Math.PI / 4, 4, 0)
+    // Travel direction at h = PI/4 is (cos h, -sin h); the pole separation
+    // vector should be perpendicular to it (zero dot product).
+    const tx = Math.cos(Math.PI / 4)
+    const tz = -Math.sin(Math.PI / 4)
+    const dx = out.right.x - out.left.x
+    const dz = out.right.z - out.left.z
+    expect(tx * dx + tz * dz).toBeCloseTo(0, 6)
   })
 
   it('keeps poles centered on the finish-line point', () => {
