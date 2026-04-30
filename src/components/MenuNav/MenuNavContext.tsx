@@ -84,6 +84,12 @@ export function MenuNavProvider({
   onTabNextRef.current = onTabNext
   const initialActiveRef = useRef<HTMLElement | null>(null)
   const instanceRef = useRef(++providerCounter)
+  // Mirror the latest returnFocus prop so the unmount effect runs once but
+  // still reads the current ref. Without this the focus-restore effect would
+  // depend on `returnFocus`, and a parent that swaps the ref mid-overlay
+  // would cause cleanup to fire and steal focus before unmount.
+  const returnFocusRef = useRef(returnFocus)
+  returnFocusRef.current = returnFocus
 
   useEffect(() => {
     menuNavOpenCount += 1
@@ -111,19 +117,15 @@ export function MenuNavProvider({
     if (typeof document !== 'undefined') {
       initialActiveRef.current = (document.activeElement as HTMLElement) ?? null
     }
-    // We want returnFocus.current at unmount time, not at effect-setup time,
-    // because the parent may set the ref after this effect runs.
-    const returnFocusRef = returnFocus
-    const initial = initialActiveRef
     return () => {
-      const target = returnFocusRef?.current ?? initial.current
+      const target = returnFocusRef.current?.current ?? initialActiveRef.current
       if (target && typeof target.focus === 'function') {
         try {
           target.focus()
         } catch {}
       }
     }
-  }, [returnFocus])
+  }, [])
 
   const orderedEntries = useCallback((): FocusableEntry[] => {
     const arr = Array.from(entriesRef.current.values()).filter(

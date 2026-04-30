@@ -87,8 +87,10 @@ export function useMenuGamepadNav(
       )?.set
       if (setter) setter.call(el, String(next))
       else el.value = String(next)
+      // React's onChange for range inputs is driven by the native `input`
+      // event. Dispatching `change` as well would double-fire the handler
+      // and step the value twice per gamepad tick.
       el.dispatchEvent(new Event('input', { bubbles: true }))
-      el.dispatchEvent(new Event('change', { bubbles: true }))
     }
 
     function tryDirectional(
