@@ -15,12 +15,14 @@ import {
 import { TuneStepGrid } from './TuneStepGrid'
 import {
   DEFAULT_TRACK_TUNE,
+  TUNE_FINISH_STINGER_STEP_COUNT,
   TRACK_TUNE_SCALE_FLAVORS,
   TRACK_TUNE_VOICES,
   TRACK_TUNE_WAVES,
   TrackTuneSchema,
   generateTuneFromSeed,
   type TrackTune,
+  type TuneFinishStingerPattern,
   type TuneVoice,
   type TuneWave,
 } from '@/lib/tunes'
@@ -67,6 +69,26 @@ export function TuneEditor({
         },
       }),
     )
+  }
+
+  function patchAutomation(
+    next: Partial<TrackTune['automation']>,
+  ): void {
+    setTune((current) =>
+      TrackTuneSchema.parse({
+        ...current,
+        automation: { ...current.automation, ...next },
+      }),
+    )
+  }
+
+  function setFinishStinger(): void {
+    const seedPhrase = [0, 2, 4, 7, 4, 2, 0, null]
+    const phrase: TuneFinishStingerPattern = Array.from(
+      { length: TUNE_FINISH_STINGER_STEP_COUNT },
+      (_, index) => seedPhrase[index] ?? null,
+    )
+    patchAutomation({ finishStinger: phrase })
   }
 
   async function saveDefault(): Promise<void> {
@@ -275,6 +297,104 @@ export function TuneEditor({
             value={tune.drums.density}
             onChange={(density) => patch({ drums: { ...tune.drums, density } })}
           />
+        </MenuSection>
+
+        <MenuSection title="Automation">
+          <MenuSlider
+            label="Tempo low"
+            value={tune.automation.tempoMinFactor}
+            min={0.25}
+            max={2}
+            step={0.01}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(tempoMinFactor) =>
+              patchAutomation({ tempoMinFactor })
+            }
+          />
+          <MenuSlider
+            label="Tempo high"
+            value={tune.automation.tempoMaxFactor}
+            min={0.25}
+            max={2}
+            step={0.01}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(tempoMaxFactor) =>
+              patchAutomation({ tempoMaxFactor })
+            }
+          />
+          <MenuSlider
+            label="Per-lap key change"
+            value={tune.automation.perLapSemitones}
+            min={-6}
+            max={6}
+            step={1}
+            format={(v) => `${Math.round(v)} semitones`}
+            onChange={(perLapSemitones) =>
+              patchAutomation({
+                perLapSemitones: Math.round(perLapSemitones),
+              })
+            }
+          />
+          <label style={label}>
+            <span>Off-track scale</span>
+            <select
+              value={tune.automation.offTrackScale ?? 'none'}
+              onChange={(event) =>
+                patchAutomation({
+                  offTrackScale:
+                    event.target.value === 'none'
+                      ? null
+                      : (event.target.value as TrackTune['scale']),
+                })
+              }
+              style={select}
+            >
+              <option value="none">none</option>
+              {TRACK_TUNE_SCALE_FLAVORS.map((scale) => (
+                <option key={scale} value={scale}>
+                  {scale}
+                </option>
+              ))}
+            </select>
+          </label>
+          <MenuSlider
+            label="Off-track duck"
+            value={tune.automation.offTrackDuck}
+            min={0}
+            max={1}
+            step={0.01}
+            format={(v) => `${Math.round(v * 100)}%`}
+            onChange={(offTrackDuck) => patchAutomation({ offTrackDuck })}
+          />
+          <div style={voiceBlock}>
+            <div style={voiceHeader}>
+              <strong>Finish stinger</strong>
+              <div style={row}>
+                <MenuButton fullWidth={false} onClick={setFinishStinger}>
+                  {tune.automation.finishStinger ? 'Reset' : 'Add'}
+                </MenuButton>
+                <MenuButton
+                  fullWidth={false}
+                  disabled={!tune.automation.finishStinger}
+                  onClick={() => patchAutomation({ finishStinger: null })}
+                >
+                  Clear
+                </MenuButton>
+              </div>
+            </div>
+            {tune.automation.finishStinger ? (
+              <TuneStepGrid
+                label="finish stinger"
+                steps={tune.automation.finishStinger}
+                paintDegree={paintDegree}
+                onChange={(finishStinger) =>
+                  patchAutomation({ finishStinger })
+                }
+              />
+            ) : (
+              <MenuHint>No custom finish phrase.</MenuHint>
+            )}
+          </div>
         </MenuSection>
 
         <MenuSection title="Save">

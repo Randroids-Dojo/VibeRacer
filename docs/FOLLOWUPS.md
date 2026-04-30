@@ -4,7 +4,7 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## High Priority
 
-- Track Tune Editor Slice 3: add per-lap key change, off-track scale and ducking, finish stinger scheduling, game state wiring, editor controls for automation, and Vitest coverage for music state transitions.
+- None recorded.
 
 ## Medium Priority
 

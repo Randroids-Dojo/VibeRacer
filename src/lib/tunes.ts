@@ -2,6 +2,7 @@ import { z } from 'zod'
 import { fnv1a32 } from './fnv1a'
 
 export const TUNE_STEP_COUNT = 16
+export const TUNE_FINISH_STINGER_STEP_COUNT = 8
 
 export const TRACK_TUNE_SCALE_FLAVORS = [
   'minor',
@@ -24,6 +25,7 @@ export type TuneWave = (typeof TRACK_TUNE_WAVES)[number]
 
 export type TuneStep = number | null
 export type TuneStepPattern = TuneStep[]
+export type TuneFinishStingerPattern = TuneStep[]
 
 export interface TuneVoiceConfig {
   enabled: boolean
@@ -46,7 +48,7 @@ export interface TuneAutomationConfig {
   perLapSemitones: number
   offTrackScale: TrackTuneScaleFlavor | null
   offTrackDuck: number
-  finishStinger: TuneStepPattern | null
+  finishStinger: TuneFinishStingerPattern | null
 }
 
 export interface TrackTune {
@@ -66,6 +68,9 @@ const TuneStepSchema = z.number().int().or(z.null())
 export const TuneStepPatternSchema = z
   .array(TuneStepSchema)
   .length(TUNE_STEP_COUNT)
+export const TuneFinishStingerPatternSchema = z
+  .array(TuneStepSchema)
+  .length(TUNE_FINISH_STINGER_STEP_COUNT)
 
 export const TrackTuneScaleFlavorSchema = z.enum(TRACK_TUNE_SCALE_FLAVORS)
 export const TuneWaveSchema = z.enum(TRACK_TUNE_WAVES)
@@ -109,7 +114,7 @@ export const TrackTuneSchema: z.ZodType<TrackTune> = z
         perLapSemitones: z.number().int().min(-6).max(6),
         offTrackScale: TrackTuneScaleFlavorSchema.nullable(),
         offTrackDuck: z.number().min(0).max(1),
-        finishStinger: TuneStepPatternSchema.nullable(),
+        finishStinger: TuneFinishStingerPatternSchema.nullable(),
       })
       .strict(),
     name: z.string().trim().min(1).max(80).optional(),

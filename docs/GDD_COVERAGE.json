@@ -343,7 +343,7 @@
     {
       "id": "13",
       "title": "Audio",
-      "status": "partial",
+      "status": "done",
       "implemented": [
         "music",
         "sound effects",
@@ -364,6 +364,10 @@
         "personal tune storage",
         "per-slug tune overrides",
         "Tune Editor route",
+        "tune automation controls",
+        "per-lap tune key changes",
+        "off-track tune flavor swaps and ducking",
+        "custom finish stinger phrases",
         "Settings tune picker",
         "Track Editor tune entry point"
       ],
@@ -392,9 +396,7 @@
         "tests/unit/api.trackTune.test.ts",
         "tests/unit/audioSettings.test.ts"
       ],
-      "remainingGaps": [
-        "music automation wiring"
-      ]
+      "remainingGaps": []
     },
     {
       "id": "16",

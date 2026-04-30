@@ -21,6 +21,7 @@ import {
 export {
   TrackTuneScaleFlavorSchema,
   TrackTuneSchema,
+  TuneFinishStingerPatternSchema,
   TuneStepPatternSchema,
   TuneVoiceConfigSchema,
   TuneWaveSchema,

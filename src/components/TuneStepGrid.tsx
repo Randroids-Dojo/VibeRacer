@@ -1,7 +1,7 @@
 'use client'
 import type { CSSProperties } from 'react'
 import { menuTheme } from './MenuUI'
-import type { TuneStepPattern } from '@/lib/tunes'
+import type { TuneStepPattern, TuneStep } from '@/lib/tunes'
 
 export function TuneStepGrid({
   label,
@@ -14,7 +14,7 @@ export function TuneStepGrid({
   paintDegree: number
   onChange: (steps: TuneStepPattern) => void
 }) {
-  function setStep(index: number, value: number | null): void {
+  function setStep(index: number, value: TuneStep): void {
     const next = steps.slice()
     next[index] = value
     onChange(next)
@@ -22,7 +22,7 @@ export function TuneStepGrid({
   return (
     <div style={wrap}>
       <div style={title}>{label}</div>
-      <div style={grid} role="grid" aria-label={`${label} 16-step pattern`}>
+      <div style={grid} role="grid" aria-label={`${label} ${steps.length}-step pattern`}>
         {steps.map((step, index) => (
           <button
             key={index}
