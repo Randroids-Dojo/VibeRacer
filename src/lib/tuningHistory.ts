@@ -99,8 +99,6 @@ export const TuningHistoryEntrySchema = z.object({
   changedAt: z.number().positive().finite(),
 })
 
-const TuningHistoryArraySchema = z.array(TuningHistoryEntrySchema)
-
 /**
  * Compare two CarParams snapshots for equality. Tolerates tiny float drift
  * (1e-9) so a re-clamp does not register as a change. Returns true iff every
