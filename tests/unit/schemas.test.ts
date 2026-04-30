@@ -5,7 +5,7 @@ import {
   TrackBiomeSchema,
   TrackDecorationSchema,
   TrackMoodSchema,
-  TrackTuneSchema,
+  TrackMusicSchema,
   TrackVersionSchema,
   InitialsSchema,
   SlugSchema,
@@ -14,7 +14,7 @@ import {
   SubmissionSchema,
   MAX_PIECES_PER_TRACK,
 } from '@/lib/schemas'
-import { DEFAULT_TRACK_TUNE } from '@/lib/tunes'
+import { DEFAULT_TRACK_MUSIC } from '@/lib/trackMusic'
 
 describe('PieceSchema', () => {
   it('accepts a valid piece', () => {
@@ -405,15 +405,15 @@ describe('TrackVersionSchema', () => {
   })
 })
 
-describe('TrackTuneSchema', () => {
+describe('TrackMusicSchema', () => {
   it('accepts the default track tune', () => {
-    expect(TrackTuneSchema.parse(DEFAULT_TRACK_TUNE)).toEqual(DEFAULT_TRACK_TUNE)
+    expect(TrackMusicSchema.parse(DEFAULT_TRACK_MUSIC)).toEqual(DEFAULT_TRACK_MUSIC)
   })
 
   it('rejects an invalid scale', () => {
     expect(
-      TrackTuneSchema.safeParse({
-        ...DEFAULT_TRACK_TUNE,
+      TrackMusicSchema.safeParse({
+        ...DEFAULT_TRACK_MUSIC,
         scale: 'phrygian',
       }).success,
     ).toBe(false)

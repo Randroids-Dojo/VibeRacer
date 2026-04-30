@@ -35,15 +35,15 @@ import {
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
-  KNOWN_TUNES_EVENT,
-  MY_TUNES_EVENT,
-  TUNE_OVERRIDES_EVENT,
-  readKnownTunes,
-  readMyTunes,
-  readTuneOverride,
-  writeTuneOverride,
-  type MyTuneEntry,
-} from '@/lib/myTunes'
+  KNOWN_MUSIC_EVENT,
+  MY_MUSIC_EVENT,
+  MUSIC_OVERRIDES_EVENT,
+  readAllKnownMusic,
+  readMyMusic,
+  readMusicOverride,
+  writeMusicOverride,
+  type MyMusicEntry,
+} from '@/lib/myMusic'
 import { InitialsSchema } from '@/lib/schemas'
 import { readStoredInitials, writeStoredInitials } from '@/lib/initials'
 import { CAR_PAINTS } from '@/lib/carPaint'
@@ -186,9 +186,9 @@ export function SettingsPane({
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [featureListOpen, setFeatureListOpen] = useState(false)
-  const [myTunes, setMyTunes] = useState<MyTuneEntry[]>([])
-  const [knownTunes, setKnownTunes] = useState<Record<string, unknown>>({})
-  const [tuneChoice, setTuneChoice] = useState('default')
+  const [myMusic, setMyMusic] = useState<MyMusicEntry[]>([])
+  const [knownMusic, setKnownMusic] = useState<Record<string, unknown>>({})
+  const [musicChoice, setMusicChoice] = useState('default')
   const [hasTouch, setHasTouch] = useState(false)
   const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
     connected: false,
@@ -204,45 +204,45 @@ export function SettingsPane({
   const settingsTabs = SETTINGS_TABS
 
   useEffect(() => {
-    function refreshTunes() {
-      setMyTunes(readMyTunes())
-      setKnownTunes(readKnownTunes())
+    function refreshMusic() {
+      setMyMusic(readMyMusic())
+      setKnownMusic(readAllKnownMusic())
       if (slug) {
-        const override = readTuneOverride(slug)
-        if (override.source === 'mine') setTuneChoice(`mine:${override.id}`)
+        const override = readMusicOverride(slug)
+        if (override.source === 'mine') setMusicChoice(`mine:${override.id}`)
         else if (override.source === 'visited') {
-          setTuneChoice(`visited:${override.slug}`)
-        } else setTuneChoice('default')
+          setMusicChoice(`visited:${override.slug}`)
+        } else setMusicChoice('default')
       } else {
-        setTuneChoice('default')
+        setMusicChoice('default')
       }
     }
-    refreshTunes()
-    window.addEventListener(MY_TUNES_EVENT, refreshTunes)
-    window.addEventListener(KNOWN_TUNES_EVENT, refreshTunes)
-    window.addEventListener(TUNE_OVERRIDES_EVENT, refreshTunes)
-    window.addEventListener('storage', refreshTunes)
+    refreshMusic()
+    window.addEventListener(MY_MUSIC_EVENT, refreshMusic)
+    window.addEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
+    window.addEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
+    window.addEventListener('storage', refreshMusic)
     return () => {
-      window.removeEventListener(MY_TUNES_EVENT, refreshTunes)
-      window.removeEventListener(KNOWN_TUNES_EVENT, refreshTunes)
-      window.removeEventListener(TUNE_OVERRIDES_EVENT, refreshTunes)
-      window.removeEventListener('storage', refreshTunes)
+      window.removeEventListener(MY_MUSIC_EVENT, refreshMusic)
+      window.removeEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
+      window.removeEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
+      window.removeEventListener('storage', refreshMusic)
     }
   }, [slug])
 
-  function chooseTune(value: string): void {
-    setTuneChoice(value)
+  function chooseMusic(value: string): void {
+    setMusicChoice(value)
     if (!slug) return
     if (value === 'default') {
-      writeTuneOverride(slug, { source: 'default' })
+      writeMusicOverride(slug, { source: 'default' })
       return
     }
     if (value.startsWith('mine:')) {
-      writeTuneOverride(slug, { source: 'mine', id: value.slice(5) })
+      writeMusicOverride(slug, { source: 'mine', id: value.slice(5) })
       return
     }
     if (value.startsWith('visited:')) {
-      writeTuneOverride(slug, { source: 'visited', slug: value.slice(8) })
+      writeMusicOverride(slug, { source: 'visited', slug: value.slice(8) })
     }
   }
   // Identity: editable inline. Hydrated from localStorage on mount; saving
@@ -850,24 +850,24 @@ export function SettingsPane({
             </div>
           </div>
           <div style={subSection}>
-            <div style={subTitle}>Track tune</div>
+            <div style={subTitle}>Track music</div>
             <MenuHint>
-              Use the authored tune or pick one of your saved or visited
-              tunes.
+              Use the authored music or pick one of your saved or visited
+              entries.
             </MenuHint>
             <select
-              value={tuneChoice}
+              value={musicChoice}
               disabled={!slug}
-              onChange={(event) => chooseTune(event.target.value)}
-              style={tuneSelect}
+              onChange={(event) => chooseMusic(event.target.value)}
+              style={musicSelect}
             >
               <option value="default">Default for this track</option>
-              {myTunes.map((entry) => (
+              {myMusic.map((entry) => (
                 <option key={entry.id} value={`mine:${entry.id}`}>
-                  My tune: {entry.name}
+                  My music: {entry.name}
                 </option>
               ))}
-              {Object.keys(knownTunes).map((knownSlug) => (
+              {Object.keys(knownMusic).map((knownSlug) => (
                 <option key={knownSlug} value={`visited:${knownSlug}`}>
                   Visited: /{knownSlug}
                 </option>
@@ -875,11 +875,11 @@ export function SettingsPane({
             </select>
             <MenuButton
               onClick={() => {
-                if (slug) router.push(`/tune/${slug}`)
+                if (slug) router.push(`/music/${slug}`)
               }}
               disabled={!slug}
             >
-              Edit this track&apos;s tune
+              Edit this track&apos;s music
             </MenuButton>
           </div>
           </MenuSection>
@@ -2114,7 +2114,7 @@ const audioLabel: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
 }
-const tuneSelect: React.CSSProperties = {
+const musicSelect: React.CSSProperties = {
   background: menuTheme.inputBg,
   color: menuTheme.textPrimary,
   border: `1px solid ${menuTheme.ghostBorder}`,

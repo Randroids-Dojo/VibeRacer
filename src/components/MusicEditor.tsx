@@ -12,56 +12,56 @@ import {
   MenuToggle,
   menuTheme,
 } from './MenuUI'
-import { TuneStepGrid } from './TuneStepGrid'
+import { MusicStepGrid } from './MusicStepGrid'
 import {
-  DEFAULT_TRACK_TUNE,
-  TUNE_FINISH_STINGER_STEP_COUNT,
-  TRACK_TUNE_SCALE_FLAVORS,
-  TRACK_TUNE_VOICES,
-  TRACK_TUNE_WAVES,
-  TrackTuneSchema,
-  generateTuneFromSeed,
-  type TrackTune,
-  type TuneFinishStingerPattern,
-  type TuneVoice,
-  type TuneWave,
-} from '@/lib/tunes'
-import { setActiveTune } from '@/game/music'
+  DEFAULT_TRACK_MUSIC,
+  MUSIC_FINISH_STINGER_STEP_COUNT,
+  TRACK_MUSIC_SCALE_FLAVORS,
+  TRACK_MUSIC_VOICES,
+  TRACK_MUSIC_WAVES,
+  TrackMusicSchema,
+  generateMusicFromSeed,
+  type TrackMusic,
+  type MusicFinishStingerPattern,
+  type MusicVoice,
+  type MusicWave,
+} from '@/lib/trackMusic'
+import { setActiveMusic } from '@/game/music'
 import {
-  upsertMyTune,
-  writeTuneOverride,
-  type MyTuneEntry,
-} from '@/lib/myTunes'
+  upsertMyMusic,
+  writeMusicOverride,
+  type MyMusicEntry,
+} from '@/lib/myMusic'
 
-export function TuneEditor({
+export function MusicEditor({
   slug,
-  initialTune,
+  initialMusic,
 }: {
   slug: string
-  initialTune: TrackTune | null
+  initialMusic: TrackMusic | null
 }) {
   const router = useRouter()
-  const [tune, setTune] = useState<TrackTune>(() =>
-    TrackTuneSchema.parse(initialTune ?? DEFAULT_TRACK_TUNE),
+  const [music, setMusic] = useState<TrackMusic>(() =>
+    TrackMusicSchema.parse(initialMusic ?? DEFAULT_TRACK_MUSIC),
   )
-  const [seed, setSeed] = useState(tune.seedWord ?? '')
+  const [seed, setSeed] = useState(music.seedWord ?? '')
   const [paintDegree, setPaintDegree] = useState(0)
   const [personalName, setPersonalName] = useState(
-    tune.name ?? `/${slug} tune`,
+    music.name ?? `/${slug} music`,
   )
   const [status, setStatus] = useState('')
-  const saveBody = useMemo(() => JSON.stringify(tune), [tune])
+  const saveBody = useMemo(() => JSON.stringify(music), [music])
 
-  function patch(next: Partial<TrackTune>): void {
-    setTune((current) => TrackTuneSchema.parse({ ...current, ...next }))
+  function patch(next: Partial<TrackMusic>): void {
+    setMusic((current) => TrackMusicSchema.parse({ ...current, ...next }))
   }
 
   function patchVoice(
-    voice: TuneVoice,
-    next: Partial<TrackTune['voices'][TuneVoice]>,
+    voice: MusicVoice,
+    next: Partial<TrackMusic['voices'][MusicVoice]>,
   ): void {
-    setTune((current) =>
-      TrackTuneSchema.parse({
+    setMusic((current) =>
+      TrackMusicSchema.parse({
         ...current,
         voices: {
           ...current.voices,
@@ -72,10 +72,10 @@ export function TuneEditor({
   }
 
   function patchAutomation(
-    next: Partial<TrackTune['automation']>,
+    next: Partial<TrackMusic['automation']>,
   ): void {
-    setTune((current) =>
-      TrackTuneSchema.parse({
+    setMusic((current) =>
+      TrackMusicSchema.parse({
         ...current,
         automation: { ...current.automation, ...next },
       }),
@@ -84,71 +84,71 @@ export function TuneEditor({
 
   function setFinishStinger(): void {
     const seedPhrase = [0, 2, 4, 7, 4, 2, 0, null]
-    const phrase: TuneFinishStingerPattern = Array.from(
-      { length: TUNE_FINISH_STINGER_STEP_COUNT },
+    const phrase: MusicFinishStingerPattern = Array.from(
+      { length: MUSIC_FINISH_STINGER_STEP_COUNT },
       (_, index) => seedPhrase[index] ?? null,
     )
     patchAutomation({ finishStinger: phrase })
   }
 
   async function saveDefault(): Promise<void> {
-    setStatus('Saving default tune...')
-    const res = await fetch(`/api/track/${encodeURIComponent(slug)}/tune`, {
+    setStatus('Saving default music...')
+    const res = await fetch(`/api/track/${encodeURIComponent(slug)}/music`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
       body: saveBody,
     })
     if (!res.ok) {
-      setStatus('Default tune save failed.')
+      setStatus('Default music save failed.')
       return
     }
-    writeTuneOverride(slug, { source: 'default' })
-    setStatus('Default tune saved.')
+    writeMusicOverride(slug, { source: 'default' })
+    setStatus('Default music saved.')
   }
 
   function savePersonal(): void {
     const now = Date.now()
-    const entry: MyTuneEntry = {
+    const entry: MyMusicEntry = {
       id: crypto.randomUUID(),
-      name: personalName.trim() || `/${slug} tune`,
+      name: personalName.trim() || `/${slug} music`,
       originSlug: slug,
-      tune,
+      music,
       createdAt: now,
       updatedAt: now,
     }
-    upsertMyTune(entry)
-    writeTuneOverride(slug, { source: 'mine', id: entry.id })
-    setStatus('Personal tune saved and applied.')
+    upsertMyMusic(entry)
+    writeMusicOverride(slug, { source: 'mine', id: entry.id })
+    setStatus('Personal music saved and applied.')
   }
 
   function applyForMe(): void {
-    setActiveTune(tune)
+    setActiveMusic(music)
     const now = Date.now()
-    const entry: MyTuneEntry = {
+    const entry: MyMusicEntry = {
       id: crypto.randomUUID(),
-      name: personalName.trim() || `/${slug} tune`,
+      name: personalName.trim() || `/${slug} music`,
       originSlug: slug,
-      tune,
+      music,
       createdAt: now,
       updatedAt: now,
     }
-    upsertMyTune(entry)
-    writeTuneOverride(slug, { source: 'mine', id: entry.id })
-    setStatus('Tune applied for this browser.')
+    upsertMyMusic(entry)
+    writeMusicOverride(slug, { source: 'mine', id: entry.id })
+    setStatus('Music applied for this browser.')
   }
 
   function rollSeed(): void {
     const word = seed.trim() || `track-${slug}`
-    const next = generateTuneFromSeed(word)
-    setTune(next)
-    setPersonalName(next.name ?? `${word} tune`)
+    const next = generateMusicFromSeed(word)
+    setMusic(next)
+    setPersonalName(next.name ?? `${word} music`)
     setStatus(`Seeded from ${word}.`)
   }
 
   return (
     <MenuOverlay zIndex={300}>
       <MenuPanel width="wide">
-        <MenuHeader title={`Tune for /${slug}`} onClose={() => router.push(`/${slug}`)} />
+        <MenuHeader title={`Music for /${slug}`} onClose={() => router.push(`/${slug}`)} />
 
         <MenuSection title="Seed">
           <div style={row}>
@@ -163,13 +163,13 @@ export function TuneEditor({
               Roll
             </MenuButton>
           </div>
-          <MenuHint>Same word, same starting tune.</MenuHint>
+          <MenuHint>Same word, same starting music.</MenuHint>
         </MenuSection>
 
         <MenuSection title="Globals">
           <MenuSlider
             label="Tempo"
-            value={tune.bpm}
+            value={music.bpm}
             min={60}
             max={220}
             step={1}
@@ -178,7 +178,7 @@ export function TuneEditor({
           />
           <MenuSlider
             label="Root"
-            value={tune.rootMidi}
+            value={music.rootMidi}
             min={36}
             max={84}
             step={1}
@@ -188,13 +188,13 @@ export function TuneEditor({
           <label style={label}>
             <span>Scale</span>
             <select
-              value={tune.scale}
+              value={music.scale}
               onChange={(event) =>
-                patch({ scale: event.target.value as TrackTune['scale'] })
+                patch({ scale: event.target.value as TrackMusic['scale'] })
               }
               style={select}
             >
-              {TRACK_TUNE_SCALE_FLAVORS.map((scale) => (
+              {TRACK_MUSIC_SCALE_FLAVORS.map((scale) => (
                 <option key={scale} value={scale}>
                   {scale}
                 </option>
@@ -216,8 +216,8 @@ export function TuneEditor({
         </MenuSection>
 
         <MenuSection title="Voices">
-          {TRACK_TUNE_VOICES.map((voiceName) => {
-            const voice = tune.voices[voiceName]
+          {TRACK_MUSIC_VOICES.map((voiceName) => {
+            const voice = music.voices[voiceName]
             return (
               <div key={voiceName} style={voiceBlock}>
                 <div style={voiceHeader}>
@@ -234,12 +234,12 @@ export function TuneEditor({
                       value={voice.wave}
                       onChange={(event) =>
                         patchVoice(voiceName, {
-                          wave: event.target.value as TuneWave,
+                          wave: event.target.value as MusicWave,
                         })
                       }
                       style={select}
                     >
-                      {TRACK_TUNE_WAVES.map((wave) => (
+                      {TRACK_MUSIC_WAVES.map((wave) => (
                         <option key={wave} value={wave}>
                           {wave}
                         </option>
@@ -263,7 +263,7 @@ export function TuneEditor({
                     }
                   />
                 </div>
-                <TuneStepGrid
+                <MusicStepGrid
                   label={`${voiceName} steps`}
                   steps={voice.steps}
                   paintDegree={paintDegree}
@@ -278,31 +278,31 @@ export function TuneEditor({
           <div style={row}>
             <MenuToggle
               label="Kick"
-              value={tune.drums.kick}
-              onChange={(kick) => patch({ drums: { ...tune.drums, kick } })}
+              value={music.drums.kick}
+              onChange={(kick) => patch({ drums: { ...music.drums, kick } })}
             />
             <MenuToggle
               label="Snare"
-              value={tune.drums.snare}
-              onChange={(snare) => patch({ drums: { ...tune.drums, snare } })}
+              value={music.drums.snare}
+              onChange={(snare) => patch({ drums: { ...music.drums, snare } })}
             />
             <MenuToggle
               label="Hat"
-              value={tune.drums.hat}
-              onChange={(hat) => patch({ drums: { ...tune.drums, hat } })}
+              value={music.drums.hat}
+              onChange={(hat) => patch({ drums: { ...music.drums, hat } })}
             />
           </div>
           <MenuSlider
             label="Density"
-            value={tune.drums.density}
-            onChange={(density) => patch({ drums: { ...tune.drums, density } })}
+            value={music.drums.density}
+            onChange={(density) => patch({ drums: { ...music.drums, density } })}
           />
         </MenuSection>
 
         <MenuSection title="Automation">
           <MenuSlider
             label="Tempo low"
-            value={tune.automation.tempoMinFactor}
+            value={music.automation.tempoMinFactor}
             min={0.25}
             max={2}
             step={0.01}
@@ -313,7 +313,7 @@ export function TuneEditor({
           />
           <MenuSlider
             label="Tempo high"
-            value={tune.automation.tempoMaxFactor}
+            value={music.automation.tempoMaxFactor}
             min={0.25}
             max={2}
             step={0.01}
@@ -324,7 +324,7 @@ export function TuneEditor({
           />
           <MenuSlider
             label="Per-lap key change"
-            value={tune.automation.perLapSemitones}
+            value={music.automation.perLapSemitones}
             min={-6}
             max={6}
             step={1}
@@ -338,19 +338,19 @@ export function TuneEditor({
           <label style={label}>
             <span>Off-track scale</span>
             <select
-              value={tune.automation.offTrackScale ?? 'none'}
+              value={music.automation.offTrackScale ?? 'none'}
               onChange={(event) =>
                 patchAutomation({
                   offTrackScale:
                     event.target.value === 'none'
                       ? null
-                      : (event.target.value as TrackTune['scale']),
+                      : (event.target.value as TrackMusic['scale']),
                 })
               }
               style={select}
             >
               <option value="none">none</option>
-              {TRACK_TUNE_SCALE_FLAVORS.map((scale) => (
+              {TRACK_MUSIC_SCALE_FLAVORS.map((scale) => (
                 <option key={scale} value={scale}>
                   {scale}
                 </option>
@@ -359,7 +359,7 @@ export function TuneEditor({
           </label>
           <MenuSlider
             label="Off-track duck"
-            value={tune.automation.offTrackDuck}
+            value={music.automation.offTrackDuck}
             min={0}
             max={1}
             step={0.01}
@@ -371,21 +371,21 @@ export function TuneEditor({
               <strong>Finish stinger</strong>
               <div style={row}>
                 <MenuButton fullWidth={false} onClick={setFinishStinger}>
-                  {tune.automation.finishStinger ? 'Reset' : 'Add'}
+                  {music.automation.finishStinger ? 'Reset' : 'Add'}
                 </MenuButton>
                 <MenuButton
                   fullWidth={false}
-                  disabled={!tune.automation.finishStinger}
+                  disabled={!music.automation.finishStinger}
                   onClick={() => patchAutomation({ finishStinger: null })}
                 >
                   Clear
                 </MenuButton>
               </div>
             </div>
-            {tune.automation.finishStinger ? (
-              <TuneStepGrid
+            {music.automation.finishStinger ? (
+              <MusicStepGrid
                 label="finish stinger"
-                steps={tune.automation.finishStinger}
+                steps={music.automation.finishStinger}
                 paintDegree={paintDegree}
                 onChange={(finishStinger) =>
                   patchAutomation({ finishStinger })
@@ -399,7 +399,7 @@ export function TuneEditor({
 
         <MenuSection title="Save">
           <input
-            aria-label="Personal tune name"
+            aria-label="Personal music name"
             value={personalName}
             onChange={(event) => setPersonalName(event.target.value)}
             style={input}

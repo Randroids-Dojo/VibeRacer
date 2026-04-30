@@ -1,102 +1,114 @@
 import { z } from 'zod'
 import { fnv1a32 } from './fnv1a'
 
-export const TUNE_STEP_COUNT = 16
-export const TUNE_FINISH_STINGER_STEP_COUNT = 8
+export const MUSIC_STEP_COUNT = 16
+export const MUSIC_FINISH_STINGER_STEP_COUNT = 8
 
-export const TRACK_TUNE_SCALE_FLAVORS = [
+export const TRACK_MUSIC_SCALE_FLAVORS = [
   'minor',
   'major',
   'pentatonic',
   'dorian',
 ] as const
-export type TrackTuneScaleFlavor = (typeof TRACK_TUNE_SCALE_FLAVORS)[number]
+export type TrackMusicScaleFlavor = (typeof TRACK_MUSIC_SCALE_FLAVORS)[number]
 
-export const TRACK_TUNE_VOICES = ['bass', 'melody', 'counter', 'arp'] as const
-export type TuneVoice = (typeof TRACK_TUNE_VOICES)[number]
+export const TRACK_MUSIC_VOICES = ['bass', 'melody', 'counter', 'arp'] as const
+export type MusicVoice = (typeof TRACK_MUSIC_VOICES)[number]
 
-export const TRACK_TUNE_WAVES = [
+export const TRACK_MUSIC_WAVES = [
   'sine',
   'square',
   'sawtooth',
   'triangle',
 ] as const
-export type TuneWave = (typeof TRACK_TUNE_WAVES)[number]
+export type MusicWave = (typeof TRACK_MUSIC_WAVES)[number]
 
-export type TuneStep = number | null
-export type TuneStepPattern = TuneStep[]
-export type TuneFinishStingerPattern = TuneStep[]
+export type MusicStep = number | null
+export type MusicStepPattern = MusicStep[]
+export type MusicFinishStingerPattern = MusicStep[]
 
-export interface TuneVoiceConfig {
+export interface MusicVoiceConfig {
   enabled: boolean
-  wave: TuneWave
+  wave: MusicWave
   octave: number
   volume: number
-  steps: TuneStepPattern
+  steps: MusicStepPattern
 }
 
-export interface TuneDrumsConfig {
+export interface MusicDrumsConfig {
   kick: boolean
   snare: boolean
   hat: boolean
   density: number
 }
 
-export interface TuneAutomationConfig {
+export interface MusicAutomationConfig {
   tempoMinFactor: number
   tempoMaxFactor: number
   perLapSemitones: number
-  offTrackScale: TrackTuneScaleFlavor | null
+  offTrackScale: TrackMusicScaleFlavor | null
   offTrackDuck: number
-  finishStinger: TuneFinishStingerPattern | null
+  finishStinger: MusicFinishStingerPattern | null
 }
 
-export interface TrackTune {
+export interface TrackMusic {
   schemaVersion: 1
   bpm: number
   rootMidi: number
-  scale: TrackTuneScaleFlavor
-  voices: Record<TuneVoice, TuneVoiceConfig>
-  drums: TuneDrumsConfig
-  automation: TuneAutomationConfig
+  scale: TrackMusicScaleFlavor
+  voices: Record<MusicVoice, MusicVoiceConfig>
+  drums: MusicDrumsConfig
+  automation: MusicAutomationConfig
   name?: string
   seedWord?: string
 }
 
-const TuneStepSchema = z.number().int().or(z.null())
+// Bound step degrees so `scaleDeg` cannot push the resolved MIDI value
+// far enough to overflow `midiFreq` to Infinity. Each degree adds at most
+// (degree / scale.length) octaves on top of the configured root, and the
+// root is already bounded by MUSIC_ROOT_MIDI_*.
+export const MUSIC_STEP_DEGREE_MIN = -32
+export const MUSIC_STEP_DEGREE_MAX = 32
 
-export const TuneStepPatternSchema = z
+const TuneStepSchema = z
+  .number()
+  .int()
+  .min(MUSIC_STEP_DEGREE_MIN)
+  .max(MUSIC_STEP_DEGREE_MAX)
+  .or(z.null())
+
+export const MusicStepPatternSchema = z
   .array(TuneStepSchema)
-  .length(TUNE_STEP_COUNT)
-export const TuneFinishStingerPatternSchema = z
+  .length(MUSIC_STEP_COUNT)
+export const MusicFinishStingerPatternSchema = z
   .array(TuneStepSchema)
-  .length(TUNE_FINISH_STINGER_STEP_COUNT)
+  .length(MUSIC_FINISH_STINGER_STEP_COUNT)
 
-export const TrackTuneScaleFlavorSchema = z.enum(TRACK_TUNE_SCALE_FLAVORS)
-export const TuneWaveSchema = z.enum(TRACK_TUNE_WAVES)
+export const TrackMusicScaleFlavorSchema = z.enum(TRACK_MUSIC_SCALE_FLAVORS)
+export const MusicWaveSchema = z.enum(TRACK_MUSIC_WAVES)
 
-export const TuneVoiceConfigSchema = z
+export const MusicVoiceConfigSchema = z
   .object({
     enabled: z.boolean(),
-    wave: TuneWaveSchema,
+    wave: MusicWaveSchema,
     octave: z.number().int().min(-2).max(2),
     volume: z.number().min(0).max(1),
-    steps: TuneStepPatternSchema,
+    steps: MusicStepPatternSchema,
   })
   .strict()
 
-export const TrackTuneSchema: z.ZodType<TrackTune> = z
+export const TrackMusicSchema: z.ZodType<TrackMusic> = z
   .object({
     schemaVersion: z.literal(1),
     bpm: z.number().int().min(60).max(220),
     rootMidi: z.number().int().min(36).max(84),
-    scale: TrackTuneScaleFlavorSchema,
+    scale: TrackMusicScaleFlavorSchema,
     voices: z
       .object({
-        bass: TuneVoiceConfigSchema,
-        melody: TuneVoiceConfigSchema,
-        counter: TuneVoiceConfigSchema,
-        arp: TuneVoiceConfigSchema,
+        bass: MusicVoiceConfigSchema,
+        melody: MusicVoiceConfigSchema,
+        counter: MusicVoiceConfigSchema,
+        arp: MusicVoiceConfigSchema,
       })
       .strict(),
     drums: z
@@ -112,9 +124,9 @@ export const TrackTuneSchema: z.ZodType<TrackTune> = z
         tempoMinFactor: z.number().min(0.25).max(2),
         tempoMaxFactor: z.number().min(0.25).max(2),
         perLapSemitones: z.number().int().min(-6).max(6),
-        offTrackScale: TrackTuneScaleFlavorSchema.nullable(),
+        offTrackScale: TrackMusicScaleFlavorSchema.nullable(),
         offTrackDuck: z.number().min(0).max(1),
-        finishStinger: TuneFinishStingerPatternSchema.nullable(),
+        finishStinger: MusicFinishStingerPatternSchema.nullable(),
       })
       .strict(),
     name: z.string().trim().min(1).max(80).optional(),
@@ -122,22 +134,22 @@ export const TrackTuneSchema: z.ZodType<TrackTune> = z
   })
   .strict()
 
-const R: TuneStep = null
+const R: MusicStep = null
 
-const DEFAULT_BASS_STEPS: TuneStepPattern = [
+const DEFAULT_BASS_STEPS: MusicStepPattern = [
    0,  R,  0,  R,   4,  R,  0,  R,   3,  R,  3,  R,   4,  R,  4,  R,
 ]
-const DEFAULT_MELODY_STEPS: TuneStepPattern = [
+const DEFAULT_MELODY_STEPS: MusicStepPattern = [
    R,  R,  4,  R,   3,  R,  2,  R,   4,  R,  6,  R,   4,  3,  R,  R,
 ]
-const DEFAULT_COUNTER_STEPS: TuneStepPattern = [
+const DEFAULT_COUNTER_STEPS: MusicStepPattern = [
    0,  R,  R,  R,   2,  R,  R,  R,   3,  R,  R,  R,   2,  R,  R,  R,
 ]
-const DEFAULT_ARP_STEPS: TuneStepPattern = [
+const DEFAULT_ARP_STEPS: MusicStepPattern = [
    0,  2,  4,  6,   2,  4,  6,  8,   4,  2,  0,  2,   4,  2,  0,  R,
 ]
 
-export const DEFAULT_TRACK_TUNE: TrackTune = {
+export const DEFAULT_TRACK_MUSIC: TrackMusic = {
   schemaVersion: 1,
   bpm: 140,
   rootMidi: 55,
@@ -188,7 +200,7 @@ export const DEFAULT_TRACK_TUNE: TrackTune = {
   },
 }
 
-const BASS_TEMPLATES: readonly TuneStepPattern[] = [
+const BASS_TEMPLATES: readonly MusicStepPattern[] = [
   [0, R, 0, R, 4, R, 0, R, 3, R, 3, R, 4, R, 4, R],
   [0, R, R, 0, 3, R, R, 3, 4, R, R, 4, 2, R, 4, R],
   [0, R, 2, R, 3, R, 2, R, 0, R, 4, R, 3, R, 2, R],
@@ -199,12 +211,12 @@ const BASS_TEMPLATES: readonly TuneStepPattern[] = [
   [0, R, 4, R, 0, R, 3, R, 0, R, 2, R, 4, R, 2, R],
 ]
 
-function clonePattern(pattern: readonly TuneStep[]): TuneStepPattern {
+function clonePattern(pattern: readonly MusicStep[]): MusicStepPattern {
   return [...pattern]
 }
 
-export function cloneTrackTune(tune: TrackTune): TrackTune {
-  return TrackTuneSchema.parse(tune)
+export function cloneTrackMusic(tune: TrackMusic): TrackMusic {
+  return TrackMusicSchema.parse(tune)
 }
 
 function lcg(seed: number): () => number {
@@ -229,8 +241,8 @@ function patternedSteps(
   next: () => number,
   density: number,
   offset: number,
-): TuneStepPattern {
-  return Array.from({ length: TUNE_STEP_COUNT }, (_, step) => {
+): MusicStepPattern {
+  return Array.from({ length: MUSIC_STEP_COUNT }, (_, step) => {
     const beatWeight = step % 4 === 0 ? 0.3 : 0
     const gate = ((next() >>> 24) & 0xff) / 255
     if (gate > density + beatWeight) return null
@@ -238,12 +250,12 @@ function patternedSteps(
   })
 }
 
-export function generateTuneFromSeed(seed: string): TrackTune {
+export function generateMusicFromSeed(seed: string): TrackMusic {
   const seedWord = seed.trim() || 'viberacer'
   const hashSeed = seedWord.toLowerCase()
   const bytes = seedBytes(hashSeed)
   const next = lcg(fnv1a32(`${hashSeed}:steps`) || 1)
-  const scale = TRACK_TUNE_SCALE_FLAVORS[bytes[0] % TRACK_TUNE_SCALE_FLAVORS.length]
+  const scale = TRACK_MUSIC_SCALE_FLAVORS[bytes[0] % TRACK_MUSIC_SCALE_FLAVORS.length]
   const rootMidi = 48 + (bytes[1] % 12) + 12 * (bytes[1] % 3)
   const bpm = 96 + (bytes[2] % 73)
   const bassTemplate = BASS_TEMPLATES[bytes[3] % BASS_TEMPLATES.length]
@@ -253,7 +265,7 @@ export function generateTuneFromSeed(seed: string): TrackTune {
   const drumMask = bytes[14]
   const tempoSpread = bytes[15] / 255
 
-  const tune: TrackTune = {
+  const tune: TrackMusic = {
     schemaVersion: 1,
     bpm,
     rootMidi,
@@ -261,21 +273,21 @@ export function generateTuneFromSeed(seed: string): TrackTune {
     voices: {
       bass: {
         enabled: true,
-        wave: TRACK_TUNE_WAVES[waveOffset % TRACK_TUNE_WAVES.length],
+        wave: TRACK_MUSIC_WAVES[waveOffset % TRACK_MUSIC_WAVES.length],
         octave: -1,
         volume: 0.8,
         steps: clonePattern(bassTemplate),
       },
       melody: {
         enabled: true,
-        wave: TRACK_TUNE_WAVES[(waveOffset >>> 2) % TRACK_TUNE_WAVES.length],
+        wave: TRACK_MUSIC_WAVES[(waveOffset >>> 2) % TRACK_MUSIC_WAVES.length],
         octave: 1,
         volume: 0.75,
         steps: patternedSteps(next, 0.38, bytes[8] % 4),
       },
       counter: {
         enabled: counterEnabled,
-        wave: TRACK_TUNE_WAVES[(waveOffset >>> 4) % TRACK_TUNE_WAVES.length],
+        wave: TRACK_MUSIC_WAVES[(waveOffset >>> 4) % TRACK_MUSIC_WAVES.length],
         octave: 0,
         volume: 0.62,
         steps: patternedSteps(next, counterDensity, bytes[10] % 4),
@@ -304,5 +316,5 @@ export function generateTuneFromSeed(seed: string): TrackTune {
     },
     seedWord,
   }
-  return TrackTuneSchema.parse(tune)
+  return TrackMusicSchema.parse(tune)
 }

@@ -3,11 +3,11 @@ import { NextResponse, type NextRequest } from 'next/server'
 import { SlugSchema } from '@/lib/schemas'
 import { getKv, kvKeys } from '@/lib/kv'
 import { isValidRacerId, RACER_ID_COOKIE } from '@/lib/racerId'
-import { TrackTuneSchema, type TrackTune } from '@/lib/tunes'
+import { TrackMusicSchema, type TrackMusic } from '@/lib/trackMusic'
 
 export const runtime = 'nodejs'
 
-function tuneHash(tune: TrackTune): string {
+function tuneHash(tune: TrackMusic): string {
   const { name, seedWord, ...hashable } = tune
   void name
   void seedWord
@@ -25,15 +25,15 @@ export async function GET(
   }
   const slug = slugParsed.data
   const kv = getKv()
-  const versionHash = await kv.get<string>(kvKeys.tuneLatest(slug))
+  const versionHash = await kv.get<string>(kvKeys.musicLatest(slug))
   if (!versionHash) {
     return NextResponse.json({ slug, tune: null, versions: [] })
   }
 
-  const tune = await kv.get<TrackTune>(kvKeys.tuneVersion(slug, versionHash))
-  const parsed = TrackTuneSchema.safeParse(tune)
+  const tune = await kv.get<TrackMusic>(kvKeys.musicVersion(slug, versionHash))
+  const parsed = TrackMusicSchema.safeParse(tune)
   const versions =
-    (await kv.lrange(kvKeys.tuneVersions(slug), 0, 49)) ?? []
+    (await kv.lrange(kvKeys.musicVersions(slug), 0, 49)) ?? []
 
   return NextResponse.json({
     slug,
@@ -72,7 +72,7 @@ export async function PUT(
     return NextResponse.json({ error: 'invalid json' }, { status: 400 })
   }
 
-  const parsed = TrackTuneSchema.safeParse(body)
+  const parsed = TrackMusicSchema.safeParse(body)
   if (!parsed.success) {
     return NextResponse.json({ error: 'invalid tune' }, { status: 400 })
   }
@@ -84,12 +84,12 @@ export async function PUT(
   try {
     const kv = getKv()
     await Promise.all([
-      kv.set(kvKeys.tuneVersion(slug, hash), JSON.stringify(tune)),
-      kv.set(kvKeys.tuneLatest(slug), hash),
-      kv.lpush(kvKeys.tuneVersions(slug), JSON.stringify({ hash, createdAt })),
+      kv.set(kvKeys.musicVersion(slug, hash), JSON.stringify(tune)),
+      kv.set(kvKeys.musicLatest(slug), hash),
+      kv.lpush(kvKeys.musicVersions(slug), JSON.stringify({ hash, createdAt })),
     ])
   } catch (e) {
-    console.error('Failed to persist track tune', e)
+    console.error('Failed to persist track music', e)
     return NextResponse.json(
       { error: 'storage unavailable', reason: 'temporary storage failure' },
       { status: 503 },

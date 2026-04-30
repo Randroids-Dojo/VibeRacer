@@ -1,27 +1,27 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
-  KNOWN_TUNES_STORAGE_KEY,
-  MY_TUNES_EVENT,
-  MY_TUNES_STORAGE_KEY,
-  TUNE_OVERRIDES_STORAGE_KEY,
-  deleteMyTune,
-  parseMyTunes,
-  readKnownTune,
-  readMyTunes,
-  readTuneOverride,
-  recordKnownTune,
-  resolvePersonalTune,
-  upsertMyTune,
-  writeTuneOverride,
-  type MyTuneEntry,
-} from '@/lib/myTunes'
-import { DEFAULT_TRACK_TUNE, generateTuneFromSeed } from '@/lib/tunes'
+  KNOWN_MUSIC_STORAGE_KEY,
+  MY_MUSIC_EVENT,
+  MY_MUSIC_STORAGE_KEY,
+  MUSIC_OVERRIDES_STORAGE_KEY,
+  deleteMyMusic,
+  parseMyMusic,
+  readKnownMusic,
+  readMyMusic,
+  readMusicOverride,
+  recordKnownMusic,
+  resolvePersonalMusic,
+  upsertMyMusic,
+  writeMusicOverride,
+  type MyMusicEntry,
+} from '@/lib/myMusic'
+import { DEFAULT_TRACK_MUSIC, generateMusicFromSeed } from '@/lib/trackMusic'
 
-const entry: MyTuneEntry = {
+const entry: MyMusicEntry = {
   id: '00000000-0000-4000-8000-000000000001',
   name: 'Neon',
   originSlug: 'neon-track',
-  tune: generateTuneFromSeed('neon'),
+  music: generateMusicFromSeed('neon'),
   createdAt: 1000,
   updatedAt: 1000,
 }
@@ -63,15 +63,15 @@ const originalWindow = (globalThis as { window?: unknown }).window
 let store: Record<string, string>
 let dispatched: Array<{ type: string; detail: unknown }>
 
-describe('parseMyTunes', () => {
+describe('parseMyMusic', () => {
   it('returns empty for malformed payloads', () => {
-    expect(parseMyTunes(null)).toEqual([])
-    expect(parseMyTunes({ nope: true })).toEqual([])
+    expect(parseMyMusic(null)).toEqual([])
+    expect(parseMyMusic({ nope: true })).toEqual([])
   })
 
   it('sorts newest first and dedupes by id', () => {
     expect(
-      parseMyTunes([
+      parseMyMusic([
         entry,
         { ...entry, name: 'Older', updatedAt: 900 },
         { ...entry, id: '00000000-0000-4000-8000-000000000002', updatedAt: 1200 },
@@ -82,43 +82,43 @@ describe('parseMyTunes', () => {
 
 describe('my tune storage', () => {
   it('upserts entries and dispatches a change event', () => {
-    expect(upsertMyTune(entry)).toEqual([entry])
-    expect(readMyTunes()).toEqual([entry])
-    expect(dispatched[0]).toEqual({ type: MY_TUNES_EVENT, detail: [entry] })
-    expect(store[MY_TUNES_STORAGE_KEY]).toContain('Neon')
+    expect(upsertMyMusic(entry)).toEqual([entry])
+    expect(readMyMusic()).toEqual([entry])
+    expect(dispatched[0]).toEqual({ type: MY_MUSIC_EVENT, detail: [entry] })
+    expect(store[MY_MUSIC_STORAGE_KEY]).toContain('Neon')
   })
 
-  it('deleting a tune clears matching overrides', () => {
-    upsertMyTune(entry)
-    writeTuneOverride('neon-track', { source: 'mine', id: entry.id })
-    expect(readTuneOverride('neon-track')).toEqual({
+  it('deleting a music clears matching overrides', () => {
+    upsertMyMusic(entry)
+    writeMusicOverride('neon-track', { source: 'mine', id: entry.id })
+    expect(readMusicOverride('neon-track')).toEqual({
       source: 'mine',
       id: entry.id,
     })
-    deleteMyTune(entry.id)
-    expect(readMyTunes()).toEqual([])
-    expect(readTuneOverride('neon-track')).toEqual({ source: 'default' })
+    deleteMyMusic(entry.id)
+    expect(readMyMusic()).toEqual([])
+    expect(readMusicOverride('neon-track')).toEqual({ source: 'default' })
   })
 
-  it('records and resolves known visited tunes', () => {
-    recordKnownTune('other-track', DEFAULT_TRACK_TUNE)
-    expect(readKnownTune('other-track')).toEqual(DEFAULT_TRACK_TUNE)
-    writeTuneOverride('neon-track', { source: 'visited', slug: 'other-track' })
-    expect(resolvePersonalTune('neon-track', entry.tune)).toEqual(
-      DEFAULT_TRACK_TUNE,
+  it('records and resolves known visited music', () => {
+    recordKnownMusic('other-track', DEFAULT_TRACK_MUSIC)
+    expect(readKnownMusic('other-track')).toEqual(DEFAULT_TRACK_MUSIC)
+    writeMusicOverride('neon-track', { source: 'visited', slug: 'other-track' })
+    expect(resolvePersonalMusic('neon-track', entry.music)).toEqual(
+      DEFAULT_TRACK_MUSIC,
     )
-    expect(store[KNOWN_TUNES_STORAGE_KEY]).toContain('other-track')
+    expect(store[KNOWN_MUSIC_STORAGE_KEY]).toContain('other-track')
   })
 
   it('falls back to the default tune when an override is missing', () => {
-    store[TUNE_OVERRIDES_STORAGE_KEY] = JSON.stringify({
+    store[MUSIC_OVERRIDES_STORAGE_KEY] = JSON.stringify({
       'neon-track': {
         source: 'mine',
         id: '00000000-0000-4000-8000-000000000099',
       },
     })
-    expect(resolvePersonalTune('neon-track', DEFAULT_TRACK_TUNE)).toEqual(
-      DEFAULT_TRACK_TUNE,
+    expect(resolvePersonalMusic('neon-track', DEFAULT_TRACK_MUSIC)).toEqual(
+      DEFAULT_TRACK_MUSIC,
     )
   })
 })
