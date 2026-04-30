@@ -262,6 +262,8 @@
         "src/components/SettingsPane.tsx",
         "src/components/FeatureListOverlay.tsx",
         "src/components/FeatureListLauncher.tsx",
+        "src/components/FeatureListRoute.tsx",
+        "src/app/features/page.tsx",
         "src/components/HowToPlayLauncher.tsx",
         "src/components/SessionSummary.tsx",
         "src/components/AchievementsPane.tsx",

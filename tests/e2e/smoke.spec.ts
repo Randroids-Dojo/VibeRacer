@@ -7,7 +7,7 @@ test('home page renders', async ({ page }) => {
 
 test('title screen opens the Feature List credits', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Feature List' }).click()
+  await page.getByRole('link', { name: 'Feature List' }).click()
 
   await expect(
     page.getByRole('dialog', { name: 'VibeRacer' }),
@@ -21,6 +21,18 @@ test('title screen opens the Feature List credits', async ({ page }) => {
 
   await page.getByRole('button', { name: 'Close' }).click()
   await expect(page.getByRole('dialog', { name: 'VibeRacer' })).toHaveCount(0)
+  await expect(page).toHaveURL('/')
+})
+
+test('Feature List has a direct URL', async ({ page }) => {
+  await page.goto('/features')
+
+  await expect(
+    page.getByRole('dialog', { name: 'VibeRacer' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Feature List credits')).toContainText(
+    'Feature List credits screen.',
+  )
 })
 
 test('settings menu groups options behind tabs', async ({ page }) => {
