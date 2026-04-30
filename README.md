@@ -92,9 +92,9 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Handbrake slides.
   - Off-track slowdown.
   - Four-wheel road contact.
-  - Optional manual shifting per track.
-  - Automatic transmission for simpler tracks.
-  - Gear display for manual tracks.
+  - Optional manual shifting (5-gear box).
+  - Automatic transmission for simpler driving.
+  - Gear display while driving manual.
   - Tune car handling in Setup.
 
 - **Controls**

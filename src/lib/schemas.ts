@@ -14,10 +14,6 @@ export {
   TrackDecorationKindSchema,
   TrackDecorationSchema,
 } from './decorations'
-import {
-  DEFAULT_TRACK_TRANSMISSION,
-  TRACK_TRANSMISSION_MODES,
-} from '@/game/transmission'
 export {
   TrackMusicScaleFlavorSchema,
   TrackMusicSchema,
@@ -90,9 +86,6 @@ export type TrackMood = z.infer<typeof TrackMoodSchema>
 export type TrackBiome = z.infer<typeof TrackBiomeSchema>
 export type TrackDecoration = z.infer<typeof TrackDecorationSchema>
 
-export const TrackTransmissionModeSchema = z.enum(TRACK_TRANSMISSION_MODES)
-export type TrackTransmissionMode = z.infer<typeof TrackTransmissionModeSchema>
-
 export const TrackSchema = z
   .object({
     pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
@@ -106,7 +99,6 @@ export const TrackSchema = z
     decorations: z.array(TrackDecorationSchema)
       .max(MAX_DECORATIONS_PER_TRACK)
       .optional(),
-    transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   })
   .superRefine((track, ctx) => {
     if (
@@ -198,7 +190,6 @@ export const TrackVersionSchema = z.object({
   decorations: z.array(TrackDecorationSchema)
     .max(MAX_DECORATIONS_PER_TRACK)
     .optional(),
-  transmission: TrackTransmissionModeSchema.default(DEFAULT_TRACK_TRANSMISSION),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
 })

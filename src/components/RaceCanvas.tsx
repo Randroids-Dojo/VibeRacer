@@ -2,7 +2,7 @@
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
 import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece, TrackCheckpoint } from '@/lib/schemas'
-import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TransmissionMode } from '@/game/transmission'
 import {
   TRACK_WIDTH,
   buildTrackPath,
@@ -142,7 +142,10 @@ export interface RaceCanvasProps {
   pieces: Piece[]
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
-  transmission?: TrackTransmissionMode
+  // Live ref into the player's transmission preference. Read on every tick so
+  // a Settings toggle flips the gearbox on the next frame without re-initing
+  // the canvas. Optional: omitting it falls back to automatic.
+  transmissionRef?: MutableRefObject<TransmissionMode>
   biome?: TrackBiome | null
   decorations?: readonly TrackDecoration[]
   paramsRef: MutableRefObject<CarParams>
@@ -339,7 +342,7 @@ export function RaceCanvas({
   pieces,
   checkpointCount,
   checkpoints,
-  transmission = 'automatic',
+  transmissionRef,
   biome = null,
   decorations = EMPTY_DECORATIONS,
   paramsRef,
@@ -997,7 +1000,7 @@ export function RaceCanvas({
         ts,
         path,
         paramsRef.current,
-        transmission,
+        transmissionRef?.current ?? 'automatic',
       )
       state = result.state
 
@@ -1667,7 +1670,7 @@ export function RaceCanvas({
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [pieces, checkpointCount, checkpoints, transmission, biome, decorations])
+  }, [pieces, checkpointCount, checkpoints, biome, decorations])
 
   return <canvas ref={canvasRef} className={className} style={style} />
 }

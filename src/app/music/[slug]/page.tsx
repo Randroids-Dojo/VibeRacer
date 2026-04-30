@@ -18,7 +18,7 @@ export default async function MusicEditorPage(ctx: {
   return (
     <MusicEditor
       slug={slug}
-      initialMusic={loaded.kind === 'ok' ? loaded.tune : null}
+      initialMusic={loaded.kind === 'ok' ? loaded.music : null}
     />
   )
 }

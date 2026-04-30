@@ -6,7 +6,6 @@ import {
   type TrackBiome,
   type TrackDecoration,
   type TrackMood,
-  type TrackTransmissionMode,
 } from '@/lib/schemas'
 import { loadTrack } from '@/lib/loadTrack'
 import { loadTrackMusic } from '@/lib/loadTrackMusic'
@@ -43,14 +42,12 @@ export default async function EditPage(ctx: {
     loaded.kind === 'ok' ? (loaded.decorations ?? []) : []
   const initialMood: TrackMood | undefined =
     loaded.kind === 'ok' ? loaded.mood : undefined
-  const initialTransmission: TrackTransmissionMode =
-    loaded.kind === 'ok' ? loaded.transmission : 'automatic'
   // When the editor was opened against a specific historical version, surface
   // that as a fork banner so the player understands the saved version will
   // create a new hash rather than overwrite the one they are editing.
   const forkingFromHash =
     loaded.kind === 'ok' && requestedHash !== null ? requestedHash : null
-  const tuneLoaded = await loadTrackMusic(slug)
+  const musicLoaded = await loadTrackMusic(slug)
 
   return (
     <TrackEditor
@@ -61,8 +58,7 @@ export default async function EditPage(ctx: {
       initialBiome={initialBiome}
       initialDecorations={initialDecorations}
       initialMood={initialMood}
-      initialTransmission={initialTransmission}
-      hasCustomTune={tuneLoaded.kind === 'ok'}
+      hasCustomMusic={musicLoaded.kind === 'ok'}
       forkingFromHash={forkingFromHash}
     />
   )

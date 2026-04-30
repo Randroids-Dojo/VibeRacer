@@ -5,17 +5,14 @@ import {
   type TrackBiome,
   type TrackDecoration,
   type TrackMood,
-  type TrackTransmissionMode,
 } from '@/lib/schemas'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
 import { hasKvConfigured } from '@/lib/kv'
-import { DEFAULT_TRACK_TRANSMISSION } from '@/game/transmission'
 
 const DEFAULT_TRACK = {
   pieces: DEFAULT_TRACK_PIECES,
   versionHash: hashTrack(DEFAULT_TRACK_PIECES),
-  transmission: DEFAULT_TRACK_TRANSMISSION,
 }
 
 export type LoadTrackResult =
@@ -28,7 +25,6 @@ export type LoadTrackResult =
       biome?: TrackBiome
       decorations?: TrackDecoration[]
       mood?: TrackMood
-      transmission: TrackTransmissionMode
     }
   | { kind: 'fresh' }
   | { kind: 'notFound' }
@@ -65,7 +61,6 @@ export async function loadTrack(
           biome: parsed.data.biome,
           decorations: parsed.data.decorations,
           mood: parsed.data.mood,
-          transmission: parsed.data.transmission,
         }
       }
       // A specific-version miss must not fall through to latest.

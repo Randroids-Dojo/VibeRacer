@@ -9,7 +9,6 @@ import type {
   TrackCheckpoint,
   TrackDecoration,
   TrackMood,
-  TrackTransmissionMode,
 } from '@/lib/schemas'
 import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
@@ -117,8 +116,7 @@ interface TrackEditorProps {
   // pickers with. Both fields are optional inside the mood. Undefined when
   // the loaded track has no mood (legacy or never set).
   initialMood?: TrackMood
-  initialTransmission?: TrackTransmissionMode
-  hasCustomTune?: boolean
+  hasCustomMusic?: boolean
   // When set, the editor was opened against a historical version. Saving still
   // creates a new version on the same slug. The editor surfaces a small banner
   // so the player understands they are forking, not overwriting.
@@ -140,8 +138,7 @@ export function TrackEditor({
   initialBiome,
   initialDecorations = [],
   initialMood,
-  initialTransmission = 'automatic',
-  hasCustomTune = false,
+  hasCustomMusic = false,
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
@@ -203,16 +200,12 @@ export function TrackEditor({
     () => [...BASE_TOOLS, ...decorationPalette],
     [decorationPalette],
   )
-  const [transmission, setTransmission] = useState<TrackTransmissionMode>(
-    initialTransmission,
-  )
   const [advancedOpen, setAdvancedOpen] = useState<boolean>(
     (initialCheckpointCount !== undefined &&
       initialCheckpointCount !== initialPieces.length) ||
       initialMood !== undefined ||
       initialBiome !== undefined ||
       initialDecorations.length > 0 ||
-      initialTransmission === 'manual' ||
       initialCheckpoints.length > 0,
   )
   const [tool, setTool] = useState<Tool>('straight')
@@ -799,7 +792,6 @@ export function TrackEditor({
         biome?: TrackBiome
         decorations?: TrackDecoration[]
         mood?: TrackMood
-        transmission?: TrackTransmissionMode
       } = { pieces }
       if (customCheckpointsActive) {
         reqBody.checkpoints = checkpoints
@@ -818,9 +810,6 @@ export function TrackEditor({
       }
       if (decorations.length > 0) {
         reqBody.decorations = decorations
-      }
-      if (transmission !== 'automatic') {
-        reqBody.transmission = transmission
       }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',
@@ -888,14 +877,14 @@ export function TrackEditor({
           <button
             type="button"
             onClick={() => router.push(`/music/${slug}`)}
-            style={hasCustomTune ? tuneBtnActive : tuneBtn}
+            style={hasCustomMusic ? musicBtnActive : musicBtn}
             title={
-              hasCustomTune
+              hasCustomMusic
                 ? 'Edit the custom soundtrack for this track.'
                 : 'Create a custom soundtrack for this track.'
             }
           >
-            {hasCustomTune ? 'Edit Music *' : 'Edit Music'}
+            {hasCustomMusic ? 'Edit Music *' : 'Edit Music'}
           </button>
         </div>
       </div>
@@ -954,7 +943,7 @@ export function TrackEditor({
               <div style={advancedTitle}>Templates</div>
               <p style={templateHelp}>
                 Replace the current layout with a valid starter loop. Mood,
-                biome, transmission, and other advanced settings stay as-is.
+                biome, and other advanced settings stay as-is.
               </p>
             </div>
             <button
@@ -1227,34 +1216,6 @@ export function TrackEditor({
           </div>
           <div style={advancedRow}>
             <div style={advancedCopy}>
-              <div style={advancedLabel}>Transmission</div>
-              <p style={advancedHelp}>
-                Automatic keeps the classic arcade drive model. Manual adds
-                upshift and downshift controls to this track version and gives
-                each gear its own acceleration and speed range. Because this
-                affects lap behavior, manual tracks save under a different
-                version hash.
-              </p>
-            </div>
-            <div style={moodControl}>
-              <label style={moodPickerRow}>
-                <span style={moodPickerLabel}>Mode</span>
-                <select
-                  value={transmission}
-                  onChange={(e) =>
-                    setTransmission(e.target.value as TrackTransmissionMode)
-                  }
-                  style={moodSelect}
-                  aria-label="Track transmission"
-                >
-                  <option value="automatic">Automatic</option>
-                  <option value="manual">Manual shifting</option>
-                </select>
-              </label>
-            </div>
-          </div>
-          <div style={advancedRow}>
-            <div style={advancedCopy}>
               <div style={advancedLabel}>Track biome</div>
               <p style={advancedHelp}>
                 Pick the environment theme for this track version. The biome
@@ -1456,8 +1417,7 @@ export function TrackEditor({
               customCheckpointsActive ||
               biomeActive ||
               decorations.length > 0 ||
-              moodActive ||
-              transmission !== 'automatic' ? (
+              moodActive ? (
                 <span style={advancedDot} />
               ) : null}
             </button>
@@ -1943,7 +1903,7 @@ const headerActions: React.CSSProperties = {
   gap: 8,
   marginTop: 10,
 }
-const tuneBtn: React.CSSProperties = {
+const musicBtn: React.CSSProperties = {
   border: '1px solid #334155',
   background: '#162233',
   color: 'white',
@@ -1954,8 +1914,8 @@ const tuneBtn: React.CSSProperties = {
   fontFamily: 'inherit',
   cursor: 'pointer',
 }
-const tuneBtnActive: React.CSSProperties = {
-  ...tuneBtn,
+const musicBtnActive: React.CSSProperties = {
+  ...musicBtn,
   borderColor: '#ffb347',
   color: '#ffdf8a',
 }

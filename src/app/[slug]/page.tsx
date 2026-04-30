@@ -60,10 +60,9 @@ export default async function SlugPage(ctx: {
     biome,
     decorations,
     mood,
-    transmission,
   } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
-  const tuneLoaded = await loadTrackMusic(slug)
+  const musicLoaded = await loadTrackMusic(slug)
 
   // Parse the friend-challenge query string here on the server so the client
   // bundle never has to. Validation is defensive: a tampered or malformed
@@ -86,11 +85,10 @@ export default async function SlugPage(ctx: {
       pieces={pieces}
       checkpointCount={checkpointCount}
       checkpoints={checkpoints}
-      transmission={transmission}
       trackBiome={biome ?? null}
       trackDecorations={decorations ?? []}
       trackMood={mood ?? null}
-      initialMusic={tuneLoaded.kind === 'ok' ? tuneLoaded.tune : null}
+      initialMusic={musicLoaded.kind === 'ok' ? musicLoaded.music : null}
       initialRecord={overallRecord}
       challenge={challenge}
     />

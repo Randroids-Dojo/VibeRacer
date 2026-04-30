@@ -48,6 +48,15 @@ import {
   TimeOfDayCycleModeSchema,
   type TimeOfDayCycleMode,
 } from './timeOfDayCycle'
+import {
+  DEFAULT_TRANSMISSION,
+  TRANSMISSION_MODES,
+  type TransmissionMode,
+} from '@/game/transmission'
+
+// Re-export so component code can import the enum + type from one place
+// (controlSettings) alongside the rest of the user-preference surface.
+export { TRANSMISSION_MODES, type TransmissionMode } from '@/game/transmission'
 
 // User-tunable control settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -362,6 +371,13 @@ export interface ControlSettings {
   // the cycle starts on whichever preset the player picked and rotates from
   // there so a flip on does not snap to noon mid-race.
   timeOfDayCycle: TimeOfDayCycleMode
+  // 'automatic' keeps the classic arcade drive model where the engine handles
+  // gears for you. 'manual' surfaces a 5-gear box driven by the player's
+  // shiftDown / shiftUp bindings (Q / E by default), the touch shifter, and
+  // the gamepad LB / Y buttons. Default 'automatic' so legacy stored payloads
+  // keep the same race feel they had before this preference moved off of the
+  // track and onto the player.
+  transmission: TransmissionMode
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -414,6 +430,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   gamepadRumble: DEFAULT_HAPTIC_MODE,
   gamepadRumbleIntensity: DEFAULT_GAMEPAD_RUMBLE_INTENSITY,
   timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
+  transmission: DEFAULT_TRANSMISSION,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -598,6 +615,11 @@ const ControlSettingsSchema = z.object({
   // payloads keep their existing screen exactly as it was; players who want a
   // Forza Horizon-style rotating sky have to flip it on once in Settings.
   timeOfDayCycle: TimeOfDayCycleModeSchema.default(DEFAULT_TIME_OF_DAY_CYCLE),
+  // Transmission moved off of the track and onto the player. Default
+  // 'automatic' so legacy stored payloads keep the classic drive model;
+  // players who want manual shifting flip it on once in Settings and it
+  // applies to every track they race.
+  transmission: z.enum(TRANSMISSION_MODES).default(DEFAULT_TRANSMISSION),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -640,6 +662,7 @@ export function cloneDefaultSettings(): ControlSettings {
     gamepadRumble: DEFAULT_CONTROL_SETTINGS.gamepadRumble,
     gamepadRumbleIntensity: { ...DEFAULT_GAMEPAD_RUMBLE_INTENSITY },
     timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
+    transmission: DEFAULT_CONTROL_SETTINGS.transmission,
   }
 }
 
