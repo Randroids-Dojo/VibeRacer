@@ -59,8 +59,7 @@ export function RacePane({
 
         <MenuSection title="Progress">
           <MenuHint>
-            Review your lap data, leaderboard position, and unlocked
-            milestones for this track version.
+            Lap data, leaderboard position, and milestones for this track.
           </MenuHint>
           <div style={actionGrid}>
             {onLeaderboards ? (
@@ -74,7 +73,7 @@ export function RacePane({
             {onPbHistory ? (
               <MenuButton
                 onClick={onPbHistory}
-                title="See every personal best you have ever set on this version of the layout."
+                title="Every personal best you have set on this layout."
               >
                 {pbHistoryCount && pbHistoryCount > 0
                   ? `PB History (${pbHistoryCount})`
@@ -91,10 +90,6 @@ export function RacePane({
         </MenuSection>
 
         <MenuSection title="Track tools">
-          <MenuHint>
-            Capture, share, favorite, or learn the current track without
-            crowding the pause menu.
-          </MenuHint>
           <div style={actionGrid}>
             {onHowToPlay ? (
               <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
@@ -112,8 +107,8 @@ export function RacePane({
                 onClick={onToggleFavorite}
                 title={
                   isFavorite
-                    ? 'Remove this track from your home-page favorites.'
-                    : 'Pin this track to a Favorites section on the home page.'
+                    ? 'Remove from your home-page favorites.'
+                    : 'Pin to your home-page favorites.'
                 }
               >
                 {isFavorite ? 'Unstar track' : 'Star track'}
@@ -125,8 +120,8 @@ export function RacePane({
                 disabled={!challengeAvailable}
                 title={
                   challengeAvailable
-                    ? 'Send a friend a link that races them against your PB ghost.'
-                    : 'Set a personal best on this track first to unlock challenges.'
+                    ? 'Share a link that races a friend against your PB ghost.'
+                    : 'Set a personal best first to unlock challenges.'
                 }
               >
                 {challengeLabel ?? 'Challenge a friend'}

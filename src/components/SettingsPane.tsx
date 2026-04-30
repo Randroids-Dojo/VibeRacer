@@ -743,9 +743,8 @@ export function SettingsPane({
             <>
               <MenuSection title="Identity">
                 <MenuHint>
-                  Three letters tag your lap times on the leaderboards. Editing
-                  them only affects future laps. Past entries keep their old
-                  tag.
+                  Three letters tag your lap times on the leaderboards. Past
+                  entries keep their old tag.
                 </MenuHint>
                 <div style={initialsRow}>
                   <input
@@ -788,8 +787,7 @@ export function SettingsPane({
 
               <MenuSection title="Game info">
                 <MenuHint>
-                  Watch the full player-facing feature list in a credits-style
-                  scroll.
+                  Watch the full feature list in a credits-style scroll.
                 </MenuHint>
                 <MenuButton onClick={() => setFeatureListOpen(true)}>
                   Feature List
@@ -829,9 +827,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Per-track flavor</div>
             <MenuHint>
-              Nudges the in-game music&apos;s root key, scale, and tempo from
-              a stable hash of the current track slug so each track has its
-              own sound. Turn off for the same loop on every track.
+              Shifts the music&apos;s key, scale, and tempo per track so each
+              one has its own sound. Turn off for the same loop everywhere.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Per-track flavor</div>
@@ -842,9 +839,8 @@ export function SettingsPane({
               />
             </div>
             <MenuHint>
-              Folds your initials into the seed too, so two racers on the same
-              track hear distinct flavors. Off by default; flip on once and the
-              choice persists.
+              Mixes your initials into the seed so two racers on the same
+              track hear different flavors.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Mix in your initials</div>
@@ -858,8 +854,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Track tune</div>
             <MenuHint>
-              Pick the authored tune for this track, or override it with one
-              of your saved or visited tunes on this browser.
+              Use the authored tune or pick one of your saved or visited
+              tunes.
             </MenuHint>
             <select
               value={tuneChoice}
@@ -944,8 +940,8 @@ export function SettingsPane({
             <div style={subSection}>
               <div style={subTitle}>Mobile touch</div>
               <MenuHint>
-                Dual stick: left thumb steers, right thumb gas / brake. Single
-                stick: one thumb steers and controls gas / brake.
+                Dual stick: left thumb steers, right thumb gas / brake.
+                Single stick: one thumb does both.
               </MenuHint>
               <div style={touchToggleRow}>
                 {TOUCH_MODES.map((mode) => (
@@ -964,7 +960,7 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Gamepad</div>
             <MenuHint>
-              Steering stays on the left stick (and dpad). Click a slot, then
+              Steering stays on the left stick and dpad. Click a slot, then
               press the controller button you want.
               {padCapture ? ' Press Esc to cancel.' : ''}
             </MenuHint>
@@ -1022,9 +1018,8 @@ export function SettingsPane({
 
           <MenuSection title="Touch haptics">
           <MenuHint>
-            Buzz the device on lap completion, fresh personal best, and fresh
-            track-wide record. Auto fires only on touch devices where the
-            buzz is felt.
+            Buzz on lap finish, personal best, and track record. Auto fires
+            only on touch devices.
           </MenuHint>
           <div style={touchToggleRow}>
             {HAPTIC_MODES.map((mode) => {
@@ -1046,11 +1041,10 @@ export function SettingsPane({
 
           <MenuSection title="Gamepad rumble">
           <MenuHint>
-            Forza-lite rumble on a connected controller. The strong motor
-            tracks engine load and surface (asphalt vs grass), the weak motor
-            tracks slip and drift, with extra impulses on lap finish, PB,
-            record, wrong-way warnings, achievements, and going off track.
-            Works on Xbox 360 and any pad with dual rumble motors.
+            Rumble on a connected controller. Strong motor tracks engine load
+            and surface, weak motor tracks slip and drift, with extra pulses
+            on lap finish, PB, record, wrong way, achievements, and off
+            track.
           </MenuHint>
           <div style={touchToggleRow}>
             {HAPTIC_MODES.map((mode) => {
@@ -1096,13 +1090,13 @@ export function SettingsPane({
             <div style={subTitle}>Ghost car</div>
             <MenuHint>
               Race a translucent car that drives a recorded lap. Pick whose
-              lap to chase. Off hides the ghost entirely.
+              lap to chase, or turn off.
             </MenuHint>
             <div style={touchToggleRow}>
               <MenuButton
                 variant={!settings.showGhost ? 'primary' : 'secondary'}
                 onClick={setGhostOff}
-                title="Hide the ghost car entirely."
+                title="Hide the ghost car."
               >
                 Off
               </MenuButton>
@@ -1135,9 +1129,7 @@ export function SettingsPane({
               />
             </div>
             <MenuHint>
-              Floats the ghost racer&apos;s initials and lap time above their
-              car so you know whose lap you are chasing without opening the
-              leaderboard.
+              Floats the ghost&apos;s initials and lap time above their car.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show live gap</div>
@@ -1148,18 +1140,15 @@ export function SettingsPane({
               />
             </div>
             <MenuHint>
-              A small chip below the &quot;vs PB&quot; tile showing the live
-              time gap between you and the ghost car. Negative numbers mean you
-              are ahead of the ghost; positive means behind.
+              Live time gap to the ghost. Negative means you are ahead.
             </MenuHint>
           </div>
 
           <div style={subSection}>
             <div style={subTitle}>Racing line</div>
             <MenuHint>
-              Thin cyan line floating just above the road that traces the same
-              recorded lap as the ghost car. Use it as a coaching aid to study
-              the fast line without needing the ghost on screen.
+              Cyan line above the road tracing the ghost&apos;s lap. Study
+              the fast line without the ghost on screen.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show racing line</div>
@@ -1178,9 +1167,7 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Minimap</div>
             <MenuHint>
-              Top-down overview tucked into the bottom-right of the screen.
-              Useful on unfamiliar tracks; turn it off to keep the screen
-              fully clean.
+              Top-down overview in the bottom-right corner.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show minimap</div>
@@ -1200,8 +1187,7 @@ export function SettingsPane({
             <div style={subTitle}>Skid marks</div>
             <MenuHint>
               Dark tire trail laid behind the rear wheels during slides and
-              off-track moments. Marks fade after a few seconds. Turn off for
-              a fully clean track surface.
+              off-track moments. Fades after a few seconds.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show skid marks</div>
@@ -1215,10 +1201,7 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Tire smoke</div>
             <MenuHint>
-              Soft white puffs that pop off the rear wheels during hard
-              slides and braking, then rise and fade. Pairs with the dark
-              skid trail without competing with it. Turn off for a cleaner
-              cornering scene.
+              White puffs off the rear wheels during hard slides and braking.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show tire smoke</div>
@@ -1232,9 +1215,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Kerbs</div>
             <MenuHint>
-              Alternating red and white curb stones along the inside of every
-              corner. Helps mark the apex at a glance. Turn off for a pure
-              asphalt look.
+              Red and white curb stones along the inside of every corner to
+              mark the apex.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show kerbs</div>
@@ -1248,9 +1230,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Trackside scenery</div>
             <MenuHint>
-              Trees on the grass, traffic cones at the outside of every
-              corner, and red and white barriers framing the start gate. Turn
-              off for a clean grass field.
+              Trees, traffic cones at every corner, and barriers framing the
+              start gate.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show scenery</div>
@@ -1269,9 +1250,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Drift score</div>
             <MenuHint>
-              Live drift score that climbs while you slide through corners.
-              Longer chained slides hit a bigger multiplier. Per-lap and
-              all-time bests sit underneath. Turn off for a clean HUD.
+              Score that climbs while you slide through corners. Longer chains
+              hit a bigger multiplier. Lap and all-time bests sit underneath.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show drift score</div>
@@ -1285,8 +1265,7 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Speedometer</div>
             <MenuHint>
-              Bottom-center dial that shows your live speed plus a swept
-              needle from zero to your tuning&apos;s top speed.
+              Bottom-center dial showing your live speed.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show speedometer</div>
@@ -1318,17 +1297,15 @@ export function SettingsPane({
               />
             </div>
             <MenuHint>
-              Adds a green tick on the dial at your session-best speed plus a
-              PEAK readout below the live number. Resets on Restart.
+              Green tick on the dial at your session-best speed and a PEAK
+              readout. Resets on Restart.
             </MenuHint>
           </div>
 
           <div style={subSection}>
             <div style={subTitle}>Rear-view mirror</div>
             <MenuHint>
-              Top-center inset that shows what is behind you. Handy for
-              keeping an eye on the ghost car. Turn off for a fully clean
-              forward view.
+              Top-center inset showing what is behind you.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show rear-view</div>
@@ -1342,10 +1319,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Speed lines</div>
             <MenuHint>
-              Thin streaks that radiate outward from the screen center while
-              you are pushing past about two-thirds of your tuning&apos;s top
-              speed. Pure cosmetic. Sells the rush at full chat. Turn off
-              for a fully clean screen at top speed.
+              Streaks that radiate from the screen center past about
+              two-thirds of your top speed.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show speed lines</div>
@@ -1359,11 +1334,9 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Reaction time</div>
             <MenuHint>
-              Pops a small chip the moment you press throttle for a fresh
-              race, showing how many milliseconds passed between the GO
-              light and your first tap. Tier badge grades the launch:
-              LIGHTNING (sub 200 ms), GREAT (sub 350 ms), GOOD (sub 600 ms),
-              or HUMAN. Auto-fades after a few seconds.
+              Milliseconds between the GO light and your first throttle tap,
+              graded LIGHTNING / GREAT / GOOD / HUMAN. Fades after a few
+              seconds.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show reaction time</div>
@@ -1377,10 +1350,8 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Leaderboard rank</div>
             <MenuHint>
-              Pins a small badge alongside your BEST (ALL TIME) tile showing
-              where you sit on this track version&apos;s leaderboard: P1 for
-              the record holder, PODIUM for top 3, TOP 10 #N, TOP %, TOP
-              HALF, or RANKED otherwise. Refreshes after every submitted lap.
+              Badge next to BEST (ALL TIME) showing your leaderboard
+              position. Refreshes after every submitted lap.
             </MenuHint>
             <div style={audioRow}>
               <div style={audioLabel}>Show rank chip</div>
@@ -1397,8 +1368,7 @@ export function SettingsPane({
           <>
           <MenuSection title="Car paint">
           <MenuHint>
-            Pick a paint color for your car. Stock keeps the original red
-            finish from the model. Wheels stay dark either way.
+            Pick a paint color. Stock keeps the original red finish.
           </MenuHint>
           <div style={paintGrid}>
             <PaintSwatch
@@ -1421,8 +1391,7 @@ export function SettingsPane({
 
         <MenuSection title="Racing number">
           <MenuHint>
-            Stick a 1 or 2 digit racing number plate on the roof of your car.
-            Pure cosmetic. Nothing else changes.
+            A 1 or 2 digit number plate on the roof of your car.
           </MenuHint>
           <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
             <span style={{ color: menuTheme.textPrimary }}>Show plate</span>
@@ -1488,8 +1457,8 @@ export function SettingsPane({
 
         <MenuSection title="Headlights">
           <MenuHint>
-            Front lamps with real light sources on your car. Visual only. Auto
-            turns them on around dawn, dusk, at night, and in harsh weather.
+            Front lamps on your car. Auto turns them on around dawn, dusk,
+            at night, and in harsh weather.
           </MenuHint>
           <div style={touchToggleRow}>
             {HEADLIGHT_MODES.map((mode) => {
@@ -1511,9 +1480,8 @@ export function SettingsPane({
 
         <MenuSection title="Brake lights">
           <MenuHint>
-            Glowing red lamps on the rear of your car. Pure cosmetic. Auto
-            lights them while you brake or hold the handbrake. Most visible
-            from the rear-view mirror.
+            Red lamps on the rear of your car. Auto lights them while you
+            brake or hold the handbrake.
           </MenuHint>
           <div style={touchToggleRow}>
             {BRAKE_LIGHT_MODES.map((mode) => {
@@ -1539,8 +1507,7 @@ export function SettingsPane({
           <>
           <MenuSection title="Time of day">
           <MenuHint>
-            Skin the scene with a different lighting preset. The track is
-            unchanged. Default is Noon, which matches the original look.
+            Pick a lighting preset for the scene. Default is Noon.
           </MenuHint>
           <div style={paintGrid}>
             {TIME_OF_DAY_NAMES.map((name) => {
@@ -1559,9 +1526,8 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>
-            Auto cycle the sky through noon, morning, sunset, and night while
-            you race. The cycle is suppressed when a track author baked in a
-            time of day.
+            Cycle the sky through noon, morning, sunset, and night while you
+            race. Suppressed when the track author baked in a time of day.
           </MenuHint>
           <div style={touchToggleRow}>
             {TIME_OF_DAY_CYCLE_MODES.map((mode) => {
@@ -1585,9 +1551,8 @@ export function SettingsPane({
 
         <MenuSection title="Weather">
           <MenuHint>
-            Layer fog and a softer sky on top of the time-of-day skin. Foggy
-            cuts visibility down to the next corner. Default is Clear, which
-            matches the original look.
+            Layer fog and a softer sky over the time-of-day preset. Foggy
+            cuts visibility to the next corner. Default is Clear.
           </MenuHint>
           <div style={paintGrid}>
             {WEATHER_NAMES.map((name) => {
@@ -1606,8 +1571,8 @@ export function SettingsPane({
             })}
           </div>
           <MenuHint>
-            When the track author baked in a time of day or weather, use that
-            on this track. Turn this off to always use your own picks above.
+            Use the track author&apos;s baked-in time of day or weather when
+            present. Turn off to always use your picks above.
           </MenuHint>
           <MenuToggle
             label="Respect track mood"
@@ -1623,11 +1588,10 @@ export function SettingsPane({
         {activeTab === 'camera' ? (
           <MenuSection title="Camera">
           <MenuHint>
-            Tune the trailing chase camera. Higher views see more of the track,
-            lower views feel faster. Look-ahead leans the camera into corners.
-            Follow speed is how snappy the camera tracks the car: lower is
-            looser and more cinematic, higher is locked-on. Pick a preset
-            below for a one-click starting point, then tune from there.
+            Tune the trailing chase camera. Higher views see more of the
+            track, lower views feel faster. Look-ahead leans into corners.
+            Follow speed sets how tightly the camera tracks the car. Pick a
+            preset, then tune from there.
           </MenuHint>
           <div style={paintGrid}>
             {CAMERA_PRESET_NAMES.map((name) => (
@@ -1707,8 +1671,8 @@ export function SettingsPane({
         {activeTab === 'tuning' ? (
           <MenuSection title="Tuning">
           <MenuHint>
-            Adjust the current car setup or open the Tuning Lab for a curated
-            test loop that suggests car-param updates.
+            Adjust the current car setup, or open the Tuning Lab for a guided
+            test loop that suggests changes.
           </MenuHint>
           {onSetup ? (
             <MenuButton click="confirm" onClick={onSetup}>
