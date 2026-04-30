@@ -1,5 +1,5 @@
 'use client'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import type { CarParams } from '@/game/physics'
 import {
   TUNING_PARAM_META,
@@ -9,12 +9,20 @@ import {
 } from '@/lib/tuningSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
+import { TuningHistoryList } from './TuningHistoryList'
+import type { TuningHistoryEntry } from '@/lib/tuningHistory'
 
 interface TuningPanelProps {
   params: CarParams
   onChange: (next: CarParams) => void
   onReset: () => void
   onClose: () => void
+  // Optional audit log integration. When omitted the panel renders without a
+  // history section so the lab's TuningSession (which has its own history
+  // surface) can keep its existing layout.
+  history?: TuningHistoryEntry[]
+  liveSlug?: string
+  onApplyHistoryEntry?: (entry: TuningHistoryEntry) => void
 }
 
 export function TuningPanel({
@@ -22,11 +30,23 @@ export function TuningPanel({
   onChange,
   onReset,
   onClose,
+  history,
+  liveSlug,
+  onApplyHistoryEntry,
 }: TuningPanelProps) {
   const stock = useMemo(() => isStockParams(params), [params])
   const clickConfirm = useClickSfx('confirm')
   const clickBack = useClickSfx('back')
   const clickSoft = useClickSfx('soft')
+  const [historyOpen, setHistoryOpen] = useState(false)
+  const showHistory =
+    history !== undefined &&
+    onApplyHistoryEntry !== undefined &&
+    history.length > 0
+  const scopedHistoryCount =
+    history && liveSlug
+      ? history.filter((e) => e.slug === liveSlug).length
+      : history?.length ?? 0
 
   function update(key: keyof CarParams, value: number) {
     onChange(clampParams({ ...params, [key]: value }))
@@ -90,6 +110,39 @@ export function TuningPanel({
             )
           })}
         </div>
+
+        {showHistory && history && onApplyHistoryEntry ? (
+          <div style={historySection}>
+            <button
+              type="button"
+              onClick={() => {
+                clickSoft()
+                setHistoryOpen((v) => !v)
+              }}
+              style={historyToggleBtn}
+              aria-expanded={historyOpen}
+            >
+              <span>
+                Recent changes
+                {scopedHistoryCount > 0 ? ` (${scopedHistoryCount})` : ''}
+              </span>
+              <span style={historyChevron}>{historyOpen ? '▴' : '▾'}</span>
+            </button>
+            {historyOpen ? (
+              <div style={historyBody}>
+                <TuningHistoryList
+                  entries={history}
+                  liveParams={params}
+                  scopeSlug={liveSlug ?? null}
+                  onApply={(entry) => {
+                    clickConfirm()
+                    onApplyHistoryEntry(entry)
+                  }}
+                />
+              </div>
+            ) : null}
+          </div>
+        ) : null}
 
         <div style={footer}>
           <button
@@ -582,6 +635,35 @@ const hintText: React.CSSProperties = {
   fontSize: 11,
   opacity: 0.55,
   lineHeight: 1.4,
+}
+const historySection: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  padding: '8px 0',
+  borderTop: '1px solid #2a2a2a',
+}
+const historyToggleBtn: React.CSSProperties = {
+  background: 'transparent',
+  color: '#cfcfcf',
+  border: 'none',
+  padding: '6px 0',
+  fontSize: 13,
+  fontWeight: 600,
+  textAlign: 'left',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+}
+const historyChevron: React.CSSProperties = {
+  fontSize: 11,
+  color: '#9aa0a6',
+  marginLeft: 8,
+}
+const historyBody: React.CSSProperties = {
+  paddingTop: 6,
 }
 const footer: React.CSSProperties = {
   display: 'flex',

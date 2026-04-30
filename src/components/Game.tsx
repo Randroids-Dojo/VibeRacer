@@ -11,7 +11,7 @@ import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
-import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
 import type { TrackTune } from '@/lib/tunes'
@@ -32,6 +32,11 @@ import {
 } from '@/lib/timeOfDayCycle'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
+import { useTuningRecorder } from '@/hooks/useTuningRecorder'
+import {
+  applyTuningHistoryEntry,
+  type TuningHistoryEntry,
+} from '@/lib/tuningHistory'
 import { InitialsPrompt } from './InitialsPrompt'
 import {
   INITIALS_EVENT,
@@ -160,7 +165,7 @@ import { summarizeSession } from '@/game/sessionSummary'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import { computeLapConsistency } from '@/game/lapConsistency'
 import type { CarParams } from '@/game/physics'
-import type { InputMode } from '@/lib/tuningSettings'
+import { cloneDefaultParams, type InputMode } from '@/lib/tuningSettings'
 import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
   ghostSourceNeedsTopFetch,
@@ -241,7 +246,6 @@ interface GameProps {
   pieces: Piece[]
   checkpointCount?: number
   checkpoints?: TrackCheckpoint[]
-  transmission?: TrackTransmissionMode
   trackBiome?: TrackBiome | null
   trackDecorations?: readonly TrackDecoration[]
   // Track-author baked mood (timeOfDay / weather). Null when the author has
@@ -420,7 +424,6 @@ function GameSession({
   pieces,
   checkpointCount,
   checkpoints,
-  transmission = 'automatic',
   trackBiome = null,
   trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
@@ -434,10 +437,61 @@ function GameSession({
   const { settings: audioSettings } = useAudioSettings()
   const {
     params: tuning,
-    setParams: setTuning,
-    applyParams: applyTuning,
-    resetParams: resetTuning,
+    setParams: rawSetTuning,
+    applyParams: rawApplyTuning,
+    resetParams: rawResetTuning,
   } = useTuning(slug)
+  const {
+    history: tuningHistory,
+    record: recordTuningChange,
+    flush: flushTuningHistory,
+  } = useTuningRecorder()
+  // Wrap the useTuning writes so each one also lands in the audit log. The
+  // recorder coalesces slider sources via debounce; non-slider sources flow
+  // through with `immediate: true` so each discrete intent reads as one row.
+  const setTuning = useCallback(
+    (next: CarParams) => {
+      rawSetTuning(next)
+      recordTuningChange({ next, source: 'slider', slug })
+    },
+    [rawSetTuning, recordTuningChange, slug],
+  )
+  const applyTuning = useCallback(
+    (next: CarParams, label?: string | null) => {
+      rawApplyTuning(next)
+      recordTuningChange({
+        next,
+        source: 'savedApplied',
+        label: label ?? null,
+        slug,
+        immediate: true,
+      })
+    },
+    [rawApplyTuning, recordTuningChange, slug],
+  )
+  const resetTuning = useCallback(() => {
+    rawResetTuning()
+    recordTuningChange({
+      next: cloneDefaultParams(),
+      source: 'reset',
+      label: 'Reset to defaults',
+      slug,
+      immediate: true,
+    })
+  }, [rawResetTuning, recordTuningChange, slug])
+  const handleApplyHistoryEntry = useCallback(
+    (entry: TuningHistoryEntry) => {
+      applyTuningHistoryEntry(entry, rawApplyTuning)
+      recordTuningChange({
+        next: entry.params,
+        source: 'historyRevert',
+        label: 'Reverted from history',
+        slug,
+        immediate: true,
+      })
+    },
+    [rawApplyTuning, recordTuningChange, slug],
+  )
   useEffect(() => {
     recordKnownTune(slug, initialTune)
     setActiveTune(resolvePersonalTune(slug, initialTune))
@@ -646,6 +700,12 @@ function GameSession({
   // reference changes.
   const showRacingLineRef = useRef<boolean>(settings.showRacingLine)
   showRacingLineRef.current = settings.showRacingLine
+  // Mirrors settings.transmission into the rAF loop so a flip from automatic
+  // to manual (or back) takes effect on the next physics tick without
+  // re-initing the canvas mid-race. HUD + TouchControls read the live value
+  // straight off `settings` since they re-render on settings changes.
+  const transmissionRef = useRef<TransmissionMode>(settings.transmission)
+  transmissionRef.current = settings.transmission
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -1287,6 +1347,15 @@ function GameSession({
   const editTrack = useCallback(() => {
     router.push(`/${slug}/edit`)
   }, [router, slug])
+
+  // Pause menu shortcut to the Tuning Lab. Prompts the player before leaving
+  // a live race so a misclick does not abandon a lap. Mirrors the same copy
+  // SettingsPane uses, so the prompt feels identical regardless of entry
+  // point.
+  const openTuningLabFromPause = useCallback(() => {
+    if (!window.confirm('Leave the race to open the Tuning Lab?')) return
+    router.push('/tune')
+  }, [router])
 
   // Pause-menu Share button. Wraps `shareOrCopy` and surfaces the result as a
   // transient label on the button itself (the HUD's toast lane is reserved for
@@ -2501,7 +2570,7 @@ function GameSession({
         pieces={pieces}
         checkpointCount={checkpointCount}
         checkpoints={checkpoints}
-        transmission={transmission}
+        transmissionRef={transmissionRef}
         biome={trackBiome ?? null}
         decorations={trackDecorations}
         paramsRef={paramsRef}
@@ -2643,7 +2712,7 @@ function GameSession({
         carMaxSpeed={tuning.maxSpeed}
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
-        transmission={transmission}
+        transmission={settings.transmission}
         compact={compactHud}
       />
       {achievementToast ? (
@@ -2657,7 +2726,7 @@ function GameSession({
         keys={keys}
         enabled={phase === 'racing' && !paused}
         mode={settings.touchMode}
-        showShifter={transmission === 'manual'}
+        showShifter={settings.transmission === 'manual'}
       />
       {phase === 'racing' && !paused ? (
         <>
@@ -2690,6 +2759,7 @@ function GameSession({
               onEditTrack={editTrack}
               onRace={() => setPauseView('race')}
               onSettings={() => setPauseView('settings')}
+              onTuningLab={openTuningLabFromPause}
               trackMoodLabel={trackMoodLabel}
               pieces={pieces}
               onExit={handleExitClick}
@@ -2726,7 +2796,7 @@ function GameSession({
               versionHash={versionHash}
               onBack={() => setPauseView('menu')}
               onApplyTuning={(p) => {
-                applyTuning(p)
+                applyTuning(p, 'Rival lap')
                 setPauseView('menu')
               }}
               onChaseRival={handleChaseRival}
@@ -2779,7 +2849,15 @@ function GameSession({
               params={tuning}
               onChange={setTuning}
               onReset={resetTuning}
-              onClose={() => setPauseView('menu')}
+              onClose={() => {
+                // Flush any pending slider drag so the most-recent tweak
+                // lands as a history entry before the panel disappears.
+                flushTuningHistory()
+                setPauseView('menu')
+              }}
+              history={tuningHistory}
+              liveSlug={slug}
+              onApplyHistoryEntry={handleApplyHistoryEntry}
             />
           ) : pauseView === 'howToPlay' ? (
             <HowToPlay

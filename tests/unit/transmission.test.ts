@@ -2,28 +2,28 @@ import { describe, expect, it } from 'vitest'
 import { DEFAULT_CAR_PARAMS } from '@/game/physics'
 import {
   DEFAULT_MANUAL_GEAR,
-  DEFAULT_TRACK_TRANSMISSION,
+  DEFAULT_TRANSMISSION,
   MANUAL_GEAR_MAX,
   MANUAL_GEAR_MIN,
-  TRACK_TRANSMISSION_MODES,
+  TRANSMISSION_MODES,
   carParamsForTransmission,
   clampManualGear,
-  isTrackTransmissionMode,
+  isTransmissionMode,
   manualGearSpec,
   shiftManualGear,
 } from '@/game/transmission'
 
 describe('transmission helpers', () => {
   it('keeps automatic as the legacy default', () => {
-    expect(DEFAULT_TRACK_TRANSMISSION).toBe('automatic')
-    expect(TRACK_TRANSMISSION_MODES).toEqual(['automatic', 'manual'])
+    expect(DEFAULT_TRANSMISSION).toBe('automatic')
+    expect(TRANSMISSION_MODES).toEqual(['automatic', 'manual'])
   })
 
   it('guards transmission mode values', () => {
-    expect(isTrackTransmissionMode('automatic')).toBe(true)
-    expect(isTrackTransmissionMode('manual')).toBe(true)
-    expect(isTrackTransmissionMode('stick')).toBe(false)
-    expect(isTrackTransmissionMode(null)).toBe(false)
+    expect(isTransmissionMode('automatic')).toBe(true)
+    expect(isTransmissionMode('manual')).toBe(true)
+    expect(isTransmissionMode('stick')).toBe(false)
+    expect(isTransmissionMode(null)).toBe(false)
   })
 
   it('clamps manual gears to the supported range', () => {

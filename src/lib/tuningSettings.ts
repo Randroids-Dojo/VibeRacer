@@ -196,6 +196,27 @@ export function inputModeDescription(mode: InputMode | null): string {
 
 export const TUNING_KEYS = TUNING_PARAM_META.map((m) => m.key)
 
+const TUNING_PARAM_META_BY_KEY: Record<keyof CarParams, TuningParamMeta> =
+  TUNING_PARAM_META.reduce(
+    (acc, m) => {
+      acc[m.key] = m
+      return acc
+    },
+    {} as Record<keyof CarParams, TuningParamMeta>,
+  )
+
+export function getTuningParamMeta(key: keyof CarParams): TuningParamMeta {
+  return TUNING_PARAM_META_BY_KEY[key]
+}
+
+// Renders a CarParams numeric value compactly: two decimals when |n| < 10
+// (so steerRate's 0.05 step keeps precision), one decimal otherwise. Strips
+// trailing zeros so "26.00" reads as "26".
+export function formatTuningValue(n: number): string {
+  if (Math.abs(n) < 10) return n.toFixed(2).replace(/\.?0+$/, '')
+  return n.toFixed(1).replace(/\.0$/, '')
+}
+
 export const TUNING_PER_TRACK_PREFIX = 'viberacer.tuning.track:'
 export const TUNING_LAST_LOADED_KEY = 'viberacer.tuning.lastLoaded'
 // Older dev-only key. We migrate from this once if present.

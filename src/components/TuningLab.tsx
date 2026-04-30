@@ -9,8 +9,10 @@ import {
 import Link from 'next/link'
 import {
   TUNING_LAB_KEY,
+  TUNING_LAB_SYNTHETIC_SLUG,
   applySavedAsLastLoaded,
   buildExportPayload,
+  persistLabLastLoaded,
   cloneDefaultParams,
   deleteTuning as deleteTuningStore,
   parseImportedJson,
@@ -24,10 +26,16 @@ import {
 } from '@/lib/tuningLab'
 import { resolveStartingTuning } from '@/lib/tuningSettings'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { useTuningRecorder } from '@/hooks/useTuningRecorder'
+import {
+  applyTuningHistoryEntry,
+  type TuningHistoryEntry,
+} from '@/lib/tuningHistory'
 import { TuningSavedList } from './TuningSavedList'
 import { TuningSession } from './TuningSession'
+import { TuningHistoryList } from './TuningHistoryList'
 
-type View = 'home' | 'session' | 'list' | 'import'
+type View = 'home' | 'session' | 'list' | 'import' | 'history'
 
 export function TuningLab() {
   const { settings, hydrated: controlsHydrated } = useControlSettings()
@@ -37,6 +45,8 @@ export function TuningLab() {
   const [toast, setToast] = useState<string | null>(null)
   const [importText, setImportText] = useState('')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  const { history: tuningHistory, record: recordTuningChange } =
+    useTuningRecorder()
 
   useEffect(() => {
     setItems(readSavedTunings())
@@ -84,7 +94,30 @@ export function TuningLab() {
 
   function applyToNextRace(t: SavedTuning) {
     applySavedAsLastLoaded(t)
+    recordTuningChange({
+      next: t.params,
+      source: 'savedApplied',
+      label: t.name,
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
     flashToast(`"${t.name}" will load on your next race`)
+  }
+
+  function applyHistoryEntryFromLab(entry: TuningHistoryEntry) {
+    // Inside the lab there is no live race, so the apply path is the same as
+    // the lab's "carry forward to next race" hook: write to the synthetic
+    // __lab__ slug and the lastLoaded key. The next race the player opens
+    // picks up these params.
+    applyTuningHistoryEntry(entry, persistLabLastLoaded)
+    recordTuningChange({
+      next: entry.params,
+      source: 'historyRevert',
+      label: 'Reverted from history',
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
+    flashToast('Tuning reverted to next race')
   }
 
   async function copyTuningToClipboard(t: SavedTuning) {
@@ -143,6 +176,13 @@ export function TuningLab() {
     if (importResult.kind === 'tuning') {
       upsertTuning(importResult.saved)
       setItems(readSavedTunings())
+      recordTuningChange({
+        next: importResult.saved.params,
+        source: 'imported',
+        label: importResult.saved.name,
+        slug: TUNING_LAB_SYNTHETIC_SLUG,
+        immediate: true,
+      })
       flashToast(`Imported "${importResult.saved.name}"`)
       setImportText('')
       setImportResult(null)
@@ -169,6 +209,13 @@ export function TuningLab() {
         updatedAt: new Date().toISOString(),
       })
       setItems(readSavedTunings())
+      recordTuningChange({
+        next: last.params,
+        source: 'imported',
+        label: 'Imported session',
+        slug: TUNING_LAB_SYNTHETIC_SLUG,
+        immediate: true,
+      })
       flashToast('Imported session saved')
       setImportText('')
       setImportResult(null)
@@ -203,6 +250,9 @@ export function TuningLab() {
           <button onClick={() => setView('list')} style={secondaryBtn}>
             Saved tunings ({items.length})
           </button>
+          <button onClick={() => setView('history')} style={secondaryBtn}>
+            Recent changes ({tuningHistory.length})
+          </button>
           <button onClick={() => setView('import')} style={secondaryBtn}>
             Import JSON
           </button>
@@ -230,6 +280,29 @@ export function TuningLab() {
             onExport={copyTuningToClipboard}
             onDelete={onDelete}
             onRename={onRename}
+          />
+          <div style={ctaRow}>
+            <button onClick={() => setView('home')} style={secondaryBtn}>
+              Back
+            </button>
+          </div>
+        </div>
+      ) : null}
+
+      {view === 'history' ? (
+        <div style={card}>
+          <h2 style={cardTitle}>Recent changes</h2>
+          <p style={cardCopy}>
+            Every tuning change you make lands here. Apply any prior snapshot
+            to roll the live car back. Slider drags coalesce into one entry,
+            and discrete actions (apply, reset, accept recommendation) each
+            land as their own row.
+          </p>
+          <TuningHistoryList
+            entries={tuningHistory}
+            liveParams={initialParams}
+            onApply={applyHistoryEntryFromLab}
+            scopeSlug={null}
           />
           <div style={ctaRow}>
             <button onClick={() => setView('home')} style={secondaryBtn}>

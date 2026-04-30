@@ -15,6 +15,9 @@ interface PauseMenuProps {
   onEditTrack: () => void
   onRace: () => void
   onSettings: () => void
+  // Direct shortcut to the Tuning Lab at /tune. The host owns the
+  // leave-race confirm prompt so this stays presentational.
+  onTuningLab: () => void
   // Short label describing the active track-author mood (e.g. "Sunset, Foggy")
   // when the player is racing under a baked-in author mood. Renders as a
   // small caption above the Esc hint so the player understands why the scene
@@ -36,6 +39,7 @@ export function PauseMenu({
   onEditTrack,
   onRace,
   onSettings,
+  onTuningLab,
   trackMoodLabel,
   pieces,
   onExit,
@@ -67,6 +71,9 @@ export function PauseMenu({
         </MenuButton>
         <MenuButton onClick={onRace}>Race</MenuButton>
         <MenuButton onClick={onEditTrack}>Edit Track</MenuButton>
+        <MenuButton click="confirm" onClick={onTuningLab}>
+          Tuning Lab
+        </MenuButton>
         <MenuButton onClick={onSettings}>Settings</MenuButton>
         <MenuButton click="back" onClick={onExit}>
           Exit to title

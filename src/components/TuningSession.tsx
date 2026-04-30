@@ -17,6 +17,7 @@ import {
   persistLabLastLoaded,
   recommendNextParams,
   upsertTuning,
+  TUNING_LAB_SYNTHETIC_SLUG,
   type AspectRatings,
   type ControlType,
   type Damping,
@@ -25,6 +26,7 @@ import {
   type SavedTuning,
   type TrackTag,
 } from '@/lib/tuningLab'
+import { useTuningRecorder } from '@/hooks/useTuningRecorder'
 import { TUNING_PARAM_META } from '@/lib/tuningSettings'
 import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
@@ -78,6 +80,7 @@ export function TuningSession({
 }: Props) {
   const { settings } = useControlSettings()
   const keys = useKeyboard(settings.keyBindings)
+  const { record: recordTuningChange } = useTuningRecorder()
   // Gamepad polling shares the same KeyInput ref so analog axes feed straight
   // into RaceCanvas. The Tuning Lab has no pause concept, so the toggle
   // callback is a no-op. The user's saved bindings are applied here as well so
@@ -302,6 +305,13 @@ export function TuningSession({
   function applyRecommendationAndDriveAgain() {
     if (!pendingRecommendation) return
     setParams(pendingRecommendation.nextParams)
+    recordTuningChange({
+      next: pendingRecommendation.nextParams,
+      source: 'recommended',
+      label: 'Lab recommendation',
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
     setPendingRecommendation(null)
     startCountdown()
   }

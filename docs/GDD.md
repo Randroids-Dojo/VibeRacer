@@ -494,7 +494,7 @@ Ghost-source picker: live. `src/lib/ghostSource.ts` defines `GHOST_SOURCES = ['a
 
 ## 9. Title Screen, Menu, and Pause
 
-**Status.** Done. Pause menu is live and intentionally slim: Resume, Restart Lap, Restart, Edit Track, Settings, and Exit to title stay top-level. Secondary race views and tools now live inside Settings tabs. Title screen at `/` is live with a Fredoka-wordmark logo over a Three.js background loop, Play at `/start`, Load existing track, Tuning Lab, Settings, Feature List, and How to play. The Feature List also has a direct `/features` route.
+**Status.** Done. Pause menu stays slim: Resume, Restart Lap, Restart, Race, Edit Track, Tuning Lab, Settings, and Exit to title sit top-level. Tuning Lab earned its top-level slot because the in-race SETUP overlay surfaces an audit log of recent tuning changes and the lab is the natural follow-up surface for the broader recent-changes view, so a one-click pause path matters. Secondary race views and tools still live inside Settings tabs. Title screen at `/` is live with a Fredoka-wordmark logo over a Three.js background loop, Play at `/start`, Load existing track, Tuning Lab, Settings, Feature List, and How to play. The Feature List also has a direct `/features` route.
 
 ### Build log
 
@@ -625,6 +625,10 @@ A dedicated mode at `/tune` for players who want guided tuning instead of raw sl
 - "Apply to next race" writes through to the existing `viberacer.tuning.lastLoaded` key (and a synthetic `viberacer.tuning.track:__lab__` save) so the next slug the user opens picks the lab tuning up automatically.
 - The session also auto-persists the live params to `lastLoaded` on every change so an unsaved session still carries its most-recent setup forward when the user leaves the lab. During the drive phase a "Restart" button resets the car to the start line without going to feedback.
 - Export and import are clipboard-based. "Copy JSON" on a saved tuning copies a single `SavedTuning`. The home view also offers "Copy all saved tunings". Import view accepts pasted JSON and dispatches via `parseImportedJson`: a single tuning lands directly in the saved list; a session payload saves its final round.
+
+### Tuning history audit log
+
+A global recent-changes audit log lets the player roll any prior tuning snapshot back to the live car in one click. Records discrete tuning intents: slider settle (debounced 600 ms so a single drag becomes one row, not hundreds), apply saved tuning, accept lab recommendation, reset to defaults, leaderboard rival apply, JSON import, and explicit history revert. Storage in `src/lib/tuningHistory.ts` under `viberacer.tuningHistory` (single global key, capped at 30 entries, oldest dropped first). Each row carries `id`, `params` (re-clamped on read), `source`, optional human `label`, per-key delta map, `slug` (real track slug or the synthetic `__lab__`), and `changedAt` epoch ms. Pure helpers: `appendTuningHistory`, `diffParams`, `paramsEqual`, `summarizeChangedKeys`, `applyTuningHistoryEntry`, `readTuningHistory`, `appendStoredTuningHistory`, `clearTuningHistory`. Recorder hook `src/hooks/useTuningRecorder.ts` owns the in-memory list, hydrates on mount, listens to cross-tab `storage` events for read-only refresh (the recorder in this tab is the source of truth so a cross-tab echo never double-counts), and debounces slider sources. Surfaces: a top-level "Recent changes" view inside `/tune` and a collapsible "Recent changes" section above the footer in the in-race SETUP overlay (`TuningPanel.tsx`). The in-race section default-scopes to the active slug with a toggle to widen to all tracks; the lab view defaults to all slugs. Apply behavior differs by surface: in-race calls `useTuning.applyParams` so the live car updates immediately; lab calls `persistLabLastLoaded` so the next race the player opens picks the snapshot up. Each apply also records itself as a `historyRevert` entry for full auditability.
 
 ---
 
