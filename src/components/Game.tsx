@@ -41,6 +41,7 @@ import {
 import { Countdown } from './Countdown'
 import { HUD } from './HUD'
 import { PauseMenu } from './PauseMenu'
+import { RacePane } from './RacePane'
 import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
@@ -398,6 +399,7 @@ interface HudState {
 
 type PauseView =
   | 'menu'
+  | 'race'
   | 'leaderboard'
   | 'settings'
   | 'tuning'
@@ -2672,10 +2674,37 @@ function GameSession({
                 armLapReset()
               }}
               onEditTrack={editTrack}
+              onRace={() => setPauseView('race')}
               onSettings={() => setPauseView('settings')}
               trackMoodLabel={trackMoodLabel}
               pieces={pieces}
               onExit={handleExitClick}
+            />
+          ) : pauseView === 'race' ? (
+            <RacePane
+              onBack={() => setPauseView('menu')}
+              onLeaderboards={() => setPauseView('leaderboard')}
+              onLapHistory={() => setPauseView('lapHistory')}
+              lapCount={lapHistory.length}
+              onPbHistory={() => setPauseView('pbHistory')}
+              pbHistoryCount={pbHistoryEntries.length}
+              onStats={() => setPauseView('stats')}
+              onAchievements={() => setPauseView('achievements')}
+              achievementCount={achievementProgressCount(achievements)}
+              achievementTotal={achievementTotalCount}
+              onHowToPlay={() => setPauseView('howToPlay')}
+              onPhotoMode={() => setPauseView('photo')}
+              onShare={() => {
+                void handleShare()
+              }}
+              shareLabel={shareLabel ?? undefined}
+              onChallenge={() => {
+                void handleChallenge()
+              }}
+              challengeAvailable={lastSubmit !== null}
+              challengeLabel={challengeLabel ?? undefined}
+              onToggleFavorite={handleToggleFavorite}
+              isFavorite={favorited}
             />
           ) : pauseView === 'leaderboard' ? (
             <Leaderboard
@@ -2780,29 +2809,7 @@ function GameSession({
               onReset={resetSettings}
               inRace
               slug={slug}
-              onLeaderboards={() => setPauseView('leaderboard')}
-              onLapHistory={() => setPauseView('lapHistory')}
-              lapCount={lapHistory.length}
-              onPbHistory={() => setPauseView('pbHistory')}
-              pbHistoryCount={pbHistoryEntries.length}
-              onStats={() => setPauseView('stats')}
-              onAchievements={() => setPauseView('achievements')}
-              achievementCount={achievementProgressCount(achievements)}
-              achievementTotal={achievementTotalCount}
               onSetup={() => setPauseView('tuning')}
-              onHowToPlay={() => setPauseView('howToPlay')}
-              onPhotoMode={() => setPauseView('photo')}
-              onShare={() => {
-                void handleShare()
-              }}
-              shareLabel={shareLabel ?? undefined}
-              onChallenge={() => {
-                void handleChallenge()
-              }}
-              challengeAvailable={lastSubmit !== null}
-              challengeLabel={challengeLabel ?? undefined}
-              onToggleFavorite={handleToggleFavorite}
-              isFavorite={favorited}
             />
           )}
           {pauseView !== 'photo' ? <FeedbackFab /> : null}

@@ -132,25 +132,7 @@ interface SettingsPaneProps {
   // Set when SettingsPane is rendered inside the in-game pause overlay so
   // navigating away can warn the player before abandoning the race.
   inRace?: boolean
-  onLeaderboards?: () => void
-  onLapHistory?: () => void
-  lapCount?: number
-  onPbHistory?: () => void
-  pbHistoryCount?: number
-  onStats?: () => void
-  onAchievements?: () => void
-  achievementCount?: number
-  achievementTotal?: number
   onSetup?: () => void
-  onHowToPlay?: () => void
-  onPhotoMode?: () => void
-  onShare?: () => void
-  shareLabel?: string
-  onChallenge?: () => void
-  challengeAvailable?: boolean
-  challengeLabel?: string
-  onToggleFavorite?: () => void
-  isFavorite?: boolean
   slug?: string
 }
 
@@ -166,25 +148,25 @@ interface PadCaptureTarget {
 
 type SettingsTabId =
   | 'profile'
-  | 'race'
   | 'audio'
   | 'controls'
   | 'vehicle'
   | 'world'
   | 'camera'
   | 'hud'
+  | 'ghost'
   | 'effects'
   | 'tuning'
 
 const SETTINGS_TABS: { id: SettingsTabId; label: string }[] = [
   { id: 'profile', label: 'Profile' },
-  { id: 'race', label: 'Race' },
   { id: 'audio', label: 'Audio' },
   { id: 'controls', label: 'Controls' },
   { id: 'vehicle', label: 'Vehicle' },
   { id: 'world', label: 'World' },
   { id: 'camera', label: 'Camera' },
   { id: 'hud', label: 'HUD' },
+  { id: 'ghost', label: 'Ghost' },
   { id: 'effects', label: 'Effects' },
   { id: 'tuning', label: 'Tuning' },
 ]
@@ -195,31 +177,11 @@ export function SettingsPane({
   onClose,
   onReset,
   inRace,
-  onLeaderboards,
-  onLapHistory,
-  lapCount = 0,
-  onPbHistory,
-  pbHistoryCount,
-  onStats,
-  onAchievements,
-  achievementCount = 0,
-  achievementTotal = 0,
   onSetup,
-  onHowToPlay,
-  onPhotoMode,
-  onShare,
-  shareLabel,
-  onChallenge,
-  challengeAvailable,
-  challengeLabel,
-  onToggleFavorite,
-  isFavorite,
   slug,
 }: SettingsPaneProps) {
   const router = useRouter()
-  const [activeTab, setActiveTab] = useState<SettingsTabId>(() =>
-    inRace ? 'race' : 'profile',
-  )
+  const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
   const [capture, setCapture] = useState<CaptureTarget | null>(null)
   const [padCapture, setPadCapture] = useState<PadCaptureTarget | null>(null)
   const [featureListOpen, setFeatureListOpen] = useState(false)
@@ -239,9 +201,7 @@ export function SettingsPane({
     setSettings: setAudio,
     resetSettings: resetAudio,
   } = useAudioSettings()
-  const settingsTabs = inRace
-    ? SETTINGS_TABS
-    : SETTINGS_TABS.filter((tab) => tab.id !== 'race')
+  const settingsTabs = SETTINGS_TABS
 
   useEffect(() => {
     function refreshTunes() {
@@ -838,90 +798,6 @@ export function SettingsPane({
             </>
           ) : null}
 
-        {activeTab === 'race' && inRace ? (
-          <>
-            <MenuSection title="Progress">
-              <MenuHint>
-                Review your lap data, leaderboard position, and unlocked
-                milestones for this track version.
-              </MenuHint>
-              <div style={settingsActionGrid}>
-                {onLeaderboards ? (
-                  <MenuButton onClick={onLeaderboards}>Leaderboards</MenuButton>
-                ) : null}
-                {onLapHistory ? (
-                  <MenuButton onClick={onLapHistory}>
-                    {lapCount > 0 ? `Laps (${lapCount})` : 'Laps'}
-                  </MenuButton>
-                ) : null}
-                {onPbHistory ? (
-                  <MenuButton
-                    onClick={onPbHistory}
-                    title="See every personal best you have ever set on this version of the layout."
-                  >
-                    {pbHistoryCount && pbHistoryCount > 0
-                      ? `PB History (${pbHistoryCount})`
-                      : 'PB History'}
-                  </MenuButton>
-                ) : null}
-                {onStats ? (
-                  <MenuButton onClick={onStats}>Stats</MenuButton>
-                ) : null}
-                {onAchievements ? (
-                  <MenuButton onClick={onAchievements}>
-                    Achievements ({achievementCount}/{achievementTotal})
-                  </MenuButton>
-                ) : null}
-              </div>
-            </MenuSection>
-
-            <MenuSection title="Track tools">
-              <MenuHint>
-                Capture, share, favorite, or learn the current track without
-                crowding the pause menu.
-              </MenuHint>
-              <div style={settingsActionGrid}>
-                {onHowToPlay ? (
-                  <MenuButton onClick={onHowToPlay}>How to play</MenuButton>
-                ) : null}
-                {onPhotoMode ? (
-                  <MenuButton onClick={onPhotoMode}>Photo mode</MenuButton>
-                ) : null}
-                {onShare ? (
-                  <MenuButton onClick={onShare}>
-                    {shareLabel ?? 'Share track'}
-                  </MenuButton>
-                ) : null}
-                {onToggleFavorite ? (
-                  <MenuButton
-                    onClick={onToggleFavorite}
-                    title={
-                      isFavorite
-                        ? 'Remove this track from your home-page favorites.'
-                        : 'Pin this track to a Favorites section on the home page.'
-                    }
-                  >
-                    {isFavorite ? 'Unstar track' : 'Star track'}
-                  </MenuButton>
-                ) : null}
-                {onChallenge ? (
-                  <MenuButton
-                    onClick={onChallenge}
-                    disabled={!challengeAvailable}
-                    title={
-                      challengeAvailable
-                        ? 'Send a friend a link that races them against your PB ghost.'
-                        : 'Set a personal best on this track first to unlock challenges.'
-                    }
-                  >
-                    {challengeLabel ?? 'Challenge a friend'}
-                  </MenuButton>
-                ) : null}
-              </div>
-            </MenuSection>
-          </>
-        ) : null}
-
         {activeTab === 'audio' ? (
           <MenuSection title="Audio">
           <div style={audioRow}>
@@ -1214,8 +1090,8 @@ export function SettingsPane({
           </>
         ) : null}
 
-        {activeTab === 'hud' ? (
-          <MenuSection title="HUD and guides">
+        {activeTab === 'ghost' ? (
+          <MenuSection title="Ghost and guides">
           <div style={subSection}>
             <div style={subTitle}>Ghost car</div>
             <MenuHint>
@@ -1294,6 +1170,11 @@ export function SettingsPane({
             </div>
           </div>
 
+          </MenuSection>
+        ) : null}
+
+        {activeTab === 'hud' ? (
+          <MenuSection title="HUD">
           <div style={subSection}>
             <div style={subTitle}>Minimap</div>
             <MenuHint>
@@ -2241,11 +2122,6 @@ const tabPanel: React.CSSProperties = {
   overscrollBehavior: 'contain',
   paddingRight: 4,
   paddingTop: 4,
-}
-const settingsActionGrid: React.CSSProperties = {
-  display: 'grid',
-  gridTemplateColumns: 'repeat(auto-fit, minmax(150px, 1fr))',
-  gap: 8,
 }
 const audioRow: React.CSSProperties = {
   display: 'flex',
