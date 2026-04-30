@@ -174,6 +174,7 @@ import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
+  setActiveTune,
   setMusicPersonalization,
 } from '@/game/music'
 import {
@@ -422,6 +423,10 @@ function GameSession({
     applyParams: applyTuning,
     resetParams: resetTuning,
   } = useTuning(slug)
+  useEffect(() => {
+    setActiveTune(null)
+  }, [slug])
+
   // Apply per-slug music personalization. The music engine treats this as
   // idempotent (a no-op when the value matches the active one) so the effect
   // can safely re-fire on every dependency change. Falls back to the neutral

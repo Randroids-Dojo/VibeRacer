@@ -1,5 +1,11 @@
 import { describe, it, expect } from 'vitest'
-import { SCALES, midiFreq, scaleDeg } from '@/game/music'
+import {
+  SCALES,
+  gameStepEventsForTune,
+  midiFreq,
+  scaleDeg,
+} from '@/game/music'
+import { DEFAULT_TRACK_TUNE } from '@/lib/tunes'
 
 describe('midiFreq', () => {
   it('A4 (midi 69) is 440 Hz', () => {
@@ -53,5 +59,88 @@ describe('SCALES', () => {
     expect(SCALES.minor).toEqual([0, 2, 3, 5, 7, 8, 10])
     expect(SCALES.pentatonic).toEqual([0, 2, 4, 7, 9])
     expect(SCALES.dorian).toEqual([0, 2, 3, 5, 7, 9, 10])
+  })
+})
+
+describe('gameStepEventsForTune', () => {
+  it('renders the default tune like the legacy low-intensity first step', () => {
+    expect(gameStepEventsForTune(DEFAULT_TRACK_TUNE, 0, 0)).toEqual([
+      {
+        kind: 'note',
+        voice: 'bass',
+        degree: 0,
+        octave: -1,
+        wave: 'sawtooth',
+        volume: 0.09,
+        durationBeats: 2.6,
+      },
+      {
+        kind: 'kick',
+        volume: 0.1,
+      },
+    ])
+  })
+
+  it('renders the default tune like the legacy high-intensity drum step', () => {
+    expect(gameStepEventsForTune(DEFAULT_TRACK_TUNE, 4, 1)).toEqual([
+      {
+        kind: 'note',
+        voice: 'bass',
+        degree: 4,
+        octave: -1,
+        wave: 'sawtooth',
+        volume: 0.16999999999999998,
+        durationBeats: 2.6,
+      },
+      {
+        kind: 'note',
+        voice: 'melody',
+        degree: 3,
+        octave: 1,
+        wave: 'square',
+        volume: 0.16,
+        durationBeats: 1.7,
+      },
+      {
+        kind: 'note',
+        voice: 'counter',
+        degree: 2,
+        octave: 0,
+        wave: 'triangle',
+        volume: 0.14,
+        durationBeats: 3.6,
+      },
+      {
+        kind: 'kick',
+        volume: 0.2,
+      },
+      {
+        kind: 'snare',
+        volume: 0.14,
+      },
+    ])
+  })
+
+  it('honors authored voice toggles and volumes', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.voices.bass.enabled = false
+    tune.voices.arp.enabled = true
+    tune.voices.arp.volume = 1
+    tune.drums.density = 0
+    expect(gameStepEventsForTune(tune, 0, 0)).toEqual([
+      {
+        kind: 'note',
+        voice: 'arp',
+        degree: 0,
+        octave: 2,
+        wave: 'triangle',
+        volume: 0.03,
+        durationBeats: 0.6,
+      },
+      {
+        kind: 'kick',
+        volume: 0,
+      },
+    ])
   })
 })

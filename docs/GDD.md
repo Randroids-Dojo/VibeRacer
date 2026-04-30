@@ -21,7 +21,7 @@
 | 10 | Physics tuning (player Setup panel) | done (per-track sliders, last-loaded carryover, leaderboard-attached setups, Try-this-setup) |
 | 11 | Leaderboards | done (autosubmit, anti-cheat, leaderboard UI with version dropdown + race-this-version + sortable rank / racer / time / date columns, pagination, input-mode badges, clickable lap details, overall record in HUD, PB fanfare, record fanfare, and guarded admin tooling all live) |
 | 12 | Feedback FAB | done (API route + polished React component ship, pause-only visibility wired, Playwright open / close / submit coverage live) |
-| 13 | Audio | done (music + countdown beeps + engine drone, tire skid, off-track rumble, lap stinger, PB / record fanfare, wrong-way and achievement cues, UI click variants, haptics, channel toggles, and channel volume sliders all ship) |
+| 13 | Audio | partial (all prior music, SFX, haptics, and volume controls ship; Track Tune Editor foundation is underway) |
 | 14 | Data model | done |
 | 15 | Tech stack | done (scaffold present) |
 | 16 | Architecture | done (App Router routes, API routes, pure game loop, Three.js scene, menu layer, editor, audio, controls, and storage modules are in place) |
@@ -784,7 +784,7 @@ Epoch's FAB opens an intermediate menu with a "Feedback" button. VibeRacer skips
 
 ## 13. Audio
 
-**Status.** Done. Music, SFX, haptics, channel volume controls, gamepad trigger rumble, and tab-background audio suspension ship.
+**Status.** Partial. Music, SFX, haptics, channel volume controls, gamepad trigger rumble, and tab-background audio suspension ship. The Track Tune Editor foundation now has a data model, schema, deterministic seed-word generator, and tune-driven game-step scheduler, while persistence, editor UI, and automation remain followups.
 
 Pure Web Audio API. No Tone.js. One shared `AudioContext`, procedural synth voices, scheduled via a 50 ms tick with 120 ms lookahead.
 
@@ -833,6 +833,8 @@ All SFX share one `AudioContext` and master `GainNode` with the music scheduler 
 
 - Slug-driven scale / tempo / root-key tweaks: live (see "Per-track music personalization" in the Build log above).
 - Initials-driven perturbation: live as an opt-in on top of per-track flavor. New `initialsMusicSeed(initials)` and `personalizeForRacer(slug, initials)` helpers in `src/game/musicPersonalization.ts` fold an FNV-1a hash of the player's initials into the slug seed via a 13-bit rotate-left plus XOR (with a guard for the rare zero-after-XOR case) so flipping a single letter reshuffles every output dimension instead of just one. `AudioSettings` gained a `musicMixInitials: boolean` field with default `false` (so legacy stored payloads keep playing the existing slug-only flavor unchanged on upgrade) plus a backfill default for legacy stored payloads. `Game.tsx` reads both the slug and the player's initials each render and re-fires the existing music-personalization effect when either changes (or when the player edits their initials in Settings), so the game track picks up the new flavor on the next race without restarting the audio engine. The Settings pane's "Per-track flavor" sub-section gains a "Mix in your initials" toggle right under the existing flavor toggle (disabled when music is muted entirely or when per-track flavor is off, since the initials hash has nothing to fold into in that case). Tests: `tests/unit/musicPersonalization.test.ts` adds 18 tests covering empty / whitespace-only / non-string initials short-circuits, deterministic hashing, case-insensitive folding, sensitivity to single-letter changes, whitespace trim, the slug-only fall-back when initials are missing, menu-bound invariants across many (slug, initials) pairs, deterministic per-pair output, divergence-when-initials-change-on-same-slug, divergence-when-slug-changes-for-same-initials, divergence-from-slug-only personalization on most pairs, and the zero-after-XOR guard. `tests/unit/audioSettings.test.ts` adds default-false, round-trip-true, and legacy backfill (omitted in stored payload) coverage for the new `musicMixInitials` field.
+
+- Track Tune Editor foundation: live for the engine and data model. `src/lib/tunes.ts` defines `TrackTune`, the Zod-backed `TrackTuneSchema`, default tune constants that mirror the prior game-loop pattern, and `generateTuneFromSeed(seed)` for deterministic seed-word starting tunes. `src/lib/fnv1a.ts` extracts the shared FNV-1a hash helper now used by both music personalization and tune generation. `src/game/music.ts` now renders game steps from the active tune object, exposes `setActiveTune(tune | null)`, keeps legacy personalization active when no authored tune is set, and exports a pure `gameStepEventsForTune` helper so default playback equivalence can be tested without Web Audio shims. `Game.tsx` calls `setActiveTune(null)` on slug changes as the no-op integration point for this foundation slice. Tests: `tests/unit/tunes.test.ts` covers seed determinism, schema round-trip, invalid shape rejection, and generated tune bounds. `tests/unit/music.test.ts` covers the default tune event stream against the previous hardcoded loop behavior. Persistence, editor UI, personal overrides, live preview, and automation controls remain in the next slices.
 - Per-pattern (lead / bass) variations remain on the wishlist.
 
 ---

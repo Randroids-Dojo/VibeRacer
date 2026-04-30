@@ -15,6 +15,8 @@
  *   sounds exactly as it did before this feature shipped.
  */
 
+import { fnv1a32 } from '@/lib/fnv1a'
+
 export type ScaleFlavor = 'minor' | 'dorian' | 'pentatonic'
 
 export interface MusicPersonalization {
@@ -59,25 +61,13 @@ export const SCALE_FLAVORS: readonly ScaleFlavor[] = [
  */
 export const BPM_OFFSETS: readonly number[] = [-12, -8, -4, 0, 4, 8, 12, 16]
 
-const FNV_OFFSET_BASIS_32 = 0x811c9dc5
-const FNV_PRIME_32 = 0x01000193
-
 /**
  * Stable 32-bit FNV-1a hash of the slug. Returns 0 for empty or non-string
  * input so the caller can fall back to the neutral personalization.
  */
 export function slugMusicSeed(slug: string): number {
   if (typeof slug !== 'string' || slug.length === 0) return 0
-  let hash = FNV_OFFSET_BASIS_32
-  for (let i = 0; i < slug.length; i++) {
-    hash ^= slug.charCodeAt(i) & 0xff
-    // Math.imul keeps the multiply as a 32-bit signed int so the hash stays
-    // stable across JS engines that would otherwise promote to double.
-    hash = Math.imul(hash, FNV_PRIME_32)
-  }
-  // Force unsigned representation so downstream modulo arithmetic does not
-  // surprise readers with a negative seed.
-  return hash >>> 0
+  return fnv1a32(slug)
 }
 
 /**
@@ -98,17 +88,13 @@ export function initialsMusicSeed(initials: string): number {
   if (typeof initials !== 'string') return 0
   const trimmed = initials.trim()
   if (trimmed.length === 0) return 0
-  let hash = FNV_OFFSET_BASIS_32
-  for (let i = 0; i < trimmed.length; i++) {
+  return fnv1a32(trimmed, (code) => {
     // Uppercase a-z to A-Z by clearing bit 5; leaves digits and other
     // characters untouched. The upstream InitialsSchema enforces A-Z only,
     // but defending here means a hand-rolled call cannot poison the seed.
-    const code = trimmed.charCodeAt(i) & 0xff
-    const upper = code >= 0x61 && code <= 0x7a ? code & 0xdf : code
-    hash ^= upper
-    hash = Math.imul(hash, FNV_PRIME_32)
-  }
-  return hash >>> 0
+    const byte = code & 0xff
+    return byte >= 0x61 && byte <= 0x7a ? byte & 0xdf : byte
+  })
 }
 
 /**
