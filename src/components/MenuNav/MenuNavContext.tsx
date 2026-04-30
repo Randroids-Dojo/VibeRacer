@@ -129,10 +129,14 @@ export function MenuNavProvider({
     const arr = Array.from(entriesRef.current.values()).filter(
       (e) => !e.disabled,
     )
+    // Compare by `order` first (default 1e9 so unordered items sit in the
+    // middle and explicit values can push entries earlier or later); break
+    // ties with DOM position so unordered items always read in document
+    // order regardless of registration timing.
     arr.sort((a, b) => {
-      if (a.order !== undefined || b.order !== undefined) {
-        return (a.order ?? 1e9) - (b.order ?? 1e9)
-      }
+      const ao = a.order ?? 1e9
+      const bo = b.order ?? 1e9
+      if (ao !== bo) return ao - bo
       const ae = a.ref.current
       const be = b.ref.current
       if (!ae || !be) return 0

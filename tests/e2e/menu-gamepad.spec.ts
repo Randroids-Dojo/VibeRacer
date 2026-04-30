@@ -17,7 +17,6 @@ const STUB_INIT = `
       axes,
     }
     window.__pad = pad
-    const orig = navigator.getGamepads.bind(navigator)
     navigator.getGamepads = function () { return [pad] }
     // Fire a connect event so any code listening for it can wake up.
     setTimeout(() => {

@@ -388,18 +388,6 @@ export function MenuToggle({
         click()
         onChange(!value)
       }}
-      onKeyDown={(e) => {
-        // Left / right toggles when the user is on a horizontal toggle row,
-        // matching ARIA switch conventions. Up / down still moves focus via
-        // the MenuNav handler so this is purely additive.
-        if (
-          (e.key === 'ArrowLeft' || e.key === 'ArrowRight') &&
-          navAxis !== 'horizontal'
-        ) {
-          // For vertical layouts, do not hijack left / right - MenuNav will
-          // ignore them anyway since axis is vertical.
-        }
-      }}
       style={{
         border: 'none',
         borderRadius: 999,

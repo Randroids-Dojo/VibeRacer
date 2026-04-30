@@ -207,6 +207,7 @@ function FeedbackCloseButton({ onClick }: { onClick: () => void }) {
       type="button"
       aria-label="Close panel"
       onClick={onClick}
+      className="menuui-focusable"
       style={panelClose}
     >
       Close
@@ -236,6 +237,7 @@ function FeedbackTextarea({
       required
       value={value}
       onChange={(e) => onChange(e.target.value)}
+      className="menuui-focusable"
       style={textareaStyle}
     />
   )
@@ -258,6 +260,7 @@ function FeedbackSubmitButton({
       ref={ref}
       type="submit"
       disabled={submitState === 'sending' || messageLength === 0}
+      className="menuui-focusable"
       style={{
         ...submitBtn,
         background:
