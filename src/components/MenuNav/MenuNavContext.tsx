@@ -187,27 +187,57 @@ export function MenuNavProvider({
       if (allEntries.length === 0) return
       const current = currentEntry(allEntries) ?? allEntries[0]
 
-      let step = 0
-      if (dir === 'next' || dir === 'down' || dir === 'right') step = 1
-      else if (dir === 'prev' || dir === 'up' || dir === 'left') step = -1
+      const isHorizontal = dir === 'left' || dir === 'right'
+      const isVertical = dir === 'up' || dir === 'down'
+      const step =
+        dir === 'next' || dir === 'down' || dir === 'right' ? 1 : -1
 
-      if ((dir === 'left' || dir === 'right') && current.axis === 'vertical') {
+      // Vertical-only entries (e.g. a stack of pause-menu buttons) sit in a
+      // single column with no horizontal layout, so left / right are no-ops.
+      if (isHorizontal && current.axis === 'vertical') return
+
+      // Whether this move is along the focused entry's "natural" axis. Tabs
+      // and radio rows use the natural axis to cycle within their group;
+      // off-axis moves walk out of the group so the user can leave the
+      // cluster (ArrowDown on a tab descends into the panel content).
+      const onAxis =
+        current.axis === 'both' ||
+        (current.axis === 'horizontal' && isHorizontal) ||
+        (current.axis === 'vertical' && isVertical)
+
+      if (onAxis && current.group) {
+        const list = allEntries.filter((e) => e.group === current.group)
+        const idx = list.findIndex((e) => e.id === current.id)
+        let next = (idx >= 0 ? idx : 0) + step
+        if (next < 0) next = list.length - 1
+        if (next >= list.length) next = 0
+        focusEntry(list[next].id)
         return
       }
-      if ((dir === 'up' || dir === 'down') && current.axis === 'horizontal') {
+
+      if (!onAxis && current.group) {
+        // Skip past the rest of the group then continue in DOM order so the
+        // user lands outside the cluster on the first off-axis press.
+        const idx = allEntries.findIndex((e) => e.id === current.id)
+        let next = idx + step
+        while (
+          next >= 0 &&
+          next < allEntries.length &&
+          allEntries[next].group === current.group
+        ) {
+          next += step
+        }
+        if (next >= 0 && next < allEntries.length) {
+          focusEntry(allEntries[next].id)
+        }
         return
       }
 
-      // Group-restricted nav so arrow-right on a tab does not jump into the
-      // tab body. Ungrouped items navigate against the full list.
-      const list = current.group
-        ? allEntries.filter((e) => e.group === current.group)
-        : allEntries
-      const currentIdx = list.findIndex((e) => e.id === current.id)
-      let nextIdx = (currentIdx >= 0 ? currentIdx : 0) + step
-      if (nextIdx < 0) nextIdx = list.length - 1
-      if (nextIdx >= list.length) nextIdx = 0
-      focusEntry(list[nextIdx].id)
+      const idx = allEntries.findIndex((e) => e.id === current.id)
+      let next = (idx >= 0 ? idx : 0) + step
+      if (next < 0) next = allEntries.length - 1
+      if (next >= allEntries.length) next = 0
+      focusEntry(allEntries[next].id)
     },
     [currentEntry, focusEntry, orderedEntries],
   )
@@ -301,8 +331,12 @@ export function MenuNavProvider({
         (target as HTMLInputElement).type === 'range'
 
       if (key === 'Escape') {
-        e.preventDefault()
-        onBackRef.current?.()
+        // Only intercept Esc when there is somewhere to go back to. Without
+        // an `onBack`, leave the event to propagate to other handlers.
+        if (onBackRef.current) {
+          e.preventDefault()
+          onBackRef.current()
+        }
         return
       }
       if (

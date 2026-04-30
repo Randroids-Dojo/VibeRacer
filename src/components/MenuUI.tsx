@@ -2,6 +2,7 @@
 import {
   forwardRef,
   useEffect,
+  useId,
   useRef,
   useState,
   type ButtonHTMLAttributes,
@@ -44,16 +45,20 @@ function injectFocusStyle() {
   if (document.getElementById(FOCUS_STYLE_ID)) return
   const style = document.createElement('style')
   style.id = FOCUS_STYLE_ID
+  // Scope the outline reset to :focus:not(:focus-visible) so browsers without
+  // :focus-visible support keep their default focus ring as a fallback.
   style.textContent = `
-.menuui-focusable:focus { outline: none; }
+.menuui-focusable:focus:not(:focus-visible) { outline: none; }
 .menuui-focusable:focus-visible {
   outline: none;
   box-shadow: ${menuTheme.focusRing};
 }
+.menuui-radio:focus:not(:focus-visible) { outline: none; }
 .menuui-radio:focus-visible {
   outline: none;
   box-shadow: ${menuTheme.focusRing};
 }
+.menuui-tab:focus:not(:focus-visible) { outline: none; }
 .menuui-tab:focus-visible {
   outline: none;
   box-shadow: ${menuTheme.focusRing};
@@ -517,6 +522,9 @@ export function MenuRadioRow<T extends string>({
 }) {
   const click = useClickSfx('soft')
   const selected = options.find((o) => o.value === value)
+  // Per-row group id so left / right cycle within this radio row only and
+  // off-axis arrow presses (up / down) walk out to the next focusable.
+  const groupId = useId()
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
       {label ? (
@@ -548,6 +556,7 @@ export function MenuRadioRow<T extends string>({
             key={opt.value}
             opt={opt}
             selected={opt.value === value}
+            group={groupId}
             onPick={() => {
               if (opt.disabled) return
               click()
@@ -575,14 +584,17 @@ function RadioOption<T extends string>({
   opt,
   selected,
   onPick,
+  group,
 }: {
   opt: MenuRadioOption<T>
   selected: boolean
   onPick: () => void
+  group: string
 }) {
   const ref = useRef<HTMLButtonElement | null>(null)
   useRegisterFocusable(ref, {
     axis: 'horizontal',
+    group,
     disabled: opt.disabled,
     onActivate: onPick,
   })
@@ -661,6 +673,9 @@ export function MenuTabBar<T extends string>({
   ariaLabel?: string
 }) {
   const click = useClickSfx('soft')
+  // Per-bar group id so multiple tab strips don't bleed into each other on
+  // arrow nav (rare today but cheap insurance).
+  const groupId = useId()
   return (
     <div
       role="tablist"
@@ -678,6 +693,7 @@ export function MenuTabBar<T extends string>({
           key={tab.value}
           tab={tab}
           selected={tab.value === value}
+          group={groupId}
           onPick={() => {
             if (tab.disabled || tab.value === value) return
             click()
@@ -693,15 +709,17 @@ function TabButton<T extends string>({
   tab,
   selected,
   onPick,
+  group,
 }: {
   tab: MenuTabDef<T>
   selected: boolean
   onPick: () => void
+  group: string
 }) {
   const ref = useRef<HTMLButtonElement | null>(null)
   useRegisterFocusable(ref, {
     axis: 'horizontal',
-    group: 'tabbar',
+    group,
     disabled: tab.disabled,
     onActivate: onPick,
   })

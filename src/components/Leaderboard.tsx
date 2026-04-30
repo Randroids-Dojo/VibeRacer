@@ -321,54 +321,31 @@ export function Leaderboard({
         <div style={controlsRow}>
           <label style={dropdownLabel}>
             VERSION
-            <select
+            <VersionSelect
               value={selectedHash}
-              onChange={(e) => {
-                setSelectedHash(e.target.value)
+              dropdown={dropdown}
+              fallbackHash={selectedHash}
+              onChange={(next) => {
+                setSelectedHash(next)
                 setPageOffset(0)
               }}
-              style={selectStyle}
-              disabled={dropdown === null || dropdown.length <= 1}
-              aria-label="Track version"
-            >
-              {dropdown === null ? (
-                <option value={selectedHash}>v{shortHash(selectedHash)}</option>
-              ) : (
-                dropdown.map((opt) => (
-                  <option key={opt.hash} value={opt.hash}>
-                    {opt.label}
-                  </option>
-                ))
-              )}
-            </select>
+            />
           </label>
           {!isRacingSelected ? (
-            <button
-              type="button"
+            <RaceVersionButton
               onClick={() => {
                 clickConfirm()
                 router.push(targetRaceHref)
               }}
-              style={raceBtn}
-            >
-              Race this version
-            </button>
+            />
           ) : null}
-          <button
-            type="button"
+          <ForkVersionButton
+            isLatest={isLatestSelected}
             onClick={() => {
               clickConfirm()
               router.push(targetForkHref)
             }}
-            style={forkBtn}
-            title={
-              isLatestSelected
-                ? 'Open the editor on the latest pieces'
-                : 'Open the editor seeded from this version. Saving creates a new version.'
-            }
-          >
-            {isLatestSelected ? 'Edit latest' : 'Fork this version'}
-          </button>
+          />
         </div>
 
         {board.kind === 'loading' ? (
@@ -580,6 +557,86 @@ function LeaderboardBackButton({ onClick }: { onClick: () => void }) {
   )
 }
 
+function VersionSelect({
+  value,
+  dropdown,
+  fallbackHash,
+  onChange,
+}: {
+  value: string
+  dropdown: { hash: string; label: string }[] | null
+  fallbackHash: string
+  onChange: (next: string) => void
+}) {
+  const ref = useRef<HTMLSelectElement | null>(null)
+  const disabled = dropdown === null || dropdown.length <= 1
+  useRegisterFocusable(ref, { axis: 'horizontal', disabled })
+  return (
+    <select
+      ref={ref}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={selectStyle}
+      disabled={disabled}
+      aria-label="Track version"
+      className="menuui-focusable"
+    >
+      {dropdown === null ? (
+        <option value={fallbackHash}>v{shortHash(fallbackHash)}</option>
+      ) : (
+        dropdown.map((opt) => (
+          <option key={opt.hash} value={opt.hash}>
+            {opt.label}
+          </option>
+        ))
+      )}
+    </select>
+  )
+}
+
+function RaceVersionButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'horizontal' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      style={raceBtn}
+      className="menuui-focusable"
+    >
+      Race this version
+    </button>
+  )
+}
+
+function ForkVersionButton({
+  isLatest,
+  onClick,
+}: {
+  isLatest: boolean
+  onClick: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'horizontal' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      style={forkBtn}
+      title={
+        isLatest
+          ? 'Open the editor on the latest pieces'
+          : 'Open the editor seeded from this version. Saving creates a new version.'
+      }
+      className="menuui-focusable"
+    >
+      {isLatest ? 'Edit latest' : 'Fork this version'}
+    </button>
+  )
+}
+
 function SortHeader({
   style,
   label,
@@ -602,12 +659,16 @@ function SortHeader({
       : 'descending'
     : 'none'
   const arrow = isActive ? (direction === 'asc' ? '↑' : '↓') : ''
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'horizontal', group: 'leaderboard-sort' })
   return (
     <button
+      ref={ref}
       type="button"
       role="columnheader"
       aria-sort={ariaSort}
       onClick={() => onSort(columnKey)}
+      className="menuui-focusable"
       style={{ ...sortHeaderBtn, ...style, ...(isActive ? sortHeaderActive : null) }}
       title={`Sort by ${label.toLowerCase() === '#' ? 'rank' : label.toLowerCase()}`}
     >

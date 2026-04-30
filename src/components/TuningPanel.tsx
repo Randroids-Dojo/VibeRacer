@@ -113,21 +113,14 @@ export function TuningPanel({
 
         {showHistory && history && onApplyHistoryEntry ? (
           <div style={historySection}>
-            <button
-              type="button"
-              onClick={() => {
+            <HistoryToggleButton
+              open={historyOpen}
+              count={scopedHistoryCount}
+              onToggle={() => {
                 clickSoft()
                 setHistoryOpen((v) => !v)
               }}
-              style={historyToggleBtn}
-              aria-expanded={historyOpen}
-            >
-              <span>
-                Recent changes
-                {scopedHistoryCount > 0 ? ` (${scopedHistoryCount})` : ''}
-              </span>
-              <span style={historyChevron}>{historyOpen ? '▴' : '▾'}</span>
-            </button>
+            />
             {historyOpen ? (
               <div style={historyBody}>
                 <TuningHistoryList
@@ -145,15 +138,12 @@ export function TuningPanel({
         ) : null}
 
         <div style={footer}>
-          <button
+          <ResetDefaultsButton
             onClick={() => {
               clickSoft()
               onReset()
             }}
-            style={resetAllBtn}
-          >
-            Reset to defaults
-          </button>
+          />
           <TuningDoneButton
             onClick={() => {
               clickConfirm()
@@ -227,6 +217,50 @@ function TuningDoneButton({ onClick }: { onClick: () => void }) {
       className="menuui-focusable"
     >
       Done
+    </button>
+  )
+}
+
+function ResetDefaultsButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={resetAllBtn}
+      className="menuui-focusable"
+    >
+      Reset to defaults
+    </button>
+  )
+}
+
+function HistoryToggleButton({
+  open,
+  count,
+  onToggle,
+}: {
+  open: boolean
+  count: number
+  onToggle: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onToggle}
+      style={historyToggleBtn}
+      aria-expanded={open}
+      className="menuui-focusable"
+    >
+      <span>
+        Recent changes
+        {count > 0 ? ` (${count})` : ''}
+      </span>
+      <span style={historyChevron}>{open ? '▴' : '▾'}</span>
     </button>
   )
 }
