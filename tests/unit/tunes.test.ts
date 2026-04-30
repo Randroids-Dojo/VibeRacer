@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_TRACK_TUNE,
+  TUNE_FINISH_STINGER_STEP_COUNT,
   TRACK_TUNE_SCALE_FLAVORS,
   TRACK_TUNE_VOICES,
   TRACK_TUNE_WAVES,
@@ -18,6 +19,21 @@ describe('TrackTuneSchema', () => {
     const malformed = structuredClone(DEFAULT_TRACK_TUNE)
     malformed.voices.bass.steps = malformed.voices.bass.steps.slice(0, 15)
     expect(TrackTuneSchema.safeParse(malformed).success).toBe(false)
+  })
+
+  it('accepts 8-step finish stingers', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.finishStinger = [0, 2, 4, 7, 4, 2, 0, null]
+    expect(tune.automation.finishStinger).toHaveLength(
+      TUNE_FINISH_STINGER_STEP_COUNT,
+    )
+    expect(TrackTuneSchema.parse(tune)).toEqual(tune)
+  })
+
+  it('rejects 16-step finish stingers', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.finishStinger = Array.from({ length: 16 }, () => 0)
+    expect(TrackTuneSchema.safeParse(tune).success).toBe(false)
   })
 
   it('rejects out-of-range musical globals', () => {

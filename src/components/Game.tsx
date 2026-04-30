@@ -182,7 +182,10 @@ import {
   PAUSE_CROSSFADE_SEC,
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
+  playFinishStinger,
   setActiveTune,
+  setMusicLapIndex,
+  setMusicOffTrack,
   setMusicPersonalization,
 } from '@/game/music'
 import {
@@ -448,6 +451,8 @@ function GameSession({
       window.removeEventListener(TUNE_OVERRIDES_EVENT, refreshTune)
       window.removeEventListener(KNOWN_TUNES_EVENT, refreshTune)
       window.removeEventListener('storage', refreshTune)
+      setMusicLapIndex(0)
+      setMusicOffTrack(false)
       setActiveTune(null)
     }
   }, [slug, initialTune])
@@ -960,6 +965,14 @@ function GameSession({
       gear: 1,
     }
   })
+
+  useEffect(() => {
+    setMusicLapIndex(Math.max(0, hud.lapCount - 1))
+  }, [hud.lapCount])
+
+  useEffect(() => {
+    setMusicOffTrack(!hud.onTrack)
+  }, [hud.onTrack])
 
   // Hydrate the PB-splits ref on mount / slug change. Stored alongside the
   // local PB lap time so a fresh page load shows a delta tile from the very
@@ -2181,6 +2194,7 @@ function GameSession({
       sectorPbClearTimerRef.current = null
     }
     const outcome = outcomeRef.current
+    playFinishStinger()
     if (outcome === 'record') playPbFanfare('record')
     else if (outcome === 'pb') playPbFanfare('pb')
     else playLapStinger()

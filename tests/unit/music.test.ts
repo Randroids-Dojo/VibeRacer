@@ -1,8 +1,10 @@
 import { describe, it, expect } from 'vitest'
 import {
   SCALES,
+  finishStingerEventsForTune,
   gameStepEventsForTune,
   midiFreq,
+  resolveTuneAutomation,
   scaleDeg,
 } from '@/game/music'
 import { DEFAULT_TRACK_TUNE } from '@/lib/tunes'
@@ -24,6 +26,84 @@ describe('midiFreq', () => {
     for (let n = 40; n < 90; n++) {
       expect(midiFreq(n + 1)).toBeGreaterThan(midiFreq(n))
     }
+  })
+})
+
+describe('resolveTuneAutomation', () => {
+  it('applies per-lap key changes to the tune root', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.perLapSemitones = 2
+    expect(resolveTuneAutomation(tune, { lapIndex: 3, offTrack: false })).toMatchObject({
+      rootMidi: DEFAULT_TRACK_TUNE.rootMidi + 6,
+      scaleFlavor: DEFAULT_TRACK_TUNE.scale,
+      volumeDuck: 1,
+    })
+  })
+
+  it('uses the off-track scale and duck amount while off track', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.offTrackScale = 'dorian'
+    tune.automation.offTrackDuck = 0.42
+    expect(resolveTuneAutomation(tune, { lapIndex: 0, offTrack: true })).toMatchObject({
+      rootMidi: DEFAULT_TRACK_TUNE.rootMidi,
+      scaleFlavor: 'dorian',
+      scale: SCALES.dorian,
+      volumeDuck: 0.42,
+    })
+  })
+
+  it('keeps the base scale when off-track flavor is unset', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.offTrackDuck = 0.2
+    expect(resolveTuneAutomation(tune, { lapIndex: 0, offTrack: true })).toMatchObject({
+      scaleFlavor: DEFAULT_TRACK_TUNE.scale,
+      volumeDuck: 0.2,
+    })
+  })
+})
+
+describe('finishStingerEventsForTune', () => {
+  it('keeps phrase timing while skipping rests', () => {
+    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    tune.automation.finishStinger = [0, null, 4, null, 7, null, null, 0]
+    expect(finishStingerEventsForTune(tune)).toEqual([
+      {
+        step: 0,
+        degree: 0,
+        octave: 1,
+        wave: 'triangle',
+        volume: 0.11,
+        durationBeats: 1.25,
+      },
+      {
+        step: 2,
+        degree: 4,
+        octave: 1,
+        wave: 'triangle',
+        volume: 0.11,
+        durationBeats: 1.25,
+      },
+      {
+        step: 4,
+        degree: 7,
+        octave: 1,
+        wave: 'triangle',
+        volume: 0.11,
+        durationBeats: 1.25,
+      },
+      {
+        step: 7,
+        degree: 0,
+        octave: 1,
+        wave: 'triangle',
+        volume: 0.11,
+        durationBeats: 1.25,
+      },
+    ])
+  })
+
+  it('returns no events when the tune has no custom finish stinger', () => {
+    expect(finishStingerEventsForTune(DEFAULT_TRACK_TUNE)).toEqual([])
   })
 })
 

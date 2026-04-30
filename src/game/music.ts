@@ -64,6 +64,7 @@ interface Track {
   stepDur: number
   rootMidi: number
   scale: readonly number[]
+  volumeDuck: number
   playStep: StepRenderer
   gain: GainNode
   targetGain: number
@@ -80,6 +81,8 @@ interface MusicSystem {
   // is personalized today; title and pause use their fixed configs.
   personalization: MusicPersonalization
   activeTune: TrackTune | null
+  lapIndex: number
+  offTrack: boolean
 }
 
 let system: MusicSystem | null = null
@@ -140,6 +143,8 @@ function getSystem(): MusicSystem | null {
     tracks: new Map(),
     personalization: { ...NEUTRAL_PERSONALIZATION },
     activeTune: null,
+    lapIndex: 0,
+    offTrack: false,
   }
   return system
 }
@@ -421,10 +426,70 @@ export function gameStepEventsForTune(
   return events
 }
 
+export interface MusicAutomationState {
+  lapIndex: number
+  offTrack: boolean
+}
+
+export interface ResolvedTuneAutomation {
+  rootMidi: number
+  scaleFlavor: TrackTuneScaleFlavor
+  scale: readonly number[]
+  volumeDuck: number
+}
+
+export function resolveTuneAutomation(
+  tune: TrackTune,
+  state: MusicAutomationState,
+): ResolvedTuneAutomation {
+  const lapIndex = Number.isFinite(state.lapIndex)
+    ? Math.max(0, Math.floor(state.lapIndex))
+    : 0
+  const rootMidi = tune.rootMidi + tune.automation.perLapSemitones * lapIndex
+  const scaleFlavor =
+    state.offTrack && tune.automation.offTrackScale
+      ? tune.automation.offTrackScale
+      : tune.scale
+  return {
+    rootMidi,
+    scaleFlavor,
+    scale: scaleForFlavor(scaleFlavor),
+    volumeDuck: state.offTrack ? tune.automation.offTrackDuck : 1,
+  }
+}
+
+export interface FinishStingerEvent {
+  step: number
+  degree: number
+  octave: number
+  wave: OscillatorType
+  volume: number
+  durationBeats: number
+}
+
+export function finishStingerEventsForTune(tune: TrackTune): FinishStingerEvent[] {
+  const steps = tune.automation.finishStinger
+  if (!steps) return []
+  return steps.flatMap((degree, step): FinishStingerEvent[] => {
+    if (degree === null) return []
+    return [
+      {
+        step,
+        degree,
+        octave: 1,
+        wave: 'triangle',
+        volume: 0.11,
+        durationBeats: 1.25,
+      },
+    ]
+  })
+}
+
 function playGameStep(track: Track, step: number, time: number): void {
   const { rootMidi, scale, stepDur, intensity } = track
   const tune = track.tune ?? DEFAULT_TRACK_TUNE
   for (const event of gameStepEventsForTune(tune, step, intensity)) {
+    const volume = event.volume * track.volumeDuck
     switch (event.kind) {
       case 'note':
         schedNote(
@@ -433,17 +498,17 @@ function playGameStep(track: Track, step: number, time: number): void {
           time,
           stepDur * event.durationBeats,
           event.wave,
-          event.volume,
+          volume,
         )
         break
       case 'kick':
-        schedKick(track, time, event.volume)
+        schedKick(track, time, volume)
         break
       case 'snare':
-        schedSnare(track, time, event.volume)
+        schedSnare(track, time, volume)
         break
       case 'hat':
-        schedHat(track, time, event.volume)
+        schedHat(track, time, volume)
         break
     }
   }
@@ -489,7 +554,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
   const personalized =
     name === 'game'
       ? resolveGameTrackParams(s)
-      : { rootMidi: cfg.rootMidi, scale: cfg.scale, bpm: cfg.bpm }
+      : { rootMidi: cfg.rootMidi, scale: cfg.scale, bpm: cfg.bpm, volumeDuck: 1 }
   const stepDur = 60 / personalized.bpm / 4
   return {
     name,
@@ -499,6 +564,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
     stepDur,
     rootMidi: personalized.rootMidi,
     scale: personalized.scale,
+    volumeDuck: personalized.volumeDuck,
     playStep: cfg.playStep,
     gain,
     targetGain: cfg.targetGain,
@@ -512,6 +578,7 @@ interface ResolvedTrackParams {
   rootMidi: number
   scale: readonly number[]
   bpm: number
+  volumeDuck: number
 }
 
 function applyPersonalizationToConfig(
@@ -525,19 +592,30 @@ function applyPersonalizationToConfig(
     // hands in a wild offset; the floor matches the lowest a 70%-tempo
     // intensity ramp would push the slowest BPM in BPM_OFFSETS to.
     bpm: Math.max(40, cfg.bpm + p.bpmOffset),
+    volumeDuck: 1,
   }
 }
 
-function paramsFromTune(tune: TrackTune): ResolvedTrackParams {
+function paramsFromTune(
+  tune: TrackTune,
+  state: MusicAutomationState,
+): ResolvedTrackParams {
+  const automation = resolveTuneAutomation(tune, state)
   return {
-    rootMidi: tune.rootMidi,
-    scale: scaleForFlavor(tune.scale),
+    rootMidi: automation.rootMidi,
+    scale: automation.scale,
     bpm: tune.bpm,
+    volumeDuck: automation.volumeDuck,
   }
 }
 
 function resolveGameTrackParams(s: MusicSystem): ResolvedTrackParams {
-  if (s.activeTune) return paramsFromTune(s.activeTune)
+  if (s.activeTune) {
+    return paramsFromTune(s.activeTune, {
+      lapIndex: s.lapIndex,
+      offTrack: s.offTrack,
+    })
+  }
   return applyPersonalizationToConfig(TRACK_CONFIG.game, s.personalization)
 }
 
@@ -547,6 +625,7 @@ function applyResolvedParamsToTrack(
 ): void {
   track.rootMidi = resolved.rootMidi
   track.scale = resolved.scale
+  track.volumeDuck = resolved.volumeDuck
   track.baseStepDur = 60 / resolved.bpm / 4
   updateTempo(track)
 }
@@ -687,6 +766,49 @@ export function setActiveTune(tune: TrackTune | null): void {
   if (!live) return
   live.tune = s.activeTune ?? DEFAULT_TRACK_TUNE
   applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
+}
+
+export function setMusicLapIndex(lapIndex: number): void {
+  const s = system
+  if (!s) return
+  const next = Number.isFinite(lapIndex) ? Math.max(0, Math.floor(lapIndex)) : 0
+  if (s.lapIndex === next) return
+  s.lapIndex = next
+  const live = s.tracks.get('game')
+  if (!live) return
+  applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
+}
+
+export function setMusicOffTrack(offTrack: boolean): void {
+  const s = system
+  if (!s) return
+  if (s.offTrack === offTrack) return
+  s.offTrack = offTrack
+  const live = s.tracks.get('game')
+  if (!live) return
+  applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
+}
+
+export function playFinishStinger(): void {
+  const s = system
+  if (!s || !s.activeTune) return
+  const track = s.tracks.get('game')
+  if (!track) return
+  const events = finishStingerEventsForTune(s.activeTune)
+  if (events.length === 0) return
+  const start = s.audio.ctx.currentTime + 0.005
+  const stepDur = track.stepDur || track.baseStepDur
+  events.forEach((event) => {
+    const time = start + event.step * stepDur
+    schedNote(
+      track,
+      scaleDeg(track.rootMidi, track.scale, event.degree, event.octave),
+      time,
+      stepDur * event.durationBeats,
+      event.wave,
+      event.volume * track.volumeDuck,
+    )
+  })
 }
 
 /** Fade out all tracks. Each track auto-prunes after its fade completes. */

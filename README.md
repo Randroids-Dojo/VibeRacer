@@ -213,6 +213,10 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Personal tune overrides.
   - Seed-word tune generation.
   - 16-step tune editing.
+  - Intensity-based tune tempo curves.
+  - Per-lap tune key changes.
+  - Off-track tune flavor swaps.
+  - Custom finish stinger phrases.
   - Countdown beeps.
   - Engine sound.
   - Tire skid sound.

@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Track Tune Automation
+
+- Branch: `feature/tune-automation`
+- PR: pending
+- Changed: added tune automation for per-lap key changes, off-track scale swaps, off-track volume ducking, custom 8-step finish stinger phrases, race-state wiring from lap and on-track HUD state, and Tune Editor automation controls.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/music.test.ts`, `tests/unit/tunes.test.ts`, and `tests/unit/schemas.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and focused Playwright `tests/e2e/smoke.spec.ts --grep "tune editor"` pass. Build reports existing React hook lint warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: `hud.lapCount` represents the current lap number, so music uses `lapCount - 1` as the completed-lap count for per-lap key changes. Production smoke may remain blocked by Vercel SSO even when deployment status is green.
+- GDD coverage: completes Section 13 Audio for the Track Tune Editor automation scope.
+- Followups: none for Track Tune Editor automation.
+
 ## 2026-04-29, Track Tune Persistence And Editor
 
 - Branch: `feature/tune-editor-persistence`
