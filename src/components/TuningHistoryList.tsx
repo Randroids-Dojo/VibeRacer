@@ -10,7 +10,7 @@ import {
   type TuningChangeSource,
   type TuningHistoryEntry,
 } from '@/lib/tuningHistory'
-import { TUNING_PARAM_META } from '@/lib/tuningSettings'
+import { formatTuningValue, getTuningParamMeta } from '@/lib/tuningSettings'
 
 export interface TuningHistoryListProps {
   entries: TuningHistoryEntry[]
@@ -162,27 +162,22 @@ function DeltaTable({ entry }: { entry: TuningHistoryEntry }) {
   return (
     <div style={deltaWrap}>
       {keys.map((k) => {
-        const meta = TUNING_PARAM_META.find((m) => m.key === k)
+        const meta = getTuningParamMeta(k)
         const d = entry.changedKeys[k]!
         return (
           <div key={k} style={deltaRow}>
-            <span style={deltaLabel}>{meta ? meta.label : k}</span>
+            <span style={deltaLabel}>{meta.label}</span>
             <span style={deltaNums}>
-              <span style={deltaFrom}>{formatNum(d.from)}</span>
+              <span style={deltaFrom}>{formatTuningValue(d.from)}</span>
               <span style={deltaArrow}>{'→'}</span>
-              <span style={deltaTo}>{formatNum(d.to)}</span>
-              {meta ? <span style={deltaUnit}>{meta.unit}</span> : null}
+              <span style={deltaTo}>{formatTuningValue(d.to)}</span>
+              <span style={deltaUnit}>{meta.unit}</span>
             </span>
           </div>
         )
       })}
     </div>
   )
-}
-
-function formatNum(n: number): string {
-  if (Math.abs(n) < 10) return n.toFixed(2).replace(/\.?0+$/, '')
-  return n.toFixed(1).replace(/\.0$/, '')
 }
 
 const wrap: CSSProperties = {

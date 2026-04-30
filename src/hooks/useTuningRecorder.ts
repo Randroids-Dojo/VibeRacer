@@ -62,7 +62,17 @@ export function useTuningRecorder(): {
       if (e.key !== TUNING_HISTORY_KEY) return
       // Cross-tab updates: refresh the in-memory copy without appending. The
       // tab that produced the change is responsible for its own append.
-      setHistory(readTuningHistory())
+      const fresh = readTuningHistory()
+      // Skip the state update when the head id matches: an echoed write from
+      // this tab (which already updated state through the recorder) re-fires
+      // the storage event in some browsers, and a no-op setHistory still
+      // forces consumers to re-render.
+      setHistory((prev) => {
+        if (prev.length === fresh.length && prev[0]?.id === fresh[0]?.id) {
+          return prev
+        }
+        return fresh
+      })
     }
     window.addEventListener('storage', onStorage)
     return () => window.removeEventListener('storage', onStorage)
@@ -149,32 +159,14 @@ export function useTuningRecorder(): {
   )
 
   // Always flush a pending slider entry on unmount so a half-finished drag
-  // does not vanish if the player navigates away.
+  // does not vanish if the player navigates away. The flush itself calls
+  // setHistory; React tolerates the post-unmount call as a no-op since the
+  // component is gone.
   useEffect(() => {
     return () => {
-      if (pendingRef.current) {
-        // Synchronous flush: write directly to storage without going through
-        // the React state setter, since the component is unmounting.
-        const pending = pendingRef.current
-        if (timerRef.current !== null) {
-          window.clearTimeout(timerRef.current)
-          timerRef.current = null
-        }
-        pendingRef.current = null
-        appendStoredTuningHistory(
-          {
-            params: pending.next,
-            source: pending.source,
-            label: pending.label,
-            slug: pending.slug,
-            changedAt: pending.changedAt,
-            changedKeys: diffParams(pending.prevParams, pending.next),
-          },
-          pending.prevParams,
-        )
-      }
+      flush()
     }
-  }, [])
+  }, [flush])
 
   return { history, hydrated, record, flush }
 }

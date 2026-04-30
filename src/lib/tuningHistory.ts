@@ -19,6 +19,8 @@ import {
   CarParamsSchema,
   TUNING_PARAM_META,
   clampParams,
+  formatTuningValue,
+  getTuningParamMeta,
 } from './tuningSettings'
 import { makeTuningId } from './tuningLab'
 
@@ -145,21 +147,11 @@ export function summarizeChangedKeys(
 ): string {
   const keys = Object.keys(entry.changedKeys) as (keyof CarParams)[]
   if (keys.length === 0) return 'no change'
-  const labelFor = (k: keyof CarParams): string => {
-    const m = TUNING_PARAM_META.find((meta) => meta.key === k)
-    return m ? m.label.toLowerCase() : k
-  }
-  const fmt = (n: number): string => {
-    // Two decimals when under 10, one decimal otherwise. Avoids "+max speed
-    // 26.000000 to 28.000000" while keeping precision for steerRate (0.05
-    // step).
-    if (Math.abs(n) < 10) return n.toFixed(2).replace(/\.?0+$/, '')
-    return n.toFixed(1).replace(/\.0$/, '')
-  }
   const parts = keys.slice(0, maxShown).map((k) => {
     const d = entry.changedKeys[k]!
     const sign = d.to >= d.from ? '+' : '-'
-    return `${sign}${labelFor(k)} ${fmt(d.from)} to ${fmt(d.to)}`
+    const label = getTuningParamMeta(k).label.toLowerCase()
+    return `${sign}${label} ${formatTuningValue(d.from)} to ${formatTuningValue(d.to)}`
   })
   const extra = keys.length - parts.length
   if (extra > 0) parts.push(`and ${extra} ${extra === 1 ? 'other' : 'others'}`)

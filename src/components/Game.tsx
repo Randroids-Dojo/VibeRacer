@@ -448,10 +448,9 @@ function GameSession({
     record: recordTuningChange,
     flush: flushTuningHistory,
   } = useTuningRecorder()
-  // Wrap the writes from useTuning so each one also lands in the audit log.
-  // The recorder coalesces slider drags (default source) into a single entry,
-  // and immediately appends discrete intents (apply / reset / history-revert)
-  // so the user sees those as one row each.
+  // Wrap the useTuning writes so each one also lands in the audit log. The
+  // recorder coalesces slider sources via debounce; non-slider sources flow
+  // through with `immediate: true` so each discrete intent reads as one row.
   const setTuning = useCallback(
     (next: CarParams) => {
       rawSetTuning(next)
@@ -474,11 +473,6 @@ function GameSession({
   )
   const resetTuning = useCallback(() => {
     rawResetTuning()
-    // Re-read the now-default params from the cloned defaults helper. The
-    // hook's reset writes through `cloneDefaultParams()` and updates state
-    // synchronously, but we cannot trust the closure's `tuning` value here.
-    // Instead pass the freshly cloned defaults so the recorder logs the
-    // exact post-reset snapshot.
     recordTuningChange({
       next: cloneDefaultParams(),
       source: 'reset',
