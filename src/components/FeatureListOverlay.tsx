@@ -1,7 +1,6 @@
 'use client'
 import {
   useEffect,
-  useMemo,
   useRef,
   useState,
   type CSSProperties,
@@ -17,14 +16,12 @@ interface FeatureListOverlayProps {
 export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
   const [mounted, setMounted] = useState(false)
   const [paused, setPaused] = useState(false)
-  const scrollerRef = useRef<HTMLDivElement | null>(null)
+  const creditsRef = useRef<HTMLDivElement | null>(null)
   const pausedRef = useRef(false)
   const closeButtonRef = useRef<HTMLButtonElement | null>(null)
+  const offsetRef = useRef(0)
   const playBack = useClickSfx('back')
-  const summary = useMemo(
-    () => `${FEATURE_LIST.length} sections, ${FEATURE_LIST_ITEM_COUNT} features`,
-    [],
-  )
+  const summary = `${FEATURE_LIST.length} sections, ${FEATURE_LIST_ITEM_COUNT} features`
 
   useEffect(() => {
     setMounted(true)
@@ -59,10 +56,9 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
   }, [onClose, playBack])
 
   useEffect(() => {
-    const scroller = scrollerRef.current
-    if (!scroller) return
-    const media = window.matchMedia('(prefers-reduced-motion: reduce)')
-    if (media.matches) return
+    if (!mounted) return
+    const credits = creditsRef.current
+    if (!credits) return
 
     let frame = 0
     let last = performance.now()
@@ -70,19 +66,16 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
       const dt = Math.min(64, now - last)
       last = now
       if (!pausedRef.current) {
-        scroller.scrollTop += dt * 0.036
-        if (
-          scroller.scrollTop + scroller.clientHeight >=
-          scroller.scrollHeight - 2
-        ) {
-          scroller.scrollTop = 0
-        }
+        offsetRef.current += dt * 0.095
+        const resetAt = credits.scrollHeight + window.innerHeight * 0.25
+        if (offsetRef.current >= resetAt) offsetRef.current = 0
+        credits.style.transform = `translate3d(0, ${-offsetRef.current}px, 0)`
       }
       frame = window.requestAnimationFrame(step)
     }
     frame = window.requestAnimationFrame(step)
     return () => window.cancelAnimationFrame(frame)
-  }, [])
+  }, [mounted])
 
   function close() {
     playBack()
@@ -118,34 +111,39 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
       </header>
 
       <div
-        ref={scrollerRef}
         style={scrollerStyle}
         onPointerDown={() => setPaused(true)}
         onWheel={() => setPaused(true)}
         tabIndex={0}
         aria-label="Feature List credits"
       >
-        <div style={spacerStyle} />
-        {FEATURE_LIST.map((category) => (
-          <section key={category.title} style={categoryStyle}>
-            <h3 style={categoryTitleStyle}>{category.title}</h3>
-            <ul style={featureListStyle}>
-              {category.items.map((feature) => (
-                <li key={feature} style={featureItemStyle}>
-                  {feature}
-                </li>
-              ))}
-            </ul>
-          </section>
-        ))}
-        <div style={endingStyle}>See you on the grid.</div>
-        <div style={spacerStyle} />
+        <div ref={creditsRef} data-testid="feature-list-roll">
+          <div style={spacerStyle} />
+          {FEATURE_LIST.map((category) => (
+            <section key={category.title} style={categoryStyle}>
+              <h3 style={categoryTitleStyle}>{category.title}</h3>
+              <ul style={featureListStyle}>
+                {category.items.map((feature) => (
+                  <li key={feature} style={featureItemStyle}>
+                    {feature}
+                  </li>
+                ))}
+              </ul>
+            </section>
+          ))}
+          <div style={endingStyle}>See you on the grid.</div>
+          <div style={spacerStyle} />
+        </div>
       </div>
 
       <footer style={footerStyle}>
         <button
           type="button"
           onClick={() => setPaused((value) => !value)}
+          aria-pressed={paused}
+          aria-label={
+            paused ? 'Resume Feature List scroll' : 'Pause Feature List scroll'
+          }
           style={controlButtonStyle}
         >
           {paused ? 'Resume scroll' : 'Pause scroll'}

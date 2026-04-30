@@ -33,7 +33,18 @@ test('Feature List has a direct URL', async ({ page }) => {
   await expect(page.getByLabel('Feature List credits')).toContainText(
     'Feature List credits screen.',
   )
-  await expect(page.getByRole('button', { name: 'Pause scroll' })).toBeVisible()
+  await expect(
+    page.getByRole('button', { name: 'Pause Feature List scroll' }),
+  ).toBeVisible()
+
+  const firstTop = await page.getByTestId('feature-list-roll').evaluate((node) => {
+    return node.getBoundingClientRect().top
+  })
+  await page.waitForTimeout(900)
+  const secondTop = await page.getByTestId('feature-list-roll').evaluate((node) => {
+    return node.getBoundingClientRect().top
+  })
+  expect(secondTop).toBeLessThan(firstTop - 30)
 })
 
 test('settings menu groups options behind tabs', async ({ page }) => {
