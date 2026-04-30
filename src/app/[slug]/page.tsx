@@ -60,7 +60,6 @@ export default async function SlugPage(ctx: {
     biome,
     decorations,
     mood,
-    transmission,
   } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
   const tuneLoaded = await loadTune(slug)
@@ -86,7 +85,6 @@ export default async function SlugPage(ctx: {
       pieces={pieces}
       checkpointCount={checkpointCount}
       checkpoints={checkpoints}
-      transmission={transmission}
       trackBiome={biome ?? null}
       trackDecorations={decorations ?? []}
       trackMood={mood ?? null}

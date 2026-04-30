@@ -18,6 +18,7 @@ import {
   GAMEPAD_ACTIONS,
   GAMEPAD_ACTION_LABELS,
   TOUCH_MODES,
+  TRANSMISSION_MODES,
   clearBinding,
   clearGamepadBinding,
   cloneDefaultCameraSettings,
@@ -188,7 +189,6 @@ export function SettingsPane({
   const [myTunes, setMyTunes] = useState<MyTuneEntry[]>([])
   const [knownTunes, setKnownTunes] = useState<Record<string, unknown>>({})
   const [tuneChoice, setTuneChoice] = useState('default')
-  const [hasKeyboard, setHasKeyboard] = useState(true)
   const [hasTouch, setHasTouch] = useState(false)
   const [pad, setPad] = useState<{ connected: boolean; id: string | null }>({
     connected: false,
@@ -305,11 +305,9 @@ export function SettingsPane({
   }
 
   useEffect(() => {
-    const fineQuery = window.matchMedia('(any-pointer: fine)')
     const coarseQuery = window.matchMedia('(any-pointer: coarse)')
     const fallbackTouch =
       typeof navigator !== 'undefined' && navigator.maxTouchPoints > 0
-    setHasKeyboard(fineQuery.matches || !coarseQuery.matches)
     setHasTouch(coarseQuery.matches || fallbackTouch)
   }, [])
 
@@ -890,51 +888,70 @@ export function SettingsPane({
         {activeTab === 'controls' ? (
           <>
           <MenuSection title="Controls">
-          {hasKeyboard ? (
-            <div style={subSection}>
-              <div style={subTitle}>Keyboard</div>
-              <MenuHint>
-                Click a slot, then press the key you want.
-                {capture ? ' Press Esc to cancel.' : ''}
-              </MenuHint>
-              <div style={bindingTable}>
-                {CONTROL_ACTIONS.map((action) => (
-                  <div key={action} style={bindingRow}>
-                    <div style={bindingLabel}>{ACTION_LABELS[action]}</div>
-                    <div style={bindingSlots}>
-                      {[0, 1].map((slot) => {
-                        const code = settings.keyBindings[action][slot]
-                        const isCapturing =
-                          capture?.action === action && capture.slot === slot
-                        return (
-                          <KeySlot
-                            key={slot}
-                            label={
-                              isCapturing
-                                ? 'press a key'
-                                : code
-                                  ? formatKeyCode(code)
-                                  : 'unbound'
-                            }
-                            highlighted={isCapturing}
-                            onClick={() => {
-                              if (padCapture) setPadCapture(null)
-                              setCapture({ action, slot })
-                            }}
-                            onClear={
-                              code && !isCapturing
-                                ? () => clearSlot(action, slot)
-                                : undefined
-                            }
-                          />
-                        )
-                      })}
-                    </div>
-                  </div>
-                ))}
-              </div>
+          <div style={subSection}>
+            <div style={subTitle}>Transmission</div>
+            <MenuHint>
+              Manual unlocks the 5-gear box and the Shift up / Shift down
+              bindings (Q / E by default). Automatic shifts for you.
+            </MenuHint>
+            <div style={touchToggleRow}>
+              {TRANSMISSION_MODES.map((mode) => (
+                <MenuButton
+                  key={mode}
+                  variant={
+                    settings.transmission === mode ? 'primary' : 'secondary'
+                  }
+                  onClick={() => onChange({ ...settings, transmission: mode })}
+                >
+                  {mode === 'manual' ? 'Manual' : 'Automatic'}
+                </MenuButton>
+              ))}
             </div>
-          ) : null}
+          </div>
+
+          <div style={subSection}>
+            <div style={subTitle}>Keyboard</div>
+            <MenuHint>
+              Click or tap a slot, then press the key you want.
+              {capture ? ' Press Esc to cancel.' : ''}
+            </MenuHint>
+            <div style={bindingTable}>
+              {CONTROL_ACTIONS.map((action) => (
+                <div key={action} style={bindingRow}>
+                  <div style={bindingLabel}>{ACTION_LABELS[action]}</div>
+                  <div style={bindingSlots}>
+                    {[0, 1].map((slot) => {
+                      const code = settings.keyBindings[action][slot]
+                      const isCapturing =
+                        capture?.action === action && capture.slot === slot
+                      return (
+                        <KeySlot
+                          key={slot}
+                          label={
+                            isCapturing
+                              ? 'press a key'
+                              : code
+                                ? formatKeyCode(code)
+                                : 'unbound'
+                          }
+                          highlighted={isCapturing}
+                          onClick={() => {
+                            if (padCapture) setPadCapture(null)
+                            setCapture({ action, slot })
+                          }}
+                          onClear={
+                            code && !isCapturing
+                              ? () => clearSlot(action, slot)
+                              : undefined
+                          }
+                        />
+                      )
+                    })}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
 
           {hasTouch ? (
             <div style={subSection}>

@@ -41,7 +41,7 @@ import {
   type LapConsistencyInfo,
 } from '@/game/lapConsistency'
 import { type SpeedUnit } from '@/lib/speedometer'
-import type { TrackTransmissionMode } from '@/game/transmission'
+import type { TransmissionMode } from '@/game/transmission'
 import { selectHudNotificationStack } from '@/lib/hudNotifications'
 
 function formatLapTime(ms: number): string {
@@ -164,7 +164,7 @@ interface HudProps {
   // Recent completed-lap consistency. Null until the player has enough laps
   // for the standard deviation to mean something.
   lapConsistency?: LapConsistencyInfo | null
-  transmission?: TrackTransmissionMode
+  transmission?: TransmissionMode
   gear?: number
   compact?: boolean
 }

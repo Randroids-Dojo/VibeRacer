@@ -102,7 +102,6 @@ export async function PUT(
   const hash = hashTrack(
     track.data.pieces,
     track.data.checkpointCount,
-    track.data.transmission,
     track.data.checkpoints,
   )
   const createdAt = new Date().toISOString()
@@ -127,7 +126,6 @@ export async function PUT(
     ...(track.data.decorations !== undefined && track.data.decorations.length > 0
       ? { decorations: track.data.decorations }
       : {}),
-    transmission: track.data.transmission,
     createdByRacerId: racerId,
     createdAt,
   }

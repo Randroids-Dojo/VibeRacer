@@ -9,10 +9,10 @@ import {
 } from './physics'
 import {
   DEFAULT_MANUAL_GEAR,
-  DEFAULT_TRACK_TRANSMISSION,
+  DEFAULT_TRANSMISSION,
   manualGearSpec,
   shiftManualGear,
-  type TrackTransmissionMode,
+  type TransmissionMode,
 } from './transmission'
 import { vehicleTrackContact } from './wheelContact'
 
@@ -79,7 +79,7 @@ export function tick(
   nowMs: number,
   path: TrackPath,
   params: CarParams = DEFAULT_CAR_PARAMS,
-  transmission: TrackTransmissionMode = DEFAULT_TRACK_TRANSMISSION,
+  transmission: TransmissionMode = DEFAULT_TRANSMISSION,
 ): TickResult {
   const dtSec = dtMs / 1000
   let gear = state.gear
