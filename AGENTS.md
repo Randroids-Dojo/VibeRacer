@@ -141,6 +141,18 @@ A prior approval for one destructive action is not approval for all of them. Ask
 - New API routes must have at least one Vitest test against the route handler plus one Playwright smoke.
 - Do not mark a task complete with failing tests.
 
+## RULE 10: Motion and overlay QA
+
+When adding auto-scrolling, credits, animated overlays, portals, or modal UI:
+
+- Verify the visible pixels move, not just that a control says the animation is active.
+- Add Playwright coverage that measures a changing DOM rect, transform, canvas pixel, or other observable movement over time.
+- Do not pause auto-motion on focus by default. Focus can happen on mount and silently disable the feature.
+- If a component portals after first render, start animation effects only after the portal-mounted node exists.
+- For modal overlays, set z-index above every fixed interactive app surface and confirm background controls cannot sit above the dialog.
+- Preserve normal keyboard activation on focused buttons and form controls. Do not let global Space or Enter handlers swallow native button behavior.
+- Expose toggle state with `aria-pressed` or equivalent accessible state.
+
 ---
 
 ## Quick pre-commit checklist

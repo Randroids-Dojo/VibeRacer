@@ -5,6 +5,48 @@ test('home page renders', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'VibeRacer' })).toBeVisible()
 })
 
+test('title screen opens the Feature List credits', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('link', { name: 'Feature List' }).click()
+
+  await expect(
+    page.getByRole('dialog', { name: 'VibeRacer' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Feature List credits')).toContainText(
+    'Race directly from any shared URL.',
+  )
+  await expect(page.getByLabel('Feature List credits')).toContainText(
+    'Feature List credits screen.',
+  )
+
+  await page.getByRole('button', { name: 'Close' }).click()
+  await expect(page.getByRole('dialog', { name: 'VibeRacer' })).toHaveCount(0)
+  await expect(page).toHaveURL('/')
+})
+
+test('Feature List has a direct URL', async ({ page }) => {
+  await page.goto('/features')
+
+  await expect(
+    page.getByRole('dialog', { name: 'VibeRacer' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Feature List credits')).toContainText(
+    'Feature List credits screen.',
+  )
+  await expect(
+    page.getByRole('button', { name: 'Pause Feature List scroll' }),
+  ).toBeVisible()
+
+  const firstTop = await page.getByTestId('feature-list-roll').evaluate((node) => {
+    return node.getBoundingClientRect().top
+  })
+  await page.waitForTimeout(900)
+  const secondTop = await page.getByTestId('feature-list-roll').evaluate((node) => {
+    return node.getBoundingClientRect().top
+  })
+  expect(secondTop).toBeLessThan(firstTop - 30)
+})
+
 test('settings menu groups options behind tabs', async ({ page }) => {
   await page.goto('/')
   await page.getByRole('button', { name: 'Settings' }).click()
@@ -14,6 +56,9 @@ test('settings menu groups options behind tabs', async ({ page }) => {
     'true',
   )
   await expect(page.getByText('Three letters tag your lap times')).toBeVisible()
+  await expect(
+    page.getByRole('tabpanel').getByRole('button', { name: 'Feature List' }),
+  ).toBeVisible()
 
   await page.getByRole('tab', { name: 'Camera' }).click()
   await expect(page.getByRole('tab', { name: 'Camera' })).toHaveAttribute(
@@ -29,6 +74,24 @@ test('settings menu groups options behind tabs', async ({ page }) => {
   await page.getByRole('tab', { name: 'Effects' }).click()
   await expect(page.getByText('Skid marks', { exact: true })).toBeVisible()
   await expect(page.getByText('Trackside scenery', { exact: true })).toBeVisible()
+})
+
+test('settings opens the Feature List credits', async ({ page }) => {
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Settings' }).click()
+  await page
+    .getByRole('tabpanel')
+    .getByRole('button', { name: 'Feature List' })
+    .click()
+
+  await expect(
+    page.getByRole('dialog', { name: 'VibeRacer' }),
+  ).toBeVisible()
+  await expect(page.getByLabel('Feature List credits')).toContainText(
+    'Tabbed settings.',
+  )
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('dialog', { name: 'VibeRacer' })).toHaveCount(0)
 })
 
 test('settings tabs keep long sections inside the modal viewport', async ({
@@ -157,7 +220,7 @@ test('leaderboard rows open lap details with input and setup metadata', async ({
   await expect(page.getByText('Gamepad', { exact: true })).toBeVisible()
   await expect(page.getByText('Raced with gamepad')).toBeVisible()
   await expect(page.getByText('Max speed', { exact: true })).toBeVisible()
-  await expect(page.getByText('30')).toBeVisible()
+  await expect(page.getByText('30u/s', { exact: true })).toBeVisible()
 })
 
 test('race HUD keeps mirror and bottom readouts in separate lanes on mobile', async ({

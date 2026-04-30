@@ -252,6 +252,7 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Achievements pane.
   - Setup pane.
   - Photo mode.
+  - Feature List credits screen.
   - Share track.
   - Star track.
   - Edit initials in Settings.

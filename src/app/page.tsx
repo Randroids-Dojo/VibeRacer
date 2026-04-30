@@ -11,6 +11,7 @@ import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
+import { FeatureListLauncher } from '@/components/FeatureListLauncher'
 import { MyPbs } from '@/components/MyPbs'
 import { MyTracks } from '@/components/MyTracks'
 import { FavoriteTracks } from '@/components/FavoriteTracks'
@@ -87,6 +88,7 @@ export default async function HomePage() {
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
+          <FeatureListLauncher buttonStyle={settingsBtnStyle} />
           <HowToPlayLauncher buttonStyle={settingsBtnStyle} />
         </div>
       </section>
