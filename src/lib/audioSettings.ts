@@ -35,7 +35,7 @@ export const ENGINE_NOISE_MODES = [
 
 export type EngineNoiseMode = (typeof ENGINE_NOISE_MODES)[number]
 
-export const DEFAULT_ENGINE_NOISE_MODE: EngineNoiseMode = 'smooth'
+export const DEFAULT_ENGINE_NOISE_MODE: EngineNoiseMode = 'warm'
 
 export const ENGINE_NOISE_LABELS: Record<EngineNoiseMode, string> = {
   smooth: 'Smooth',
@@ -48,14 +48,14 @@ export const ENGINE_NOISE_DESCRIPTIONS: Record<EngineNoiseMode, string> = {
   smooth: 'Lower, softer drone for long races.',
   classic: 'Original bright sawtooth engine.',
   warm: 'Rounder vintage hum with less edge.',
-  electric: 'Clean synthetic whine with a light body.',
+  electric: 'Bright motor whine with an energized pulse.',
 }
 
 export const DEFAULT_AUDIO_SETTINGS: AudioSettings = {
   musicEnabled: true,
   sfxEnabled: true,
   musicVolume: 0.7,
-  sfxVolume: 0.8,
+  sfxVolume: 0.6,
   engineNoise: DEFAULT_ENGINE_NOISE_MODE,
   musicPerTrack: true,
   musicMixInitials: false,
@@ -68,6 +68,7 @@ export const AUDIO_SETTINGS_STORAGE_KEY = 'viberacer.audio'
 export const AUDIO_SETTINGS_EVENT = 'viberacer:audio-settings-changed'
 
 const VolumeSchema = z.number().min(0).max(1)
+const SFX_OUTPUT_GAIN = 0.72
 
 const AudioSettingsSchema = z.object({
   musicEnabled: z.boolean(),
@@ -110,7 +111,7 @@ export function effectiveMusicGain(s: AudioSettings): number {
 }
 
 export function effectiveSfxGain(s: AudioSettings): number {
-  return s.sfxEnabled ? clamp01(s.sfxVolume) : 0
+  return s.sfxEnabled ? clamp01(s.sfxVolume) * SFX_OUTPUT_GAIN : 0
 }
 
 export function readStoredAudioSettings(): AudioSettings {

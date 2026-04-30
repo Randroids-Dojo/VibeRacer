@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-30, Engine SFX Balance
+
+- Branch: `polish/engine-sfx-balance`
+- Changed: switched the default engine-noise profile from Smooth to Warm, reduced the default SFX volume and added a global SFX bus attenuation so existing saved settings also play quieter, made Electric brighter and more animated, and added high-speed tone modulation so full-throttle engine sound fluctuates instead of holding one steady tone.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/audio.test.ts` and `tests/unit/audioSettings.test.ts`, `npm run type-check`, `npm test`, `npm run lint`, and `npm run build` pass. Lint and build still report the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: global SFX bus attenuation is the correct fix for "all SFX still too loud" because it reduces old saved settings as well as new defaults.
+- GDD coverage: extends Section 13 Audio with quieter SFX balancing and high-speed engine modulation.
+- Followups: none.
+
 ## 2026-04-30, Engine Noise Options
 
 - Branch: `feature/engine-sound-options`

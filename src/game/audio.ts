@@ -81,6 +81,9 @@ interface EngineNoiseProfile {
   volSlopeFrac: number
   throttleBoost: number
   offTrackDuck: number
+  highSpeedModDepthHz: number
+  highSpeedFilterModHz: number
+  highSpeedModRateHz: number
 }
 
 const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
@@ -96,6 +99,9 @@ const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
     volSlopeFrac: 0.5,
     throttleBoost: 0.018,
     offTrackDuck: 0.5,
+    highSpeedModDepthHz: 2.5,
+    highSpeedFilterModHz: 45,
+    highSpeedModRateHz: 2.7,
   },
   classic: {
     wave: 'sawtooth',
@@ -109,6 +115,9 @@ const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
     volSlopeFrac: 0.6,
     throttleBoost: DRONE_THROTTLE_BOOST,
     offTrackDuck: 0.55,
+    highSpeedModDepthHz: 5,
+    highSpeedFilterModHz: 120,
+    highSpeedModRateHz: 3.1,
   },
   warm: {
     wave: 'sawtooth',
@@ -117,24 +126,30 @@ const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
     filterBaseHz: 280,
     filterRangeHz: 1800,
     filterQ: 2.2,
-    baseVol: 0.095,
-    volFloorFrac: 0.32,
-    volSlopeFrac: 0.48,
-    throttleBoost: 0.022,
+    baseVol: 0.075,
+    volFloorFrac: 0.3,
+    volSlopeFrac: 0.45,
+    throttleBoost: 0.017,
     offTrackDuck: 0.55,
+    highSpeedModDepthHz: 4,
+    highSpeedFilterModHz: 90,
+    highSpeedModRateHz: 2.4,
   },
   electric: {
     wave: 'square',
-    baseHz: 95,
-    rangeHz: 260,
-    filterBaseHz: 900,
-    filterRangeHz: 2600,
-    filterQ: 0.9,
-    baseVol: 0.055,
-    volFloorFrac: 0.2,
-    volSlopeFrac: 0.58,
-    throttleBoost: 0.014,
+    baseHz: 135,
+    rangeHz: 520,
+    filterBaseHz: 1400,
+    filterRangeHz: 5200,
+    filterQ: 8,
+    baseVol: 0.048,
+    volFloorFrac: 0.16,
+    volSlopeFrac: 0.44,
+    throttleBoost: 0.012,
     offTrackDuck: 0.65,
+    highSpeedModDepthHz: 30,
+    highSpeedFilterModHz: 1150,
+    highSpeedModRateHz: 7.5,
   },
 }
 
@@ -175,6 +190,37 @@ export function droneFilterHz(
   if (maxSpeed <= 0) return profile.filterBaseHz
   const ratio = clamp01(speedAbs / maxSpeed)
   return profile.filterBaseHz + profile.filterRangeHz * ratio
+}
+
+export function highSpeedModAmount(speedAbs: number, maxSpeed: number): number {
+  if (maxSpeed <= 0) return 0
+  const ratio = clamp01(speedAbs / maxSpeed)
+  return clamp01((ratio - 0.78) / 0.22)
+}
+
+export function engineToneTargets(
+  speedAbs: number,
+  maxSpeed: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+  timeSec = 0,
+): { freqHz: number; filterHz: number } {
+  const profile = engineNoiseProfile(mode)
+  const mod = highSpeedModAmount(speedAbs, maxSpeed)
+  const baseFreq = droneFreqHz(speedAbs, maxSpeed, mode)
+  const baseFilter = droneFilterHz(speedAbs, maxSpeed, mode)
+  if (mod <= 0) return { freqHz: baseFreq, filterHz: baseFilter }
+  const primary = Math.sin(timeSec * Math.PI * 2 * profile.highSpeedModRateHz)
+  const secondary = Math.sin(
+    timeSec * Math.PI * 2 * (profile.highSpeedModRateHz * 0.37 + 0.31),
+  )
+  const blended = primary * 0.72 + secondary * 0.28
+  return {
+    freqHz: Math.max(20, baseFreq + blended * profile.highSpeedModDepthHz * mod),
+    filterHz: Math.max(
+      40,
+      baseFilter + blended * profile.highSpeedFilterModHz * mod,
+    ),
+  }
 }
 
 export function droneVolume(
@@ -300,15 +346,14 @@ export function updateEngine(
   if (!v || !e) return
   const profile = engineNoiseProfile(mode)
   const now = e.ctx.currentTime
-  const targetFreq = droneFreqHz(speedAbs, maxSpeed, mode)
-  const targetCutoff = droneFilterHz(speedAbs, maxSpeed, mode)
+  const targets = engineToneTargets(speedAbs, maxSpeed, mode, now)
   const baseVol = droneVolume(speedAbs, maxSpeed, onTrack, mode)
   // Subtle throttle bump on top of speed-driven volume so taps register.
   const throttleBoost = Math.max(0, throttle) * profile.throttleBoost
   const targetVol = racing ? baseVol + throttleBoost : 0
   v.osc.type = profile.wave
-  v.osc.frequency.setTargetAtTime(targetFreq, now, DRONE_SMOOTH_TC)
-  v.filter.frequency.setTargetAtTime(targetCutoff, now, DRONE_SMOOTH_TC)
+  v.osc.frequency.setTargetAtTime(targets.freqHz, now, DRONE_SMOOTH_TC)
+  v.filter.frequency.setTargetAtTime(targets.filterHz, now, DRONE_SMOOTH_TC)
   v.filter.Q.value = profile.filterQ
   v.gain.gain.setTargetAtTime(targetVol, now, DRONE_SMOOTH_TC)
 }
