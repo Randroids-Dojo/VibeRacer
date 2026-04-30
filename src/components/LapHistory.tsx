@@ -17,7 +17,7 @@ import {
   MenuPanel,
   menuTheme,
 } from './MenuUI'
-import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
+import { useRegisterFocusable } from './MenuNav'
 
 const CHART_WIDTH = 460
 const CHART_HEIGHT = 80
@@ -109,9 +109,8 @@ export function LapHistory({
   )
 
   return (
-    <MenuOverlay zIndex={100}>
-      <MenuNavProvider onBack={onBack}>
-        <MenuPanel width="wide">
+    <MenuOverlay zIndex={100} onBack={onBack}>
+      <MenuPanel width="wide">
         <div
           style={{
             display: 'flex',
@@ -207,8 +206,7 @@ export function LapHistory({
         <MenuButton click="back" onClick={onBack}>
           Back
         </MenuButton>
-        </MenuPanel>
-      </MenuNavProvider>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

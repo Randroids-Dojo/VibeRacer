@@ -2,7 +2,6 @@
 
 import type { Piece } from '@/lib/schemas'
 import { MenuButton, MenuOverlay, MenuPanel, MenuTitle } from './MenuUI'
-import { MenuNavProvider } from './MenuNav'
 import { TrackDifficultyBadge } from './TrackDifficultyBadge'
 
 interface PauseMenuProps {
@@ -42,9 +41,8 @@ export function PauseMenu({
   onExit,
 }: PauseMenuProps) {
   return (
-    <MenuOverlay zIndex={100}>
-      <MenuNavProvider onBack={onResume}>
-        <MenuPanel>
+    <MenuOverlay zIndex={100} onBack={onResume}>
+      <MenuPanel>
         <MenuTitle>PAUSED</MenuTitle>
         {pieces && pieces.length > 0 ? (
           <div
@@ -103,8 +101,7 @@ export function PauseMenu({
         >
           Esc / B to resume
         </div>
-        </MenuPanel>
-      </MenuNavProvider>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

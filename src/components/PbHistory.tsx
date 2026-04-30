@@ -9,7 +9,6 @@ import {
   type PbHistoryEntry,
 } from '@/lib/pbHistory'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
-import { MenuNavProvider } from './MenuNav'
 
 interface PbHistoryProps {
   entries: readonly PbHistoryEntry[]
@@ -41,9 +40,8 @@ export function PbHistory({ entries, onBack }: PbHistoryProps) {
   const ordered = useMemo(() => sortPbHistoryNewestFirst(entries), [entries])
 
   return (
-    <MenuOverlay zIndex={100}>
-      <MenuNavProvider onBack={onBack}>
-        <MenuPanel width="wide">
+    <MenuOverlay zIndex={100} onBack={onBack}>
+      <MenuPanel width="wide">
         <div
           style={{
             display: 'flex',
@@ -141,8 +139,7 @@ export function PbHistory({ entries, onBack }: PbHistoryProps) {
         <MenuButton click="back" onClick={onBack}>
           Back
         </MenuButton>
-        </MenuPanel>
-      </MenuNavProvider>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

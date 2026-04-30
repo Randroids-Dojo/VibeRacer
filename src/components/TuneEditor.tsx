@@ -12,7 +12,6 @@ import {
   MenuToggle,
   menuTheme,
 } from './MenuUI'
-import { MenuNavProvider } from './MenuNav'
 import { TuneStepGrid } from './TuneStepGrid'
 import {
   DEFAULT_TRACK_TUNE,
@@ -147,9 +146,8 @@ export function TuneEditor({
   }
 
   return (
-    <MenuOverlay zIndex={300}>
-      <MenuNavProvider onBack={() => router.push(`/${slug}`)}>
-        <MenuPanel width="wide">
+    <MenuOverlay zIndex={300} onBack={() => router.push(`/${slug}`)}>
+      <MenuPanel width="wide">
         <MenuHeader title={`Tune for /${slug}`} onClose={() => router.push(`/${slug}`)} />
 
         <MenuSection title="Seed">
@@ -417,8 +415,7 @@ export function TuneEditor({
           </div>
           {status ? <MenuHint>{status}</MenuHint> : null}
         </MenuSection>
-        </MenuPanel>
-      </MenuNavProvider>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

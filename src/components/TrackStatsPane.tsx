@@ -18,7 +18,6 @@ import {
 } from '@/game/topSpeedPb'
 import { type SpeedUnit } from '@/lib/speedometer'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
-import { MenuNavProvider } from './MenuNav'
 
 interface TrackStatsPaneProps {
   // Persisted engagement stats for the current slug + version. Null reads as
@@ -87,9 +86,8 @@ export function TrackStatsPane({
   const avg = averageLapMs(safe)
 
   return (
-    <MenuOverlay zIndex={100}>
-      <MenuNavProvider onBack={onBack}>
-        <MenuPanel width="wide">
+    <MenuOverlay zIndex={100} onBack={onBack}>
+      <MenuPanel width="wide">
         <div
           style={{
             display: 'flex',
@@ -231,8 +229,7 @@ export function TrackStatsPane({
         <MenuButton click="back" onClick={onBack}>
           Back
         </MenuButton>
-        </MenuPanel>
-      </MenuNavProvider>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

@@ -10,7 +10,7 @@ import {
 } from 'react'
 import { createPortal } from 'react-dom'
 import { useClickSfx, type ClickVariant } from '@/hooks/useClickSfx'
-import { useRegisterFocusable } from './MenuNav'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 import type { FocusAxis } from './MenuNav'
 
 // Shared visual language for the dark in-game / pause / settings menus.
@@ -69,9 +69,18 @@ input.menuui-range:focus-visible {
 export function MenuOverlay({
   children,
   zIndex = 100,
+  onBack,
+  onTabPrev,
+  onTabNext,
+  autoFocus,
 }: {
   children: ReactNode
   zIndex?: number
+  // Closes the overlay. Wires Esc / B / DPad-back to call this.
+  onBack?: () => void
+  onTabPrev?: () => void
+  onTabNext?: () => void
+  autoFocus?: boolean
 }) {
   const [mounted, setMounted] = useState(false)
 
@@ -79,6 +88,19 @@ export function MenuOverlay({
     setMounted(true)
     injectFocusStyle()
   }, [])
+
+  const inner = onBack || onTabPrev || onTabNext || autoFocus !== undefined ? (
+    <MenuNavProvider
+      onBack={onBack}
+      onTabPrev={onTabPrev}
+      onTabNext={onTabNext}
+      autoFocus={autoFocus}
+    >
+      {children}
+    </MenuNavProvider>
+  ) : (
+    children
+  )
 
   const overlay = (
     <div
@@ -96,7 +118,7 @@ export function MenuOverlay({
         overflow: 'hidden',
       }}
     >
-      {children}
+      {inner}
     </div>
   )
 

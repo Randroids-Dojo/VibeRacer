@@ -8,7 +8,7 @@ import {
   writeStoredInitials,
 } from '@/lib/initials'
 import { MenuButton, MenuOverlay, MenuPanel } from './MenuUI'
-import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
+import { useRegisterFocusable } from './MenuNav'
 
 // Re-export the storage helpers so existing imports (`@/components/InitialsPrompt`)
 // keep working. New consumers should import from `@/lib/initials` directly.
@@ -38,39 +38,37 @@ export function InitialsPrompt({
   }
 
   return (
-    <MenuOverlay zIndex={100}>
-      <MenuNavProvider autoFocus={false}>
-        <MenuPanel>
-          <div style={{ textAlign: 'center' }}>
-            <h2 style={{ margin: 0, fontSize: 22 }}>Enter 3 initials</h2>
-            <p style={{ opacity: 0.8, fontSize: 14, margin: '8px 0 4px' }}>
-              They will tag your lap times on the leaderboards.
-            </p>
-          </div>
-          <InitialsInput
-            value={value}
-            onChange={(next) => {
-              setValue(next.toUpperCase().replace(/[^A-Z]/g, ''))
-              setError(null)
+    <MenuOverlay zIndex={100} autoFocus={false}>
+      <MenuPanel>
+        <div style={{ textAlign: 'center' }}>
+          <h2 style={{ margin: 0, fontSize: 22 }}>Enter 3 initials</h2>
+          <p style={{ opacity: 0.8, fontSize: 14, margin: '8px 0 4px' }}>
+            They will tag your lap times on the leaderboards.
+          </p>
+        </div>
+        <InitialsInput
+          value={value}
+          onChange={(next) => {
+            setValue(next.toUpperCase().replace(/[^A-Z]/g, ''))
+            setError(null)
+          }}
+          onSubmit={submit}
+        />
+        {error ? (
+          <div
+            style={{
+              color: '#ffb3b3',
+              fontSize: 13,
+              textAlign: 'center',
             }}
-            onSubmit={submit}
-          />
-          {error ? (
-            <div
-              style={{
-                color: '#ffb3b3',
-                fontSize: 13,
-                textAlign: 'center',
-              }}
-            >
-              {error}
-            </div>
-          ) : null}
-          <MenuButton variant="primary" click="confirm" onClick={submit}>
-            Save
-          </MenuButton>
-        </MenuPanel>
-      </MenuNavProvider>
+          >
+            {error}
+          </div>
+        ) : null}
+        <MenuButton variant="primary" click="confirm" onClick={submit}>
+          Save
+        </MenuButton>
+      </MenuPanel>
     </MenuOverlay>
   )
 }

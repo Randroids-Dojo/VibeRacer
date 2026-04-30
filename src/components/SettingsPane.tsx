@@ -125,7 +125,7 @@ import {
   type MenuTabDef,
 } from './MenuUI'
 import { FeatureListOverlay } from './FeatureListOverlay'
-import { MenuNavProvider, useMenuNav } from './MenuNav'
+import { useMenuNav } from './MenuNav'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -723,14 +723,14 @@ export function SettingsPane({
   const captureActive = capture !== null || padCapture !== null
 
   return (
-    <MenuOverlay zIndex={110}>
-      <MenuNavProvider
-        onBack={onClose}
-        onTabPrev={() => shiftTab(-1)}
-        onTabNext={() => shiftTab(1)}
-      >
-        <CaptureSuppression active={captureActive} />
-        <MenuPanel width="wide" overflow="hidden">
+    <MenuOverlay
+      zIndex={110}
+      onBack={onClose}
+      onTabPrev={() => shiftTab(-1)}
+      onTabNext={() => shiftTab(1)}
+    >
+      <CaptureSuppression active={captureActive} />
+      <MenuPanel width="wide" overflow="hidden">
         <MenuHeader title="SETTINGS" onClose={onClose} />
 
         <MenuTabBar
@@ -1711,7 +1711,6 @@ export function SettingsPane({
       {featureListOpen ? (
         <FeatureListOverlay onClose={closeFeatureList} />
       ) : null}
-      </MenuNavProvider>
     </MenuOverlay>
   )
 }
