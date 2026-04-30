@@ -94,6 +94,19 @@ test('settings opens the Feature List credits', async ({ page }) => {
   await expect(page.getByRole('dialog', { name: 'VibeRacer' })).toHaveCount(0)
 })
 
+test('tune editor rolls a seed and saves a personal tune', async ({ page }) => {
+  await page.goto('/tune/smoke-tune')
+  await expect(page.getByText('Tune for /smoke-tune')).toBeVisible()
+  await page.getByPlaceholder('seed word').fill('neon')
+  await page.getByRole('button', { name: 'Roll' }).click()
+  await expect(page.getByText('Seeded from neon.')).toBeVisible()
+  await page.getByLabel('Personal tune name').fill('Smoke Tune')
+  await page.getByRole('button', { name: 'Save personal' }).click()
+  await expect(page.getByText('Personal tune saved and applied.')).toBeVisible()
+  const stored = await page.evaluate(() => localStorage.getItem('viberacer.myTunes'))
+  expect(stored).toContain('Smoke Tune')
+})
+
 test('settings tabs keep long sections inside the modal viewport', async ({
   page,
 }) => {

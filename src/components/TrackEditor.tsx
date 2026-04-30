@@ -118,6 +118,7 @@ interface TrackEditorProps {
   // the loaded track has no mood (legacy or never set).
   initialMood?: TrackMood
   initialTransmission?: TrackTransmissionMode
+  hasCustomTune?: boolean
   // When set, the editor was opened against a historical version. Saving still
   // creates a new version on the same slug. The editor surfaces a small banner
   // so the player understands they are forking, not overwriting.
@@ -140,6 +141,7 @@ export function TrackEditor({
   initialDecorations = [],
   initialMood,
   initialTransmission = 'automatic',
+  hasCustomTune = false,
   forkingFromHash,
 }: TrackEditorProps) {
   const router = useRouter()
@@ -882,6 +884,20 @@ export function TrackEditor({
             </button>
           </div>
         ) : null}
+        <div style={headerActions}>
+          <button
+            type="button"
+            onClick={() => router.push(`/tune/${slug}`)}
+            style={hasCustomTune ? tuneBtnActive : tuneBtn}
+            title={
+              hasCustomTune
+                ? 'Edit the custom soundtrack for this track.'
+                : 'Create a custom soundtrack for this track.'
+            }
+          >
+            {hasCustomTune ? 'Edit Tune *' : 'Edit Tune'}
+          </button>
+        </div>
       </div>
 
       <div style={paletteBar} role="toolbar" aria-label="Piece palette">
@@ -1916,6 +1932,27 @@ const hint: React.CSSProperties = {
   fontSize: 12,
   opacity: 0.65,
   marginTop: 4,
+}
+const headerActions: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  marginTop: 10,
+}
+const tuneBtn: React.CSSProperties = {
+  border: '1px solid #334155',
+  background: '#162233',
+  color: 'white',
+  borderRadius: 8,
+  padding: '8px 12px',
+  fontWeight: 700,
+  fontSize: 13,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+}
+const tuneBtnActive: React.CSSProperties = {
+  ...tuneBtn,
+  borderColor: '#ffb347',
+  color: '#ffdf8a',
 }
 const forkBanner: React.CSSProperties = {
   marginTop: 10,

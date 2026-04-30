@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-04-29, Track Tune Persistence And Editor
+
+- Branch: `feature/tune-editor-persistence`
+- PR: #60
+- Changed: added the track tune API and KV keys, server tune loading, personal tune and override localStorage helpers, race-time override resolution, `/tune/[slug]` editor route, a first usable tune editor with step grids, Settings Audio tune selection, and a Track Editor tune entry.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/api.trackTune.test.ts`, `tests/unit/myTunes.test.ts`, `tests/unit/tunes.test.ts`, `tests/unit/music.test.ts`, and `tests/unit/schemas.test.ts`, `npm run type-check`, `npm test`, `npm run build`, and focused Playwright `tests/e2e/smoke.spec.ts --grep "tune editor"` pass. Build reports existing React hook lint warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: Slice 2 should ship the usable save/apply loop first. Automation-specific editor controls remain in Slice 3 with the engine state wiring.
+- GDD coverage: advances Section 13 Audio by closing persistence, personal override, editor route, Settings, and Track Editor entry gaps.
+- Followups: Slice 3 automation features remain high priority. Production smoke for PR #57 was blocked locally by Vercel SSO on the GitHub deployment URL even though main CI and deployment status were green.
+
 ## 2026-04-29, Track Tune Engine Foundation
 
 - Branch: `feature/tune-engine-foundation`

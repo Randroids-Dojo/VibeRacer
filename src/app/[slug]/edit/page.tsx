@@ -9,6 +9,7 @@ import {
   type TrackTransmissionMode,
 } from '@/lib/schemas'
 import { loadTrack } from '@/lib/loadTrack'
+import { loadTune } from '@/lib/loadTune'
 import { TrackEditor } from '@/components/TrackEditor'
 
 export default async function EditPage(ctx: {
@@ -49,6 +50,7 @@ export default async function EditPage(ctx: {
   // create a new hash rather than overwrite the one they are editing.
   const forkingFromHash =
     loaded.kind === 'ok' && requestedHash !== null ? requestedHash : null
+  const tuneLoaded = await loadTune(slug)
 
   return (
     <TrackEditor
@@ -60,6 +62,7 @@ export default async function EditPage(ctx: {
       initialDecorations={initialDecorations}
       initialMood={initialMood}
       initialTransmission={initialTransmission}
+      hasCustomTune={tuneLoaded.kind === 'ok'}
       forkingFromHash={forkingFromHash}
     />
   )
