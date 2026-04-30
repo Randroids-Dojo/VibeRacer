@@ -8,6 +8,7 @@ import {
   isStockParams,
 } from '@/lib/tuningSettings'
 import { useClickSfx } from '@/hooks/useClickSfx'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 import { TuningHistoryList } from './TuningHistoryList'
 import type { TuningHistoryEntry } from '@/lib/tuningHistory'
 
@@ -52,20 +53,17 @@ export function TuningPanel({
   }
 
   return (
-    <div style={overlay}>
+    <MenuNavProvider onBack={onClose}>
+      <div style={overlay}>
       <div style={panel}>
         <div style={header}>
           <div style={title}>SETUP</div>
-          <button
+          <TuningCloseButton
             onClick={() => {
               clickBack()
               onClose()
             }}
-            style={closeBtn}
-            aria-label="Close tuning"
-          >
-            CLOSE
-          </button>
+          />
         </div>
 
         <div style={status}>
@@ -115,21 +113,14 @@ export function TuningPanel({
 
         {showHistory && history && onApplyHistoryEntry ? (
           <div style={historySection}>
-            <button
-              type="button"
-              onClick={() => {
+            <HistoryToggleButton
+              open={historyOpen}
+              count={scopedHistoryCount}
+              onToggle={() => {
                 clickSoft()
                 setHistoryOpen((v) => !v)
               }}
-              style={historyToggleBtn}
-              aria-expanded={historyOpen}
-            >
-              <span>
-                Recent changes
-                {scopedHistoryCount > 0 ? ` (${scopedHistoryCount})` : ''}
-              </span>
-              <span style={historyChevron}>{historyOpen ? '▴' : '▾'}</span>
-            </button>
+            />
             {historyOpen ? (
               <div style={historyBody}>
                 <TuningHistoryList
@@ -147,27 +138,130 @@ export function TuningPanel({
         ) : null}
 
         <div style={footer}>
-          <button
+          <ResetDefaultsButton
             onClick={() => {
               clickSoft()
               onReset()
             }}
-            style={resetAllBtn}
-          >
-            Reset to defaults
-          </button>
-          <button
+          />
+          <TuningDoneButton
             onClick={() => {
               clickConfirm()
               onClose()
             }}
-            style={doneBtn}
-          >
-            Done
-          </button>
+          />
         </div>
       </div>
-    </div>
+      </div>
+    </MenuNavProvider>
+  )
+}
+
+function ParamRangeInput({
+  min,
+  max,
+  step,
+  value,
+  onChange,
+  ariaLabel,
+}: {
+  min: number
+  max: number
+  step: number
+  value: number
+  onChange: (next: number) => void
+  ariaLabel: string
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
+  return (
+    <input
+      ref={ref}
+      type="range"
+      min={min}
+      max={max}
+      step={step}
+      value={value}
+      onChange={(e) => onChange(Number(e.target.value))}
+      style={range}
+      aria-label={ariaLabel}
+      className="menuui-range"
+    />
+  )
+}
+
+function TuningCloseButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={closeBtn}
+      aria-label="Close tuning"
+      className="menuui-focusable"
+    >
+      CLOSE
+    </button>
+  )
+}
+
+function TuningDoneButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={doneBtn}
+      className="menuui-focusable"
+    >
+      Done
+    </button>
+  )
+}
+
+function ResetDefaultsButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      onClick={onClick}
+      style={resetAllBtn}
+      className="menuui-focusable"
+    >
+      Reset to defaults
+    </button>
+  )
+}
+
+function HistoryToggleButton({
+  open,
+  count,
+  onToggle,
+}: {
+  open: boolean
+  count: number
+  onToggle: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onToggle}
+      style={historyToggleBtn}
+      aria-expanded={open}
+      className="menuui-focusable"
+    >
+      <span>
+        Recent changes
+        {count > 0 ? ` (${count})` : ''}
+      </span>
+      <span style={historyChevron}>{open ? '▴' : '▾'}</span>
+    </button>
   )
 }
 
@@ -204,15 +298,13 @@ function ParamRow({
           <div style={unit}>{meta.unit}</div>
         </div>
       </div>
-      <input
-        type="range"
+      <ParamRangeInput
         min={meta.min}
         max={meta.max}
         step={meta.step}
         value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        style={range}
-        aria-label={`${meta.label} slider`}
+        onChange={onChange}
+        ariaLabel={`${meta.label} slider`}
       />
       <div style={metaRow}>
         <span style={metaText}>

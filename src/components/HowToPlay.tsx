@@ -45,7 +45,7 @@ export function HowToPlay({
   const gamepadRows = buildGamepadHelpRows(gamepadBindings)
   const touch = buildTouchHelp(touchMode)
   return (
-    <MenuOverlay zIndex={120}>
+    <MenuOverlay zIndex={120} onBack={onClose}>
       <MenuPanel width="wide">
         <MenuHeader title="HOW TO PLAY" onClose={onClose} />
 

@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import {
   formatLapDelta,
   summarizeHistory,
@@ -17,6 +17,7 @@ import {
   MenuPanel,
   menuTheme,
 } from './MenuUI'
+import { useRegisterFocusable } from './MenuNav'
 
 const CHART_WIDTH = 460
 const CHART_HEIGHT = 80
@@ -108,7 +109,7 @@ export function LapHistory({
   )
 
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} onBack={onBack}>
       <MenuPanel width="wide">
         <div
           style={{
@@ -274,6 +275,11 @@ function LapRow({
     ? `1px solid ${menuTheme.accentBg}`
     : '1px solid transparent'
   const hasSectors = entry.sectors.length > 0
+  const buttonRef = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(buttonRef, {
+    axis: 'vertical',
+    disabled: !hasSectors,
+  })
   return (
     <div
       style={{
@@ -286,9 +292,11 @@ function LapRow({
       }}
     >
       <button
+        ref={buttonRef}
         type="button"
         onClick={hasSectors ? onToggle : undefined}
         disabled={!hasSectors}
+        className="menuui-focusable"
         aria-expanded={hasSectors ? isExpanded : undefined}
         aria-label={
           hasSectors

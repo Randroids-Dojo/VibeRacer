@@ -40,7 +40,7 @@ export function PbHistory({ entries, onBack }: PbHistoryProps) {
   const ordered = useMemo(() => sortPbHistoryNewestFirst(entries), [entries])
 
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} onBack={onBack}>
       <MenuPanel width="wide">
         <div
           style={{

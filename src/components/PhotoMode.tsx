@@ -84,7 +84,7 @@ export function PhotoMode({ slug, captureRef, onClose }: PhotoModeProps) {
   )
 
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} onBack={onClose}>
       <MenuPanel>
         <MenuHeader title="PHOTO MODE" onClose={onClose} />
         <MenuHint>

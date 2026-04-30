@@ -86,7 +86,7 @@ export function TrackStatsPane({
   const avg = averageLapMs(safe)
 
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} onBack={onBack}>
       <MenuPanel width="wide">
         <div
           style={{

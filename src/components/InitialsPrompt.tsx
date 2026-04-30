@@ -8,6 +8,7 @@ import {
   writeStoredInitials,
 } from '@/lib/initials'
 import { MenuButton, MenuOverlay, MenuPanel } from './MenuUI'
+import { useRegisterFocusable } from './MenuNav'
 
 // Re-export the storage helpers so existing imports (`@/components/InitialsPrompt`)
 // keep working. New consumers should import from `@/lib/initials` directly.
@@ -25,11 +26,6 @@ export function InitialsPrompt({
 }) {
   const [value, setValue] = useState('')
   const [error, setError] = useState<string | null>(null)
-  const inputRef = useRef<HTMLInputElement | null>(null)
-
-  useEffect(() => {
-    inputRef.current?.focus()
-  }, [])
 
   function submit() {
     const parsed = InitialsSchema.safeParse(value)
@@ -42,7 +38,7 @@ export function InitialsPrompt({
   }
 
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} autoFocus={false}>
       <MenuPanel>
         <div style={{ textAlign: 'center' }}>
           <h2 style={{ margin: 0, fontSize: 22 }}>Enter 3 initials</h2>
@@ -50,32 +46,13 @@ export function InitialsPrompt({
             They will tag your lap times on the leaderboards.
           </p>
         </div>
-        <input
-          ref={inputRef}
+        <InitialsInput
           value={value}
-          maxLength={3}
-          onChange={(e) => {
-            setValue(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
+          onChange={(next) => {
+            setValue(next.toUpperCase().replace(/[^A-Z]/g, ''))
             setError(null)
           }}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter') submit()
-          }}
-          autoComplete="off"
-          spellCheck={false}
-          style={{
-            fontSize: 48,
-            fontFamily: 'monospace',
-            textAlign: 'center',
-            width: 200,
-            padding: 8,
-            letterSpacing: 12,
-            background: '#0d0d0d',
-            color: 'white',
-            border: '2px solid #555',
-            borderRadius: 8,
-            alignSelf: 'center',
-          }}
+          onSubmit={submit}
         />
         {error ? (
           <div
@@ -93,5 +70,49 @@ export function InitialsPrompt({
         </MenuButton>
       </MenuPanel>
     </MenuOverlay>
+  )
+}
+
+// Auto-focuses the input on mount and registers it with the surrounding
+// MenuNav provider so DPad / arrow nav can step away to the Save button.
+function InitialsInput({
+  value,
+  onChange,
+  onSubmit,
+}: {
+  value: string
+  onChange: (next: string) => void
+  onSubmit: () => void
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  useEffect(() => {
+    ref.current?.focus()
+  }, [])
+  return (
+    <input
+      ref={ref}
+      value={value}
+      maxLength={3}
+      onChange={(e) => onChange(e.target.value)}
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') onSubmit()
+      }}
+      autoComplete="off"
+      spellCheck={false}
+      style={{
+        fontSize: 48,
+        fontFamily: 'monospace',
+        textAlign: 'center',
+        width: 200,
+        padding: 8,
+        letterSpacing: 12,
+        background: '#0d0d0d',
+        color: 'white',
+        border: '2px solid #555',
+        borderRadius: 8,
+        alignSelf: 'center',
+      }}
+    />
   )
 }

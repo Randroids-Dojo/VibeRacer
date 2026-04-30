@@ -6,6 +6,7 @@ import {
   isContinuousAction,
   type KeyBindings,
 } from '@/lib/controlSettings'
+import { isMenuNavOpen } from '@/components/MenuNav'
 
 export interface KeyInput {
   forward: boolean
@@ -53,6 +54,11 @@ export function useKeyboard(
       // Let editable targets (feedback textarea, initials input) handle typing.
       // Always process keyup so a held key clears if focus shifts mid-press.
       if (pressed && isEditableTarget(e.target)) return
+      // Menus own the keyboard while open. Without this, Space (handbrake) on
+      // a focused MenuButton would fire alongside the button click, and W /
+      // arrow keys would steer the (paused) car while the user is just
+      // navigating the menu.
+      if (pressed && isMenuNavOpen()) return
       const action = actionForCode(bindingsRef.current, e.code)
       if (!action) return
       // One-shot actions (e.g. restartLap) are dispatched by their own

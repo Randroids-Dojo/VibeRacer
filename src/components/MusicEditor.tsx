@@ -146,7 +146,7 @@ export function MusicEditor({
   }
 
   return (
-    <MenuOverlay zIndex={300}>
+    <MenuOverlay zIndex={300} onBack={() => router.push(`/${slug}`)}>
       <MenuPanel width="wide">
         <MenuHeader title={`Music for /${slug}`} onClose={() => router.push(`/${slug}`)} />
 

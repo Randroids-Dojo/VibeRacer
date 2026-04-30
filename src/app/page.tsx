@@ -7,6 +7,7 @@ import {
 } from '@/components/RecentTrackList'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
+import { TitleGamepadNav } from '@/components/TitleGamepadNav'
 import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
@@ -42,6 +43,7 @@ export default async function HomePage() {
     <main style={mainStyle}>
       <TitleBackground />
       <TitleMusic />
+      <TitleGamepadNav />
       <div style={skyFadeStyle} aria-hidden="true" />
       <section style={stageStyle}>
         <header style={logoWrapStyle}>

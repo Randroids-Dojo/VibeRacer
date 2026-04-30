@@ -3,6 +3,7 @@ import { useEffect, useRef, useState, type CSSProperties } from 'react'
 import { createPortal } from 'react-dom'
 import { initConsoleCapture, getCapturedLogs } from '@/lib/consoleCapture'
 import { menuTheme } from './MenuUI'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 
 type View = 'closed' | 'feedback'
 type SubmitState = 'idle' | 'sending' | 'success' | 'error'
@@ -135,20 +136,14 @@ export function FeedbackFab() {
       </button>
 
       {isOpen ? (
+        <MenuNavProvider onBack={() => setView('closed')} autoFocus={false}>
         <div ref={panelRef} style={panelStyle}>
           <div style={panelHeader}>
             <div>
               <div style={eyebrowStyle}>Paused report</div>
               <div style={panelTitle}>Feedback</div>
             </div>
-            <button
-              type="button"
-              aria-label="Close panel"
-              onClick={() => setView('closed')}
-              style={panelClose}
-            >
-              Close
-            </button>
+            <FeedbackCloseButton onClick={() => setView('closed')} />
           </div>
 
           {submitState !== 'success' ? (
@@ -160,15 +155,10 @@ export function FeedbackFab() {
               <label style={fieldLabel} htmlFor="feedback-message">
                 Message
               </label>
-              <textarea
-                id="feedback-message"
-                ref={textareaRef}
-                placeholder="What's on your mind?"
-                rows={4}
-                required
+              <FeedbackTextarea
+                textareaRef={textareaRef}
                 value={message}
-                onChange={(e) => setMessage(e.target.value)}
-                style={textareaStyle}
+                onChange={setMessage}
               />
               <div style={metaRow}>
                 <span>{messageLength > 0 ? `${messageLength} chars` : 'Ready'}</span>
@@ -177,27 +167,10 @@ export function FeedbackFab() {
                   <span style={capturePill}>Console logs</span>
                 </span>
               </div>
-              <button
-                type="submit"
-                disabled={submitState === 'sending' || messageLength === 0}
-                style={{
-                  ...submitBtn,
-                  background:
-                    submitState === 'error'
-                      ? '#b84a3a'
-                      : submitState === 'sending'
-                        ? '#555'
-                        : '#ff6b35',
-                  cursor: submitState === 'sending' ? 'wait' : 'pointer',
-                  opacity: messageLength === 0 ? 0.55 : 1,
-                }}
-              >
-                {submitState === 'sending'
-                  ? 'Sending...'
-                  : submitState === 'error'
-                    ? 'Failed, try again'
-                    : 'Send Feedback'}
-              </button>
+              <FeedbackSubmitButton
+                submitState={submitState}
+                messageLength={messageLength}
+              />
               <span style={hintStyle} aria-live="polite">
                 {submitState === 'error'
                   ? 'Submission failed. Your message is still here.'
@@ -216,12 +189,97 @@ export function FeedbackFab() {
             </div>
           )}
         </div>
+        </MenuNavProvider>
       ) : null}
     </>
   )
 
   if (!mounted) return content
   return createPortal(content, document.body)
+}
+
+function FeedbackCloseButton({ onClick }: { onClick: () => void }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      aria-label="Close panel"
+      onClick={onClick}
+      className="menuui-focusable"
+      style={panelClose}
+    >
+      Close
+    </button>
+  )
+}
+
+function FeedbackTextarea({
+  textareaRef,
+  value,
+  onChange,
+}: {
+  textareaRef: React.RefObject<HTMLTextAreaElement | null>
+  value: string
+  onChange: (next: string) => void
+}) {
+  useRegisterFocusable(
+    textareaRef as React.RefObject<HTMLElement | null>,
+    { axis: 'vertical' },
+  )
+  return (
+    <textarea
+      id="feedback-message"
+      ref={textareaRef}
+      placeholder="What's on your mind?"
+      rows={4}
+      required
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      className="menuui-focusable"
+      style={textareaStyle}
+    />
+  )
+}
+
+function FeedbackSubmitButton({
+  submitState,
+  messageLength,
+}: {
+  submitState: SubmitState
+  messageLength: number
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, {
+    axis: 'vertical',
+    disabled: submitState === 'sending' || messageLength === 0,
+  })
+  return (
+    <button
+      ref={ref}
+      type="submit"
+      disabled={submitState === 'sending' || messageLength === 0}
+      className="menuui-focusable"
+      style={{
+        ...submitBtn,
+        background:
+          submitState === 'error'
+            ? '#b84a3a'
+            : submitState === 'sending'
+              ? '#555'
+              : '#ff6b35',
+        cursor: submitState === 'sending' ? 'wait' : 'pointer',
+        opacity: messageLength === 0 ? 0.55 : 1,
+      }}
+    >
+      {submitState === 'sending'
+        ? 'Sending...'
+        : submitState === 'error'
+          ? 'Failed, try again'
+          : 'Send Feedback'}
+    </button>
+  )
 }
 
 const fabStyle: CSSProperties = {

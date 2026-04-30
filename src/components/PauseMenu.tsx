@@ -45,7 +45,7 @@ export function PauseMenu({
   onExit,
 }: PauseMenuProps) {
   return (
-    <MenuOverlay zIndex={100}>
+    <MenuOverlay zIndex={100} onBack={onResume}>
       <MenuPanel>
         <MenuTitle>PAUSED</MenuTitle>
         {pieces && pieces.length > 0 ? (
@@ -106,7 +106,7 @@ export function PauseMenu({
             letterSpacing: 1.2,
           }}
         >
-          Esc to resume
+          Esc / B to resume
         </div>
       </MenuPanel>
     </MenuOverlay>

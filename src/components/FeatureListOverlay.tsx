@@ -1,13 +1,16 @@
 'use client'
 import {
+  forwardRef,
   useEffect,
   useRef,
   useState,
   type CSSProperties,
+  type ForwardedRef,
 } from 'react'
 import { createPortal } from 'react-dom'
 import { FEATURE_LIST, FEATURE_LIST_ITEM_COUNT } from '@/lib/featureList'
 import { useClickSfx } from '@/hooks/useClickSfx'
+import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 
 interface FeatureListOverlayProps {
   onClose: () => void
@@ -37,11 +40,7 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
     closeButtonRef.current?.focus()
 
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault()
-        playBack()
-        onClose()
-      }
+      // Esc is owned by the surrounding MenuNavProvider (onBack=close).
       if (event.key === ' ') {
         if (isKeyboardControlTarget(event.target)) return
         event.preventDefault()
@@ -83,6 +82,7 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
   }
 
   const overlay = (
+    <MenuNavProvider onBack={close} autoFocus={false}>
     <div
       role="dialog"
       aria-modal="true"
@@ -100,14 +100,7 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
           </h2>
           <div style={summaryStyle}>{summary}</div>
         </div>
-        <button
-          ref={closeButtonRef}
-          type="button"
-          onClick={close}
-          style={closeButtonStyle}
-        >
-          Close
-        </button>
+        <FeatureCloseButton ref={closeButtonRef} onClick={close} />
       </header>
 
       <div
@@ -137,23 +130,69 @@ export function FeatureListOverlay({ onClose }: FeatureListOverlayProps) {
       </div>
 
       <footer style={footerStyle}>
-        <button
-          type="button"
-          onClick={() => setPaused((value) => !value)}
-          aria-pressed={paused}
-          aria-label={
-            paused ? 'Resume Feature List scroll' : 'Pause Feature List scroll'
-          }
-          style={controlButtonStyle}
-        >
-          {paused ? 'Resume scroll' : 'Pause scroll'}
-        </button>
+        <FeaturePauseButton
+          paused={paused}
+          onToggle={() => setPaused((value) => !value)}
+        />
       </footer>
     </div>
+    </MenuNavProvider>
   )
 
   if (!mounted) return overlay
   return createPortal(overlay, document.body)
+}
+
+// Close button registered with MenuNav so DPad / arrow nav can land on it.
+// We forward the ref so the parent's auto-focus on mount keeps working.
+const FeatureCloseButton = forwardRef(function FeatureCloseButton(
+  { onClick }: { onClick: () => void },
+  ref: ForwardedRef<HTMLButtonElement>,
+) {
+  const localRef = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(localRef, { axis: 'horizontal' })
+  const setRef = (node: HTMLButtonElement | null) => {
+    localRef.current = node
+    if (typeof ref === 'function') ref(node)
+    else if (ref) ref.current = node
+  }
+  return (
+    <button
+      ref={setRef}
+      type="button"
+      onClick={onClick}
+      className="menuui-focusable"
+      style={closeButtonStyle}
+    >
+      Close
+    </button>
+  )
+})
+
+function FeaturePauseButton({
+  paused,
+  onToggle,
+}: {
+  paused: boolean
+  onToggle: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'horizontal' })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onToggle}
+      aria-pressed={paused}
+      aria-label={
+        paused ? 'Resume Feature List scroll' : 'Pause Feature List scroll'
+      }
+      className="menuui-focusable"
+      style={controlButtonStyle}
+    >
+      {paused ? 'Resume scroll' : 'Pause scroll'}
+    </button>
+  )
 }
 
 function isKeyboardControlTarget(target: EventTarget | null): boolean {
