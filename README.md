@@ -217,6 +217,7 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Per-lap tune key changes.
   - Off-track tune flavor swaps.
   - Custom finish stinger phrases.
+  - Engine noise choices.
   - Countdown beeps.
   - Engine sound.
   - Tire skid sound.

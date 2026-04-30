@@ -22,16 +22,13 @@ import {
   type AudioEngine,
 } from './audioEngine'
 import { midiFreq } from './music'
+import {
+  DEFAULT_ENGINE_NOISE_MODE,
+  type EngineNoiseMode,
+} from '@/lib/audioSettings'
 
-const DRONE_BASE_HZ = 60
-const DRONE_RANGE_HZ = 220
-const DRONE_FILTER_BASE_HZ = 600
-const DRONE_FILTER_RANGE_HZ = 4000
-const DRONE_BASE_VOL = 0.18
-const DRONE_VOL_FLOOR_FRAC = 0.4
-const DRONE_VOL_SLOPE_FRAC = 0.6
 const DRONE_SMOOTH_TC = 0.06
-const DRONE_OFFTRACK_DUCK = 0.55
+const DRONE_THROTTLE_BOOST = 0.04
 
 const SKID_NOISE_DUR_SEC = 0.4
 const SKID_FILTER_BASE_HZ = 700
@@ -72,6 +69,82 @@ interface SkidVoice {
 let droneVoice: DroneVoice | null = null
 let skidVoice: SkidVoice | null = null
 
+interface EngineNoiseProfile {
+  wave: OscillatorType
+  baseHz: number
+  rangeHz: number
+  filterBaseHz: number
+  filterRangeHz: number
+  filterQ: number
+  baseVol: number
+  volFloorFrac: number
+  volSlopeFrac: number
+  throttleBoost: number
+  offTrackDuck: number
+}
+
+const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
+  smooth: {
+    wave: 'triangle',
+    baseHz: 52,
+    rangeHz: 150,
+    filterBaseHz: 380,
+    filterRangeHz: 1500,
+    filterQ: 1.4,
+    baseVol: 0.075,
+    volFloorFrac: 0.28,
+    volSlopeFrac: 0.5,
+    throttleBoost: 0.018,
+    offTrackDuck: 0.5,
+  },
+  classic: {
+    wave: 'sawtooth',
+    baseHz: 60,
+    rangeHz: 220,
+    filterBaseHz: 600,
+    filterRangeHz: 4000,
+    filterQ: 6,
+    baseVol: 0.18,
+    volFloorFrac: 0.4,
+    volSlopeFrac: 0.6,
+    throttleBoost: DRONE_THROTTLE_BOOST,
+    offTrackDuck: 0.55,
+  },
+  warm: {
+    wave: 'sawtooth',
+    baseHz: 48,
+    rangeHz: 170,
+    filterBaseHz: 280,
+    filterRangeHz: 1800,
+    filterQ: 2.2,
+    baseVol: 0.095,
+    volFloorFrac: 0.32,
+    volSlopeFrac: 0.48,
+    throttleBoost: 0.022,
+    offTrackDuck: 0.55,
+  },
+  electric: {
+    wave: 'square',
+    baseHz: 95,
+    rangeHz: 260,
+    filterBaseHz: 900,
+    filterRangeHz: 2600,
+    filterQ: 0.9,
+    baseVol: 0.055,
+    volFloorFrac: 0.2,
+    volSlopeFrac: 0.58,
+    throttleBoost: 0.014,
+    offTrackDuck: 0.65,
+  },
+}
+
+function engineNoiseProfile(mode: EngineNoiseMode): EngineNoiseProfile {
+  return (
+    ENGINE_NOISE_PROFILES[mode] ??
+    ENGINE_NOISE_PROFILES[DEFAULT_ENGINE_NOISE_MODE]
+  )
+}
+
 // ---------------------------------------------------------------------------
 // Pure helpers (no Web Audio access). Unit tests target these directly.
 // ---------------------------------------------------------------------------
@@ -82,27 +155,41 @@ function clamp01(x: number): number {
   return x
 }
 
-export function droneFreqHz(speedAbs: number, maxSpeed: number): number {
-  if (maxSpeed <= 0) return DRONE_BASE_HZ
+export function droneFreqHz(
+  speedAbs: number,
+  maxSpeed: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): number {
+  const profile = engineNoiseProfile(mode)
+  if (maxSpeed <= 0) return profile.baseHz
   const ratio = clamp01(speedAbs / maxSpeed)
-  return DRONE_BASE_HZ + DRONE_RANGE_HZ * ratio
+  return profile.baseHz + profile.rangeHz * ratio
 }
 
-export function droneFilterHz(speedAbs: number, maxSpeed: number): number {
-  if (maxSpeed <= 0) return DRONE_FILTER_BASE_HZ
+export function droneFilterHz(
+  speedAbs: number,
+  maxSpeed: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): number {
+  const profile = engineNoiseProfile(mode)
+  if (maxSpeed <= 0) return profile.filterBaseHz
   const ratio = clamp01(speedAbs / maxSpeed)
-  return DRONE_FILTER_BASE_HZ + DRONE_FILTER_RANGE_HZ * ratio
+  return profile.filterBaseHz + profile.filterRangeHz * ratio
 }
 
 export function droneVolume(
   speedAbs: number,
   maxSpeed: number,
   onTrack: boolean,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
 ): number {
+  const profile = engineNoiseProfile(mode)
   if (maxSpeed <= 0) return 0
   const ratio = clamp01(speedAbs / maxSpeed)
-  const base = DRONE_BASE_VOL * (DRONE_VOL_FLOOR_FRAC + DRONE_VOL_SLOPE_FRAC * ratio)
-  return onTrack ? base : base * DRONE_OFFTRACK_DUCK
+  const base =
+    profile.baseVol *
+    (profile.volFloorFrac + profile.volSlopeFrac * ratio)
+  return onTrack ? base : base * profile.offTrackDuck
 }
 
 export function skidIntensity(
@@ -173,13 +260,14 @@ export function achievementUnlockCuePattern(
 // ---------------------------------------------------------------------------
 
 function buildDrone(e: AudioEngine): DroneVoice {
+  const profile = engineNoiseProfile(DEFAULT_ENGINE_NOISE_MODE)
   const osc = e.ctx.createOscillator()
-  osc.type = 'sawtooth'
-  osc.frequency.value = DRONE_BASE_HZ
+  osc.type = profile.wave
+  osc.frequency.value = profile.baseHz
   const filter = e.ctx.createBiquadFilter()
   filter.type = 'lowpass'
-  filter.frequency.value = DRONE_FILTER_BASE_HZ
-  filter.Q.value = 6
+  filter.frequency.value = profile.filterBaseHz
+  filter.Q.value = profile.filterQ
   const gain = e.ctx.createGain()
   gain.gain.value = 0
   osc.connect(filter)
@@ -205,19 +293,23 @@ export function updateEngine(
   throttle: number,
   onTrack: boolean,
   racing: boolean,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
 ): void {
   const v = droneVoice
   const e = getAudioEngine()
   if (!v || !e) return
+  const profile = engineNoiseProfile(mode)
   const now = e.ctx.currentTime
-  const targetFreq = droneFreqHz(speedAbs, maxSpeed)
-  const targetCutoff = droneFilterHz(speedAbs, maxSpeed)
-  const baseVol = droneVolume(speedAbs, maxSpeed, onTrack)
+  const targetFreq = droneFreqHz(speedAbs, maxSpeed, mode)
+  const targetCutoff = droneFilterHz(speedAbs, maxSpeed, mode)
+  const baseVol = droneVolume(speedAbs, maxSpeed, onTrack, mode)
   // Subtle throttle bump on top of speed-driven volume so taps register.
-  const throttleBoost = Math.max(0, throttle) * 0.04
+  const throttleBoost = Math.max(0, throttle) * profile.throttleBoost
   const targetVol = racing ? baseVol + throttleBoost : 0
+  v.osc.type = profile.wave
   v.osc.frequency.setTargetAtTime(targetFreq, now, DRONE_SMOOTH_TC)
   v.filter.frequency.setTargetAtTime(targetCutoff, now, DRONE_SMOOTH_TC)
+  v.filter.Q.value = profile.filterQ
   v.gain.gain.setTargetAtTime(targetVol, now, DRONE_SMOOTH_TC)
 }
 
@@ -293,10 +385,18 @@ export interface DriveSfxInput {
   onTrack: boolean
   prevOnTrack: boolean
   racing: boolean
+  engineNoise?: EngineNoiseMode
 }
 
 export function updateDriveSfx(input: DriveSfxInput): void {
-  updateEngine(input.speedAbs, input.maxSpeed, input.throttle, input.onTrack, input.racing)
+  updateEngine(
+    input.speedAbs,
+    input.maxSpeed,
+    input.throttle,
+    input.onTrack,
+    input.racing,
+    input.engineNoise,
+  )
   const skid = input.racing
     ? skidIntensity(input.speedAbs, input.maxSpeed, input.steerAbs, input.onTrack)
     : 0

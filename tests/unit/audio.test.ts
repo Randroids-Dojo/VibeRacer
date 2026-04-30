@@ -30,16 +30,17 @@ import { _resetAudioEngineForTesting, getAudioEngine } from '@/game/audioEngine'
 // ---------------------------------------------------------------------------
 
 describe('droneFreqHz', () => {
-  it('returns the documented base at zero speed', () => {
-    expect(droneFreqHz(0, 26)).toBeCloseTo(60, 6)
+  it('uses the quieter smooth profile by default', () => {
+    expect(droneFreqHz(0, 26)).toBeCloseTo(52, 6)
   })
 
-  it('returns base + range at top speed', () => {
-    expect(droneFreqHz(26, 26)).toBeCloseTo(60 + 220, 6)
+  it('keeps the original implementation available as Classic', () => {
+    expect(droneFreqHz(0, 26, 'classic')).toBeCloseTo(60, 6)
+    expect(droneFreqHz(26, 26, 'classic')).toBeCloseTo(60 + 220, 6)
   })
 
   it('clamps when speed exceeds maxSpeed', () => {
-    expect(droneFreqHz(40, 26)).toBeCloseTo(60 + 220, 6)
+    expect(droneFreqHz(40, 26, 'classic')).toBeCloseTo(60 + 220, 6)
   })
 
   it('is monotonically non-decreasing', () => {
@@ -52,17 +53,18 @@ describe('droneFreqHz', () => {
   })
 
   it('handles zero or negative max gracefully', () => {
-    expect(droneFreqHz(10, 0)).toBeCloseTo(60, 6)
+    expect(droneFreqHz(10, 0)).toBeCloseTo(52, 6)
   })
 })
 
 describe('droneFilterHz', () => {
-  it('returns the base cutoff at zero speed', () => {
-    expect(droneFilterHz(0, 26)).toBeCloseTo(600, 6)
+  it('uses a softer default cutoff than Classic', () => {
+    expect(droneFilterHz(0, 26)).toBeCloseTo(380, 6)
+    expect(droneFilterHz(0, 26, 'classic')).toBeCloseTo(600, 6)
   })
 
-  it('returns base + range at max speed', () => {
-    expect(droneFilterHz(26, 26)).toBeCloseTo(600 + 4000, 6)
+  it('returns Classic base + range at max speed', () => {
+    expect(droneFilterHz(26, 26, 'classic')).toBeCloseTo(600 + 4000, 6)
   })
 
   it('is monotonically non-decreasing', () => {
@@ -82,6 +84,12 @@ describe('droneVolume', () => {
 
   it('grows with speed', () => {
     expect(droneVolume(20, 26, true)).toBeGreaterThan(droneVolume(2, 26, true))
+  })
+
+  it('sets Smooth quieter than Classic at full speed', () => {
+    expect(droneVolume(26, 26, true)).toBeLessThan(
+      droneVolume(26, 26, true, 'classic'),
+    )
   })
 
   it('returns 0 when maxSpeed is zero', () => {
@@ -423,9 +431,10 @@ describe('startEngineDrone / updateEngine / stopEngineDrone', () => {
 
   it('routes target frequency, cutoff, and volume through setTargetAtTime', () => {
     startEngineDrone()
-    updateEngine(20, 26, 1, true, true)
+    updateEngine(20, 26, 1, true, true, 'warm')
     const oscFreq = oscillators[0].frequency
     expect(oscFreq.setTargetAtTime).toHaveBeenCalled()
+    expect(oscillators[0].type).toBe('sawtooth')
     // The drone gain node is gains[0] inside the drone voice.
     const droneGain = gains.find((g) => g.gain.setTargetAtTime.mock.calls.length > 0)
     expect(droneGain).toBeDefined()
