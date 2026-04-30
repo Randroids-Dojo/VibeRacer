@@ -7,7 +7,7 @@ import {
   resolveTuneAutomation,
   scaleDeg,
 } from '@/game/music'
-import { DEFAULT_TRACK_TUNE } from '@/lib/tunes'
+import { DEFAULT_TRACK_MUSIC } from '@/lib/trackMusic'
 
 describe('midiFreq', () => {
   it('A4 (midi 69) is 440 Hz', () => {
@@ -31,21 +31,21 @@ describe('midiFreq', () => {
 
 describe('resolveTuneAutomation', () => {
   it('applies per-lap key changes to the tune root', () => {
-    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    const tune = structuredClone(DEFAULT_TRACK_MUSIC)
     tune.automation.perLapSemitones = 2
     expect(resolveTuneAutomation(tune, { lapIndex: 3, offTrack: false })).toMatchObject({
-      rootMidi: DEFAULT_TRACK_TUNE.rootMidi + 6,
-      scaleFlavor: DEFAULT_TRACK_TUNE.scale,
+      rootMidi: DEFAULT_TRACK_MUSIC.rootMidi + 6,
+      scaleFlavor: DEFAULT_TRACK_MUSIC.scale,
       volumeDuck: 1,
     })
   })
 
   it('uses the off-track scale and duck amount while off track', () => {
-    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    const tune = structuredClone(DEFAULT_TRACK_MUSIC)
     tune.automation.offTrackScale = 'dorian'
     tune.automation.offTrackDuck = 0.42
     expect(resolveTuneAutomation(tune, { lapIndex: 0, offTrack: true })).toMatchObject({
-      rootMidi: DEFAULT_TRACK_TUNE.rootMidi,
+      rootMidi: DEFAULT_TRACK_MUSIC.rootMidi,
       scaleFlavor: 'dorian',
       scale: SCALES.dorian,
       volumeDuck: 0.42,
@@ -53,10 +53,10 @@ describe('resolveTuneAutomation', () => {
   })
 
   it('keeps the base scale when off-track flavor is unset', () => {
-    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    const tune = structuredClone(DEFAULT_TRACK_MUSIC)
     tune.automation.offTrackDuck = 0.2
     expect(resolveTuneAutomation(tune, { lapIndex: 0, offTrack: true })).toMatchObject({
-      scaleFlavor: DEFAULT_TRACK_TUNE.scale,
+      scaleFlavor: DEFAULT_TRACK_MUSIC.scale,
       volumeDuck: 0.2,
     })
   })
@@ -64,7 +64,7 @@ describe('resolveTuneAutomation', () => {
 
 describe('finishStingerEventsForTune', () => {
   it('keeps phrase timing while skipping rests', () => {
-    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    const tune = structuredClone(DEFAULT_TRACK_MUSIC)
     tune.automation.finishStinger = [0, null, 4, null, 7, null, null, 0]
     expect(finishStingerEventsForTune(tune)).toEqual([
       {
@@ -103,7 +103,7 @@ describe('finishStingerEventsForTune', () => {
   })
 
   it('returns no events when the tune has no custom finish stinger', () => {
-    expect(finishStingerEventsForTune(DEFAULT_TRACK_TUNE)).toEqual([])
+    expect(finishStingerEventsForTune(DEFAULT_TRACK_MUSIC)).toEqual([])
   })
 })
 
@@ -144,7 +144,7 @@ describe('SCALES', () => {
 
 describe('gameStepEventsForTune', () => {
   it('renders the default tune like the legacy low-intensity first step', () => {
-    expect(gameStepEventsForTune(DEFAULT_TRACK_TUNE, 0, 0)).toEqual([
+    expect(gameStepEventsForTune(DEFAULT_TRACK_MUSIC, 0, 0)).toEqual([
       {
         kind: 'note',
         voice: 'bass',
@@ -162,7 +162,7 @@ describe('gameStepEventsForTune', () => {
   })
 
   it('renders the default tune like the legacy high-intensity drum step', () => {
-    expect(gameStepEventsForTune(DEFAULT_TRACK_TUNE, 4, 1)).toEqual([
+    expect(gameStepEventsForTune(DEFAULT_TRACK_MUSIC, 4, 1)).toEqual([
       {
         kind: 'note',
         voice: 'bass',
@@ -202,7 +202,7 @@ describe('gameStepEventsForTune', () => {
   })
 
   it('honors authored voice toggles and volumes', () => {
-    const tune = structuredClone(DEFAULT_TRACK_TUNE)
+    const tune = structuredClone(DEFAULT_TRACK_MUSIC)
     tune.voices.bass.enabled = false
     tune.voices.arp.enabled = true
     tune.voices.arp.volume = 1

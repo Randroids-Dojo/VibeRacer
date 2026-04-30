@@ -887,7 +887,7 @@ export function TrackEditor({
         <div style={headerActions}>
           <button
             type="button"
-            onClick={() => router.push(`/tune/${slug}`)}
+            onClick={() => router.push(`/music/${slug}`)}
             style={hasCustomTune ? tuneBtnActive : tuneBtn}
             title={
               hasCustomTune
@@ -895,7 +895,7 @@ export function TrackEditor({
                 : 'Create a custom soundtrack for this track.'
             }
           >
-            {hasCustomTune ? 'Edit Tune *' : 'Edit Tune'}
+            {hasCustomTune ? 'Edit Music *' : 'Edit Music'}
           </button>
         </div>
       </div>

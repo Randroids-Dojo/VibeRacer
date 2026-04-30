@@ -1,20 +1,20 @@
 'use client'
 import type { CSSProperties } from 'react'
 import { menuTheme } from './MenuUI'
-import type { TuneStepPattern, TuneStep } from '@/lib/tunes'
+import type { MusicStepPattern, MusicStep } from '@/lib/trackMusic'
 
-export function TuneStepGrid({
+export function MusicStepGrid({
   label,
   steps,
   paintDegree,
   onChange,
 }: {
   label: string
-  steps: TuneStepPattern
+  steps: MusicStepPattern
   paintDegree: number
-  onChange: (steps: TuneStepPattern) => void
+  onChange: (steps: MusicStepPattern) => void
 }) {
-  function setStep(index: number, value: TuneStep): void {
+  function setStep(index: number, value: MusicStep): void {
     const next = steps.slice()
     next[index] = value
     onChange(next)

@@ -14,14 +14,14 @@ import type { Weather } from '@/lib/weather'
 import type { TrackTransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
-import type { TrackTune } from '@/lib/tunes'
+import type { TrackMusic } from '@/lib/trackMusic'
 import {
-  KNOWN_TUNES_EVENT,
-  MY_TUNES_EVENT,
-  TUNE_OVERRIDES_EVENT,
-  recordKnownTune,
-  resolvePersonalTune,
-} from '@/lib/myTunes'
+  KNOWN_MUSIC_EVENT,
+  MY_MUSIC_EVENT,
+  MUSIC_OVERRIDES_EVENT,
+  recordKnownMusic,
+  resolvePersonalMusic,
+} from '@/lib/myMusic'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -184,7 +184,7 @@ import {
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
   playFinishStinger,
-  setActiveTune,
+  setActiveMusic,
   setMusicLapIndex,
   setMusicOffTrack,
   setMusicPersonalization,
@@ -250,7 +250,7 @@ interface GameProps {
   // resolver overrides the player's own picks for whichever fields the
   // author set. Pure cosmetic; does not affect physics or hashing.
   trackMood?: TrackMood | null
-  initialTune?: TrackTune | null
+  initialMusic?: TrackMusic | null
   initialRecord: OverallRecord | null
   // Friend-challenge payload parsed from the URL (?challenge=...&from=...&time=...).
   // Null when the player landed on the page through a normal link. When
@@ -424,7 +424,7 @@ function GameSession({
   trackBiome = null,
   trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
-  initialTune = null,
+  initialMusic = null,
   initials,
   initialRecord,
   challenge = null,
@@ -439,25 +439,25 @@ function GameSession({
     resetParams: resetTuning,
   } = useTuning(slug)
   useEffect(() => {
-    recordKnownTune(slug, initialTune)
-    setActiveTune(resolvePersonalTune(slug, initialTune))
-    function refreshTune() {
-      setActiveTune(resolvePersonalTune(slug, initialTune))
+    recordKnownMusic(slug, initialMusic)
+    setActiveMusic(resolvePersonalMusic(slug, initialMusic))
+    function refreshMusic() {
+      setActiveMusic(resolvePersonalMusic(slug, initialMusic))
     }
-    window.addEventListener(MY_TUNES_EVENT, refreshTune)
-    window.addEventListener(TUNE_OVERRIDES_EVENT, refreshTune)
-    window.addEventListener(KNOWN_TUNES_EVENT, refreshTune)
-    window.addEventListener('storage', refreshTune)
+    window.addEventListener(MY_MUSIC_EVENT, refreshMusic)
+    window.addEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
+    window.addEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
+    window.addEventListener('storage', refreshMusic)
     return () => {
-      window.removeEventListener(MY_TUNES_EVENT, refreshTune)
-      window.removeEventListener(TUNE_OVERRIDES_EVENT, refreshTune)
-      window.removeEventListener(KNOWN_TUNES_EVENT, refreshTune)
-      window.removeEventListener('storage', refreshTune)
+      window.removeEventListener(MY_MUSIC_EVENT, refreshMusic)
+      window.removeEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
+      window.removeEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
+      window.removeEventListener('storage', refreshMusic)
       setMusicLapIndex(0)
       setMusicOffTrack(false)
-      setActiveTune(null)
+      setActiveMusic(null)
     }
-  }, [slug, initialTune])
+  }, [slug, initialMusic])
 
   // Apply per-slug music personalization. The music engine treats this as
   // idempotent (a no-op when the value matches the active one) so the effect

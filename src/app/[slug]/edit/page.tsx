@@ -9,7 +9,7 @@ import {
   type TrackTransmissionMode,
 } from '@/lib/schemas'
 import { loadTrack } from '@/lib/loadTrack'
-import { loadTune } from '@/lib/loadTune'
+import { loadTrackMusic } from '@/lib/loadTrackMusic'
 import { TrackEditor } from '@/components/TrackEditor'
 
 export default async function EditPage(ctx: {
@@ -50,7 +50,7 @@ export default async function EditPage(ctx: {
   // create a new hash rather than overwrite the one they are editing.
   const forkingFromHash =
     loaded.kind === 'ok' && requestedHash !== null ? requestedHash : null
-  const tuneLoaded = await loadTune(slug)
+  const tuneLoaded = await loadTrackMusic(slug)
 
   return (
     <TrackEditor

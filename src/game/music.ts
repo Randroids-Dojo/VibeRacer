@@ -22,12 +22,12 @@ import {
   type ScaleFlavor,
 } from './musicPersonalization'
 import {
-  DEFAULT_TRACK_TUNE,
-  cloneTrackTune,
-  type TrackTune,
-  type TrackTuneScaleFlavor,
-  type TuneVoice,
-} from '@/lib/tunes'
+  DEFAULT_TRACK_MUSIC,
+  cloneTrackMusic,
+  type TrackMusic,
+  type TrackMusicScaleFlavor,
+  type MusicVoice,
+} from '@/lib/trackMusic'
 
 const LOOKAHEAD_SEC = 0.12
 const SCHEDULE_INTERVAL_MS = 50
@@ -69,7 +69,7 @@ interface Track {
   gain: GainNode
   targetGain: number
   intensity: number
-  tune: TrackTune | null
+  tune: TrackMusic | null
   pruneHandle: ReturnType<typeof setTimeout> | null
 }
 
@@ -80,7 +80,7 @@ interface MusicSystem {
   // Active per-slug personalization for the game track. Only the game track
   // is personalized today; title and pause use their fixed configs.
   personalization: MusicPersonalization
-  activeTune: TrackTune | null
+  activeTune: TrackMusic | null
   lapIndex: number
   offTrack: boolean
 }
@@ -91,7 +91,7 @@ let system: MusicSystem | null = null
 // here rather than in `musicPersonalization.ts` so the personalization
 // module stays a pure value object with no audio dependency.
 function scaleForFlavor(
-  flavor: ScaleFlavor | TrackTuneScaleFlavor,
+  flavor: ScaleFlavor | TrackMusicScaleFlavor,
 ): readonly number[] {
   switch (flavor) {
     case 'major':
@@ -329,7 +329,7 @@ const GAME_HAT_STEPS = new Set([2, 6, 10, 14])
 export type GameStepEvent =
   | {
       kind: 'note'
-      voice: TuneVoice
+      voice: MusicVoice
       degree: number
       octave: number
       wave: OscillatorType
@@ -342,7 +342,7 @@ export type GameStepEvent =
     }
 
 function voiceVolume(
-  voice: TuneVoice,
+  voice: MusicVoice,
   intensity: number,
   multiplier: number,
 ): number {
@@ -358,7 +358,7 @@ function voiceVolume(
   }
 }
 
-function voiceDurationBeats(voice: TuneVoice): number {
+function voiceDurationBeats(voice: MusicVoice): number {
   switch (voice) {
     case 'bass':
       return 2.6
@@ -371,12 +371,12 @@ function voiceDurationBeats(voice: TuneVoice): number {
   }
 }
 
-function counterVoiceIsAllowed(voice: TuneVoice, intensity: number): boolean {
+function counterVoiceIsAllowed(voice: MusicVoice, intensity: number): boolean {
   return voice !== 'counter' || intensity > COUNTER_MELODY_INTENSITY_THRESHOLD
 }
 
 export function gameStepEventsForTune(
-  tune: TrackTune,
+  tune: TrackMusic,
   step: number,
   intensity: number,
 ): GameStepEvent[] {
@@ -433,13 +433,13 @@ export interface MusicAutomationState {
 
 export interface ResolvedTuneAutomation {
   rootMidi: number
-  scaleFlavor: TrackTuneScaleFlavor
+  scaleFlavor: TrackMusicScaleFlavor
   scale: readonly number[]
   volumeDuck: number
 }
 
 export function resolveTuneAutomation(
-  tune: TrackTune,
+  tune: TrackMusic,
   state: MusicAutomationState,
 ): ResolvedTuneAutomation {
   const lapIndex = Number.isFinite(state.lapIndex)
@@ -467,7 +467,7 @@ export interface FinishStingerEvent {
   durationBeats: number
 }
 
-export function finishStingerEventsForTune(tune: TrackTune): FinishStingerEvent[] {
+export function finishStingerEventsForTune(tune: TrackMusic): FinishStingerEvent[] {
   const steps = tune.automation.finishStinger
   if (!steps) return []
   return steps.flatMap((degree, step): FinishStingerEvent[] => {
@@ -487,7 +487,7 @@ export function finishStingerEventsForTune(tune: TrackTune): FinishStingerEvent[
 
 function playGameStep(track: Track, step: number, time: number): void {
   const { rootMidi, scale, stepDur, intensity } = track
-  const tune = track.tune ?? DEFAULT_TRACK_TUNE
+  const tune = track.tune ?? DEFAULT_TRACK_MUSIC
   for (const event of gameStepEventsForTune(tune, step, intensity)) {
     const volume = event.volume * track.volumeDuck
     switch (event.kind) {
@@ -569,7 +569,7 @@ function makeTrack(s: MusicSystem, name: TrackName): Track {
     gain,
     targetGain: cfg.targetGain,
     intensity: 0,
-    tune: name === 'game' ? s.activeTune ?? DEFAULT_TRACK_TUNE : null,
+    tune: name === 'game' ? s.activeTune ?? DEFAULT_TRACK_MUSIC : null,
     pruneHandle: null,
   }
 }
@@ -597,7 +597,7 @@ function applyPersonalizationToConfig(
 }
 
 function paramsFromTune(
-  tune: TrackTune,
+  tune: TrackMusic,
   state: MusicAutomationState,
 ): ResolvedTrackParams {
   const automation = resolveTuneAutomation(tune, state)
@@ -632,7 +632,7 @@ function applyResolvedParamsToTrack(
 
 function updateTempo(track: Track): void {
   if (track.name !== 'game') return
-  const tune = track.tune ?? DEFAULT_TRACK_TUNE
+  const tune = track.tune ?? DEFAULT_TRACK_MUSIC
   const minFactor = tune.automation.tempoMinFactor
   const maxFactor = tune.automation.tempoMaxFactor
   const factor = minFactor + track.intensity * (maxFactor - minFactor)
@@ -758,13 +758,13 @@ export function setMusicPersonalization(
  * tune and restores the legacy default loop with the active per-slug
  * personalization layered on top. Title and pause tracks are unaffected.
  */
-export function setActiveTune(tune: TrackTune | null): void {
+export function setActiveMusic(tune: TrackMusic | null): void {
   const s = getSystem()
   if (!s) return
-  s.activeTune = tune ? cloneTrackTune(tune) : null
+  s.activeTune = tune ? cloneTrackMusic(tune) : null
   const live = s.tracks.get('game')
   if (!live) return
-  live.tune = s.activeTune ?? DEFAULT_TRACK_TUNE
+  live.tune = s.activeTune ?? DEFAULT_TRACK_MUSIC
   applyResolvedParamsToTrack(live, resolveGameTrackParams(s))
 }
 

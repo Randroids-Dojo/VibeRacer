@@ -19,14 +19,14 @@ import {
   TRACK_TRANSMISSION_MODES,
 } from '@/game/transmission'
 export {
-  TrackTuneScaleFlavorSchema,
-  TrackTuneSchema,
-  TuneFinishStingerPatternSchema,
-  TuneStepPatternSchema,
-  TuneVoiceConfigSchema,
-  TuneWaveSchema,
-} from './tunes'
-export type { TrackTune, TrackTuneScaleFlavor } from './tunes'
+  TrackMusicScaleFlavorSchema,
+  TrackMusicSchema,
+  MusicFinishStingerPatternSchema,
+  MusicStepPatternSchema,
+  MusicVoiceConfigSchema,
+  MusicWaveSchema,
+} from './trackMusic'
+export type { TrackMusic, TrackMusicScaleFlavor } from './trackMusic'
 
 export const PieceTypeSchema = z.enum([
   'straight',
