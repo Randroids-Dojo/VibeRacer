@@ -32,6 +32,11 @@ import {
 } from '@/lib/timeOfDayCycle'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { useTuning } from '@/hooks/useTuning'
+import { useTuningRecorder } from '@/hooks/useTuningRecorder'
+import {
+  applyTuningHistoryEntry,
+  type TuningHistoryEntry,
+} from '@/lib/tuningHistory'
 import { InitialsPrompt } from './InitialsPrompt'
 import {
   INITIALS_EVENT,
@@ -160,7 +165,7 @@ import { summarizeSession } from '@/game/sessionSummary'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import { computeLapConsistency } from '@/game/lapConsistency'
 import type { CarParams } from '@/game/physics'
-import type { InputMode } from '@/lib/tuningSettings'
+import { cloneDefaultParams, type InputMode } from '@/lib/tuningSettings'
 import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
   ghostSourceNeedsTopFetch,
@@ -434,10 +439,67 @@ function GameSession({
   const { settings: audioSettings } = useAudioSettings()
   const {
     params: tuning,
-    setParams: setTuning,
-    applyParams: applyTuning,
-    resetParams: resetTuning,
+    setParams: rawSetTuning,
+    applyParams: rawApplyTuning,
+    resetParams: rawResetTuning,
   } = useTuning(slug)
+  const {
+    history: tuningHistory,
+    record: recordTuningChange,
+    flush: flushTuningHistory,
+  } = useTuningRecorder()
+  // Wrap the writes from useTuning so each one also lands in the audit log.
+  // The recorder coalesces slider drags (default source) into a single entry,
+  // and immediately appends discrete intents (apply / reset / history-revert)
+  // so the user sees those as one row each.
+  const setTuning = useCallback(
+    (next: CarParams) => {
+      rawSetTuning(next)
+      recordTuningChange({ next, source: 'slider', slug })
+    },
+    [rawSetTuning, recordTuningChange, slug],
+  )
+  const applyTuning = useCallback(
+    (next: CarParams, label?: string | null) => {
+      rawApplyTuning(next)
+      recordTuningChange({
+        next,
+        source: 'savedApplied',
+        label: label ?? null,
+        slug,
+        immediate: true,
+      })
+    },
+    [rawApplyTuning, recordTuningChange, slug],
+  )
+  const resetTuning = useCallback(() => {
+    rawResetTuning()
+    // Re-read the now-default params from the cloned defaults helper. The
+    // hook's reset writes through `cloneDefaultParams()` and updates state
+    // synchronously, but we cannot trust the closure's `tuning` value here.
+    // Instead pass the freshly cloned defaults so the recorder logs the
+    // exact post-reset snapshot.
+    recordTuningChange({
+      next: cloneDefaultParams(),
+      source: 'reset',
+      label: 'Reset to defaults',
+      slug,
+      immediate: true,
+    })
+  }, [rawResetTuning, recordTuningChange, slug])
+  const handleApplyHistoryEntry = useCallback(
+    (entry: TuningHistoryEntry) => {
+      applyTuningHistoryEntry(entry, rawApplyTuning)
+      recordTuningChange({
+        next: entry.params,
+        source: 'historyRevert',
+        label: 'Reverted from history',
+        slug,
+        immediate: true,
+      })
+    },
+    [rawApplyTuning, recordTuningChange, slug],
+  )
   useEffect(() => {
     recordKnownTune(slug, initialTune)
     setActiveTune(resolvePersonalTune(slug, initialTune))
@@ -1287,6 +1349,15 @@ function GameSession({
   const editTrack = useCallback(() => {
     router.push(`/${slug}/edit`)
   }, [router, slug])
+
+  // Pause menu shortcut to the Tuning Lab. Prompts the player before leaving
+  // a live race so a misclick does not abandon a lap. Mirrors the same copy
+  // SettingsPane uses, so the prompt feels identical regardless of entry
+  // point.
+  const openTuningLabFromPause = useCallback(() => {
+    if (!window.confirm('Leave the race to open the Tuning Lab?')) return
+    router.push('/tune')
+  }, [router])
 
   // Pause-menu Share button. Wraps `shareOrCopy` and surfaces the result as a
   // transient label on the button itself (the HUD's toast lane is reserved for
@@ -2690,6 +2761,7 @@ function GameSession({
               onEditTrack={editTrack}
               onRace={() => setPauseView('race')}
               onSettings={() => setPauseView('settings')}
+              onTuningLab={openTuningLabFromPause}
               trackMoodLabel={trackMoodLabel}
               pieces={pieces}
               onExit={handleExitClick}
@@ -2726,7 +2798,7 @@ function GameSession({
               versionHash={versionHash}
               onBack={() => setPauseView('menu')}
               onApplyTuning={(p) => {
-                applyTuning(p)
+                applyTuning(p, 'Rival lap')
                 setPauseView('menu')
               }}
               onChaseRival={handleChaseRival}
@@ -2779,7 +2851,15 @@ function GameSession({
               params={tuning}
               onChange={setTuning}
               onReset={resetTuning}
-              onClose={() => setPauseView('menu')}
+              onClose={() => {
+                // Flush any pending slider drag so the most-recent tweak
+                // lands as a history entry before the panel disappears.
+                flushTuningHistory()
+                setPauseView('menu')
+              }}
+              history={tuningHistory}
+              liveSlug={slug}
+              onApplyHistoryEntry={handleApplyHistoryEntry}
             />
           ) : pauseView === 'howToPlay' ? (
             <HowToPlay
