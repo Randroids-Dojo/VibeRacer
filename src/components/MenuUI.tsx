@@ -308,6 +308,7 @@ export const MenuButton = forwardRef<HTMLButtonElement, MenuButtonProps>(
       fullWidth = true,
       children,
       style,
+      className,
       disabled,
       navAxis,
       ...rest
@@ -344,7 +345,7 @@ export const MenuButton = forwardRef<HTMLButtonElement, MenuButtonProps>(
         ref={setRef}
         type="button"
         disabled={disabled}
-        className="menuui-focusable"
+        className={className ? `menuui-focusable ${className}` : 'menuui-focusable'}
         onClick={() => {
           playClick()
           onClick?.()
