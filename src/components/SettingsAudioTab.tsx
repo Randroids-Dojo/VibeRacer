@@ -22,6 +22,7 @@ import {
   MenuButton,
   MenuHint,
   MenuSection,
+  MenuSettingRow,
   MenuSlider,
   MenuToggle,
   menuTheme,
@@ -91,26 +92,24 @@ export function SettingsAudioTab({ slug }: SettingsAudioTabProps) {
   return (
     <>
       <MenuSection title="Mix">
-        <div style={settingRow}>
-          <div style={settingLabel}>Music</div>
+        <MenuSettingRow label="Music">
           <MenuToggle
             value={audio.musicEnabled}
             onChange={(v) => setAudio({ ...audio, musicEnabled: v })}
           />
-        </div>
+        </MenuSettingRow>
         <MenuSlider
           label="Music volume"
           value={audio.musicVolume}
           disabled={!audio.musicEnabled}
           onChange={(v) => setAudio({ ...audio, musicVolume: v })}
         />
-        <div style={settingRow}>
-          <div style={settingLabel}>Sound effects</div>
+        <MenuSettingRow label="Sound effects">
           <MenuToggle
             value={audio.sfxEnabled}
             onChange={(v) => setAudio({ ...audio, sfxEnabled: v })}
           />
-        </div>
+        </MenuSettingRow>
         <MenuSlider
           label="SFX volume"
           value={audio.sfxVolume}
@@ -143,26 +142,24 @@ export function SettingsAudioTab({ slug }: SettingsAudioTabProps) {
           Shifts the music&apos;s key, scale, and tempo per track so each one
           has its own sound. Turn off for the same loop everywhere.
         </MenuHint>
-        <div style={settingRow}>
-          <div style={settingLabel}>Per-track flavor</div>
+        <MenuSettingRow label="Per-track flavor">
           <MenuToggle
             value={audio.musicPerTrack}
             disabled={!audio.musicEnabled}
             onChange={(v) => setAudio({ ...audio, musicPerTrack: v })}
           />
-        </div>
+        </MenuSettingRow>
         <MenuHint>
           Mixes your initials into the seed so two racers on the same track
           hear different flavors.
         </MenuHint>
-        <div style={settingRow}>
-          <div style={settingLabel}>Mix in your initials</div>
+        <MenuSettingRow label="Mix in your initials">
           <MenuToggle
             value={audio.musicMixInitials}
             disabled={!audio.musicEnabled || !audio.musicPerTrack}
             onChange={(v) => setAudio({ ...audio, musicMixInitials: v })}
           />
-        </div>
+        </MenuSettingRow>
       </MenuSection>
 
       <MenuSection title="Track music">
@@ -201,18 +198,6 @@ export function SettingsAudioTab({ slug }: SettingsAudioTabProps) {
       </MenuSection>
     </>
   )
-}
-
-const settingRow: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-}
-
-const settingLabel: CSSProperties = {
-  fontSize: 15,
-  fontWeight: 700,
 }
 
 const buttonGrid: CSSProperties = {
