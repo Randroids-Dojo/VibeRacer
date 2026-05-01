@@ -248,7 +248,10 @@ export function skidIntensity(
   const speedRatio = clamp01(speedAbs / maxSpeed)
   const steer = clamp01(steerAbs)
   const base = steer * speedRatio * SKID_HEURISTIC_GAIN
-  const offtrack = onTrack ? 0 : SKID_OFFTRACK_BASELINE
+  // Off-track rumble scales with speed so the skid voice goes silent when
+  // the car is stopped on dirt. At full speed off-track it reaches the
+  // baseline; below that it tapers linearly with the speed ratio.
+  const offtrack = onTrack ? 0 : SKID_OFFTRACK_BASELINE * speedRatio
   return clamp01(base + offtrack)
 }
 

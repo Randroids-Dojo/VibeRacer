@@ -140,8 +140,16 @@ describe('skidIntensity', () => {
     expect(skidIntensity(20, 26, 0, true)).toBe(0)
   })
 
-  it('returns the off-track baseline at zero steer off track', () => {
-    expect(skidIntensity(0, 26, 0, false)).toBeCloseTo(0.4, 6)
+  it('is zero at zero speed off track so the rumble does not play while parked', () => {
+    expect(skidIntensity(0, 26, 0, false)).toBe(0)
+  })
+
+  it('reaches the off-track baseline at full speed off track', () => {
+    expect(skidIntensity(26, 26, 0, false)).toBeCloseTo(0.4, 6)
+  })
+
+  it('scales the off-track baseline linearly with speed', () => {
+    expect(skidIntensity(13, 26, 0, false)).toBeCloseTo(0.2, 6)
   })
 
   it('clamps to 1', () => {
