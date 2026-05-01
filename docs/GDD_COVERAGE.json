@@ -396,6 +396,7 @@
         "src/app/tune/[slug]/page.tsx",
         "src/app/api/track/[slug]/tune/route.ts",
         "src/lib/audioSettings.ts",
+        "src/components/SettingsAudioTab.tsx",
         "src/lib/controlSettings.ts",
         "tests/unit/audio.test.ts",
         "tests/unit/haptics.test.ts",
