@@ -68,12 +68,6 @@ import {
 } from '@/lib/cameraPresets'
 import { SPEED_UNITS, unitLabel, type SpeedUnit } from '@/lib/speedometer'
 import {
-  GHOST_SOURCES,
-  GHOST_SOURCE_DESCRIPTIONS,
-  GHOST_SOURCE_LABELS,
-  type GhostSource,
-} from '@/lib/ghostSource'
-import {
   HEADLIGHT_MODES,
   HEADLIGHT_MODE_DESCRIPTIONS,
   HEADLIGHT_MODE_LABELS,
@@ -118,6 +112,7 @@ import {
 } from './MenuUI'
 import { FeatureListOverlay } from './FeatureListOverlay'
 import { SettingsAudioTab } from './SettingsAudioTab'
+import { SettingsGhostTab } from './SettingsGhostTab'
 import { useMenuNav } from './MenuNav'
 
 interface SettingsPaneProps {
@@ -412,24 +407,6 @@ export function SettingsPane({
     onChange({ ...settings, touchMode: mode })
   }
 
-  function setGhostSource(value: GhostSource) {
-    clickSoft()
-    onChange({ ...settings, ghostSource: value, showGhost: true })
-  }
-
-  function setGhostOff() {
-    clickSoft()
-    onChange({ ...settings, showGhost: false })
-  }
-
-  function setShowGhostNameplate(value: boolean) {
-    onChange({ ...settings, showGhostNameplate: value })
-  }
-
-  function setShowGhostGap(value: boolean) {
-    onChange({ ...settings, showGhostGap: value })
-  }
-
   function setShowMinimap(value: boolean) {
     onChange({ ...settings, showMinimap: value })
   }
@@ -464,10 +441,6 @@ export function SettingsPane({
 
   function setShowDrift(value: boolean) {
     onChange({ ...settings, showDrift: value })
-  }
-
-  function setShowRacingLine(value: boolean) {
-    onChange({ ...settings, showRacingLine: value })
   }
 
   function setShowSpeedLines(value: boolean) {
@@ -964,78 +937,7 @@ export function SettingsPane({
         ) : null}
 
         {activeTab === 'ghost' ? (
-          <MenuSection title="Ghost and guides">
-          <div style={subSection}>
-            <div style={subTitle}>Ghost car</div>
-            <MenuHint>
-              Race a translucent car that drives a recorded lap. Pick whose
-              lap to chase, or turn off.
-            </MenuHint>
-            <div style={touchToggleRow}>
-              <MenuButton
-                variant={!settings.showGhost ? 'primary' : 'secondary'}
-                onClick={setGhostOff}
-                title="Hide the ghost car."
-              >
-                Off
-              </MenuButton>
-              {GHOST_SOURCES.map((source) => {
-                const active =
-                  settings.showGhost && settings.ghostSource === source
-                return (
-                  <MenuButton
-                    key={source}
-                    variant={active ? 'primary' : 'secondary'}
-                    onClick={() => setGhostSource(source)}
-                    title={GHOST_SOURCE_DESCRIPTIONS[source]}
-                  >
-                    {GHOST_SOURCE_LABELS[source]}
-                  </MenuButton>
-                )
-              })}
-            </div>
-            <MenuHint>
-              {!settings.showGhost
-                ? 'No ghost will appear during the race.'
-                : GHOST_SOURCE_DESCRIPTIONS[settings.ghostSource]}
-            </MenuHint>
-            <MenuSettingRow label="Show nameplate">
-              <MenuToggle
-                value={settings.showGhostNameplate}
-                onChange={setShowGhostNameplate}
-                disabled={!settings.showGhost}
-              />
-            </MenuSettingRow>
-            <MenuHint>
-              Floats the ghost&apos;s initials and lap time above their car.
-            </MenuHint>
-            <MenuSettingRow label="Show live gap">
-              <MenuToggle
-                value={settings.showGhostGap}
-                onChange={setShowGhostGap}
-                disabled={!settings.showGhost}
-              />
-            </MenuSettingRow>
-            <MenuHint>
-              Live time gap to the ghost. Negative means you are ahead.
-            </MenuHint>
-          </div>
-
-          <div style={subSection}>
-            <div style={subTitle}>Racing line</div>
-            <MenuHint>
-              Cyan line above the road tracing the ghost&apos;s lap. Study
-              the fast line without the ghost on screen.
-            </MenuHint>
-            <MenuSettingRow label="Show racing line">
-              <MenuToggle
-                value={settings.showRacingLine}
-                onChange={setShowRacingLine}
-              />
-            </MenuSettingRow>
-          </div>
-
-          </MenuSection>
+          <SettingsGhostTab settings={settings} onChange={onChange} />
         ) : null}
 
         {activeTab === 'hud' ? (

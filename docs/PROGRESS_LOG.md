@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-01, Settings Ghost Tab Extraction
+
+- Branch: `refactor/settings-ghost-tab`
+- Changed: moved the Ghost and guides Settings tab into a dedicated `SettingsGhostTab` component, keeping ghost source selection, ghost readout toggles, and racing-line controls together while reducing `SettingsPane.tsx` ownership.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test`, `npm run lint`, `npm run build`, and focused Playwright settings smoke pass. The first Playwright attempt overlapped with `npm run build` and failed to start from a transient `.next` missing-file race, then passed when rerun after the build completed. Lint and build still report the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the extracted tab should preserve the current controls and copy while making future Settings cleanup less risky.
+- GDD coverage: keeps Section 9 menu coverage complete and adds the extracted Ghost tab as Settings evidence.
+- Followups: continue extracting Settings tabs that have clear ownership boundaries.
+
 ## 2026-05-01, Shared Menu Setting Rows
 
 - Branch: `refactor/menu-setting-row`

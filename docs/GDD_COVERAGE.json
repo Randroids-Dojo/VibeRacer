@@ -267,6 +267,7 @@
         "src/app/page.tsx",
         "src/components/PauseMenu.tsx",
         "src/components/SettingsPane.tsx",
+        "src/components/SettingsGhostTab.tsx",
         "src/components/FeatureListOverlay.tsx",
         "src/components/FeatureListLauncher.tsx",
         "src/components/FeatureListRoute.tsx",
