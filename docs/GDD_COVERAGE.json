@@ -431,6 +431,7 @@
         "src/app/[slug]/page.tsx",
         "src/components/Game.tsx",
         "src/components/RaceCanvas.tsx",
+        "src/components/MenuUI.tsx",
         "src/game/tick.ts",
         "src/game/physics.ts",
         "src/game/sceneBuilder.ts",

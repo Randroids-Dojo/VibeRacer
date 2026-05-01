@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-01, Shared Menu Setting Rows
+
+- Branch: `refactor/menu-setting-row`
+- Changed: added a shared `MenuSettingRow` primitive in `MenuUI`, moved Audio tab toggle rows onto it, and replaced the duplicated Settings pane toggle/status row markup for Controls, Ghost, HUD, and Effects sections.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test`, `npm run lint`, `npm run build`, focused `tests/unit/featureList.test.ts`, and focused Playwright settings smoke pass. Lint and build still report the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: consolidating the repeated label-and-control row pattern should preserve the current layout while making future Settings tab extraction safer.
+- GDD coverage: keeps Section 9 menu coverage complete and records the shared menu row primitive as architecture evidence.
+- Followups: continue extracting larger Settings tabs after the shared primitives are in place.
+
 ## 2026-05-01, Settings Audio Tab Extraction
 
 - Branch: `refactor/settings-audio-tab`

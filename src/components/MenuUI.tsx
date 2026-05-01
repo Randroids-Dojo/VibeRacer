@@ -282,6 +282,33 @@ export function MenuHint({ children }: { children: ReactNode }) {
   )
 }
 
+export function MenuSettingRow({
+  label,
+  children,
+}: {
+  label: ReactNode
+  children: ReactNode
+}) {
+  return (
+    <div style={settingRowStyle}>
+      <div style={settingLabelStyle}>{label}</div>
+      {children}
+    </div>
+  )
+}
+
+const settingRowStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  gap: 12,
+}
+
+const settingLabelStyle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+}
+
 export type MenuButtonVariant = 'primary' | 'secondary' | 'ghost'
 
 interface MenuButtonProps

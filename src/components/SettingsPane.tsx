@@ -109,6 +109,7 @@ import {
   MenuOverlay,
   MenuPanel,
   MenuSection,
+  MenuSettingRow,
   MenuSlider,
   MenuTabBar,
   MenuToggle,
@@ -843,8 +844,7 @@ export function SettingsPane({
               press the controller button you want.
               {padCapture ? ' Press Esc to cancel.' : ''}
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Status</div>
+            <MenuSettingRow label="Status">
               <div
                 style={{
                   fontSize: 13,
@@ -855,7 +855,7 @@ export function SettingsPane({
                   ? `Detected: ${truncatePadId(pad.id)}`
                   : 'No controller detected'}
               </div>
-            </div>
+            </MenuSettingRow>
             <div style={bindingTable}>
               {GAMEPAD_ACTIONS.map((action) => (
                 <div key={action} style={bindingRow}>
@@ -999,25 +999,23 @@ export function SettingsPane({
                 ? 'No ghost will appear during the race.'
                 : GHOST_SOURCE_DESCRIPTIONS[settings.ghostSource]}
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show nameplate</div>
+            <MenuSettingRow label="Show nameplate">
               <MenuToggle
                 value={settings.showGhostNameplate}
                 onChange={setShowGhostNameplate}
                 disabled={!settings.showGhost}
               />
-            </div>
+            </MenuSettingRow>
             <MenuHint>
               Floats the ghost&apos;s initials and lap time above their car.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show live gap</div>
+            <MenuSettingRow label="Show live gap">
               <MenuToggle
                 value={settings.showGhostGap}
                 onChange={setShowGhostGap}
                 disabled={!settings.showGhost}
               />
-            </div>
+            </MenuSettingRow>
             <MenuHint>
               Live time gap to the ghost. Negative means you are ahead.
             </MenuHint>
@@ -1029,13 +1027,12 @@ export function SettingsPane({
               Cyan line above the road tracing the ghost&apos;s lap. Study
               the fast line without the ghost on screen.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show racing line</div>
+            <MenuSettingRow label="Show racing line">
               <MenuToggle
                 value={settings.showRacingLine}
                 onChange={setShowRacingLine}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           </MenuSection>
@@ -1048,13 +1045,12 @@ export function SettingsPane({
             <MenuHint>
               Top-down overview in the bottom-right corner.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show minimap</div>
+            <MenuSettingRow label="Show minimap">
               <MenuToggle
                 value={settings.showMinimap}
                 onChange={setShowMinimap}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           </MenuSection>
@@ -1068,13 +1064,12 @@ export function SettingsPane({
               Dark tire trail laid behind the rear wheels during slides and
               off-track moments. Fades after a few seconds.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show skid marks</div>
+            <MenuSettingRow label="Show skid marks">
               <MenuToggle
                 value={settings.showSkidMarks}
                 onChange={setShowSkidMarks}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1082,13 +1077,12 @@ export function SettingsPane({
             <MenuHint>
               White puffs off the rear wheels during hard slides and braking.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show tire smoke</div>
+            <MenuSettingRow label="Show tire smoke">
               <MenuToggle
                 value={settings.showTireSmoke}
                 onChange={setShowTireSmoke}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1097,13 +1091,12 @@ export function SettingsPane({
               Red and white curb stones along the inside of every corner to
               mark the apex.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show kerbs</div>
+            <MenuSettingRow label="Show kerbs">
               <MenuToggle
                 value={settings.showKerbs}
                 onChange={setShowKerbs}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1112,13 +1105,12 @@ export function SettingsPane({
               Trees, traffic cones at every corner, and barriers framing the
               start gate.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show scenery</div>
+            <MenuSettingRow label="Show scenery">
               <MenuToggle
                 value={settings.showScenery}
                 onChange={setShowScenery}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           </MenuSection>
@@ -1132,13 +1124,12 @@ export function SettingsPane({
               Score that climbs while you slide through corners. Longer chains
               hit a bigger multiplier. Lap and all-time bests sit underneath.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show drift score</div>
+            <MenuSettingRow label="Show drift score">
               <MenuToggle
                 value={settings.showDrift}
                 onChange={setShowDrift}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1146,13 +1137,12 @@ export function SettingsPane({
             <MenuHint>
               Bottom-center dial showing your live speed.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show speedometer</div>
+            <MenuSettingRow label="Show speedometer">
               <MenuToggle
                 value={settings.showSpeedometer}
                 onChange={setShowSpeedometer}
               />
-            </div>
+            </MenuSettingRow>
             <div style={touchToggleRow}>
               {SPEED_UNITS.map((unit) => (
                 <MenuButton
@@ -1167,14 +1157,13 @@ export function SettingsPane({
                 </MenuButton>
               ))}
             </div>
-            <div style={audioRow}>
-              <div style={audioLabel}>Top-speed marker</div>
+            <MenuSettingRow label="Top-speed marker">
               <MenuToggle
                 value={settings.showTopSpeedMarker}
                 onChange={setShowTopSpeedMarker}
                 disabled={!settings.showSpeedometer}
               />
-            </div>
+            </MenuSettingRow>
             <MenuHint>
               Green tick on the dial at your session-best speed and a PEAK
               readout. Resets on Restart.
@@ -1186,13 +1175,12 @@ export function SettingsPane({
             <MenuHint>
               Top-center inset showing what is behind you.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show rear-view</div>
+            <MenuSettingRow label="Show rear-view">
               <MenuToggle
                 value={settings.showRearview}
                 onChange={setShowRearview}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1201,13 +1189,12 @@ export function SettingsPane({
               Streaks that radiate from the screen center past about
               two-thirds of your top speed.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show speed lines</div>
+            <MenuSettingRow label="Show speed lines">
               <MenuToggle
                 value={settings.showSpeedLines}
                 onChange={setShowSpeedLines}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1217,13 +1204,12 @@ export function SettingsPane({
               graded LIGHTNING / GREAT / GOOD / HUMAN. Fades after a few
               seconds.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show reaction time</div>
+            <MenuSettingRow label="Show reaction time">
               <MenuToggle
                 value={settings.showReactionTime}
                 onChange={setShowReactionTime}
               />
-            </div>
+            </MenuSettingRow>
           </div>
 
           <div style={subSection}>
@@ -1232,13 +1218,12 @@ export function SettingsPane({
               Badge next to BEST (ALL TIME) showing your leaderboard
               position. Refreshes after every submitted lap.
             </MenuHint>
-            <div style={audioRow}>
-              <div style={audioLabel}>Show rank chip</div>
+            <MenuSettingRow label="Show rank chip">
               <MenuToggle
                 value={settings.showLeaderboardRank}
                 onChange={setShowLeaderboardRank}
               />
-            </div>
+            </MenuSettingRow>
           </div>
           </MenuSection>
         ) : null}
@@ -1947,16 +1932,6 @@ const tabPanel: React.CSSProperties = {
   overscrollBehavior: 'contain',
   paddingRight: 4,
   paddingTop: 4,
-}
-const audioRow: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 12,
-}
-const audioLabel: React.CSSProperties = {
-  fontSize: 15,
-  fontWeight: 700,
 }
 const bindingTable: React.CSSProperties = {
   display: 'flex',
