@@ -121,17 +121,25 @@ const stageStyle: React.CSSProperties = {
   position: 'relative',
   zIndex: 2,
   width: 480,
-  maxWidth: 'calc(100vw - 32px)',
+  // Match mainStyle's 24px padding so the stage never extends past the
+  // visible content area on narrow screens. Without this the stage was
+  // wider than the grid cell and the title leaned off-center.
+  maxWidth: '100%',
   display: 'grid',
   gap: 28,
 }
 const logoWrapStyle: React.CSSProperties = {
   textAlign: 'center',
   textShadow: '0 4px 0 rgba(0,0,0,0.25), 0 10px 24px rgba(0,0,0,0.35)',
+  // Belt-and-suspenders: clip just in case the WebkitTextStroke pushes the
+  // last glyph past the centered column on a narrow viewport.
+  overflow: 'hidden',
 }
 const logoStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 88,
+  // Scale with viewport so the title fits on iPhone-class widths without
+  // overflowing the right edge.
+  fontSize: 'clamp(44px, 14vw, 88px)',
   fontWeight: 700,
   letterSpacing: 2,
   lineHeight: 0.95,
