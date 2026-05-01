@@ -131,20 +131,21 @@ const stageStyle: React.CSSProperties = {
 const logoWrapStyle: React.CSSProperties = {
   textAlign: 'center',
   textShadow: '0 4px 0 rgba(0,0,0,0.25), 0 10px 24px rgba(0,0,0,0.35)',
-  // Belt-and-suspenders: clip just in case the WebkitTextStroke pushes the
-  // last glyph past the centered column on a narrow viewport.
-  overflow: 'hidden',
 }
 const logoStyle: React.CSSProperties = {
   margin: 0,
-  // Scale with viewport so the title fits on iPhone-class widths without
-  // overflowing the right edge.
-  fontSize: 'clamp(44px, 14vw, 88px)',
+  // Scale tightly with viewport so the title fits on iPhone-class widths
+  // without overflowing. The lower bound covers ultra-narrow devices; the
+  // upper bound matches the original desktop size.
+  fontSize: 'clamp(36px, 11vw, 88px)',
   fontWeight: 700,
-  letterSpacing: 2,
+  letterSpacing: 1,
   lineHeight: 0.95,
   color: '#fff7b0',
   WebkitTextStroke: '2px #1b1b1b',
+  // Last-resort wrap so a future longer title or zoomed-in mobile font does
+  // not bleed past the column edge.
+  overflowWrap: 'anywhere',
 }
 const tagStyle: React.CSSProperties = {
   marginTop: 8,
