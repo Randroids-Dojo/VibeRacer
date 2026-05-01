@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-01, Settings Audio Tab Extraction
+
+- Branch: `refactor/settings-audio-tab`
+- Changed: moved Audio settings into a dedicated `SettingsAudioTab` component, grouped controls into Mix, Engine noise, Music identity, and Track music sections, and kept the parent Settings pane responsible for only tab routing and global reset behavior.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `tests/unit/audioSettings.test.ts`, focused Playwright settings smoke, `npm run type-check`, `npm test`, `npm run lint`, and `npm run build` pass. Lint and build still report the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: this slice should preserve existing audio behavior while improving settings scanability and reducing `SettingsPane.tsx` ownership.
+- GDD coverage: keeps Section 13 Audio complete and adds the extracted Audio tab component as evidence.
+- Followups: continue extracting settings tabs or shared setting-row primitives in later UI and source-structure slices.
+
 ## 2026-04-30, Engine SFX Balance
 
 - Branch: `polish/engine-sfx-balance`
