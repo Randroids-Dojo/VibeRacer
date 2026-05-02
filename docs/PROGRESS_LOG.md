@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-01, Music Editor Front-End Redesign
+
+- Branch: `feature/music-editor-redesign`
+- Changed: rebuilt the `/music/[slug]` editor around three new components and a live-preview pipeline. New `MusicTransport` is a sticky bar with Play / Stop, a 16-cell playhead driven by the new `getActiveMusicStep()` engine getter, 1 / 2 / 4 bar grouping, simulated intensity (with auto-sweep) / lap / off-track inputs that drive `setGameIntensity` / `setMusicLapIndex` / `setMusicOffTrack` so automation lanes can be auditioned without a real race. New `MusicVibePad` is an XY drag pad that maps energy and mood onto BPM, scale flavor, drum density, voice waves, voice volumes, and the intensity tempo curve via the new pure helper `src/lib/musicVibe.ts`; a slot-machine Roll re-shuffles the rhythm via `generateMusicFromSeed` and re-applies the puck position, while a Lock toggle pins the current vibe. New `MusicLibrary` drawer reads the existing `myMusic` and `knownMusic` stores and surfaces filter chips (All / Mine / This slug / Visited / Defaults), mini bass-pattern cards, audition / load / apply / delete actions, and an active-override badge. The save bar is rebuilt around three scope-explicit actions (🌐 track default, 👤 my override, 🔖 library) each with a one-line audience description and a confirm sheet that recaps audience before committing; a colored scope banner under the title mirrors the active scope so the user always knows who hears the draft. Voice rows gained solo, mute, and audition chips that drive a preview-only mix without dirtying the saved tune; audition uses the new `auditionMusicNote()` engine helper.
+- Verification: dash checks, `git diff --check`, `npm run type-check`, `npm test` (3076 tests passing including 16 new across `tests/unit/musicVibe.test.ts` and `tests/unit/musicLibrary.test.ts`), `npm run lint` (only the existing pre-existing hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts` remain), and `npm run build` pass. Spot-check via `next dev` GET on `/music/test-redesign` returned 200.
+- Assumptions: looping is the default mode (the engine already loops every 16 steps automatically) so the transport just exposes a Play toggle and the bar grouping is decorative for the counter rather than a separate engine feature; tap-rhythm drum capture was deferred since it would require extending the data model from the current density-only drum config.
+- GDD coverage: extends Section 13 Audio with the Music Editor redesign build-log entry.
+- Followups: tap-rhythm drum input would land alongside a per-step drum pattern data model upgrade; consider polishing the slot-machine animation and adding rename / duplicate actions to the library drawer.
+
 ## 2026-05-01, Settings Ghost Tab Extraction
 
 - Branch: `refactor/settings-ghost-tab`

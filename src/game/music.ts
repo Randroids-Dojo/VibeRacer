@@ -821,6 +821,58 @@ export function stopMusic(fadeSec = DEFAULT_FADE_OUT_SEC): void {
   }
 }
 
+/**
+ * Index of the step the game track is currently scheduling, in `[0, 16)`.
+ * Returns null when the engine has not been started yet or the game track is
+ * not active. Polled by the music editor transport so the playhead lines up
+ * with audible playback rather than a wall-clock estimate that drifts when
+ * intensity scales the tempo.
+ */
+export function getActiveMusicStep(): number | null {
+  const s = system
+  if (!s) return null
+  const track = s.tracks.get('game')
+  if (!track) return null
+  return track.step
+}
+
+const AUDITION_DUR_SEC = 0.35
+
+/**
+ * Play a single short note routed through the music bus. Used by the editor's
+ * voice audition buttons so users can hear a degree without committing it to
+ * a step. Uses the engine's gain bus so the audition follows the music
+ * volume slider rather than the SFX one.
+ */
+export function auditionMusicNote(opts: {
+  degree: number
+  octave: number
+  wave: OscillatorType
+  rootMidi?: number
+  scale?: TrackMusicScaleFlavor
+}): void {
+  const e = getAudioEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  const tune = system?.activeTune ?? DEFAULT_TRACK_MUSIC
+  const rootMidi = opts.rootMidi ?? tune.rootMidi
+  const scale = scaleForFlavor(opts.scale ?? tune.scale)
+  const start = e.ctx.currentTime + 0.005
+  const osc = e.ctx.createOscillator()
+  const gain = e.ctx.createGain()
+  osc.type = opts.wave
+  osc.frequency.value = scaleDeg(rootMidi, scale, opts.degree, opts.octave)
+  gain.gain.setValueAtTime(0.18, start)
+  gain.gain.exponentialRampToValueAtTime(
+    0.001,
+    start + AUDITION_DUR_SEC * 0.9,
+  )
+  osc.connect(gain)
+  gain.connect(e.musicBus)
+  osc.start(start)
+  osc.stop(start + AUDITION_DUR_SEC + 0.05)
+}
+
 const COUNTDOWN_BEEP_MIDI_LOW = 69
 const COUNTDOWN_BEEP_MIDI_HIGH = 81
 const COUNTDOWN_BEEP_DUR_SEC = 0.18
