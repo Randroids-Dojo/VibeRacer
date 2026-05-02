@@ -3,7 +3,6 @@ import {
   useCallback,
   useEffect,
   useMemo,
-  useRef,
   useState,
   type CSSProperties,
 } from 'react'
@@ -112,6 +111,9 @@ export function MusicEditor({
   const [scope, setScope] = useState<SaveScope>(() =>
     initialMusic ? 'default' : 'unsaved',
   )
+  const [savedScope, setSavedScope] = useState<SaveScope>(() =>
+    initialMusic ? 'default' : 'unsaved',
+  )
   const [savedSnapshot, setSavedSnapshot] = useState<TrackMusic>(() =>
     TrackMusicSchema.parse(initialMusic ?? DEFAULT_TRACK_MUSIC),
   )
@@ -129,8 +131,6 @@ export function MusicEditor({
     () => applyVoiceMix(music, solos, mutes),
     [music, solos, mutes],
   )
-  const playingRef = useRef(playing)
-  playingRef.current = playing
 
   // Push the active mix to the engine on every meaningful change so the live
   // loop reflects edits within one bar. Safe to call when not playing too:
@@ -240,57 +240,71 @@ export function MusicEditor({
 
   async function commitDefault(): Promise<void> {
     setStatus('Saving track default...')
+    const named: TrackMusic = {
+      ...music,
+      name: personalName.trim() || music.name,
+    }
     const res = await fetch(`/api/track/${encodeURIComponent(slug)}/music`, {
       method: 'PUT',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(music),
+      body: JSON.stringify(named),
     })
     if (!res.ok) {
       setStatus('Default save failed.')
       return
     }
     writeMusicOverride(slug, { source: 'default' })
-    setSavedSnapshot(music)
+    setMusic(named)
+    setSavedSnapshot(named)
+    setSavedScope('default')
     setScope('default')
     setStatus('Saved as track default.')
   }
 
   function commitMine(): void {
     const now = Date.now()
+    const name = personalName.trim() || `/${slug} music`
+    const named: TrackMusic = { ...music, name }
     const entry: MyMusicEntry = {
       id: crypto.randomUUID(),
-      name: personalName.trim() || `/${slug} music`,
+      name,
       originSlug: slug,
-      music,
+      music: named,
       createdAt: now,
       updatedAt: now,
     }
     upsertMyMusic(entry)
     writeMusicOverride(slug, { source: 'mine', id: entry.id })
-    setSavedSnapshot(music)
+    setMusic(named)
+    setSavedSnapshot(named)
+    setSavedScope('mine')
     setScope('mine')
     setStatus('Saved as your override.')
   }
 
   function commitLibrary(): void {
     const now = Date.now()
+    const name = personalName.trim() || `/${slug} music`
+    const named: TrackMusic = { ...music, name }
     const entry: MyMusicEntry = {
       id: crypto.randomUUID(),
-      name: personalName.trim() || `/${slug} music`,
+      name,
       originSlug: slug,
-      music,
+      music: named,
       createdAt: now,
       updatedAt: now,
     }
     upsertMyMusic(entry)
-    setSavedSnapshot(music)
+    setMusic(named)
+    setSavedSnapshot(named)
+    setSavedScope('library')
     setScope('library')
     setStatus('Saved to your library.')
   }
 
   function revert(): void {
     setMusic(TrackMusicSchema.parse(savedSnapshot))
-    setScope(initialMusic ? 'default' : 'unsaved')
+    setScope(savedScope)
     setStatus('Reverted to last save.')
   }
 
@@ -300,7 +314,9 @@ export function MusicEditor({
   ): void {
     replaceMusic(next)
     setSavedSnapshot(next)
-    setScope(source.kind === 'mine' ? 'mine' : 'default')
+    const loadedScope: SaveScope = source.kind === 'mine' ? 'mine' : 'default'
+    setSavedScope(loadedScope)
+    setScope(loadedScope)
     setStatus(
       source.kind === 'mine'
         ? `Loaded "${next.name ?? 'tune'}" from your library.`
@@ -797,6 +813,7 @@ function ConfirmSheet({
         <p style={sheetBody}>{copy.body}</p>
         {showName ? (
           <input
+            aria-label="Tune name"
             value={personalName}
             onChange={(event) => onPersonalNameChange(event.target.value)}
             placeholder="tune name"

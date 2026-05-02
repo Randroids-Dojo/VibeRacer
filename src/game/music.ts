@@ -862,7 +862,10 @@ export function auditionMusicNote(opts: {
   const gain = e.ctx.createGain()
   osc.type = opts.wave
   osc.frequency.value = scaleDeg(rootMidi, scale, opts.degree, opts.octave)
-  gain.gain.setValueAtTime(0.18, start)
+  // Soft attack from zero, then exponential release. Setting gain.value high
+  // at start would cause a perceptible click on each audition button press.
+  gain.gain.setValueAtTime(0, start)
+  gain.gain.linearRampToValueAtTime(0.18, start + 0.012)
   gain.gain.exponentialRampToValueAtTime(
     0.001,
     start + AUDITION_DUR_SEC * 0.9,

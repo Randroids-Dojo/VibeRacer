@@ -90,11 +90,21 @@ export function MusicVibePad({
   seedRef.current = seed
   const lockedRef = useRef(locked)
   lockedRef.current = locked
+  // Set whenever this component itself emits a music change (drag, Roll). The
+  // resulting prop bounce-back skips the re-derive below, so a user dragging
+  // the puck through a scale boundary does not see the puck snap to the
+  // quantized mood mid-drag. Cleared on the next effect run.
+  const internalCommitRef = useRef(false)
 
-  // Whenever the music's seed/scale/bpm change from outside (e.g., loading a
-  // tune from the library), re-derive the puck position so the pad stays in
-  // sync with what the user hears.
+  // Re-derive the puck position only when the music came from outside the
+  // pad (e.g. library load, slider edit, fresh seed roll). vibeFromMusic
+  // quantizes mood across discrete scale flavors, so calling it on every
+  // pad-driven commit would visibly snap the puck.
   useEffect(() => {
+    if (internalCommitRef.current) {
+      internalCommitRef.current = false
+      return
+    }
     setVibe(vibeFromMusic(music))
     if (music.seedWord && music.seedWord !== seedRef.current) {
       setSeed(music.seedWord)
@@ -103,6 +113,7 @@ export function MusicVibePad({
 
   function commit(nextVibe: VibePadPosition, base: TrackMusic = music): void {
     const next = applyVibePad(base, nextVibe)
+    internalCommitRef.current = true
     onMusicChange(next)
   }
 
@@ -157,6 +168,7 @@ export function MusicVibePad({
           return fresh
         })()
     const next = applyVibePad(generated, padPosition)
+    internalCommitRef.current = true
     onMusicChange(next)
     setRolling(true)
     const start = performance.now()
@@ -201,7 +213,6 @@ export function MusicVibePad({
       <div
         ref={padRef}
         id={padId}
-        role="application"
         aria-label="Drag to set music energy and mood"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
@@ -213,15 +224,15 @@ export function MusicVibePad({
           touchAction: 'none',
         }}
       >
-        <span style={{ ...corner, top: 8, left: 10 }}>moody cruise</span>
+        <span style={{ ...corner, top: 8, left: 10 }}>sunlit drift</span>
         <span style={{ ...corner, top: 8, right: 10, textAlign: 'right' }}>
-          gritty thrash
+          neon rush
         </span>
-        <span style={{ ...corner, bottom: 8, left: 10 }}>sunlit drift</span>
+        <span style={{ ...corner, bottom: 8, left: 10 }}>moody cruise</span>
         <span
           style={{ ...corner, bottom: 8, right: 10, textAlign: 'right' }}
         >
-          neon rush
+          gritty thrash
         </span>
         <div style={axisLabels.x}>energy</div>
         <div style={axisLabels.y}>mood</div>

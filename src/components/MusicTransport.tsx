@@ -49,8 +49,6 @@ export function MusicTransport({
 
   const lastStepRef = useRef(-1)
   const sweepStartRef = useRef<number | null>(null)
-  const intensityRef = useRef(intensity)
-  intensityRef.current = intensity
 
   // Poll the engine's current step and roll the bar / loop counters.
   useEffect(() => {
@@ -110,7 +108,6 @@ export function MusicTransport({
       const elapsed = (performance.now() - start) / 1000
       const phase = (elapsed % AUTO_SWEEP_PERIOD_SEC) / AUTO_SWEEP_PERIOD_SEC
       const next = 0.5 + 0.5 * Math.sin(phase * Math.PI * 2)
-      intensityRef.current = next
       setIntensity(next)
     }, AUTO_SWEEP_TICK_MS)
     return () => clearInterval(id)
