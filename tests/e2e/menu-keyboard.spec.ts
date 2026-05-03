@@ -62,9 +62,9 @@ test('initials prompt: Enter on the input submits without arrow key focus shift'
   await expect(input).toBeVisible()
   await input.fill('TST')
   await input.press('Enter')
-  // The pause button on the race HUD is the post-submit signal that the
-  // prompt closed.
-  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({
+  // After submit, GameSession mounts and the pre-race setup modal opens.
+  // The Start race button is the post-submit signal that the prompt closed.
+  await expect(page.getByRole('button', { name: 'Start race' })).toBeVisible({
     timeout: 15_000,
   })
 })
@@ -84,6 +84,7 @@ test('race menu: sub-screens return to the Race menu, not the pause menu', async
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Start race' }).click()
   await page.getByRole('button', { name: 'Pause' }).click()
   await page.getByRole('button', { name: 'Race', exact: true }).click()
 

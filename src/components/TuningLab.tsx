@@ -102,7 +102,7 @@ export function TuningLab() {
       slug: TUNING_LAB_SYNTHETIC_SLUG,
       immediate: true,
     })
-    flashToast(`"${t.name}" will load on your next race`)
+    flashToast(`"${t.name}" is now your active setup`)
   }
 
   function applyHistoryEntryFromLab(entry: TuningHistoryEntry) {

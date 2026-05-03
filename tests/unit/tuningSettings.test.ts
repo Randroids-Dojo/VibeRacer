@@ -10,12 +10,17 @@ import {
   inputModeDescription,
   inputModeLabel,
   isStockParams,
+  isTrackDecided,
+  isTrackPinned,
+  markTrackDecided,
   migrateLegacyTuning,
   parseStoredParams,
   perTrackKey,
+  pinTrack,
   readLastLoaded,
   readPerTrack,
   resolveStartingTuning,
+  unpinTrack,
   writeTuning,
 } from '@/lib/tuningSettings'
 
@@ -156,17 +161,48 @@ describe('localStorage round-trip', () => {
     expect(readLastLoaded()).toEqual(tuned)
   })
 
-  it('a fresh slug seeds from last-loaded', () => {
+  it('lastLoaded is the global default for every unpinned track', () => {
     const tuned = { ...cloneDefaultParams(), maxSpeed: 40 }
     writeTuning('alpha', tuned)
-    // Brand new slug, no per-track entry yet.
+    // Brand new slug, no per-track entry yet, falls back to lastLoaded.
     expect(resolveStartingTuning('beta')).toEqual(tuned)
-    // Once we save under beta, per-track wins for beta.
+    // Save under beta; lastLoaded is now beta. Alpha's per-track save is
+    // ignored because alpha is not pinned, so alpha also resolves to beta.
     const beta = { ...cloneDefaultParams(), maxSpeed: 22 }
     writeTuning('beta', beta)
     expect(resolveStartingTuning('beta')).toEqual(beta)
-    // Alpha kept its setup.
+    expect(resolveStartingTuning('alpha')).toEqual(beta)
+  })
+
+  it('pinned tracks consult their per-track save first', () => {
+    const tuned = { ...cloneDefaultParams(), maxSpeed: 40 }
+    writeTuning('alpha', tuned)
+    const beta = { ...cloneDefaultParams(), maxSpeed: 22 }
+    writeTuning('beta', beta)
+    // lastLoaded is now beta. Pin alpha and confirm its per-track save wins.
+    pinTrack('alpha')
+    expect(isTrackPinned('alpha')).toBe(true)
     expect(resolveStartingTuning('alpha')).toEqual(tuned)
+    // Unpinning alpha returns it to the lastLoaded default.
+    unpinTrack('alpha')
+    expect(isTrackPinned('alpha')).toBe(false)
+    expect(resolveStartingTuning('alpha')).toEqual(beta)
+  })
+
+  it('pin / unpin / decided helpers are idempotent and persist', () => {
+    expect(isTrackPinned('zeta')).toBe(false)
+    expect(isTrackDecided('zeta')).toBe(false)
+    pinTrack('zeta')
+    pinTrack('zeta')
+    expect(isTrackPinned('zeta')).toBe(true)
+    markTrackDecided('zeta')
+    markTrackDecided('zeta')
+    expect(isTrackDecided('zeta')).toBe(true)
+    unpinTrack('zeta')
+    unpinTrack('zeta')
+    expect(isTrackPinned('zeta')).toBe(false)
+    // Decided survives an unpin.
+    expect(isTrackDecided('zeta')).toBe(true)
   })
 
   it('migrates the legacy dev key once and removes it', () => {

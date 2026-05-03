@@ -165,7 +165,14 @@ import { summarizeSession } from '@/game/sessionSummary'
 import { appendLap, type LapHistoryEntry } from '@/game/lapHistory'
 import { computeLapConsistency } from '@/game/lapConsistency'
 import type { CarParams } from '@/game/physics'
-import { cloneDefaultParams, type InputMode } from '@/lib/tuningSettings'
+import {
+  cloneDefaultParams,
+  markTrackDecided,
+  pinTrack,
+  unpinTrack,
+  type InputMode,
+} from '@/lib/tuningSettings'
+import { PreRaceSetup, type PreRaceSetupResult } from './PreRaceSetup'
 import { ReplaySchema, type Replay } from '@/lib/replay'
 import {
   ghostSourceNeedsTopFetch,
@@ -302,7 +309,7 @@ export function Game(props: GameProps) {
   return <GameSession {...props} initials={initials} />
 }
 
-type Phase = 'countdown' | 'racing'
+type Phase = 'preRace' | 'countdown' | 'racing'
 
 interface SessionProps extends GameProps {
   initials: string
@@ -973,7 +980,7 @@ function GameSession({
     }
   }, [])
 
-  const [phase, setPhase] = useState<Phase>('countdown')
+  const [phase, setPhase] = useState<Phase>('preRace')
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
   // Confetti celebration trigger. `kind` flips on a PB / RECORD lap and stays
@@ -1272,7 +1279,7 @@ function GameSession({
       // post-GO HUD tick.
       paceNote: null,
     }))
-    setPhase('countdown')
+    setPhase('preRace')
   }, [])
 
   // Internal lap-reset pulse. Drops the in-flight replay buffer and the
@@ -2545,6 +2552,18 @@ function GameSession({
     }
   }
 
+  // Confirm handler for the pre-race setup modal. Applies the picked params
+  // (writes through to lastLoaded + per-track), records the pin choice, and
+  // hands control to the standard countdown. The track is marked decided so
+  // legacy per-track saves stop being highlighted on subsequent races.
+  function handlePreRaceConfirm({ params, pin }: PreRaceSetupResult) {
+    applyTuning(params, 'Pre-race pick')
+    markTrackDecided(slug)
+    if (pin) pinTrack(slug)
+    else unpinTrack(slug)
+    setPhase('countdown')
+  }
+
   function beginRace() {
     void startRaceServerSide()
     pendingRaceStartRef.current = performance.now()
@@ -2726,6 +2745,9 @@ function GameSession({
           <span style={achievementToastGlyphStyle}>★</span>
           {achievementToast}
         </div>
+      ) : null}
+      {phase === 'preRace' ? (
+        <PreRaceSetup slug={slug} onConfirm={handlePreRaceConfirm} />
       ) : null}
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls
