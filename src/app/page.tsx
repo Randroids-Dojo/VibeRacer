@@ -120,8 +120,11 @@ const skyFadeStyle: React.CSSProperties = {
 const stageStyle: React.CSSProperties = {
   position: 'relative',
   zIndex: 2,
-  width: 480,
-  maxWidth: 'calc(100vw - 32px)',
+  // `min(480px, 100%)` keeps the column readable on desktop while letting it
+  // shrink to the available width on narrow phones. Using a fixed `width`
+  // here used to size the grid track to 480px, so the section overflowed
+  // its parent and dragged the centered title off the right edge.
+  width: 'min(480px, 100%)',
   display: 'grid',
   gap: 28,
 }
@@ -131,12 +134,18 @@ const logoWrapStyle: React.CSSProperties = {
 }
 const logoStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 88,
+  // Scale tightly with viewport so the title fits on iPhone-class widths
+  // without overflowing. The lower bound covers ultra-narrow devices; the
+  // upper bound matches the original desktop size.
+  fontSize: 'clamp(36px, 11vw, 88px)',
   fontWeight: 700,
-  letterSpacing: 2,
+  letterSpacing: 1,
   lineHeight: 0.95,
   color: '#fff7b0',
   WebkitTextStroke: '2px #1b1b1b',
+  // Last-resort wrap so a future longer title or zoomed-in mobile font does
+  // not bleed past the column edge.
+  overflowWrap: 'anywhere',
 }
 const tagStyle: React.CSSProperties = {
   marginTop: 8,

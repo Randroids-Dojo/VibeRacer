@@ -583,7 +583,7 @@ function DriftPanel({
   const showLive = active || score > 0
   const liveStyle = active ? driftLiveActive : driftLiveInactive
   return (
-    <div style={driftPanel} aria-live="polite">
+    <div style={compact ? compactDriftPanel : driftPanel} aria-live="polite">
       <div style={liveStyle}>
         <div style={driftLabel}>
           DRIFT{active ? ` x${multiplier.toFixed(1)}` : ''}
@@ -1698,6 +1698,13 @@ const driftPanel: React.CSSProperties = {
   gap: 4,
   pointerEvents: 'none',
   minWidth: 124,
+}
+// On compact (mobile) HUDs the projection dock occupies the same top:62 /
+// left:8 column. Push the drift panel below the projection block's footprint
+// so the two stop overlapping each other and the wrong-way banner.
+const compactDriftPanel: React.CSSProperties = {
+  ...driftPanel,
+  top: 156,
 }
 const driftLiveBase: React.CSSProperties = {
   background: 'rgba(0, 0, 0, 0.5)',
