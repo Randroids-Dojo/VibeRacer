@@ -22,6 +22,11 @@ export function cellKey(row: number, col: number): string {
   return `${row},${col}`
 }
 
+function parseCellKey(key: string): { row: number; col: number } {
+  const [rowRaw, colRaw] = key.split(',')
+  return { row: Number(rowRaw), col: Number(colRaw) }
+}
+
 export interface ConnectorPort {
   dr: number
   dc: number
@@ -92,7 +97,28 @@ function rotatePorts(
 export interface ValidationResult {
   ok: boolean
   reason?: string
+  issue?: ValidationIssue
 }
+
+export type ValidationIssue =
+  | {
+      kind: 'openConnector'
+      row: number
+      col: number
+      connectorRow: number
+      connectorCol: number
+      dir: Dir
+      targetRow: number
+      targetCol: number
+    }
+  | {
+      kind: 'duplicateCell'
+      row: number
+      col: number
+    }
+  | {
+      kind: 'disconnected'
+    }
 
 export function validateClosedLoop(pieces: Piece[]): ValidationResult {
   if (pieces.length === 0) {
@@ -106,7 +132,11 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
   for (const p of pieces) {
     const key = cellKey(p.row, p.col)
     if (byAnchorCell.has(key)) {
-      return { ok: false, reason: `duplicate piece at ${key}` }
+      return {
+        ok: false,
+        reason: `duplicate piece at ${key}`,
+        issue: { kind: 'duplicateCell', row: p.row, col: p.col },
+      }
     }
     byAnchorCell.set(key, p)
   }
@@ -119,7 +149,16 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
         existing &&
         !isAllowedConnectorFootprintOverlap(p, existing, key)
       ) {
-        return { ok: false, reason: `duplicate piece at ${key}` }
+        const duplicate = parseCellKey(key)
+        return {
+          ok: false,
+          reason: `duplicate piece at ${key}`,
+          issue: {
+            kind: 'duplicateCell',
+            row: duplicate.row,
+            col: duplicate.col,
+          },
+        }
       }
       if (!existing) occupiedByCell.set(key, p)
     }
@@ -133,17 +172,39 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
     const adj: string[] = []
     for (const port of ports) {
       const neighbor = findConnectedNeighbor(p, port, pieces)
-      const nKey = neighbor ? cellKey(neighbor.row, neighbor.col) : neighborAnchorKey(p, port)
+      const connector = portCell(p, port)
+      const target = neighborAnchorCell(p, port)
+      const nKey = neighbor ? cellKey(neighbor.row, neighbor.col) : cellKey(target.row, target.col)
       if (!neighbor || neighbor === p) {
         return {
           ok: false,
           reason: `open connector at ${key} facing ${port.dir}`,
+          issue: {
+            kind: 'openConnector',
+            row: p.row,
+            col: p.col,
+            connectorRow: connector.row,
+            connectorCol: connector.col,
+            dir: port.dir,
+            targetRow: target.row,
+            targetCol: target.col,
+          },
         }
       }
       if (!portsConnect(p, port, neighbor)) {
         return {
           ok: false,
           reason: `connector mismatch between ${key} and ${nKey}`,
+          issue: {
+            kind: 'openConnector',
+            row: p.row,
+            col: p.col,
+            connectorRow: connector.row,
+            connectorCol: connector.col,
+            dir: port.dir,
+            targetRow: target.row,
+            targetCol: target.col,
+          },
         }
       }
       adj.push(nKey)
@@ -166,7 +227,11 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
   }
 
   if (seen.size !== pieces.length) {
-    return { ok: false, reason: 'graph is not a single connected component' }
+    return {
+      ok: false,
+      reason: 'graph is not a single connected component',
+      issue: { kind: 'disconnected' },
+    }
   }
 
   return { ok: true }
@@ -205,9 +270,17 @@ export function portCell(
 }
 
 export function neighborAnchorKey(piece: Piece, port: ConnectorPort): string {
+  const cell = neighborAnchorCell(piece, port)
+  return cellKey(cell.row, cell.col)
+}
+
+export function neighborAnchorCell(
+  piece: Piece,
+  port: ConnectorPort,
+): { row: number; col: number } {
   const cell = portCell(piece, port)
   const { dr, dc } = DIR_OFFSETS[port.dir]
-  return cellKey(cell.row + dr, cell.col + dc)
+  return { row: cell.row + dr, col: cell.col + dc }
 }
 
 export function portsConnect(

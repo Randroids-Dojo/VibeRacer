@@ -361,6 +361,19 @@ test('track editor applies starter templates as valid loops', async ({ page }) =
   await expect(page.getByText('8 selected pieces')).toBeVisible()
 })
 
+test('track editor highlights an open connector and target cell', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Straight' }).click()
+  await page.locator('g[data-row="-2"][data-col="-2"]').click()
+
+  await expect(page.getByText('needs matching connector at')).toBeVisible()
+  await expect(page.getByTestId('bad-connector-marker')).toBeVisible()
+  await expect(page.getByTestId('connector-target-marker')).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')

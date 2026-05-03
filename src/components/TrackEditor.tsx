@@ -235,6 +235,10 @@ export function TrackEditor({
   } | null>(null)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
+  const openConnectorIssue =
+    validation.issue?.kind === 'openConnector' ? validation.issue : null
+  const duplicateIssue =
+    validation.issue?.kind === 'duplicateCell' ? validation.issue : null
 
   const bounds = useMemo(() => getBounds(pieces), [pieces])
   const rowMin = bounds.rowMin - PAD_CELLS
@@ -1011,6 +1015,16 @@ export function TrackEditor({
                 const key = cellKey(r, c)
                 const piece = cellMap.get(key)
                 const isStart = key === startKey
+                const badConnectorDir =
+                  openConnectorIssue?.connectorRow === r &&
+                  openConnectorIssue.connectorCol === c
+                    ? openConnectorIssue.dir
+                    : null
+                const isConnectorTarget =
+                  openConnectorIssue?.targetRow === r &&
+                  openConnectorIssue.targetCol === c
+                const isDuplicateIssue =
+                  duplicateIssue?.row === r && duplicateIssue.col === c
                 return (
                   <Cell
                     key={key}
@@ -1027,6 +1041,9 @@ export function TrackEditor({
                     isSelectionAnchor={
                       selectionAnchor?.row === r && selectionAnchor.col === c
                     }
+                    badConnectorDir={badConnectorDir}
+                    isConnectorTarget={isConnectorTarget}
+                    isDuplicateIssue={isDuplicateIssue}
                   />
                 )
               }),
@@ -1373,6 +1390,11 @@ export function TrackEditor({
           <span style={{ color: validation.ok ? '#6ee787' : '#ffb86b' }}>
             {validation.ok ? 'valid closed loop' : (validation.reason ?? 'invalid')}
           </span>
+          {openConnectorIssue ? (
+            <span style={invalidStatus}>
+              needs matching connector at {openConnectorIssue.targetRow},{openConnectorIssue.targetCol}
+            </span>
+          ) : null}
           {checkpointCount !== null ? (
             <span style={cpHint}>
               {effectiveCp} of {cpMax} checkpoints
@@ -1466,6 +1488,9 @@ interface CellProps {
   startExitDir: Dir | null
   isSelected: boolean
   isSelectionAnchor: boolean
+  badConnectorDir: Dir | null
+  isConnectorTarget: boolean
+  isDuplicateIssue: boolean
 }
 
 const Cell = memo(function Cell({
@@ -1480,6 +1505,9 @@ const Cell = memo(function Cell({
   startExitDir,
   isSelected,
   isSelectionAnchor,
+  badConnectorDir,
+  isConnectorTarget,
+  isDuplicateIssue,
 }: CellProps) {
   return (
     <g transform={`translate(${x}, ${y})`} data-row={row} data-col={col}>
@@ -1509,6 +1537,23 @@ const Cell = memo(function Cell({
             fill="#ffb347"
           />
         </g>
+      ) : null}
+      {isConnectorTarget ? <ConnectorTargetMarker /> : null}
+      {badConnectorDir !== null ? (
+        <BadConnectorMarker dir={badConnectorDir} />
+      ) : null}
+      {isDuplicateIssue ? (
+        <rect
+          x={2}
+          y={2}
+          width={CELL - 4}
+          height={CELL - 4}
+          fill="none"
+          stroke="#ff6b6b"
+          strokeWidth={3}
+          strokeDasharray="5 3"
+          style={{ pointerEvents: 'none' }}
+        />
       ) : null}
       {isStart ? (
         <>
@@ -1549,6 +1594,84 @@ const Cell = memo(function Cell({
     </g>
   )
 })
+
+function ConnectorTargetMarker() {
+  return (
+    <g data-testid="connector-target-marker" style={{ pointerEvents: 'none' }}>
+      <rect
+        x={8}
+        y={8}
+        width={CELL - 16}
+        height={CELL - 16}
+        rx={6}
+        fill="rgba(255, 179, 71, 0.12)"
+        stroke="#ffb347"
+        strokeWidth={2}
+        strokeDasharray="5 4"
+      />
+      <text
+        x={CELL / 2}
+        y={CELL / 2 + 4}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight={800}
+        fill="#ffdf8a"
+      >
+        NEED
+      </text>
+    </g>
+  )
+}
+
+function BadConnectorMarker({ dir }: { dir: Dir }) {
+  const p = connectorGlyphPoint(dir)
+  return (
+    <g data-testid="bad-connector-marker" style={{ pointerEvents: 'none' }}>
+      <line
+        x1={CELL / 2}
+        y1={CELL / 2}
+        x2={p.x}
+        y2={p.y}
+        stroke="#ff6b6b"
+        strokeWidth={3}
+        strokeLinecap="round"
+      />
+      <circle
+        cx={p.x}
+        cy={p.y}
+        r={7}
+        fill="#0d1420"
+        stroke="#ff6b6b"
+        strokeWidth={3}
+      />
+      <path
+        d={`M ${p.x - 3} ${p.y - 3} L ${p.x + 3} ${p.y + 3} M ${p.x + 3} ${p.y - 3} L ${p.x - 3} ${p.y + 3}`}
+        stroke="#ffdf8a"
+        strokeWidth={2}
+        strokeLinecap="round"
+      />
+    </g>
+  )
+}
+
+function connectorGlyphPoint(dir: Dir): { x: number; y: number } {
+  const center = CELL / 2
+  const inset = 6
+  const lo = inset
+  const hi = CELL - inset
+  const mid = center
+  const points: Record<Dir, { x: number; y: number }> = {
+    0: { x: mid, y: lo },
+    1: { x: hi, y: lo },
+    2: { x: hi, y: mid },
+    3: { x: hi, y: hi },
+    4: { x: mid, y: hi },
+    5: { x: lo, y: hi },
+    6: { x: lo, y: mid },
+    7: { x: lo, y: lo },
+  }
+  return points[dir]
+}
 
 function StartGlyph() {
   const cx = CELL / 2
