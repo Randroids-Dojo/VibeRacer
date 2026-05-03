@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import type { ReactNode } from 'react'
 import { Fredoka } from 'next/font/google'
 import { UpdateBanner } from '@/components/UpdateBanner'
+import './globals.css'
 
 const fredoka = Fredoka({
   subsets: ['latin'],

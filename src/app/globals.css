@@ -1,0 +1,28 @@
+/* Default text selection on. iOS Safari's user-agent stylesheet disables
+   -webkit-user-select on interactive elements (a, button), which made
+   menu rows and stat tiles unselectable even though no app code asked for
+   that. Re-enabling it here lets players copy slug names, lap times, and
+   other text from the title screen and other menu surfaces.
+
+   Interactive elements are set to `inherit` rather than `text` so the
+   in-game root (Game.tsx) keeps its scoped `user-select: none`: descendants
+   still inherit `none` from that container, while descendants of <body>
+   inherit the default `text`. */
+
+body {
+  -webkit-user-select: text;
+  user-select: text;
+  -webkit-touch-callout: default;
+}
+
+a,
+button,
+[role='button'],
+input[type='button'],
+input[type='submit'],
+label,
+li,
+summary {
+  -webkit-user-select: inherit;
+  user-select: inherit;
+}
