@@ -16,7 +16,12 @@ test('feedback FAB opens, closes, and submits from the pause menu', async ({
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'Pause' }).click()
+  const startRace = page.getByRole('button', { name: 'Start race' })
+  await expect(startRace).toBeVisible({ timeout: 15_000 })
+  await startRace.click()
+  const pause = page.getByRole('button', { name: 'Pause' })
+  await expect(pause).toBeVisible({ timeout: 15_000 })
+  await pause.click()
 
   await expect(page.getByRole('button', { name: 'Send feedback' })).toBeVisible()
   await page.getByRole('button', { name: 'Send feedback' }).click()

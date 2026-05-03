@@ -27,6 +27,7 @@ import {
   type TrackTag,
 } from '@/lib/tuningLab'
 import { useTuningRecorder } from '@/hooks/useTuningRecorder'
+import { TUNING_HISTORY_DEBOUNCE_MS } from '@/lib/tuningHistory'
 import { TUNING_PARAM_META } from '@/lib/tuningSettings'
 import { TUNING_LAB_TRACK_PIECES } from '@/lib/tuningLabTrack'
 import { useKeyboard } from '@/hooks/useKeyboard'
@@ -127,6 +128,21 @@ export function TuningSession({
 
   const paramsRef = useRef<CarParams>(params)
   paramsRef.current = params
+  // Auto-save state: a single in-progress SavedTuning entry per session.
+  // The id is minted once on mount and reused by both the debounced
+  // auto-save effect and the explicit commitSave path so naming a session
+  // updates the same row instead of creating a duplicate. The default
+  // name anchors the session's birth timestamp so it stays stable across
+  // writes and is easy to recognise in the saved-tunings list.
+  const sessionIdRef = useRef<string>(makeTuningId())
+  const defaultNameRef = useRef<string>(
+    `Lab session ${new Date().toISOString().slice(0, 16).replace('T', ' ')}`,
+  )
+  // didMutateRef gates the auto-save effect: it stays false until params
+  // diverge from initialParams, so a user who lands in Intro and bails
+  // without driving leaves no library row behind.
+  const didMutateRef = useRef<boolean>(false)
+  const autoSaveTimerRef = useRef<number | null>(null)
   const pausedRef = useRef(false)
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
@@ -303,6 +319,7 @@ export function TuningSession({
   }
 
   function onFeedbackCancel() {
+    flushAutoSave()
     onDiscard(rounds)
   }
 
@@ -327,6 +344,7 @@ export function TuningSession({
   }
 
   function discardSession() {
+    flushAutoSave()
     onDiscard(rounds)
   }
 
@@ -341,12 +359,16 @@ export function TuningSession({
       telemetry: pendingRound?.telemetry ?? undefined,
     }
     const saved = makeSavedTuning({
-      id: makeTuningId(),
-      name: saveName || 'Untitled setup',
+      id: sessionIdRef.current,
+      name: saveName.trim() || defaultNameRef.current,
       round: finalRound,
       controlType,
       trackTags,
     })
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
     upsertTuning(saved)
     onSaved(saved, [...rounds])
   }
@@ -366,6 +388,86 @@ export function TuningSession({
   useEffect(() => {
     persistLabLastLoaded(params)
   }, [params])
+
+  // Auto-save the live session as a single in-progress SavedTuning entry,
+  // keyed by sessionIdRef so commitSave updates the same row instead of
+  // creating a duplicate. We treat any session progress as worth saving:
+  // a tweaked param, a completed lap (rounds), an in-flight feedback
+  // round, or a pending recommendation. Pure intro-only abandons leave
+  // no row in the library because none of those signals have fired.
+  useEffect(() => {
+    const hasProgress =
+      rounds.length > 0 ||
+      pendingRound !== null ||
+      pendingRecommendation !== null ||
+      params !== initialParams
+    if (!didMutateRef.current && !hasProgress) return
+    didMutateRef.current = true
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+    }
+    autoSaveTimerRef.current = window.setTimeout(() => {
+      autoSaveTimerRef.current = null
+      const saved = makeSavedTuning({
+        id: sessionIdRef.current,
+        name: defaultNameRef.current,
+        round: buildAutoSaveRound(),
+        controlType,
+        trackTags,
+      })
+      upsertTuning(saved)
+    }, TUNING_HISTORY_DEBOUNCE_MS)
+    return () => {
+      if (autoSaveTimerRef.current !== null) {
+        window.clearTimeout(autoSaveTimerRef.current)
+        autoSaveTimerRef.current = null
+      }
+    }
+    // buildAutoSaveRound is a per-render closure that reads the latest
+    // session state; including it would re-create the timer on every render
+    // and defeat the debounce. initialParams is intentionally read via the
+    // ref-equality gate, not as a dep.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [params, controlType, trackTags, rounds, pendingRound, pendingRecommendation])
+
+  // Cancel any pending debounced auto-save and write the current snapshot
+  // synchronously. Called on discard / feedback-cancel paths so the latest
+  // params land in the library even when the component is about to unmount.
+  function flushAutoSave() {
+    if (autoSaveTimerRef.current !== null) {
+      window.clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
+    }
+    if (!didMutateRef.current) return
+    const saved = makeSavedTuning({
+      id: sessionIdRef.current,
+      name: defaultNameRef.current,
+      round: buildAutoSaveRound(),
+      controlType,
+      trackTags,
+    })
+    upsertTuning(saved)
+  }
+
+  function buildAutoSaveRound(): RoundLog {
+    const last = rounds.at(-1)
+    if (last) {
+      return {
+        params,
+        ratings: last.ratings,
+        notes: last.notes,
+        lapTimeMs: last.lapTimeMs,
+        offTrackEvents: last.offTrackEvents,
+        telemetry: last.telemetry,
+      }
+    }
+    return {
+      params,
+      ratings: {},
+      notes: '',
+      lapTimeMs: null,
+    }
+  }
 
   function restartCurrentRun() {
     pausedRef.current = false

@@ -308,10 +308,15 @@ export function readPerTrack(slug: string): CarParams | null {
   return parseStoredParams(readJson(perTrackKey(slug)))
 }
 
-// Resolve the starting tuning for a track: per-track save wins, then the most
-// recently loaded tuning (carryover), then defaults.
+// Resolve the starting tuning for a track. The global lastLoaded carryover
+// is the default for every track; the per-track save is only honored when
+// the player has explicitly pinned the track. New tracks (and unpinned ones)
+// just inherit whatever setup the player most recently used.
 export function resolveStartingTuning(slug: string): CarParams {
-  return readPerTrack(slug) ?? readLastLoaded() ?? cloneDefaultParams()
+  if (isTrackPinned(slug)) {
+    return readPerTrack(slug) ?? readLastLoaded() ?? cloneDefaultParams()
+  }
+  return readLastLoaded() ?? cloneDefaultParams()
 }
 
 export function writeTuning(slug: string, params: CarParams): void {
@@ -323,4 +328,57 @@ export function writeTuning(slug: string, params: CarParams): void {
 export function clearPerTrackTuning(slug: string): void {
   if (typeof window === 'undefined') return
   window.localStorage.removeItem(perTrackKey(slug))
+}
+
+// Pinned tracks: tracks where the player has explicitly opted into using a
+// per-track setup instead of the global lastLoaded. Stored as a flat slug
+// list so cross-tab Storage events can diff cheaply.
+export const TUNING_PINNED_TRACKS_KEY = 'viberacer.tuning.pinnedTracks'
+// Decided tracks: tracks for which the player has already made a setup
+// choice via the pre-race modal. Used to recognise a legacy per-track save
+// the very first time a player opens an existing track after this feature
+// shipped, so the modal can pre-select that save.
+export const TUNING_DECIDED_TRACKS_KEY = 'viberacer.tuning.decidedTracks'
+
+function readSlugSet(key: string): Set<string> {
+  const raw = readJson(key)
+  if (!Array.isArray(raw)) return new Set()
+  const out = new Set<string>()
+  for (const v of raw) {
+    if (typeof v === 'string' && v.length > 0) out.add(v)
+  }
+  return out
+}
+
+function writeSlugSet(key: string, set: Set<string>): void {
+  writeJson(key, Array.from(set))
+}
+
+export function isTrackPinned(slug: string): boolean {
+  return readSlugSet(TUNING_PINNED_TRACKS_KEY).has(slug)
+}
+
+export function pinTrack(slug: string): void {
+  const set = readSlugSet(TUNING_PINNED_TRACKS_KEY)
+  if (set.has(slug)) return
+  set.add(slug)
+  writeSlugSet(TUNING_PINNED_TRACKS_KEY, set)
+}
+
+export function unpinTrack(slug: string): void {
+  const set = readSlugSet(TUNING_PINNED_TRACKS_KEY)
+  if (!set.has(slug)) return
+  set.delete(slug)
+  writeSlugSet(TUNING_PINNED_TRACKS_KEY, set)
+}
+
+export function isTrackDecided(slug: string): boolean {
+  return readSlugSet(TUNING_DECIDED_TRACKS_KEY).has(slug)
+}
+
+export function markTrackDecided(slug: string): void {
+  const set = readSlugSet(TUNING_DECIDED_TRACKS_KEY)
+  if (set.has(slug)) return
+  set.add(slug)
+  writeSlugSet(TUNING_DECIDED_TRACKS_KEY, set)
 }

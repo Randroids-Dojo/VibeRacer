@@ -219,7 +219,7 @@ function Row({
 
       <div style={rowActions}>
         <button onClick={() => onApply(t)} style={primaryBtn}>
-          Apply to next race
+          Use this setup
         </button>
         <button onClick={() => onExport(t)} style={secondaryBtn}>
           Copy JSON
