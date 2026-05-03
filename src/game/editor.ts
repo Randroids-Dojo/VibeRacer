@@ -1,6 +1,12 @@
 import type { Piece, PieceType, Rotation } from '@/lib/schemas'
 import { buildTrackPath, getStartExitDir } from './trackPath'
 import { connectorsOf, type Dir } from './track'
+import {
+  flipFootprint,
+  footprintCellKeys,
+  pieceOccupiesCell,
+  rotateFootprintClockwise,
+} from './trackFootprint'
 
 export { getStartExitDir }
 
@@ -18,7 +24,7 @@ export function withPiecePlaced(
   type: PieceType,
   rotation: Rotation,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
   const updated: Piece = { row, col, type, rotation }
   if (idx === -1) return [...pieces, updated]
   const copy = pieces.slice()
@@ -31,11 +37,15 @@ export function withPieceRotated(
   row: number,
   col: number,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
   if (idx === -1) return pieces
   const cur = pieces[idx]
   const copy = pieces.slice()
-  copy[idx] = { ...cur, rotation: nextRotation(cur.rotation) }
+  copy[idx] = {
+    ...cur,
+    rotation: nextRotation(cur.rotation),
+    footprint: rotateFootprintClockwise(cur.footprint),
+  }
   return copy
 }
 
@@ -44,7 +54,7 @@ export function withPieceRemoved(
   row: number,
   col: number,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
+  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
   if (idx === -1) return pieces
   return pieces.filter((_, i) => i !== idx)
 }
@@ -147,7 +157,7 @@ export function countSelectedPieces(
 ): number {
   let count = 0
   for (const piece of pieces) {
-    if (selectedKeys.has(cellSelectionKey(piece.row, piece.col))) count += 1
+    if (pieceTouchesSelection(piece, selectedKeys)) count += 1
   }
   return count
 }
@@ -173,27 +183,27 @@ export function moveSelectedPieces(
   colDelta: number,
 ): Piece[] {
   if (rowDelta === 0 && colDelta === 0) return pieces
-  const selectedPieceKeys = new Set<string>()
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (selectedKeys.has(key)) selectedPieceKeys.add(key)
-  }
-  if (selectedPieceKeys.size === 0) return pieces
+  const selectedPieceIndexes = selectedPieceIndexesFor(pieces, selectedKeys)
+  if (selectedPieceIndexes.size === 0) return pieces
 
   const occupiedByUnselected = new Set<string>()
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (!selectedPieceKeys.has(key)) occupiedByUnselected.add(key)
+  for (let i = 0; i < pieces.length; i++) {
+    if (selectedPieceIndexes.has(i)) continue
+    for (const key of footprintCellKeys(pieces[i])) occupiedByUnselected.add(key)
   }
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (!selectedPieceKeys.has(key)) continue
-    const targetKey = cellSelectionKey(piece.row + rowDelta, piece.col + colDelta)
-    if (occupiedByUnselected.has(targetKey)) return pieces
+  for (const index of selectedPieceIndexes) {
+    const piece = pieces[index]
+    for (const cell of footprintCellKeys({
+      ...piece,
+      row: piece.row + rowDelta,
+      col: piece.col + colDelta,
+    })) {
+      if (occupiedByUnselected.has(cell)) return pieces
+    }
   }
 
-  return pieces.map((piece) => {
-    if (!selectedPieceKeys.has(cellSelectionKey(piece.row, piece.col))) {
+  return pieces.map((piece, index) => {
+    if (!selectedPieceIndexes.has(index)) {
       return piece
     }
     return {
@@ -208,13 +218,17 @@ export function rotateSelectedPieces(
   pieces: Piece[],
   selectedKeys: ReadonlySet<string>,
 ): Piece[] {
-  let changed = false
-  const next = pieces.map((piece) => {
-    if (!selectedKeys.has(cellSelectionKey(piece.row, piece.col))) return piece
-    changed = true
-    return { ...piece, rotation: nextRotation(piece.rotation) }
+  const selectedPieceIndexes = selectedPieceIndexesFor(pieces, selectedKeys)
+  if (selectedPieceIndexes.size === 0) return pieces
+  const next = pieces.map((piece, index) => {
+    if (!selectedPieceIndexes.has(index)) return piece
+    return {
+      ...piece,
+      rotation: nextRotation(piece.rotation),
+      footprint: rotateFootprintClockwise(piece.footprint),
+    }
   })
-  return changed ? next : pieces
+  return footprintsCollide(next) ? pieces : next
 }
 
 export type SelectionFlipAxis = 'horizontal' | 'vertical'
@@ -260,27 +274,25 @@ export function flipSelectedPieces(
   const bounds = getSelectionBounds(selectedKeys)
   if (!bounds) return pieces
 
-  const selectedPieceKeys = new Set<string>()
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (selectedKeys.has(key)) selectedPieceKeys.add(key)
-  }
-  if (selectedPieceKeys.size === 0) return pieces
+  const selectedPieceIndexes = selectedPieceIndexesFor(pieces, selectedKeys)
+  if (selectedPieceIndexes.size === 0) return pieces
 
   const occupiedByUnselected = new Set<string>()
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (!selectedPieceKeys.has(key)) occupiedByUnselected.add(key)
+  for (let i = 0; i < pieces.length; i++) {
+    if (selectedPieceIndexes.has(i)) continue
+    for (const key of footprintCellKeys(pieces[i])) occupiedByUnselected.add(key)
   }
-  for (const piece of pieces) {
-    const key = cellSelectionKey(piece.row, piece.col)
-    if (!selectedPieceKeys.has(key)) continue
-    const targetKey = mirroredCellKey(piece.row, piece.col, bounds, axis)
-    if (occupiedByUnselected.has(targetKey)) return pieces
+  for (const index of selectedPieceIndexes) {
+    const piece = pieces[index]
+    const target = mirroredCell(piece.row, piece.col, bounds, axis)
+    const mirrored = mirrorPieceShape({ ...piece, row: target.row, col: target.col }, axis)
+    for (const key of footprintCellKeys(mirrored)) {
+      if (occupiedByUnselected.has(key)) return pieces
+    }
   }
 
-  return pieces.map((piece) => {
-    if (!selectedPieceKeys.has(cellSelectionKey(piece.row, piece.col))) {
+  return pieces.map((piece, index) => {
+    if (!selectedPieceIndexes.has(index)) {
       return piece
     }
     const target = mirroredCell(piece.row, piece.col, bounds, axis)
@@ -314,6 +326,35 @@ function getSelectionBounds(selectedKeys: ReadonlySet<string>): {
   return { rowMin, rowMax, colMin, colMax }
 }
 
+function pieceTouchesSelection(
+  piece: Piece,
+  selectedKeys: ReadonlySet<string>,
+): boolean {
+  return footprintCellKeys(piece).some((key) => selectedKeys.has(key))
+}
+
+function selectedPieceIndexesFor(
+  pieces: Piece[],
+  selectedKeys: ReadonlySet<string>,
+): Set<number> {
+  const indexes = new Set<number>()
+  for (let i = 0; i < pieces.length; i++) {
+    if (pieceTouchesSelection(pieces[i], selectedKeys)) indexes.add(i)
+  }
+  return indexes
+}
+
+function footprintsCollide(pieces: Piece[]): boolean {
+  const seen = new Set<string>()
+  for (const piece of pieces) {
+    for (const key of footprintCellKeys(piece)) {
+      if (seen.has(key)) return true
+      seen.add(key)
+    }
+  }
+  return false
+}
+
 function mirroredCell(
   row: number,
   col: number,
@@ -326,16 +367,6 @@ function mirroredCell(
   }
 }
 
-function mirroredCellKey(
-  row: number,
-  col: number,
-  bounds: { rowMin: number; rowMax: number; colMin: number; colMax: number },
-  axis: SelectionFlipAxis,
-): string {
-  const cell = mirroredCell(row, col, bounds, axis)
-  return cellSelectionKey(cell.row, cell.col)
-}
-
 function mirrorPieceShape(piece: Piece, axis: SelectionFlipAxis): Piece {
   const targetType = mirroredPieceType(piece.type)
   const mirroredConnectors = connectorsOf(piece).map((dir) =>
@@ -346,6 +377,7 @@ function mirrorPieceShape(piece: Piece, axis: SelectionFlipAxis): Piece {
     ...piece,
     type: targetType,
     rotation,
+    footprint: flipFootprint(piece.footprint, axis),
   }
 }
 

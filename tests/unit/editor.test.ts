@@ -45,6 +45,25 @@ describe('withPiecePlaced', () => {
     expect(result[0]).toEqual(pieces[0])
     expect(result[1]).toEqual({ type: 'right90', row: 1, col: 1, rotation: 270 })
   })
+
+  it('replaces a piece when the target cell is inside its footprint', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+    ]
+
+    expect(withPiecePlaced(pieces, 0, 1, 'right90', 90)).toEqual([
+      { type: 'right90', row: 0, col: 1, rotation: 90 },
+    ])
+  })
 })
 
 describe('withPieceRotated', () => {
@@ -70,6 +89,33 @@ describe('withPieceRotated', () => {
     const result = withPieceRotated(pieces, 0, 0)
     expect(result[0].rotation).toBe(0)
   })
+
+  it('rotates a piece by any occupied footprint cell', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 1, dc: 0 },
+        ],
+      },
+    ]
+    expect(withPieceRotated(pieces, 1, 0)).toEqual([
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 90,
+        footprint: [
+          { dr: 0, dc: -1 },
+          { dr: 0, dc: 0 },
+        ],
+      },
+    ])
+  })
 })
 
 describe('withPieceRemoved', () => {
@@ -87,6 +133,25 @@ describe('withPieceRemoved', () => {
       { type: 'straight', row: 0, col: 0, rotation: 0 },
     ]
     expect(withPieceRemoved(pieces, 5, 5)).toBe(pieces)
+  })
+
+  it('removes a piece by any occupied footprint cell', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+      { type: 'left90', row: 2, col: 2, rotation: 0 },
+    ]
+    expect(withPieceRemoved(pieces, 0, 1)).toEqual([
+      { type: 'left90', row: 2, col: 2, rotation: 0 },
+    ])
   })
 })
 
@@ -258,6 +323,22 @@ describe('countSelectedPieces', () => {
   it('returns zero for an empty selection', () => {
     expect(countSelectedPieces(DEFAULT_TRACK_PIECES, new Set())).toBe(0)
   })
+
+  it('counts a footprinted piece when any occupied cell is selected', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+    ]
+    expect(countSelectedPieces(pieces, new Set(['0,1']))).toBe(1)
+  })
 })
 
 describe('moveSelectedPieces', () => {
@@ -304,6 +385,52 @@ describe('moveSelectedPieces', () => {
       new Set(['2,-3', '1,-1']),
     )
   })
+
+  it('moves a footprinted piece atomically when any occupied cell is selected', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+    ]
+
+    expect(moveSelectedPieces(pieces, new Set(['0,1']), 1, 0)).toEqual([
+      {
+        type: 'straight',
+        row: 1,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+    ])
+  })
+
+  it('blocks footprint moves into unselected occupied cells', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+      { type: 'straight', row: 0, col: 2, rotation: 90 },
+    ]
+
+    expect(moveSelectedPieces(pieces, new Set(['0,0']), 0, 1)).toBe(pieces)
+  })
 })
 
 describe('rotateSelectedPieces', () => {
@@ -326,6 +453,52 @@ describe('rotateSelectedPieces', () => {
     expect(rotateSelectedPieces(DEFAULT_TRACK_PIECES, new Set())).toBe(
       DEFAULT_TRACK_PIECES,
     )
+  })
+
+  it('rotates selected footprints with the piece', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 1, dc: 0 },
+        ],
+      },
+    ]
+
+    expect(rotateSelectedPieces(pieces, new Set(['1,0']))).toEqual([
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 90,
+        footprint: [
+          { dr: 0, dc: -1 },
+          { dr: 0, dc: 0 },
+        ],
+      },
+    ])
+  })
+
+  it('blocks selected footprint rotations into unselected occupied cells', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 1, dc: 0 },
+        ],
+      },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+    ]
+
+    expect(rotateSelectedPieces(pieces, new Set(['1,0']))).toBe(pieces)
   })
 })
 
@@ -382,5 +555,34 @@ describe('flipSelectedPieces', () => {
     expect(flipSelectionKeys(new Set(['0,0', '2,0']), 'vertical')).toEqual(
       new Set(['2,0', '0,0']),
     )
+  })
+
+  it('mirrors footprint offsets with selected pieces', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+    ]
+
+    expect(flipSelectedPieces(pieces, new Set(['0,0', '0,1']), 'horizontal'))
+      .toEqual([
+        {
+          type: 'straight',
+          row: 0,
+          col: 1,
+          rotation: 0,
+          footprint: [
+            { dr: 0, dc: -1 },
+            { dr: 0, dc: 0 },
+          ],
+        },
+      ])
   })
 })

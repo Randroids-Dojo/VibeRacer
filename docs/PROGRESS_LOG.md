@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Track Footprint Scaffold
+
+- Branch: `feature/track-footprint-scaffold`
+- Changed: added optional piece footprints to the schema plus `src/game/trackFootprint.ts` helpers for defaulting, normalization, occupied-cell resolution, rotation, and mirroring. Track validation now treats every footprint cell as occupied, rejects overlap, and does not let a footprint cell satisfy its own connector. Track hashing omits the default footprint and includes non-default footprints in stable normalized order. Editor helpers now place, remove, count, move, rotate, and flip footprinted pieces atomically by occupied cells.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackFootprint.test.ts tests/unit/editor.test.ts tests/unit/schemas.test.ts tests/unit/hashTrack.test.ts tests/unit/track.test.ts` passed with 130 tests, `npm test` passed with 3106 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Assumptions: Phase 0c should add data-model and editor-helper readiness only. No new multi-cell piece type is exposed yet, and connector placement for future long-turn pieces remains in Phase 1 after the 8-direction connector scaffold lands.
+- GDD coverage: Section 6 Track system now records the multi-cell footprint scaffold for future long turns and branching layouts.
+- Followups: continue with Phase 0d 8-direction connector support.
+
 ## 2026-05-03, Track Path Segments
 
 - Branch: `feature/track-path-segments`
+- PR: #76
 - Changed: added `PathSegment` and `PathLocator` metadata to `TrackPath`, with current tracks exposed as one closed `main` segment. Added `cellToLocators` as the future branch-aware cell index while preserving the legacy `path.order` array and `cellToOrderIdx` map for existing callers.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackPath.test.ts tests/unit/minimap.test.ts tests/unit/tick.test.ts tests/unit/wheelContact.test.ts tests/unit/paceNotes.test.ts` passed with 92 tests, `npm test` passed with 3082 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Post-merge: PR #76 merged at commit `752b412`. Main CodeQL passed, Vercel production deployment completed, direct smoke of the deployment URL was blocked by Vercel SSO with HTTP 401 and `_vercel_sso_nonce`, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 0b should expose segment metadata without converting callers yet, so the current single-loop reader surface remains behaviorally identical.
 - GDD coverage: Section 6 Track system now records the segment-based path scaffold for future alternative routes.
 - Followups: continue with Phase 0c multi-cell footprint support.

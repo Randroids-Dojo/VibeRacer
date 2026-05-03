@@ -142,7 +142,8 @@
         "selected track transforms",
         "track templates",
         "track width scaffold",
-        "segment path scaffold"
+        "segment path scaffold",
+        "multi-cell footprint scaffold"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -151,6 +152,7 @@
         "src/game/editor.ts",
         "src/game/editorHistory.ts",
         "src/game/editorZoom.ts",
+        "src/game/trackFootprint.ts",
         "src/game/trackWidth.ts",
         "src/game/trackTemplates.ts",
         "src/lib/biomes.ts",
@@ -162,6 +164,7 @@
         "tests/unit/editor.test.ts",
         "tests/unit/editorHistory.test.ts",
         "tests/unit/editorZoom.test.ts",
+        "tests/unit/trackFootprint.test.ts",
         "tests/unit/trackWidth.test.ts",
         "tests/unit/trackTemplates.test.ts",
         "tests/unit/biomes.test.ts",

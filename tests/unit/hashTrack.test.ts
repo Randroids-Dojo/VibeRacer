@@ -1,5 +1,6 @@
 import { describe, it, expect } from 'vitest'
 import {
+  canonicalTrackJson,
   canonicalizeCheckpoints,
   canonicalizePieces,
   hashTrack,
@@ -67,6 +68,32 @@ describe('hashTrack', () => {
     expect(hashTrack([a, b, c], undefined, checkpoints)).not.toBe(
       hashTrack([a, b, c]),
     )
+  })
+
+  it('omits the default footprint from legacy hashes', () => {
+    const legacy = hashTrack([a, b, c])
+    const withDefaultFootprint: Piece[] = [
+      { ...a, footprint: [{ dr: 0, dc: 0 }] },
+      b,
+      c,
+    ]
+    expect(hashTrack(withDefaultFootprint)).toBe(legacy)
+  })
+
+  it('includes non-default footprints in canonical JSON and hashes', () => {
+    const footprinted: Piece[] = [
+      {
+        ...a,
+        footprint: [
+          { dr: 1, dc: 0 },
+          { dr: 0, dc: 0 },
+        ],
+      },
+      b,
+      c,
+    ]
+    expect(canonicalTrackJson(footprinted)).toContain('"footprint"')
+    expect(hashTrack(footprinted)).not.toBe(hashTrack([a, b, c]))
   })
 })
 

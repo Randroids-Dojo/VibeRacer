@@ -57,6 +57,42 @@ describe('PieceSchema', () => {
       PieceSchema.parse({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 }),
     ).toEqual({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 })
   })
+
+  it('accepts an optional multi-cell footprint', () => {
+    expect(
+      PieceSchema.parse({
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 1, dc: 0 },
+        ],
+      }),
+    ).toEqual({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      footprint: [
+        { dr: 0, dc: 0 },
+        { dr: 1, dc: 0 },
+      ],
+    })
+  })
+
+  it('rejects malformed footprint cells', () => {
+    expect(
+      PieceSchema.safeParse({
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [{ dr: 0.5, dc: 0 }],
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe('TrackSchema', () => {
@@ -113,6 +149,35 @@ describe('TrackSchema', () => {
       col: i,
       rotation: 0 as const,
     }))
+    expect(
+      TrackSchema.safeParse({
+        pieces,
+        checkpoints: [
+          { row: 0, col: 1 },
+          { row: 0, col: 2 },
+          { row: 0, col: 3 },
+        ],
+      }).success,
+    ).toBe(true)
+  })
+
+  it('accepts custom checkpoint cells on a footprint cell', () => {
+    const pieces = [
+      {
+        type: 'straight' as const,
+        row: 0,
+        col: 0,
+        rotation: 0 as const,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+          { dr: 0, dc: 2 },
+          { dr: 0, dc: 3 },
+        ],
+      },
+      { type: 'straight' as const, row: 1, col: 0, rotation: 0 as const },
+      { type: 'straight' as const, row: 2, col: 0, rotation: 0 as const },
+    ]
     expect(
       TrackSchema.safeParse({
         pieces,

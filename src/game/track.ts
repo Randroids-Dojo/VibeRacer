@@ -1,4 +1,5 @@
 import { MAX_PIECES_PER_TRACK, type Piece, type PieceType } from '@/lib/schemas'
+import { footprintCellKeys } from './trackFootprint'
 
 export type Dir = 0 | 1 | 2 | 3 // N, E, S, W
 
@@ -49,11 +50,12 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
 
   const byCell = new Map<string, Piece>()
   for (const p of pieces) {
-    const key = cellKey(p.row, p.col)
-    if (byCell.has(key)) {
-      return { ok: false, reason: `duplicate piece at ${key}` }
+    for (const key of footprintCellKeys(p)) {
+      if (byCell.has(key)) {
+        return { ok: false, reason: `duplicate piece at ${key}` }
+      }
+      byCell.set(key, p)
     }
-    byCell.set(key, p)
   }
 
   const neighbors = new Map<string, string[]>()
@@ -66,7 +68,7 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
       const { dr, dc } = DIR_OFFSETS[d]
       const nKey = cellKey(p.row + dr, p.col + dc)
       const neighbor = byCell.get(nKey)
-      if (!neighbor) {
+      if (!neighbor || neighbor === p) {
         return { ok: false, reason: `open connector at ${key} facing ${d}` }
       }
       const neighborConns = connectorsOf(neighbor)

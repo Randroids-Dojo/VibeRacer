@@ -62,6 +62,41 @@ describe('validateClosedLoop', () => {
     expect(res.reason).toMatch(/duplicate/)
   })
 
+  it('rejects overlap against a multi-cell footprint', () => {
+    const res = validateClosedLoop([
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: 0, dc: 1 },
+        ],
+      },
+      { type: 'straight', row: 0, col: 1, rotation: 90 },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/duplicate piece at 0,1/)
+  })
+
+  it('does not let a footprint cell satisfy its own connector', () => {
+    const res = validateClosedLoop([
+      {
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        footprint: [
+          { dr: 0, dc: 0 },
+          { dr: -1, dc: 0 },
+        ],
+      },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/open connector/)
+  })
+
   it('accepts a 2x2 square loop built from right90 corners', () => {
     const pieces: Piece[] = [
       { type: 'right90', row: 0, col: 0, rotation: 0 },
