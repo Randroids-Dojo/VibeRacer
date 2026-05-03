@@ -46,7 +46,7 @@ describe('withPiecePlaced', () => {
     expect(result[1]).toEqual({ type: 'right90', row: 1, col: 1, rotation: 270 })
   })
 
-  it('replaces a piece when the target cell is inside its footprint', () => {
+  it('does not replace a piece when the target cell is only inside its footprint', () => {
     const pieces: Piece[] = [
       {
         type: 'straight',
@@ -61,7 +61,19 @@ describe('withPiecePlaced', () => {
     ]
 
     expect(withPiecePlaced(pieces, 0, 1, 'right90', 90)).toEqual([
+      pieces[0],
       { type: 'right90', row: 0, col: 1, rotation: 90 },
+    ])
+  })
+
+  it('keeps a mega sweep when placing a visible neighbor inside its footprint', () => {
+    const pieces: Piece[] = [
+      { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+    ]
+
+    expect(withPiecePlaced(pieces, 1, -1, 'straight', 0)).toEqual([
+      pieces[0],
+      { type: 'straight', row: 1, col: -1, rotation: 0 },
     ])
   })
 })

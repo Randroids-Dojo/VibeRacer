@@ -25,7 +25,7 @@ export function withPiecePlaced(
   type: PieceType,
   rotation: Rotation,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
+  const idx = pieces.findIndex((p) => p.row === row && p.col === col)
   const updated: Piece = { row, col, type, rotation }
   if (idx === -1) return [...pieces, updated]
   const copy = pieces.slice()

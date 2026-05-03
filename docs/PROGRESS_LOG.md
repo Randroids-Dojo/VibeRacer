@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Editor Footprint Placement Fix
+
+- Branch: `fix/editor-footprint-placement`
+- Changed: `withPiecePlaced` now replaces only an exact anchor-cell match. Placing a new piece into another piece's clearance footprint no longer deletes the existing long-turn piece, so authors can fill adjacent connector targets around mega sweeps and hairpins without losing pieces.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/editor.test.ts tests/unit/track.test.ts tests/unit/trackFootprint.test.ts` passed with 74 tests, `npm test` passed with 3146 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 5 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: footprint cells should continue to support erase, rotate, selection, and transform behavior by occupied area, but piece placement must be anchor-only because placement is how authors repair open connectors near multi-cell pieces.
+- GDD coverage: Section 6 Track system now records anchor-only editor placement for footprinted pieces.
+- Followups: none.
+
 ## 2026-05-03, Editor Connector Diagnostics
 
 - Branch: `feature/editor-connector-diagnostics`

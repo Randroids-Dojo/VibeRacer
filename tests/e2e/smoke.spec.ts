@@ -374,6 +374,21 @@ test('track editor highlights an open connector and target cell', async ({
   await expect(page.getByTestId('connector-target-marker')).toBeVisible()
 })
 
+test('track editor keeps long-turn pieces when placing into their footprint', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.getByRole('button', { name: 'Mega sweep (right)' }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+  await expect(page.getByText('1 / 64 pieces')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Straight' }).click()
+  await page.locator('g[data-row="1"][data-col="-1"]').click()
+  await expect(page.getByText('2 / 64 pieces')).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')
