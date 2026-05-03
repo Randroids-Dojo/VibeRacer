@@ -9,6 +9,7 @@ import {
   MAX_DECORATIONS_PER_TRACK,
   TrackDecorationSchema,
 } from './decorations'
+import { footprintCellKeys } from '@/game/trackFootprint'
 export {
   MAX_DECORATIONS_PER_TRACK,
   TrackDecorationKindSchema,
@@ -43,11 +44,20 @@ export const RotationSchema = z.union([
 ])
 export type Rotation = z.infer<typeof RotationSchema>
 
+export const PieceFootprintCellSchema = z
+  .object({
+    dr: z.number().int(),
+    dc: z.number().int(),
+  })
+  .strict()
+export type PieceFootprintCell = z.infer<typeof PieceFootprintCellSchema>
+
 export const PieceSchema = z.object({
   type: PieceTypeSchema,
   row: z.number().int(),
   col: z.number().int(),
   rotation: RotationSchema,
+  footprint: z.array(PieceFootprintCellSchema).min(1).optional(),
 })
 export type Piece = z.infer<typeof PieceSchema>
 
@@ -119,7 +129,7 @@ export const TrackSchema = z
       })
     }
     if (track.checkpoints !== undefined) {
-      const cells = new Set(track.pieces.map((p) => `${p.row},${p.col}`))
+      const cells = new Set(track.pieces.flatMap((p) => footprintCellKeys(p)))
       const seen = new Set<string>()
       const startKey =
         track.pieces.length > 0

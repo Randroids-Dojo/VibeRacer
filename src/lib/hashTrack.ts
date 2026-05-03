@@ -1,5 +1,6 @@
 import { createHash } from 'node:crypto'
 import type { Piece, TrackCheckpoint } from './schemas'
+import { isDefaultFootprint, normalizedFootprint } from '@/game/trackFootprint'
 
 export function canonicalizePieces(pieces: Piece[]): Piece[] {
   return [...pieces].sort((a, b) => {
@@ -43,6 +44,9 @@ export function canonicalTrackJson(
     row: p.row,
     col: p.col,
     rotation: p.rotation,
+    footprint: isDefaultFootprint(p.footprint)
+      ? undefined
+      : normalizedFootprint(p.footprint),
   }))
   const cp = effectiveCheckpointCount(pieces, checkpointCount, checkpoints)
   const checkpointOut =
