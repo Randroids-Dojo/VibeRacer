@@ -120,11 +120,11 @@ const skyFadeStyle: React.CSSProperties = {
 const stageStyle: React.CSSProperties = {
   position: 'relative',
   zIndex: 2,
-  width: 480,
-  // Match mainStyle's 24px padding so the stage never extends past the
-  // visible content area on narrow screens. Without this the stage was
-  // wider than the grid cell and the title leaned off-center.
-  maxWidth: '100%',
+  // `min(480px, 100%)` keeps the column readable on desktop while letting it
+  // shrink to the available width on narrow phones. Using a fixed `width`
+  // here used to size the grid track to 480px, so the section overflowed
+  // its parent and dragged the centered title off the right edge.
+  width: 'min(480px, 100%)',
   display: 'grid',
   gap: 28,
 }
