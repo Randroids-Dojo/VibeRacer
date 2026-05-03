@@ -66,7 +66,7 @@ describe('relativeTurnBetween', () => {
   it('returns straight when entry and exit directions match', () => {
     const synth = {
       piece: { type: 'straight', row: 0, col: 0, rotation: 0 },
-      entryDir: 2,
+      entryDir: 4,
       exitDir: 0,
       center: { x: 0, y: 0, z: 0 },
       entry: { x: 0, y: 0, z: 0 },
@@ -131,7 +131,7 @@ describe('buildPaceNotes', () => {
     ]
     const synthOrder = sPieces.map((p, i) => ({
       piece: p,
-      entryDir: 2,
+      entryDir: 4,
       exitDir: 0,
       center: { x: 0, y: 0, z: 0 },
       entry: { x: 0, y: 0, z: 0 },
@@ -162,8 +162,8 @@ describe('buildPaceNotes', () => {
     ]
     const synthOrder = sPieces.map((p, i) => ({
       piece: p,
-      entryDir: 2,
-      exitDir: p.type === 'sweepLeft' ? 3 : p.type === 'sweepRight' ? 1 : 0,
+      entryDir: 4,
+      exitDir: p.type === 'sweepLeft' ? 6 : p.type === 'sweepRight' ? 2 : 0,
       center: { x: 0, y: 0, z: 0 },
       entry: { x: 0, y: 0, z: 0 },
       exit: { x: 0, y: 0, z: 0 },

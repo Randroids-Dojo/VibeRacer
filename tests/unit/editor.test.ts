@@ -241,7 +241,7 @@ describe('getStartExitDir', () => {
   })
 
   it('returns the connector that points at pieces[1]', () => {
-    // pieces[0] straight at (1,0) rot 0 has connectors [S(2), N(0)].
+    // pieces[0] straight at (1,0) rot 0 has connectors [S(4), N(0)].
     // pieces[1] at (0, 0) is one cell north, so exit is N = 0.
     expect(getStartExitDir(DEFAULT_TRACK_PIECES)).toBe(0)
   })

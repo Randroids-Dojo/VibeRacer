@@ -1,42 +1,53 @@
 import { describe, it, expect } from 'vitest'
-import { connectorsOf, validateClosedLoop } from '@/game/track'
+import { connectorsOf, opposite, validateClosedLoop } from '@/game/track'
 import type { Piece } from '@/lib/schemas'
 
 describe('connectorsOf', () => {
   it('straight at rotation 0 opens S and N', () => {
     expect(connectorsOf({ type: 'straight', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 0])
+      .toEqual([4, 0])
   })
   it('straight at rotation 90 opens W and E', () => {
     expect(connectorsOf({ type: 'straight', row: 0, col: 0, rotation: 90 }))
-      .toEqual([3, 1])
+      .toEqual([6, 2])
   })
   it('right90 at rotation 0 opens S and E', () => {
     expect(connectorsOf({ type: 'right90', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 1])
+      .toEqual([4, 2])
   })
   it('scurve shares a straight\'s connectors so it slots into a straight\'s spot', () => {
     expect(connectorsOf({ type: 'scurve', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 0])
+      .toEqual([4, 0])
     expect(connectorsOf({ type: 'scurve', row: 0, col: 0, rotation: 90 }))
-      .toEqual([3, 1])
+      .toEqual([6, 2])
   })
   it('scurveLeft shares the same connectors as scurve so the two are interchangeable in a layout', () => {
     expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 0])
+      .toEqual([4, 0])
     expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 90 }))
-      .toEqual([3, 1])
+      .toEqual([6, 2])
     expect(connectorsOf({ type: 'scurveLeft', row: 0, col: 0, rotation: 180 }))
-      .toEqual([0, 2])
+      .toEqual([0, 4])
   })
 
   it('sweep turns share the matching 90-degree turn connectors', () => {
     expect(connectorsOf({ type: 'sweepRight', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 1])
+      .toEqual([4, 2])
     expect(connectorsOf({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 }))
-      .toEqual([2, 3])
+      .toEqual([4, 6])
     expect(connectorsOf({ type: 'sweepRight', row: 0, col: 0, rotation: 90 }))
-      .toEqual([3, 2])
+      .toEqual([6, 4])
+  })
+
+  it('opposite maps every 8-direction connector across the compass', () => {
+    expect(opposite(0)).toBe(4)
+    expect(opposite(1)).toBe(5)
+    expect(opposite(2)).toBe(6)
+    expect(opposite(3)).toBe(7)
+    expect(opposite(4)).toBe(0)
+    expect(opposite(5)).toBe(1)
+    expect(opposite(6)).toBe(2)
+    expect(opposite(7)).toBe(3)
   })
 })
 

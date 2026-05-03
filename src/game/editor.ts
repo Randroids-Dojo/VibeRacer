@@ -371,7 +371,7 @@ function mirrorPieceShape(piece: Piece, axis: SelectionFlipAxis): Piece {
   const targetType = mirroredPieceType(piece.type)
   const mirroredConnectors = connectorsOf(piece).map((dir) =>
     mirrorDir(dir, axis),
-  ) as [Dir, Dir]
+  )
   const rotation = findRotationForConnectors(targetType, mirroredConnectors)
   return {
     ...piece,
@@ -393,16 +393,32 @@ function mirroredPieceType(type: PieceType): PieceType {
 
 function mirrorDir(dir: Dir, axis: SelectionFlipAxis): Dir {
   if (axis === 'horizontal') {
-    if (dir === 1) return 3
-    if (dir === 3) return 1
-    return dir
+    const map: Record<Dir, Dir> = {
+      0: 0,
+      1: 7,
+      2: 6,
+      3: 5,
+      4: 4,
+      5: 3,
+      6: 2,
+      7: 1,
+    }
+    return map[dir]
   }
-  if (dir === 0) return 2
-  if (dir === 2) return 0
-  return dir
+  const map: Record<Dir, Dir> = {
+    0: 4,
+    1: 3,
+    2: 2,
+    3: 1,
+    4: 0,
+    5: 7,
+    6: 6,
+    7: 5,
+  }
+  return map[dir]
 }
 
-function findRotationForConnectors(type: PieceType, target: [Dir, Dir]): Rotation {
+function findRotationForConnectors(type: PieceType, target: Dir[]): Rotation {
   for (const rotation of ROTATIONS) {
     const connectors = connectorsOf({ type, row: 0, col: 0, rotation })
     if (sameConnectorPair(connectors, target)) return rotation
@@ -410,6 +426,7 @@ function findRotationForConnectors(type: PieceType, target: [Dir, Dir]): Rotatio
   return 0
 }
 
-function sameConnectorPair(a: [Dir, Dir], b: [Dir, Dir]): boolean {
-  return (a[0] === b[0] && a[1] === b[1]) || (a[0] === b[1] && a[1] === b[0])
+function sameConnectorPair(a: Dir[], b: Dir[]): boolean {
+  if (a.length !== b.length) return false
+  return a.every((dir) => b.includes(dir))
 }
