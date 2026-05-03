@@ -84,8 +84,12 @@ test('race menu: sub-screens return to the Race menu, not the pause menu', async
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'Start race' }).click()
-  await page.getByRole('button', { name: 'Pause' }).click()
+  const startRace = page.getByRole('button', { name: 'Start race' })
+  await expect(startRace).toBeVisible({ timeout: 15_000 })
+  await startRace.click()
+  const pause = page.getByRole('button', { name: 'Pause' })
+  await expect(pause).toBeVisible({ timeout: 15_000 })
+  await pause.click()
   await page.getByRole('button', { name: 'Race', exact: true }).click()
 
   // Pressing Esc inside Leaderboards should land back on the Race menu, not

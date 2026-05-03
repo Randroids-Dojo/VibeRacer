@@ -391,10 +391,17 @@ export function TuningSession({
 
   // Auto-save the live session as a single in-progress SavedTuning entry,
   // keyed by sessionIdRef so commitSave updates the same row instead of
-  // creating a duplicate. Skipped until params actually diverge from
-  // initialParams so an intro-only abandon leaves no row in the library.
+  // creating a duplicate. We treat any session progress as worth saving:
+  // a tweaked param, a completed lap (rounds), an in-flight feedback
+  // round, or a pending recommendation. Pure intro-only abandons leave
+  // no row in the library because none of those signals have fired.
   useEffect(() => {
-    if (!didMutateRef.current && params === initialParams) return
+    const hasProgress =
+      rounds.length > 0 ||
+      pendingRound !== null ||
+      pendingRecommendation !== null ||
+      params !== initialParams
+    if (!didMutateRef.current && !hasProgress) return
     didMutateRef.current = true
     if (autoSaveTimerRef.current !== null) {
       window.clearTimeout(autoSaveTimerRef.current)

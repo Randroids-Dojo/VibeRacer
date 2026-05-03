@@ -149,8 +149,12 @@ test('pause menu surfaces race actions behind a Race option', async ({ page }) =
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'Start race' }).click()
-  await page.getByRole('button', { name: 'Pause' }).click()
+  const startRace = page.getByRole('button', { name: 'Start race' })
+  await expect(startRace).toBeVisible({ timeout: 15_000 })
+  await startRace.click()
+  const pause = page.getByRole('button', { name: 'Pause' })
+  await expect(pause).toBeVisible({ timeout: 15_000 })
+  await pause.click()
 
   await expect(page.getByRole('button', { name: 'Resume' })).toBeVisible()
   await expect(page.getByRole('button', { name: 'Restart Lap' })).toBeVisible()
@@ -222,8 +226,12 @@ test('leaderboard rows open lap details with input and setup metadata', async ({
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'Start race' }).click()
-  await page.getByRole('button', { name: 'Pause' }).click()
+  const startRace = page.getByRole('button', { name: 'Start race' })
+  await expect(startRace).toBeVisible({ timeout: 15_000 })
+  await startRace.click()
+  const pause = page.getByRole('button', { name: 'Pause' })
+  await expect(pause).toBeVisible({ timeout: 15_000 })
+  await pause.click()
   await page.getByRole('button', { name: 'Race', exact: true }).click()
   await page.getByRole('button', { name: 'Leaderboards' }).click()
 
@@ -243,7 +251,9 @@ test('race HUD keeps mirror and bottom readouts in separate lanes on mobile', as
   await page.goto('/start')
   await page.getByRole('textbox').fill('TST')
   await page.getByRole('button', { name: 'Save' }).click()
-  await page.getByRole('button', { name: 'Start race' }).click()
+  const startRace = page.getByRole('button', { name: 'Start race' })
+  await expect(startRace).toBeVisible({ timeout: 15_000 })
+  await startRace.click()
 
   await expect(page.getByTestId('rearview-mirror')).toBeVisible({
     timeout: 10000,
