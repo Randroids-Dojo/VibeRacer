@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Hash Canonicalization Plumbing
+
+- Branch: `feature/hash-canonicalization-plumbing`
+- Changed: added hash canonicalization helpers for future optional track fields. Default `widthClass` values and empty `branchEdges` are omitted from canonical JSON, while non-default width metadata and non-empty branch edges are emitted deterministically. Current template hashes are pinned in tests to guard Phase 0 hash stability.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/hashTrack.test.ts tests/unit/schemas.test.ts tests/unit/trackTemplates.test.ts tests/unit/api.track.test.ts` passed with 94 tests, `npm test` passed with 3117 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build.
+- Assumptions: Phase 0e should not add user-facing schema fields yet. It only prepares canonical hashing for Phase 2 width classes and Phase 3 branch metadata.
+- GDD coverage: Section 6 Track system now records hash canonicalization plumbing for future optional track fields.
+- Followups: continue with Phase 1 long-turn piece work after Phase 0 scaffolding.
+
 ## 2026-05-03, Eight Direction Connectors
 
 - Branch: `feature/eight-direction-connectors`
+- PR: #78
 - Changed: expanded `Dir` to the 8-direction compass with diagonal offsets and `(d + 4) % 8` opposites, changed `connectorsOf` to return `Dir[]`, and kept existing pieces on cardinal connectors. Updated track path traversal, S-curve and sweep direction reversal, editor mirror rotation matching, pace-note turn deltas, straight road orientation, and the editor start arrow to use the new encoding.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackConnectors.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/editor.test.ts tests/unit/paceNotes.test.ts tests/unit/sceneBuilder.test.ts tests/unit/wrongWay.test.ts tests/unit/wheelContact.test.ts tests/unit/tick.test.ts` passed with 182 tests, `npm test` passed with 3111 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build.
+- Post-merge: PR #78 merged at commit `a67ac0d`. Main CodeQL passed, Vercel production deployment completed, direct smoke of the project deployment URL was blocked by Vercel SSO with HTTP 401 and `_vercel_sso_nonce`, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 0d should only widen connector representation. Diagonal and corner-connector pieces remain Phase 1 work, so current saved tracks stay cardinal-only and hash inputs do not change.
 - GDD coverage: Section 6 Track system now records the 8-direction connector scaffold for future diagonal pieces and junctions.
 - Followups: continue with Phase 0e hash canonicalization plumbing.

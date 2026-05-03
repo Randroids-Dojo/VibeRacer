@@ -144,7 +144,8 @@
         "track width scaffold",
         "segment path scaffold",
         "multi-cell footprint scaffold",
-        "8-direction connector scaffold"
+        "8-direction connector scaffold",
+        "hash canonicalization plumbing"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",

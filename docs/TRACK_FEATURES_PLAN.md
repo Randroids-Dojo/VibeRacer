@@ -34,7 +34,7 @@ Pure refactor. No user-visible change. Existing tracks hash and play identically
 
 **0d. 8-direction connector system. Done.** `Dir` now spans `0..7` (`N=0, NE=1, E=2, SE=3, S=4, SW=5, W=6, NW=7`) with corner offsets in `DIR_OFFSETS` and `opposite(d) = (d + 4) % 8`. `connectorsOf` now returns `Dir[]` and rotates 90-degree pieces by two 8-dir steps, which preserves every existing cardinal piece's adjacency while opening the connector arity needed for junctions. The path builder, editor mirror math, pace-note turn deltas, straight geometry orientation, and editor start arrow all read the new encoding.
 
-**0e. Hash canonicalization plumbing.** `src/lib/hashTrack.ts:36-60`: extend the "default omitted" pattern to `footprint`, `widthClass`, `branchEdges`, and any other new optional fields. Existing tracks with no opt-ins emit identical canonical JSON.
+**0e. Hash canonicalization plumbing. Done.** `src/lib/hashTrack.ts` now centralizes default omission for footprint, future `widthClass`, and future `branchEdges` hash inputs. `widthClass='standard'`, missing `widthClass`, missing branch edges, and empty branch edges all emit the same canonical JSON as existing tracks. Non-default width class and non-empty branch edges are included deterministically, with stable branch-edge key ordering and input-order-independent sorting.
 
 **Phase 0 verification.** Snapshot test against a representative pre-Phase-0 track: identical `hashTrack` digest, identical sceneBuilder vertex counts, identical minimap rect bounds. New unit tests: `tests/unit/trackWidth.test.ts`, `tests/unit/trackPath.test.ts` (single-segment shape), `tests/unit/trackFootprint.test.ts`, `tests/unit/trackConnectors.test.ts` (8-dir cardinal-only behavior unchanged).
 
