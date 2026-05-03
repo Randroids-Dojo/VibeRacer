@@ -36,6 +36,8 @@ export const PieceTypeSchema = z.enum([
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'arc45',
+  'diagonal',
 ])
 export type PieceType = z.infer<typeof PieceTypeSchema>
 

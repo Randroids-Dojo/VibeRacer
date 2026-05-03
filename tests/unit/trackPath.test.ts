@@ -2,6 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { opposite, validateClosedLoop } from '@/game/track'
 import {
   CELL_SIZE,
+  ARC45_SAMPLE_COUNT,
+  DIAGONAL_SAMPLE_COUNT,
   HAIRPIN_SAMPLE_COUNT,
   MEGA_SWEEP_SAMPLE_COUNT,
   SCURVE_ARC_RADIUS,
@@ -10,6 +12,8 @@ import {
   computeCpTriggerPieceIdx,
   distanceToCenterline,
   samplePieceAt,
+  sampleArc45Local,
+  sampleDiagonalLocal,
   sampleHairpinLocal,
   sampleMegaSweepLeftLocal,
   sampleMegaSweepRightLocal,
@@ -514,6 +518,73 @@ describe('hairpin piece', () => {
     }
     expect(samplePieceAt(op, 0).heading).toBeCloseTo(0, 5)
     expect(Math.abs(samplePieceAt(op, 1).heading)).toBeCloseTo(Math.PI, 5)
+  })
+})
+
+describe('45-degree connector pieces', () => {
+  const diagonalLoop: Piece[] = [
+    { type: 'arc45', row: 0, col: 0, rotation: 0 },
+    { type: 'diagonal', row: -1, col: 1, rotation: 0 },
+    { type: 'arc45', row: -2, col: 2, rotation: 180 },
+    { type: 'left90', row: -3, col: 2, rotation: 0 },
+    { type: 'straight', row: -3, col: 1, rotation: 90 },
+    { type: 'straight', row: -3, col: 0, rotation: 90 },
+    { type: 'left90', row: -3, col: -1, rotation: 270 },
+    { type: 'straight', row: -2, col: -1, rotation: 0 },
+    { type: 'straight', row: -1, col: -1, rotation: 0 },
+    { type: 'straight', row: 0, col: -1, rotation: 0 },
+    { type: 'left90', row: 1, col: -1, rotation: 180 },
+    { type: 'right90', row: 1, col: 0, rotation: 180 },
+  ]
+
+  it('samples an arc from a cardinal connector to a corner connector', () => {
+    const samples = sampleArc45Local()
+    expect(samples.length).toBe(ARC45_SAMPLE_COUNT)
+    expect(samples[0]).toMatchObject({ x: 0, z: CELL_SIZE / 2 })
+    expect(samples[samples.length - 1]).toMatchObject({
+      x: CELL_SIZE / 2,
+      z: -CELL_SIZE / 2,
+    })
+    expect(samples[0].heading).toBeCloseTo(Math.PI / 2, 5)
+    expect(samples[samples.length - 1].heading).toBeCloseTo(Math.PI / 4, 5)
+  })
+
+  it('samples a diagonal across one cell corner-to-corner', () => {
+    const samples = sampleDiagonalLocal()
+    expect(samples.length).toBe(DIAGONAL_SAMPLE_COUNT)
+    expect(samples[0]).toEqual({
+      x: -CELL_SIZE / 2,
+      z: CELL_SIZE / 2,
+      heading: Math.PI / 4,
+    })
+    expect(samples[samples.length - 1]).toEqual({
+      x: CELL_SIZE / 2,
+      z: -CELL_SIZE / 2,
+      heading: Math.PI / 4,
+    })
+  })
+
+  it('forms a valid loop bridged by 45 arcs', () => {
+    expect(validateClosedLoop(diagonalLoop)).toEqual({ ok: true })
+    const path = buildTrackPath(diagonalLoop)
+    expect(path.order.map((op) => op.piece.type).slice(0, 3)).toEqual([
+      'arc45',
+      'diagonal',
+      'arc45',
+    ])
+    expect(path.order[0].samples).not.toBeNull()
+    expect(path.order[1].samples).not.toBeNull()
+    expect(samplePieceAt(path.order[0], 0).heading).toBeCloseTo(Math.PI / 2, 5)
+    expect(samplePieceAt(path.order[0], 1).heading).toBeCloseTo(Math.PI / 4, 5)
+    expect(samplePieceAt(path.order[1], 0.5).heading).toBeCloseTo(Math.PI / 4, 5)
+  })
+
+  it('rejects a cardinal piece connected directly to a diagonal corner', () => {
+    const invalid: Piece[] = [
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'diagonal', row: -1, col: 1, rotation: 0 },
+    ]
+    expect(validateClosedLoop(invalid).ok).toBe(false)
   })
 })
 

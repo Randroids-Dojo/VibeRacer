@@ -66,6 +66,17 @@ describe('connectorsOf', () => {
     ])
   })
 
+  it('45-degree pieces expose corner connectors', () => {
+    expect(connectorsOf({ type: 'arc45', row: 0, col: 0, rotation: 0 }))
+      .toEqual([4, 1])
+    expect(connectorsOf({ type: 'arc45', row: 0, col: 0, rotation: 180 }))
+      .toEqual([0, 5])
+    expect(connectorsOf({ type: 'diagonal', row: 0, col: 0, rotation: 0 }))
+      .toEqual([5, 1])
+    expect(connectorsOf({ type: 'diagonal', row: 0, col: 0, rotation: 90 }))
+      .toEqual([7, 3])
+  })
+
   it('opposite maps every 8-direction connector across the compass', () => {
     expect(opposite(0)).toBe(4)
     expect(opposite(1)).toBe(5)

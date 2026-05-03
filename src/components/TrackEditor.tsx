@@ -91,6 +91,8 @@ const PIECE_TOOLS: PieceType[] = [
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'arc45',
+  'diagonal',
 ]
 const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
@@ -106,6 +108,8 @@ const TOOL_LABELS: Record<Tool, string> = {
   megaSweepRight: 'Mega sweep (right)',
   megaSweepLeft: 'Mega sweep (left)',
   hairpin: 'Hairpin',
+  arc45: '45 arc',
+  diagonal: 'Diagonal',
   start: 'Set start',
   checkpoint: 'Checkpoint',
   ...TRACK_DECORATION_LABELS,
@@ -1888,6 +1892,48 @@ function PieceGlyph({ piece }: { piece: Piece }) {
             strokeWidth={2}
             strokeDasharray="4 4"
             fill="none"
+          />
+        </>
+      ) : null}
+      {piece.type === 'arc45' ? (
+        <>
+          <path
+            d={`M ${cx} ${CELL}
+                C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
+            stroke={road}
+            strokeWidth={roadWidth}
+            strokeLinecap="butt"
+            fill="none"
+          />
+          <path
+            d={`M ${cx} ${CELL}
+                C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
+            stroke={stroke}
+            strokeWidth={2}
+            strokeDasharray="4 4"
+            fill="none"
+          />
+        </>
+      ) : null}
+      {piece.type === 'diagonal' ? (
+        <>
+          <line
+            x1={0}
+            y1={CELL}
+            x2={CELL}
+            y2={0}
+            stroke={road}
+            strokeWidth={roadWidth}
+            strokeLinecap="butt"
+          />
+          <line
+            x1={0}
+            y1={CELL}
+            x2={CELL}
+            y2={0}
+            stroke={stroke}
+            strokeWidth={2}
+            strokeDasharray="4 4"
           />
         </>
       ) : null}
