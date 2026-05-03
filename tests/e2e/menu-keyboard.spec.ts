@@ -77,3 +77,34 @@ test('how-to-play overlay: Esc closes', async ({ page }) => {
   await page.keyboard.press('Escape')
   await expect(page.getByText('HOW TO PLAY', { exact: true })).toHaveCount(0)
 })
+
+test('race menu: sub-screens return to the Race menu, not the pause menu', async ({
+  page,
+}) => {
+  await page.goto('/start')
+  await page.getByRole('textbox').fill('TST')
+  await page.getByRole('button', { name: 'Save' }).click()
+  await page.getByRole('button', { name: 'Pause' }).click()
+  await page.getByRole('button', { name: 'Race', exact: true }).click()
+
+  // Pressing Esc inside Leaderboards should land back on the Race menu, not
+  // the Pause menu. The Race menu shows "Leaderboards" as a button; the Pause
+  // menu shows "Resume". The presence of "Leaderboards" plus the absence of
+  // "Resume" disambiguates the two.
+  await page.getByRole('button', { name: 'Leaderboards' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Leaderboards' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resume' })).toHaveCount(0)
+
+  // Same contract for Stats: Back (Esc) returns to RacePane, not PauseMenu.
+  await page.getByRole('button', { name: 'Stats' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Leaderboards' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resume' })).toHaveCount(0)
+
+  // And for How to play, which is in the second section of the Race pane.
+  await page.getByRole('button', { name: 'How to play' }).click()
+  await page.keyboard.press('Escape')
+  await expect(page.getByRole('button', { name: 'Leaderboards' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Resume' })).toHaveCount(0)
+})

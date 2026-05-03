@@ -89,6 +89,7 @@ export function TuningLab() {
   }, [])
 
   const handleDiscard = useCallback((_rounds: RoundLog[]) => {
+    setItems(readSavedTunings())
     setView('home')
   }, [])
 

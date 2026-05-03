@@ -2800,7 +2800,7 @@ function GameSession({
             <Leaderboard
               slug={slug}
               versionHash={versionHash}
-              onBack={() => setPauseView('menu')}
+              onBack={() => setPauseView('race')}
               onApplyTuning={(p) => {
                 applyTuning(p, 'Rival lap')
                 setPauseView('menu')
@@ -2814,12 +2814,12 @@ function GameSession({
               entries={lapHistory}
               bestAllTimeMs={hud.bestAllTimeMs}
               bestSectors={bestSectorsRef.current ?? []}
-              onBack={() => setPauseView('menu')}
+              onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'pbHistory' ? (
             <PbHistory
               entries={pbHistoryEntries}
-              onBack={() => setPauseView('menu')}
+              onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'stats' ? (
             <TrackStatsPane
@@ -2834,7 +2834,7 @@ function GameSession({
               lifetimeBestTopSpeedUs={readLifetimeBestTopSpeed()}
               speedUnit={settings.speedUnit}
               carMaxSpeed={tuning.maxSpeed}
-              onBack={() => setPauseView('menu')}
+              onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'achievements' ? (
             <AchievementsPane
@@ -2848,7 +2848,7 @@ function GameSession({
                 wrongWayTriggered: wrongWayTriggeredRef.current,
                 hudPbStreakBest: hud.pbStreakBest,
               })}
-              onBack={() => setPauseView('menu')}
+              onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'tuning' ? (
             <TuningPanel
@@ -2870,13 +2870,13 @@ function GameSession({
               keyBindings={settings.keyBindings}
               gamepadBindings={settings.gamepadBindings}
               touchMode={settings.touchMode}
-              onClose={() => setPauseView('menu')}
+              onClose={() => setPauseView('race')}
             />
           ) : pauseView === 'photo' ? (
             <PhotoMode
               slug={slug}
               captureRef={captureScreenshotRef}
-              onClose={() => setPauseView('menu')}
+              onClose={() => setPauseView('race')}
             />
           ) : pauseView === 'sessionSummary' ? (
             <SessionSummary

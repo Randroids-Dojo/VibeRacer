@@ -38,6 +38,32 @@ test('/tune home exposes the Recent changes view', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Tuning Lab' })).toBeVisible()
 })
 
+test('intro-only session leaves no auto-saved tuning behind', async ({
+  page,
+}) => {
+  // The auto-save effect skips the first run when params still equal
+  // initialParams. A user who lands in Intro and bails before driving must
+  // not produce a phantom "Lab session ..." row in their saved tunings.
+  await page.goto('/tune')
+  await page.getByRole('button', { name: /start a tuning session/i }).click()
+  await expect(
+    page.getByRole('heading', { name: 'New tuning session' }),
+  ).toBeVisible()
+  // Wait past the auto-save debounce window. If the guard is wrong, an empty
+  // row would land in localStorage by now.
+  await page.waitForTimeout(800)
+  const stored = await page.evaluate(() =>
+    window.localStorage.getItem('viberacer.tuningLab.saved'),
+  )
+  // Either the key is unset, or the array does not yet contain a Lab session
+  // row. Both are acceptable empty states.
+  if (stored !== null) {
+    const parsed = JSON.parse(stored) as Array<{ name: string }>
+    const labRows = parsed.filter((r) => r.name.startsWith('Lab session '))
+    expect(labRows).toEqual([])
+  }
+})
+
 test('Recent changes view lists imported entries and applies them', async ({
   page,
 }) => {
