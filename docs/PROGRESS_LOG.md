@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Editor Connector Diagnostics
+
+- Branch: `feature/editor-connector-diagnostics`
+- Changed: `validateClosedLoop` now returns structured validation issues for open connectors and duplicate cells. The track editor uses those issues to draw a red marker on the offending connector and a dashed target marker on the grid cell where a matching piece must be placed, plus a footer hint with the target row and column.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/track.test.ts tests/unit/trackConnectors.test.ts tests/unit/editor.test.ts` passed with 72 tests, `npm test` passed with 3145 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 4 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: showing the first failing connector is enough to make iterative repair practical, because each fixed connector lets validation advance to the next issue.
+- GDD coverage: Section 6 Track system now records editor connector diagnostics.
+- Followups: none.
+
 ## 2026-05-03, Mirrored 45 Arc
 
 - Branch: `fix/arc45-left-piece`

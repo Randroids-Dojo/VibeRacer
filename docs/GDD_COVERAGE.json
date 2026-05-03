@@ -141,6 +141,7 @@
         "rectangle selection",
         "selected track transforms",
         "track templates",
+        "editor connector diagnostics",
         "track width scaffold",
         "segment path scaffold",
         "multi-cell footprint scaffold",

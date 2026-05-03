@@ -104,6 +104,34 @@ describe('validateClosedLoop', () => {
     ])
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/open connector/)
+    expect(res.issue).toEqual({
+      kind: 'openConnector',
+      row: 0,
+      col: 0,
+      connectorRow: 0,
+      connectorCol: 0,
+      dir: 4,
+      targetRow: 1,
+      targetCol: 0,
+    })
+  })
+
+  it('reports the exact dangling connector cell for a hairpin', () => {
+    const res = validateClosedLoop([
+      { type: 'hairpin', row: 0, col: 0, rotation: 0 },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/open connector/)
+    expect(res.issue).toEqual({
+      kind: 'openConnector',
+      row: 0,
+      col: 0,
+      connectorRow: -1,
+      connectorCol: 0,
+      dir: 6,
+      targetRow: -1,
+      targetCol: -1,
+    })
   })
 
   it('rejects a duplicate cell', () => {
@@ -113,6 +141,7 @@ describe('validateClosedLoop', () => {
     ])
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/duplicate/)
+    expect(res.issue).toEqual({ kind: 'duplicateCell', row: 0, col: 0 })
   })
 
   it('rejects overlap against a multi-cell footprint', () => {
@@ -131,6 +160,7 @@ describe('validateClosedLoop', () => {
     ])
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/duplicate piece at 0,1/)
+    expect(res.issue).toEqual({ kind: 'duplicateCell', row: 0, col: 1 })
   })
 
   it('does not let a footprint cell satisfy its own connector', () => {
