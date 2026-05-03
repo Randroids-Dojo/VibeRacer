@@ -1514,7 +1514,7 @@ const Cell = memo(function Cell({
           {startExitDir !== null ? (
             <polygon
               points={`${CELL / 2 - 5},${CELL / 2 + 3} ${CELL / 2 + 5},${CELL / 2 + 3} ${CELL / 2},${CELL / 2 - 5}`}
-              transform={`rotate(${startExitDir * 90} ${CELL / 2} ${CELL / 2})`}
+              transform={`rotate(${startExitDir * 45} ${CELL / 2} ${CELL / 2})`}
               fill="#6ee787"
               style={{ pointerEvents: 'none' }}
             />

@@ -7,7 +7,9 @@ import { DIR_OFFSETS, cellKey, connectorsOf, opposite, type Dir } from './track'
 export function getStartExitDir(pieces: Piece[]): Dir | null {
   if (pieces.length === 0) return null
   const first = pieces[0]
-  const [connA, connB] = connectorsOf(first)
+  const conns = connectorsOf(first)
+  const [connA, connB] = conns
+  if (connA === undefined || connB === undefined) return null
   if (pieces.length >= 2) {
     const second = pieces[1]
     const aOff = DIR_OFFSETS[connA]
@@ -121,9 +123,13 @@ export function cellCenter(row: number, col: number): Vec3 {
 const HALF = CELL_SIZE / 2
 const EDGE_OFFSETS: Record<Dir, { dx: number; dz: number }> = {
   0: { dx: 0, dz: -HALF },
-  1: { dx: HALF, dz: 0 },
-  2: { dx: 0, dz: HALF },
-  3: { dx: -HALF, dz: 0 },
+  1: { dx: HALF, dz: -HALF },
+  2: { dx: HALF, dz: 0 },
+  3: { dx: HALF, dz: HALF },
+  4: { dx: 0, dz: HALF },
+  5: { dx: -HALF, dz: HALF },
+  6: { dx: -HALF, dz: 0 },
+  7: { dx: -HALF, dz: -HALF },
 }
 
 export function edgeMidpoint(row: number, col: number, dir: Dir): Vec3 {
@@ -136,9 +142,13 @@ export function edgeMidpoint(row: number, col: number, dir: Dir): Vec3 {
 // North (-Z) = Math.PI/2, East (+X) = 0, South (+Z) = -Math.PI/2, West (-X) = Math.PI.
 const DIR_HEADINGS: Record<Dir, number> = {
   0: Math.PI / 2,
-  1: 0,
-  2: -Math.PI / 2,
-  3: Math.PI,
+  1: Math.PI / 4,
+  2: 0,
+  3: -Math.PI / 4,
+  4: -Math.PI / 2,
+  5: -3 * Math.PI / 4,
+  6: Math.PI,
+  7: 3 * Math.PI / 4,
 }
 
 export function dirToHeading(d: Dir): number {
@@ -147,6 +157,7 @@ export function dirToHeading(d: Dir): number {
 
 function otherConnector(piece: Piece, entry: Dir): Dir {
   const [a, b] = connectorsOf(piece)
+  if (a === undefined || b === undefined) return entry
   return entry === a ? b : a
 }
 
@@ -457,7 +468,7 @@ function buildScurveSamples(
   entryDir: Dir,
 ): SampledPoint[] {
   // The local samples enter at the base south connector (rotation 0). After
-  // rotating the piece, the rotated base entry sits at dir (2 + rot/90) % 4.
+  // rotating the piece, the rotated base entry sits at dir (4 + rot/90*2) % 8.
   // If the loop traversal enters from the OPPOSITE end, the car drives the
   // path in reverse, so flip the sample order and rotate every heading by
   // 180 degrees so headings still face the direction of travel.
@@ -465,7 +476,7 @@ function buildScurveSamples(
     piece.type === 'scurveLeft'
       ? SCURVE_LEFT_LOCAL_SAMPLES
       : SCURVE_LOCAL_SAMPLES
-  const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
+  const baseEntryAfterRotation = (4 + (piece.rotation / 90) * 2) % 8
   const reversed = entryDir !== baseEntryAfterRotation
   const transformed = localSamples.map((s) =>
     transformSample(s, center.x, center.z, piece.rotation),
@@ -484,7 +495,7 @@ function buildSweepSamples(
     piece.type === 'sweepLeft'
       ? SWEEP_LEFT_LOCAL_SAMPLES
       : SWEEP_RIGHT_LOCAL_SAMPLES
-  const baseEntryAfterRotation = (2 + piece.rotation / 90) % 4
+  const baseEntryAfterRotation = (4 + (piece.rotation / 90) * 2) % 8
   const reversed = entryDir !== baseEntryAfterRotation
   const transformed = localSamples.map((s) =>
     transformSample(s, center.x, center.z, piece.rotation),
@@ -508,6 +519,9 @@ export function buildTrackPath(
 
   const first = pieces[0]
   const [connA, connB] = connectorsOf(first)
+  if (connA === undefined || connB === undefined) {
+    throw new Error('start piece has fewer than two connectors')
+  }
   let exitDir: Dir = getStartExitDir(pieces)!
   let entryDir: Dir = exitDir === connA ? connB : connA
   let current = first

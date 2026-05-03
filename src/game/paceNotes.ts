@@ -40,20 +40,20 @@ export interface PaceNote {
 // note so a long straight does not blank the chip.
 export const PACE_NOTE_LOOK_AHEAD_PIECES = 4
 
-// Relative cardinal change between two pieces, computed from their
+// Relative direction change between two pieces, computed from their
 // (entryDir, exitDir) tuple so a 90 degree right turn always reads as 'right'
-// regardless of the world heading. Modulo wrapping handles the 0 -> 3 case
-// (north to west = left) and the 3 -> 0 case (west to north = right).
+// regardless of the world heading. Modulo wrapping handles the 0 -> 6 case
+// (north to west = left) and the 6 -> 0 case (west to north = right).
 export type RelativeTurn = 'left' | 'right' | 'straight' | 'reverse'
 
 export function relativeTurnBetween(
   prev: OrderedPiece,
   next: OrderedPiece,
 ): RelativeTurn {
-  const delta = ((next.exitDir - prev.exitDir + 4) % 4) as 0 | 1 | 2 | 3
+  const delta = (next.exitDir - prev.exitDir + 8) % 8
   if (delta === 0) return 'straight'
-  if (delta === 1) return 'right'
-  if (delta === 2) return 'reverse'
+  if (delta > 0 && delta < 4) return 'right'
+  if (delta === 4) return 'reverse'
   return 'left'
 }
 

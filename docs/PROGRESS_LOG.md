@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Eight Direction Connectors
+
+- Branch: `feature/eight-direction-connectors`
+- Changed: expanded `Dir` to the 8-direction compass with diagonal offsets and `(d + 4) % 8` opposites, changed `connectorsOf` to return `Dir[]`, and kept existing pieces on cardinal connectors. Updated track path traversal, S-curve and sweep direction reversal, editor mirror rotation matching, pace-note turn deltas, straight road orientation, and the editor start arrow to use the new encoding.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackConnectors.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/editor.test.ts tests/unit/paceNotes.test.ts tests/unit/sceneBuilder.test.ts tests/unit/wrongWay.test.ts tests/unit/wheelContact.test.ts tests/unit/tick.test.ts` passed with 182 tests, `npm test` passed with 3111 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build.
+- Assumptions: Phase 0d should only widen connector representation. Diagonal and corner-connector pieces remain Phase 1 work, so current saved tracks stay cardinal-only and hash inputs do not change.
+- GDD coverage: Section 6 Track system now records the 8-direction connector scaffold for future diagonal pieces and junctions.
+- Followups: continue with Phase 0e hash canonicalization plumbing.
+
 ## 2026-05-03, Track Footprint Scaffold
 
 - Branch: `feature/track-footprint-scaffold`
+- PR: #77
 - Changed: added optional piece footprints to the schema plus `src/game/trackFootprint.ts` helpers for defaulting, normalization, occupied-cell resolution, rotation, and mirroring. Track validation now treats every footprint cell as occupied, rejects overlap, and does not let a footprint cell satisfy its own connector. Track hashing omits the default footprint and includes non-default footprints in stable normalized order. Editor helpers now place, remove, count, move, rotate, and flip footprinted pieces atomically by occupied cells.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackFootprint.test.ts tests/unit/editor.test.ts tests/unit/schemas.test.ts tests/unit/hashTrack.test.ts tests/unit/track.test.ts` passed with 130 tests, `npm test` passed with 3106 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Post-merge: PR #77 merged at commit `b501cd9`. Main CodeQL passed, Vercel production deployment completed, direct smoke of the deployment URL was blocked by Vercel SSO with HTTP 401 and `_vercel_sso_nonce`, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 0c should add data-model and editor-helper readiness only. No new multi-cell piece type is exposed yet, and connector placement for future long-turn pieces remains in Phase 1 after the 8-direction connector scaffold lands.
 - GDD coverage: Section 6 Track system now records the multi-cell footprint scaffold for future long turns and branching layouts.
 - Followups: continue with Phase 0d 8-direction connector support.

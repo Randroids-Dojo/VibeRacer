@@ -275,7 +275,7 @@ function buildFlatGeometry(verts: number[], idx: number[]): BufferGeometry {
 }
 
 function straightGeometry(op: OrderedPiece): BufferGeometry {
-  const isVertical = op.entryDir === 0 || op.entryDir === 2
+  const isVertical = op.entryDir === 0 || op.entryDir === 4
   const halfLong = CELL_SIZE / 2
   const halfShort = halfWidthAt(op, 0.5)
   const { x: cx, z: cz } = op.center

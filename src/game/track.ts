@@ -1,17 +1,21 @@
 import { MAX_PIECES_PER_TRACK, type Piece, type PieceType } from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
 
-export type Dir = 0 | 1 | 2 | 3 // N, E, S, W
+export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
 export const DIR_OFFSETS: Record<Dir, { dr: number; dc: number }> = {
   0: { dr: -1, dc: 0 },
-  1: { dr: 0, dc: 1 },
-  2: { dr: 1, dc: 0 },
-  3: { dr: 0, dc: -1 },
+  1: { dr: -1, dc: 1 },
+  2: { dr: 0, dc: 1 },
+  3: { dr: 1, dc: 1 },
+  4: { dr: 1, dc: 0 },
+  5: { dr: 1, dc: -1 },
+  6: { dr: 0, dc: -1 },
+  7: { dr: -1, dc: -1 },
 }
 
 export function opposite(d: Dir): Dir {
-  return ((d + 2) % 4) as Dir
+  return ((d + 4) % 8) as Dir
 }
 
 export function cellKey(row: number, col: number): string {
@@ -19,20 +23,19 @@ export function cellKey(row: number, col: number): string {
 }
 
 // Base connectors at rotation 0. Order is [entry, exit] but both are just open edges for graph purposes.
-const BASE_CONNECTORS: Record<PieceType, [Dir, Dir]> = {
-  straight: [2, 0], // S -> N
-  left90: [2, 3], // S -> W (left turn)
-  right90: [2, 1], // S -> E (right turn)
-  scurve: [2, 0], // S -> N (snakes inside the cell, right then left)
-  scurveLeft: [2, 0], // S -> N (mirror of scurve: snakes left then right)
-  sweepRight: [2, 1], // S -> E (smooth sampled right turn)
-  sweepLeft: [2, 3], // S -> W (smooth sampled left turn)
+const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
+  straight: [4, 0], // S -> N
+  left90: [4, 6], // S -> W (left turn)
+  right90: [4, 2], // S -> E (right turn)
+  scurve: [4, 0], // S -> N (snakes inside the cell, right then left)
+  scurveLeft: [4, 0], // S -> N (mirror of scurve: snakes left then right)
+  sweepRight: [4, 2], // S -> E (smooth sampled right turn)
+  sweepLeft: [4, 6], // S -> W (smooth sampled left turn)
 }
 
-export function connectorsOf(piece: Piece): [Dir, Dir] {
-  const [a, b] = BASE_CONNECTORS[piece.type]
-  const shift = (piece.rotation / 90) as 0 | 1 | 2 | 3
-  return [((a + shift) % 4) as Dir, ((b + shift) % 4) as Dir]
+export function connectorsOf(piece: Piece): Dir[] {
+  const shift = (piece.rotation / 90) * 2
+  return BASE_CONNECTORS[piece.type].map((dir) => ((dir + shift) % 8) as Dir)
 }
 
 export interface ValidationResult {
