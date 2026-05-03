@@ -94,6 +94,15 @@ describe('PIECE_COMPLEXITY_WEIGHTS', () => {
       PIECE_COMPLEXITY_WEIGHTS.right90,
     )
   })
+
+  it('weights mega sweep turns below sharp 90s and equally by hand', () => {
+    expect(PIECE_COMPLEXITY_WEIGHTS.megaSweepRight).toBe(
+      PIECE_COMPLEXITY_WEIGHTS.megaSweepLeft,
+    )
+    expect(PIECE_COMPLEXITY_WEIGHTS.megaSweepRight).toBeLessThan(
+      PIECE_COMPLEXITY_WEIGHTS.right90,
+    )
+  })
 })
 
 describe('TURN_PIECE_TYPES', () => {
@@ -104,6 +113,8 @@ describe('TURN_PIECE_TYPES', () => {
     expect(TURN_PIECE_TYPES.has('scurveLeft')).toBe(true)
     expect(TURN_PIECE_TYPES.has('sweepRight')).toBe(true)
     expect(TURN_PIECE_TYPES.has('sweepLeft')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('megaSweepRight')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('megaSweepLeft')).toBe(true)
   })
 
   it('does not contain straights', () => {

@@ -39,6 +39,15 @@ describe('connectorsOf', () => {
       .toEqual([6, 4])
   })
 
+  it('mega sweep turns share the matching 90-degree turn connectors', () => {
+    expect(connectorsOf({ type: 'megaSweepRight', row: 0, col: 0, rotation: 0 }))
+      .toEqual([4, 2])
+    expect(connectorsOf({ type: 'megaSweepLeft', row: 0, col: 0, rotation: 0 }))
+      .toEqual([4, 6])
+    expect(connectorsOf({ type: 'megaSweepRight', row: 0, col: 0, rotation: 90 }))
+      .toEqual([6, 4])
+  })
+
   it('opposite maps every 8-direction connector across the compass', () => {
     expect(opposite(0)).toBe(4)
     expect(opposite(1)).toBe(5)
@@ -106,6 +115,29 @@ describe('validateClosedLoop', () => {
     ])
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/open connector/)
+  })
+
+  it('allows a footprint cell to contain its directly connected neighbor anchor', () => {
+    const pieces: Piece[] = [
+      { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 1, rotation: 90 },
+      { type: 'right90', row: 0, col: 2, rotation: 90 },
+      { type: 'straight', row: 1, col: 2, rotation: 0 },
+      { type: 'right90', row: 2, col: 2, rotation: 180 },
+      { type: 'straight', row: 2, col: 1, rotation: 90 },
+      { type: 'right90', row: 2, col: 0, rotation: 270 },
+      { type: 'straight', row: 1, col: 0, rotation: 0 },
+    ]
+    expect(validateClosedLoop(pieces)).toEqual({ ok: true })
+  })
+
+  it('rejects a non-connected anchor inside a mega sweep footprint', () => {
+    const res = validateClosedLoop([
+      { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 1, col: 1, rotation: 0 },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/duplicate piece at 1,1/)
   })
 
   it('accepts a 2x2 square loop built from right90 corners', () => {

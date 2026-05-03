@@ -31,6 +31,8 @@ const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   scurveLeft: [4, 0], // S -> N (mirror of scurve: snakes left then right)
   sweepRight: [4, 2], // S -> E (smooth sampled right turn)
   sweepLeft: [4, 6], // S -> W (smooth sampled left turn)
+  megaSweepRight: [4, 2], // S -> E (3x3 smooth sampled right turn)
+  megaSweepLeft: [4, 6], // S -> W (3x3 smooth sampled left turn)
 }
 
 export function connectorsOf(piece: Piece): Dir[] {
@@ -51,13 +53,26 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
     return { ok: false, reason: `too many pieces (>${MAX_PIECES_PER_TRACK})` }
   }
 
-  const byCell = new Map<string, Piece>()
+  const byAnchorCell = new Map<string, Piece>()
+  for (const p of pieces) {
+    const key = cellKey(p.row, p.col)
+    if (byAnchorCell.has(key)) {
+      return { ok: false, reason: `duplicate piece at ${key}` }
+    }
+    byAnchorCell.set(key, p)
+  }
+
+  const occupiedByCell = new Map<string, Piece>()
   for (const p of pieces) {
     for (const key of footprintCellKeys(p)) {
-      if (byCell.has(key)) {
+      const existing = occupiedByCell.get(key)
+      if (
+        existing &&
+        !isAllowedConnectorFootprintOverlap(p, existing, key)
+      ) {
         return { ok: false, reason: `duplicate piece at ${key}` }
       }
-      byCell.set(key, p)
+      if (!existing) occupiedByCell.set(key, p)
     }
   }
 
@@ -70,7 +85,7 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
     for (const d of conns) {
       const { dr, dc } = DIR_OFFSETS[d]
       const nKey = cellKey(p.row + dr, p.col + dc)
-      const neighbor = byCell.get(nKey)
+      const neighbor = byAnchorCell.get(nKey)
       if (!neighbor || neighbor === p) {
         return { ok: false, reason: `open connector at ${key} facing ${d}` }
       }
@@ -105,4 +120,32 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
   }
 
   return { ok: true }
+}
+
+function isAllowedConnectorFootprintOverlap(
+  a: Piece,
+  b: Piece,
+  key: string,
+): boolean {
+  if (a === b) return true
+  return (
+    isConnectorAnchorCell(a, b, key) ||
+    isConnectorAnchorCell(b, a, key)
+  )
+}
+
+function isConnectorAnchorCell(
+  piece: Piece,
+  neighbor: Piece,
+  key: string,
+): boolean {
+  if (key !== cellKey(neighbor.row, neighbor.col)) return false
+  for (const dir of connectorsOf(piece)) {
+    const { dr, dc } = DIR_OFFSETS[dir]
+    if (piece.row + dr !== neighbor.row || piece.col + dc !== neighbor.col) {
+      continue
+    }
+    return connectorsOf(neighbor).includes(opposite(dir))
+  }
+  return false
 }

@@ -2,12 +2,15 @@ import { describe, it, expect } from 'vitest'
 import { opposite, validateClosedLoop } from '@/game/track'
 import {
   CELL_SIZE,
+  MEGA_SWEEP_SAMPLE_COUNT,
   SCURVE_ARC_RADIUS,
   TRACK_WIDTH,
   buildTrackPath,
   computeCpTriggerPieceIdx,
   distanceToCenterline,
   samplePieceAt,
+  sampleMegaSweepLeftLocal,
+  sampleMegaSweepRightLocal,
   sampleScurveLeftLocal,
   sampleScurveLocal,
   sampleSweepLeftLocal,
@@ -403,11 +406,77 @@ describe('sweep turn pieces', () => {
   })
 })
 
+describe('mega sweep turn pieces', () => {
+  const megaSweepLoop: Piece[] = [
+    { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+    { type: 'straight', row: 0, col: 1, rotation: 90 },
+    { type: 'right90', row: 0, col: 2, rotation: 90 },
+    { type: 'straight', row: 1, col: 2, rotation: 0 },
+    { type: 'right90', row: 2, col: 2, rotation: 180 },
+    { type: 'straight', row: 2, col: 1, rotation: 90 },
+    { type: 'right90', row: 2, col: 0, rotation: 270 },
+    { type: 'straight', row: 1, col: 0, rotation: 0 },
+  ]
+
+  it('local left mega sweep samples mirror the right mega sweep across x = 0', () => {
+    const right = sampleMegaSweepRightLocal()
+    const left = sampleMegaSweepLeftLocal()
+    expect(left.length).toBe(MEGA_SWEEP_SAMPLE_COUNT)
+    expect(left.length).toBe(right.length)
+    for (let i = 0; i < right.length; i++) {
+      expect(left[i].x).toBeCloseTo(-right[i].x, 6)
+      expect(left[i].z).toBeCloseTo(right[i].z, 6)
+    }
+  })
+
+  it('uses more samples and a longer path than the standard sweep', () => {
+    const standardLength = polylineLength(sampleSweepRightLocal())
+    const megaLength = polylineLength(sampleMegaSweepRightLocal())
+    expect(sampleMegaSweepRightLocal().length).toBe(MEGA_SWEEP_SAMPLE_COUNT)
+    expect(megaLength).toBeGreaterThan(standardLength * 1.5)
+  })
+
+  it('forms a valid loop with connector-neighbor anchors inside its footprint', () => {
+    expect(validateClosedLoop(megaSweepLoop)).toEqual({ ok: true })
+    const path = buildTrackPath(megaSweepLoop)
+    const op = path.order[0]
+    expect(op.piece.type).toBe('megaSweepRight')
+    expect(op.samples).not.toBeNull()
+    expect(op.entry).toEqual({ x: 0, y: 0, z: CELL_SIZE / 2 })
+    expect(op.exit).toEqual({ x: CELL_SIZE / 2, y: 0, z: 0 })
+  })
+
+  it('keeps samples inside the reserved 3x3 footprint around the anchor', () => {
+    const path = buildTrackPath(megaSweepLoop)
+    const op = path.order[0]
+    const samples = op.samples ?? []
+    const halfFootprint = CELL_SIZE * 1.5 + 0.001
+    for (const sample of samples) {
+      expect(Math.abs(sample.x - op.center.x)).toBeLessThanOrEqual(halfFootprint)
+      expect(Math.abs(sample.z - op.center.z)).toBeLessThanOrEqual(halfFootprint)
+      expect(distanceToCenterline(op, sample.x, sample.z)).toBeLessThan(0.001)
+    }
+    expect(samplePieceAt(op, 0).heading).toBeCloseTo(Math.PI / 2, 5)
+    expect(samplePieceAt(op, 1).heading).toBeCloseTo(0, 5)
+  })
+})
+
 describe('TRACK_WIDTH fits inside the cell', () => {
   it('leaves non-zero inner radius for corner annulus', () => {
     expect(CELL_SIZE / 2 - TRACK_WIDTH / 2).toBeGreaterThan(0)
   })
 })
+
+function polylineLength(samples: { x: number; z: number }[]): number {
+  let total = 0
+  for (let i = 1; i < samples.length; i++) {
+    total += Math.hypot(
+      samples[i].x - samples[i - 1].x,
+      samples[i].z - samples[i - 1].z,
+    )
+  }
+  return total
+}
 
 describe('computeCpTriggerPieceIdx', () => {
   it('matches one-CP-per-piece when K equals piece count', () => {

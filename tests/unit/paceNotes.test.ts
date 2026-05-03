@@ -158,12 +158,19 @@ describe('buildPaceNotes', () => {
     const sPieces: Piece[] = [
       { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
       { type: 'sweepLeft', row: 0, col: 1, rotation: 0 },
-      { type: 'straight', row: 1, col: 1, rotation: 0 },
+      { type: 'megaSweepRight', row: 1, col: 1, rotation: 0 },
+      { type: 'megaSweepLeft', row: 2, col: 1, rotation: 0 },
+      { type: 'straight', row: 3, col: 1, rotation: 0 },
     ]
     const synthOrder = sPieces.map((p, i) => ({
       piece: p,
       entryDir: 4,
-      exitDir: p.type === 'sweepLeft' ? 6 : p.type === 'sweepRight' ? 2 : 0,
+      exitDir:
+        p.type === 'sweepLeft' || p.type === 'megaSweepLeft'
+          ? 6
+          : p.type === 'sweepRight' || p.type === 'megaSweepRight'
+            ? 2
+            : 0,
       center: { x: 0, y: 0, z: 0 },
       entry: { x: 0, y: 0, z: 0 },
       exit: { x: 0, y: 0, z: 0 },
@@ -187,6 +194,16 @@ describe('buildPaceNotes', () => {
       kind: 'left',
       severity: 'medium',
       label: 'Sweep left',
+    })
+    expect(notes[2]).toMatchObject({
+      kind: 'right',
+      severity: 'medium',
+      label: 'Mega sweep right',
+    })
+    expect(notes[3]).toMatchObject({
+      kind: 'left',
+      severity: 'medium',
+      label: 'Mega sweep left',
     })
   })
 })

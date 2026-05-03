@@ -88,6 +88,8 @@ const PIECE_TOOLS: PieceType[] = [
   'scurveLeft',
   'sweepRight',
   'sweepLeft',
+  'megaSweepRight',
+  'megaSweepLeft',
 ]
 const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
@@ -100,6 +102,8 @@ const TOOL_LABELS: Record<Tool, string> = {
   scurveLeft: 'S-curve (left)',
   sweepRight: 'Sweep turn (right)',
   sweepLeft: 'Sweep turn (left)',
+  megaSweepRight: 'Mega sweep (right)',
+  megaSweepLeft: 'Mega sweep (left)',
   start: 'Set start',
   checkpoint: 'Checkpoint',
   ...TRACK_DECORATION_LABELS,
@@ -1829,6 +1833,34 @@ function PieceGlyph({ piece }: { piece: Piece }) {
                   C ${cx} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.6} ${cx + CELL * 0.32} ${CELL * 0.42}
                   C ${cx + CELL * 0.32} ${CELL * 0.24} ${cx} ${CELL * 0.24} ${cx} ${CELL * 0.06}
                   L ${cx} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
+      {piece.type === 'megaSweepRight' || piece.type === 'megaSweepLeft' ? (
+        <>
+          <g
+            transform={
+              piece.type === 'megaSweepLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * -0.12} ${CELL * -0.12} ${cy} ${CELL} ${cy}`}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * -0.12} ${CELL * -0.12} ${cy} ${CELL} ${cy}`}
               stroke={stroke}
               strokeWidth={2}
               strokeDasharray="4 4"

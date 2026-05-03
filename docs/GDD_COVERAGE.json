@@ -145,7 +145,8 @@
         "segment path scaffold",
         "multi-cell footprint scaffold",
         "8-direction connector scaffold",
-        "hash canonicalization plumbing"
+        "hash canonicalization plumbing",
+        "mega sweep turns"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",

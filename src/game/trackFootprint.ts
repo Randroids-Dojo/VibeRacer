@@ -15,6 +15,26 @@ export const DEFAULT_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: 0, dc: 0 },
 ]
 
+export const MEGA_SWEEP_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: -1 },
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: 0, dc: -1 },
+  { dr: 0, dc: 0 },
+  { dr: 0, dc: 1 },
+  { dr: 1, dc: -1 },
+  { dr: 1, dc: 0 },
+  { dr: 1, dc: 1 },
+]
+
+export function defaultFootprintForPiece(
+  piece: Pick<Piece, 'type'>,
+): readonly FootprintOffset[] {
+  return piece.type === 'megaSweepRight' || piece.type === 'megaSweepLeft'
+    ? MEGA_SWEEP_FOOTPRINT
+    : DEFAULT_FOOTPRINT
+}
+
 export function normalizedFootprint(
   footprint: readonly FootprintOffset[] | undefined,
 ): FootprintOffset[] {
@@ -47,7 +67,11 @@ export function isDefaultFootprint(
 }
 
 export function footprintCells(piece: Piece): FootprintCell[] {
-  return normalizedFootprint(piece.footprint).map((cell) => ({
+  const footprint =
+    piece.footprint === undefined || piece.footprint.length === 0
+      ? defaultFootprintForPiece(piece)
+      : piece.footprint
+  return normalizedFootprint(footprint).map((cell) => ({
     row: piece.row + cell.dr,
     col: piece.col + cell.dc,
   }))

@@ -3,6 +3,7 @@ import { buildTrackPath, getStartExitDir } from './trackPath'
 import { connectorsOf, type Dir } from './track'
 import {
   flipFootprint,
+  footprintCells,
   footprintCellKeys,
   pieceOccupiesCell,
   rotateFootprintClockwise,
@@ -110,10 +111,12 @@ export function getBounds(pieces: Piece[]): {
   let colMin = pieces[0].col
   let colMax = pieces[0].col
   for (const p of pieces) {
-    if (p.row < rowMin) rowMin = p.row
-    if (p.row > rowMax) rowMax = p.row
-    if (p.col < colMin) colMin = p.col
-    if (p.col > colMax) colMax = p.col
+    for (const cell of footprintCells(p)) {
+      if (cell.row < rowMin) rowMin = cell.row
+      if (cell.row > rowMax) rowMax = cell.row
+      if (cell.col < colMin) colMin = cell.col
+      if (cell.col > colMax) colMax = cell.col
+    }
   }
   return { rowMin, rowMax, colMin, colMax }
 }
@@ -388,6 +391,8 @@ function mirroredPieceType(type: PieceType): PieceType {
   if (type === 'scurveLeft') return 'scurve'
   if (type === 'sweepRight') return 'sweepLeft'
   if (type === 'sweepLeft') return 'sweepRight'
+  if (type === 'megaSweepRight') return 'megaSweepLeft'
+  if (type === 'megaSweepLeft') return 'megaSweepRight'
   return type
 }
 

@@ -325,6 +325,8 @@ const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
 const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 
 export const SWEEP_SAMPLE_COUNT = 33
+export const MEGA_SWEEP_SAMPLE_COUNT = 49
+export const MEGA_SWEEP_ARC_RADIUS = 1.5 * CELL_SIZE
 const SWEEP_OVERSAMPLE_COUNT = 257
 
 type BezierPoint = { x: number; z: number }
@@ -462,6 +464,33 @@ export function sampleSweepLeftLocal(): SampledPoint[] {
 const SWEEP_RIGHT_LOCAL_SAMPLES = sampleSweepRightLocal()
 const SWEEP_LEFT_LOCAL_SAMPLES = mirrorSweepSamples(SWEEP_RIGHT_LOCAL_SAMPLES)
 
+export function sampleMegaSweepRightLocal(): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  const p0 = { x: 0, z: HALF }
+  const p1 = { x: 0, z: HALF - MEGA_SWEEP_ARC_RADIUS }
+  const p2 = { x: HALF - MEGA_SWEEP_ARC_RADIUS, z: 0 }
+  const p3 = { x: HALF, z: 0 }
+  const sampleParameters = equalArcLengthParameters(
+    MEGA_SWEEP_SAMPLE_COUNT,
+    (t) => cubicBezierPoint(p0, p1, p2, p3, t),
+  )
+  for (const t of sampleParameters) {
+    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
+    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
+    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
+  }
+  return samples
+}
+
+export function sampleMegaSweepLeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(MEGA_SWEEP_RIGHT_LOCAL_SAMPLES)
+}
+
+const MEGA_SWEEP_RIGHT_LOCAL_SAMPLES = sampleMegaSweepRightLocal()
+const MEGA_SWEEP_LEFT_LOCAL_SAMPLES = mirrorSweepSamples(
+  MEGA_SWEEP_RIGHT_LOCAL_SAMPLES,
+)
+
 function buildScurveSamples(
   piece: Piece,
   center: Vec3,
@@ -491,10 +520,7 @@ function buildSweepSamples(
   center: Vec3,
   entryDir: Dir,
 ): SampledPoint[] {
-  const localSamples =
-    piece.type === 'sweepLeft'
-      ? SWEEP_LEFT_LOCAL_SAMPLES
-      : SWEEP_RIGHT_LOCAL_SAMPLES
+  const localSamples = sweepLocalSamplesFor(piece)
   const baseEntryAfterRotation = (4 + (piece.rotation / 90) * 2) % 8
   const reversed = entryDir !== baseEntryAfterRotation
   const transformed = localSamples.map((s) =>
@@ -503,6 +529,13 @@ function buildSweepSamples(
   if (!reversed) return transformed
   const out = transformed.slice().reverse()
   return out.map((s) => ({ x: s.x, z: s.z, heading: s.heading + Math.PI }))
+}
+
+function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
+  if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
+  if (piece.type === 'megaSweepRight') return MEGA_SWEEP_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'sweepLeft') return SWEEP_LEFT_LOCAL_SAMPLES
+  return SWEEP_RIGHT_LOCAL_SAMPLES
 }
 
 export function buildTrackPath(
@@ -538,7 +571,10 @@ export function buildTrackPath(
     const isScurve =
       current.type === 'scurve' || current.type === 'scurveLeft'
     const isSweep =
-      current.type === 'sweepRight' || current.type === 'sweepLeft'
+      current.type === 'sweepRight' ||
+      current.type === 'sweepLeft' ||
+      current.type === 'megaSweepRight' ||
+      current.type === 'megaSweepLeft'
     order.push({
       piece: current,
       entryDir,
