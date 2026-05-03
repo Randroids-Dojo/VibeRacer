@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Hairpin Track Piece
+
+- Branch: `feature/hairpin-track-piece`
+- Changed: added the `hairpin` track piece with rotated connector ports, implicit 2x3 footprints, 65-sample centerlines, editor palette support, pace notes, difficulty scoring, wheel-contact coverage, and connector-port validation for multi-cell edge connectors.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/tuningLabTrack.test.ts tests/unit/wheelContact.test.ts` passed with 211 tests, `npm test` passed with 3134 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build.
+- Assumptions: one `hairpin` piece type with rotation is simpler than separate up/down variants and matches the existing rotation model.
+- GDD coverage: Section 6 Track system now records hairpin turns as a long-turn track piece.
+- Followups: continue with Phase 1c 45 Arc.
+
 ## 2026-05-03, Mega Sweep Track Pieces
 
 - Branch: `feature/mega-sweep-pieces`
+- PR: #80
 - Changed: added `megaSweepRight` and `megaSweepLeft` piece types with implicit 3x3 footprints, cardinal sweep connectors, 49-sample centerlines, editor palette entries, mirror support, pace notes, difficulty weights, and focused tests. Track validation now separates anchor-cell connector lookup from footprint occupancy, while still rejecting unrelated anchors inside a mega sweep footprint.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/wheelContact.test.ts` passed with 196 tests, `npm test` passed with 3126 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Post-merge: PR #80 merged at commit `3e769fb`. Main CodeQL passed, Vercel production deployment completed, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 1a keeps connector matching on anchor-adjacent cells because the current track graph does not support per-connector footprint offsets. The 3x3 footprint reserves clearance around the anchor while direct connector neighbors may occupy the connector cells.
 - GDD coverage: Section 6 Track system now records mega sweep turns as a long-turn track piece.
 - Followups: continue with Phase 1b Hairpin.

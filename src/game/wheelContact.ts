@@ -81,18 +81,33 @@ export function wheelTrackContact(
   z: number,
 ): WheelContact {
   const cell = worldToCell(x, z)
-  const pieceIdx = path.cellToOrderIdx.get(cellKey(cell.row, cell.col)) ?? null
-  if (pieceIdx === null) {
+  const key = cellKey(cell.row, cell.col)
+  const locators = path.cellToLocators.get(key)
+  const candidateIdxs =
+    locators !== undefined && locators.length > 0
+      ? locators.map((locator) => locator.idx)
+      : path.cellToOrderIdx.has(key)
+        ? [path.cellToOrderIdx.get(key)!]
+        : []
+  if (candidateIdxs.length === 0) {
     return {
       id,
       x,
       z,
       onTrack: false,
       distanceToCenterline: Infinity,
-      pieceIdx,
+      pieceIdx: null,
     }
   }
-  const distance = distanceToCenterline(path.order[pieceIdx], x, z)
+  let pieceIdx = candidateIdxs[0]
+  let distance = Infinity
+  for (const idx of candidateIdxs) {
+    const candidateDistance = distanceToCenterline(path.order[idx], x, z)
+    if (candidateDistance < distance) {
+      distance = candidateDistance
+      pieceIdx = idx
+    }
+  }
   return {
     id,
     x,

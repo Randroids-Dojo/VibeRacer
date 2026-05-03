@@ -6,6 +6,7 @@ import {
   wheelTrackContact,
 } from '@/game/wheelContact'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
+import type { Piece } from '@/lib/schemas'
 
 const path = buildTrackPath(DEFAULT_TRACK_PIECES)
 const start = path.order[0]
@@ -28,6 +29,28 @@ describe('wheelTrackContact', () => {
     expect(contact.onTrack).toBe(false)
     expect(contact.pieceIdx).toBeNull()
     expect(contact.distanceToCenterline).toBe(Infinity)
+  })
+
+  it('marks a wheel on a hairpin sampled centerline as on track', () => {
+    const hairpinLoop: Piece[] = [
+      { type: 'hairpin', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 1, col: -1, rotation: 270 },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+      { type: 'right90', row: -1, col: -1, rotation: 0 },
+    ]
+    const hairpinPath = buildTrackPath(hairpinLoop)
+    const sample = hairpinPath.order[0].samples![Math.floor(
+      hairpinPath.order[0].samples!.length / 2,
+    )]
+    const contact = wheelTrackContact(
+      hairpinPath,
+      'frontLeft',
+      sample.x,
+      sample.z,
+    )
+    expect(contact.onTrack).toBe(true)
+    expect(contact.pieceIdx).toBe(0)
+    expect(contact.distanceToCenterline).toBeLessThan(0.01)
   })
 })
 

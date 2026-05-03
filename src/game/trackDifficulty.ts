@@ -77,6 +77,7 @@ export const PIECE_COMPLEXITY_WEIGHTS: Record<PieceType, number> = {
   sweepLeft: 1.0,
   megaSweepRight: 1.1,
   megaSweepLeft: 1.1,
+  hairpin: 1.4,
 }
 
 // Whether a piece type counts as a "turn" for the density and direction-flip
@@ -91,6 +92,7 @@ export const TURN_PIECE_TYPES: ReadonlySet<PieceType> = new Set<PieceType>([
   'sweepLeft',
   'megaSweepRight',
   'megaSweepLeft',
+  'hairpin',
 ])
 
 // Score tier thresholds. A score at-or-below the threshold lands in that
@@ -185,6 +187,8 @@ function turnHand(p: Piece): 'left' | 'right' | 'flip' | null {
     case 'sweepLeft':
     case 'megaSweepLeft':
       return 'left'
+    case 'hairpin':
+      return 'right'
     case 'scurve':
     case 'scurveLeft':
       return 'flip'

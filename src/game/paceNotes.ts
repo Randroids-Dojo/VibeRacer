@@ -125,6 +125,9 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
       label: 'Mega sweep right',
     }
   }
+  if (type === 'hairpin') {
+    return { pieceIdx: idx, kind: 'right', severity: 'sharp', label: 'Hairpin' }
+  }
   if (type === 'scurve') {
     return {
       pieceIdx: idx,

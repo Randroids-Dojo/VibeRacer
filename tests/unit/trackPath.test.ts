@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest'
 import { opposite, validateClosedLoop } from '@/game/track'
 import {
   CELL_SIZE,
+  HAIRPIN_SAMPLE_COUNT,
   MEGA_SWEEP_SAMPLE_COUNT,
   SCURVE_ARC_RADIUS,
   TRACK_WIDTH,
@@ -9,6 +10,7 @@ import {
   computeCpTriggerPieceIdx,
   distanceToCenterline,
   samplePieceAt,
+  sampleHairpinLocal,
   sampleMegaSweepLeftLocal,
   sampleMegaSweepRightLocal,
   sampleScurveLeftLocal,
@@ -458,6 +460,60 @@ describe('mega sweep turn pieces', () => {
     }
     expect(samplePieceAt(op, 0).heading).toBeCloseTo(Math.PI / 2, 5)
     expect(samplePieceAt(op, 1).heading).toBeCloseTo(0, 5)
+  })
+})
+
+describe('hairpin piece', () => {
+  const hairpinLoop: Piece[] = [
+    { type: 'hairpin', row: 0, col: 0, rotation: 0 },
+    { type: 'right90', row: 1, col: -1, rotation: 270 },
+    { type: 'straight', row: 0, col: -1, rotation: 0 },
+    { type: 'right90', row: -1, col: -1, rotation: 0 },
+  ]
+
+  it('spaces local samples by near-equal arc length', () => {
+    const samples = sampleHairpinLocal()
+    const lengths: number[] = []
+    for (let i = 1; i < samples.length; i++) {
+      lengths.push(
+        Math.hypot(
+          samples[i].x - samples[i - 1].x,
+          samples[i].z - samples[i - 1].z,
+        ),
+      )
+    }
+    const average =
+      lengths.reduce((sum, length) => sum + length, 0) / lengths.length
+    for (const length of lengths) {
+      expect(Math.abs(length - average) / average).toBeLessThan(0.04)
+    }
+  })
+
+  it('forms a valid loop with connectors on two footprint rows', () => {
+    expect(validateClosedLoop(hairpinLoop)).toEqual({ ok: true })
+    const path = buildTrackPath(hairpinLoop)
+    const op = path.order[0]
+    expect(op.piece.type).toBe('hairpin')
+    expect(op.samples).not.toBeNull()
+    expect(op.samples!.length).toBe(HAIRPIN_SAMPLE_COUNT)
+    expect(op.entry).toEqual({ x: -CELL_SIZE / 2, y: 0, z: -CELL_SIZE })
+    expect(op.exit).toEqual({ x: -CELL_SIZE / 2, y: 0, z: CELL_SIZE })
+  })
+
+  it('keeps samples inside the 2x3 footprint around the anchor', () => {
+    const path = buildTrackPath(hairpinLoop)
+    const op = path.order[0]
+    const samples = op.samples ?? []
+    for (const sample of samples) {
+      expect(sample.x - op.center.x).toBeGreaterThanOrEqual(-CELL_SIZE / 2 - 0.001)
+      expect(sample.x - op.center.x).toBeLessThanOrEqual(CELL_SIZE * 1.5 + 0.001)
+      expect(Math.abs(sample.z - op.center.z)).toBeLessThanOrEqual(
+        CELL_SIZE + 0.001,
+      )
+      expect(distanceToCenterline(op, sample.x, sample.z)).toBeLessThan(0.001)
+    }
+    expect(samplePieceAt(op, 0).heading).toBeCloseTo(0, 5)
+    expect(Math.abs(samplePieceAt(op, 1).heading)).toBeCloseTo(Math.PI, 5)
   })
 })
 

@@ -67,6 +67,12 @@ describe('PieceSchema', () => {
     ).toEqual({ type: 'megaSweepLeft', row: 0, col: 0, rotation: 0 })
   })
 
+  it('accepts the hairpin piece type', () => {
+    expect(
+      PieceSchema.parse({ type: 'hairpin', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'hairpin', row: 0, col: 0, rotation: 0 })
+  })
+
   it('accepts an optional multi-cell footprint', () => {
     expect(
       PieceSchema.parse({
