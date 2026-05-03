@@ -393,6 +393,8 @@ function mirroredPieceType(type: PieceType): PieceType {
   if (type === 'sweepLeft') return 'sweepRight'
   if (type === 'megaSweepRight') return 'megaSweepLeft'
   if (type === 'megaSweepLeft') return 'megaSweepRight'
+  if (type === 'arc45') return 'arc45Left'
+  if (type === 'arc45Left') return 'arc45'
   return type
 }
 

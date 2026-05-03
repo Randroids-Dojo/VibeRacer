@@ -92,6 +92,7 @@ const PIECE_TOOLS: PieceType[] = [
   'megaSweepLeft',
   'hairpin',
   'arc45',
+  'arc45Left',
   'diagonal',
 ]
 const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
@@ -108,7 +109,8 @@ const TOOL_LABELS: Record<Tool, string> = {
   megaSweepRight: 'Mega sweep (right)',
   megaSweepLeft: 'Mega sweep (left)',
   hairpin: 'Hairpin',
-  arc45: '45 arc',
+  arc45: '45 arc (right)',
+  arc45Left: '45 arc (left)',
   diagonal: 'Diagonal',
   start: 'Set start',
   checkpoint: 'Checkpoint',
@@ -1895,24 +1897,32 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
         </>
       ) : null}
-      {piece.type === 'arc45' ? (
+      {piece.type === 'arc45' || piece.type === 'arc45Left' ? (
         <>
-          <path
-            d={`M ${cx} ${CELL}
-                C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
-            stroke={road}
-            strokeWidth={roadWidth}
-            strokeLinecap="butt"
-            fill="none"
-          />
-          <path
-            d={`M ${cx} ${CELL}
-                C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
-            stroke={stroke}
-            strokeWidth={2}
-            strokeDasharray="4 4"
-            fill="none"
-          />
+          <g
+            transform={
+              piece.type === 'arc45Left'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
         </>
       ) : null}
       {piece.type === 'diagonal' ? (

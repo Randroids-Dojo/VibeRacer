@@ -31,6 +31,7 @@ describe('TUNING_LAB_TRACK_PIECES', () => {
       megaSweepLeft: 0,
       hairpin: 0,
       arc45: 0,
+      arc45Left: 0,
       diagonal: 0,
     }
     for (const p of TUNING_LAB_TRACK_PIECES) counts[p.type] += 1

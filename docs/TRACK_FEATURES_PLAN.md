@@ -46,13 +46,13 @@ Depends on 0c (multi-cell footprint) and 0d (8-dir connectors).
 
 **1b. Hairpin (2x3, 180). Done.** New piece type `'hairpin'` uses rotation to cover all orientations. Footprint covers a 2-wide x 3-tall block. Connector ports allow both connectors to sit on the same outer edge at different footprint rows: top W and bottom W at rotation 0. `trackPath.ts` now samples the hairpin with 65 points and a long 180-degree centerline inside the reserved footprint.
 
-**1c. 45 Arc (45). Done.** New piece type `'arc45'` with four rotation variants. One cardinal connector (S in rotation 0), one corner connector (NE in rotation 0). Centerline transitions from a cardinal tangent to a 45-degree tangent over a smooth sampled arc. This is the bridge between cardinal pieces and diagonal runs.
+**1c. 45 Arc (45). Done.** New piece types `'arc45'` and `'arc45Left'` cover the right-hand and left-hand cardinal-to-corner bridges. `arc45` uses S to NE at rotation 0, and `arc45Left` uses S to NW at rotation 0. Their centerlines transition from a cardinal tangent to a 45-degree tangent over smooth sampled arcs. These are the bridges between cardinal pieces and diagonal runs.
 
 **1d. Diagonal (1x1, 45). Done.** New piece type `'diagonal'`. Single-cell footprint. Two corner connectors (SW and NE in rotation 0). Centerline is a straight line across the cell at 45 degrees, length `CELL_SIZE * sqrt(2) ~= 28.3` units. Four rotations are accepted by the existing rotation schema; 180-degree rotations are geometrically equivalent but still harmless.
 
-**Connector validation rule. Done.** A corner connector matches only the opposite corner connector of the diagonal-adjacent cell. `arc45` is the bridge: its cardinal connector validates against the cardinal of the cardinally-adjacent cell, and its corner connector validates against the corner of the diagonally-adjacent cell. Unit coverage verifies a closed diagonal run bridged by two 45 arcs and rejects a direct cardinal-to-diagonal mismatch.
+**Connector validation rule. Done.** A corner connector matches only the opposite corner connector of the diagonal-adjacent cell. `arc45` and `arc45Left` are the bridges: their cardinal connectors validate against cardinally-adjacent cells, and their corner connectors validate against diagonally-adjacent cells. Unit coverage verifies closed right-hand and left-hand diagonal runs bridged by 45 arcs and rejects a direct cardinal-to-diagonal mismatch.
 
-**Editor.** Add the four new types to the `TrackEditor.tsx` palette. Update `mirroredPieceType()` in `editor.ts:352-360`: `megaSweepRight <-> megaSweepLeft`, `hairpinUp` mirrors via rotation, `arc45` mirrors to a mirrored variant (or via rotation), `diagonal` mirrors via rotation. Multi-cell placement reuses the Phase 0c machinery.
+**Editor. Done.** Add the long-turn and diagonal pieces to the `TrackEditor.tsx` palette. `mirroredPieceType()` swaps `megaSweepRight <-> megaSweepLeft` and `arc45 <-> arc45Left`; hairpins and diagonals mirror through rotation. Multi-cell placement reuses the Phase 0c machinery.
 
 **Rendering.** Straight, corner, polyline geometries in `sceneBuilder.ts:276-363` already cover the new shapes if the polyline path is generic. Mega Sweep uses the corner geometry path with a larger radius parameter. Hairpin uses polyline with the new sample array. Arc45 and Diagonal use polyline. Verify thumbnail rasterizer (`lib/trackThumbnail.ts`) handles them.
 
@@ -110,7 +110,7 @@ Depends on Phases 0b, 0c, 0d.
 |---|---|
 | Hairpin + wide | A wide hairpin has inner radius `30 - 8 = 22` units (still positive). Geometry is sound. Verify visually. |
 | Mega Sweep + wide | Inner radius `30 - 8 = 22` units, outer `30 + 8 = 38` units. Footprint is 3x3 = 60 units; outer edge stays inside the footprint with 22 units of margin. Fine. |
-| 45 Arc / Diagonal + wide | Cardinal-to-corner transition pieces with width 16 may visually overlap their cell boundaries at the corner snap. Block `widthClass='wide'` on `arc45` and `diagonal` in `schemas.ts` superRefine for v1; lift later if visual review approves. |
+| 45 Arc / Diagonal + wide | Cardinal-to-corner transition pieces with width 16 may visually overlap their cell boundaries at the corner snap. Block `widthClass='wide'` on `arc45`, `arc45Left`, and `diagonal` in `schemas.ts` superRefine for v1; lift later if visual review approves. |
 | Junction + wide | Three wide connectors meeting at one cell creates a large floor plate. Block `widthClass='wide'` on junction pieces for v1. |
 | Junction + diagonal connectors | Allow but defer to v2: a junction with one cardinal and two corner connectors is geometrically valid but introduces editor-UX questions. v1 ships junction with cardinal-only connectors. |
 | Ghost replay across topology change | Each version hash gets its own leaderboard and ghost pool (existing behavior). New piece types or junctions invalidate the version hash for tracks that use them, so no replay is silently invalidated. |
@@ -148,7 +148,7 @@ Server-side:
 
 1. **Phase 0d connector arity change** is load-bearing. Audit grep for `connectorsOf(` and `BASE_CONNECTORS[` before merging the Phase 0 PR. The four known consumers are listed above; verify no others exist.
 2. **Phase 0c multi-cell editor refactor** is the riskiest single PR. Selection, move, rotate, flip all change. Add `tests/unit/editor.test.ts` cases for every operation against a multi-cell piece before shipping.
-3. **Phase 1c (45 Arc) is the only piece that mixes connector kinds.** A test case must verify that a chain of `cardinal -> arc45 -> diagonal -> diagonal -> arc45 -> cardinal` validates, and that any other adjacency between cardinal and corner connectors is rejected.
+3. **Phase 1c (45 Arc) mixes connector kinds.** Unit coverage verifies chains through both `arc45` and `arc45Left`, and verifies that direct cardinal-to-diagonal adjacency is rejected.
 4. **Phase 2b tapered transitions** may produce visible artifacts at corner pieces if the inner and outer kerb radii do not interpolate consistently. Schedule a visual QA pass on the Phase 2 PR with kerbs enabled.
 5. **Phase 3 any-path lap policy** means a player can take a 5-piece shortcut around a 50-piece "main" loop and have it count as a lap. This is the chosen behavior, but document it clearly in the in-game How To Play and in `docs/GDD.md` so authors understand that branches affect competitive balance. Note in `docs/OPEN_QUESTIONS.md` that future work may need a per-route leaderboard split.
 6. **Mega Sweep arc length (~47 units)** is roughly 3 seconds of drift at race speed. This pushes the drift score curve toward saturation. Decide later whether to expose `MULTIPLIER_GROWTH_MS` per-track. Out of scope for Phase 1.

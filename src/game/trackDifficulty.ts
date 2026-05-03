@@ -79,6 +79,7 @@ export const PIECE_COMPLEXITY_WEIGHTS: Record<PieceType, number> = {
   megaSweepLeft: 1.1,
   hairpin: 1.4,
   arc45: 0.8,
+  arc45Left: 0.8,
   diagonal: 0.2,
 }
 
@@ -96,6 +97,7 @@ export const TURN_PIECE_TYPES: ReadonlySet<PieceType> = new Set<PieceType>([
   'megaSweepLeft',
   'hairpin',
   'arc45',
+  'arc45Left',
   'diagonal',
 ])
 
@@ -195,6 +197,8 @@ function turnHand(p: Piece): 'left' | 'right' | 'flip' | null {
       return 'right'
     case 'arc45':
       return 'right'
+    case 'arc45Left':
+      return 'left'
     case 'diagonal':
       return null
     case 'scurve':

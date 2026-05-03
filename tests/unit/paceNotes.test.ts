@@ -161,7 +161,10 @@ describe('buildPaceNotes', () => {
       { type: 'megaSweepRight', row: 1, col: 1, rotation: 0 },
       { type: 'megaSweepLeft', row: 2, col: 1, rotation: 0 },
       { type: 'hairpin', row: 3, col: 1, rotation: 0 },
-      { type: 'straight', row: 3, col: 1, rotation: 0 },
+      { type: 'arc45', row: 4, col: 1, rotation: 0 },
+      { type: 'arc45Left', row: 5, col: 1, rotation: 0 },
+      { type: 'diagonal', row: 6, col: 1, rotation: 0 },
+      { type: 'straight', row: 7, col: 1, rotation: 0 },
     ]
     const synthOrder = sPieces.map((p, i) => ({
       piece: p,
@@ -171,7 +174,11 @@ describe('buildPaceNotes', () => {
           ? 6
           : p.type === 'sweepRight' || p.type === 'megaSweepRight'
             ? 2
-            : 0,
+            : p.type === 'arc45'
+              ? 1
+              : p.type === 'arc45Left'
+                ? 7
+                : 0,
       center: { x: 0, y: 0, z: 0 },
       entry: { x: 0, y: 0, z: 0 },
       exit: { x: 0, y: 0, z: 0 },
@@ -210,6 +217,21 @@ describe('buildPaceNotes', () => {
       kind: 'right',
       severity: 'sharp',
       label: 'Hairpin',
+    })
+    expect(notes[5]).toMatchObject({
+      kind: 'right',
+      severity: 'medium',
+      label: '45 arc right',
+    })
+    expect(notes[6]).toMatchObject({
+      kind: 'left',
+      severity: 'medium',
+      label: '45 arc left',
+    })
+    expect(notes[7]).toMatchObject({
+      kind: 'straight',
+      severity: 'easy',
+      label: 'Diagonal',
     })
   })
 })

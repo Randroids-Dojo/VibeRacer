@@ -129,7 +129,20 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
     return { pieceIdx: idx, kind: 'right', severity: 'sharp', label: 'Hairpin' }
   }
   if (type === 'arc45') {
-    return { pieceIdx: idx, kind: 'right', severity: 'medium', label: '45 arc' }
+    return {
+      pieceIdx: idx,
+      kind: 'right',
+      severity: 'medium',
+      label: '45 arc right',
+    }
+  }
+  if (type === 'arc45Left') {
+    return {
+      pieceIdx: idx,
+      kind: 'left',
+      severity: 'medium',
+      label: '45 arc left',
+    }
   }
   if (type === 'diagonal') {
     return { pieceIdx: idx, kind: 'straight', severity: 'easy', label: 'Diagonal' }

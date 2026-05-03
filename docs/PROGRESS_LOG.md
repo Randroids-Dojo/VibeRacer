@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Mirrored 45 Arc
+
+- Branch: `fix/arc45-left-piece`
+- Changed: added `arc45Left` so diagonal transitions have both right-hand and left-hand cardinal-to-corner bridge pieces. Mirrored the sampled path, editor glyph, palette label, mirror-transform mapping, pace note, difficulty scoring, and docs.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/editor.test.ts tests/unit/tuningLabTrack.test.ts` passed with 259 tests, `npm test` passed with 3144 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: a separate visible palette tool is clearer than hiding handedness behind rotation because rotation alone cannot produce the mirrored 45-degree connector pair.
+- GDD coverage: Section 6 Track system now records right and left 45-degree arcs.
+- Followups: none.
+
 ## 2026-05-03, Diagonal Track Pieces
 
 - Branch: `feature/diagonal-track-pieces`
