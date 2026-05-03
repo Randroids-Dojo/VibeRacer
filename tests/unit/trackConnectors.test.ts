@@ -13,6 +13,7 @@ const pieceTypes: PieceType[] = [
   'sweepLeft',
   'megaSweepRight',
   'megaSweepLeft',
+  'hairpin',
 ]
 const rotations: Rotation[] = [0, 90, 180, 270]
 

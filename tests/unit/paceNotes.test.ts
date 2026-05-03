@@ -160,6 +160,7 @@ describe('buildPaceNotes', () => {
       { type: 'sweepLeft', row: 0, col: 1, rotation: 0 },
       { type: 'megaSweepRight', row: 1, col: 1, rotation: 0 },
       { type: 'megaSweepLeft', row: 2, col: 1, rotation: 0 },
+      { type: 'hairpin', row: 3, col: 1, rotation: 0 },
       { type: 'straight', row: 3, col: 1, rotation: 0 },
     ]
     const synthOrder = sPieces.map((p, i) => ({
@@ -204,6 +205,11 @@ describe('buildPaceNotes', () => {
       kind: 'left',
       severity: 'medium',
       label: 'Mega sweep left',
+    })
+    expect(notes[4]).toMatchObject({
+      kind: 'right',
+      severity: 'sharp',
+      label: 'Hairpin',
     })
   })
 })

@@ -103,6 +103,15 @@ describe('PIECE_COMPLEXITY_WEIGHTS', () => {
       PIECE_COMPLEXITY_WEIGHTS.right90,
     )
   })
+
+  it('weights hairpins close to sharp 90s', () => {
+    expect(PIECE_COMPLEXITY_WEIGHTS.hairpin).toBeGreaterThan(
+      PIECE_COMPLEXITY_WEIGHTS.sweepRight,
+    )
+    expect(PIECE_COMPLEXITY_WEIGHTS.hairpin).toBeLessThanOrEqual(
+      PIECE_COMPLEXITY_WEIGHTS.right90,
+    )
+  })
 })
 
 describe('TURN_PIECE_TYPES', () => {
@@ -115,6 +124,7 @@ describe('TURN_PIECE_TYPES', () => {
     expect(TURN_PIECE_TYPES.has('sweepLeft')).toBe(true)
     expect(TURN_PIECE_TYPES.has('megaSweepRight')).toBe(true)
     expect(TURN_PIECE_TYPES.has('megaSweepLeft')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('hairpin')).toBe(true)
   })
 
   it('does not contain straights', () => {

@@ -1,5 +1,10 @@
 import { describe, it, expect } from 'vitest'
-import { connectorsOf, opposite, validateClosedLoop } from '@/game/track'
+import {
+  connectorPortsOf,
+  connectorsOf,
+  opposite,
+  validateClosedLoop,
+} from '@/game/track'
 import type { Piece } from '@/lib/schemas'
 
 describe('connectorsOf', () => {
@@ -46,6 +51,19 @@ describe('connectorsOf', () => {
       .toEqual([4, 6])
     expect(connectorsOf({ type: 'megaSweepRight', row: 0, col: 0, rotation: 90 }))
       .toEqual([6, 4])
+  })
+
+  it('hairpins expose two same-side connector ports on different footprint rows', () => {
+    const piece: Piece = { type: 'hairpin', row: 0, col: 0, rotation: 0 }
+    expect(connectorsOf(piece)).toEqual([6, 6])
+    expect(connectorPortsOf(piece)).toEqual([
+      { dr: -1, dc: 0, dir: 6 },
+      { dr: 1, dc: 0, dir: 6 },
+    ])
+    expect(connectorPortsOf({ ...piece, rotation: 90 })).toEqual([
+      { dr: 0, dc: 1, dir: 0 },
+      { dr: 0, dc: -1, dir: 0 },
+    ])
   })
 
   it('opposite maps every 8-direction connector across the compass', () => {
@@ -138,6 +156,16 @@ describe('validateClosedLoop', () => {
     ])
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/duplicate piece at 1,1/)
+  })
+
+  it('accepts a loop that connects to both hairpin ports', () => {
+    const pieces: Piece[] = [
+      { type: 'hairpin', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: 1, col: -1, rotation: 270 },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+      { type: 'right90', row: -1, col: -1, rotation: 0 },
+    ]
+    expect(validateClosedLoop(pieces)).toEqual({ ok: true })
   })
 
   it('accepts a 2x2 square loop built from right90 corners', () => {

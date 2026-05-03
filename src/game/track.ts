@@ -22,6 +22,12 @@ export function cellKey(row: number, col: number): string {
   return `${row},${col}`
 }
 
+export interface ConnectorPort {
+  dr: number
+  dc: number
+  dir: Dir
+}
+
 // Base connectors at rotation 0. Order is [entry, exit] but both are just open edges for graph purposes.
 const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   straight: [4, 0], // S -> N
@@ -33,11 +39,51 @@ const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   sweepLeft: [4, 6], // S -> W (smooth sampled left turn)
   megaSweepRight: [4, 2], // S -> E (3x3 smooth sampled right turn)
   megaSweepLeft: [4, 6], // S -> W (3x3 smooth sampled left turn)
+  hairpin: [6, 6], // W -> W on different footprint rows
 }
 
 export function connectorsOf(piece: Piece): Dir[] {
+  return connectorPortsOf(piece).map((port) => port.dir)
+}
+
+export function connectorPortsOf(piece: Piece): ConnectorPort[] {
+  if (piece.type === 'hairpin') {
+    return rotatePorts(
+      [
+        { dr: -1, dc: 0, dir: 6 },
+        { dr: 1, dc: 0, dir: 6 },
+      ],
+      piece.rotation,
+    )
+  }
   const shift = (piece.rotation / 90) * 2
-  return BASE_CONNECTORS[piece.type].map((dir) => ((dir + shift) % 8) as Dir)
+  return BASE_CONNECTORS[piece.type].map((dir) => ({
+    dr: 0,
+    dc: 0,
+    dir: ((dir + shift) % 8) as Dir,
+  }))
+}
+
+function rotatePorts(
+  ports: readonly ConnectorPort[],
+  rotation: Piece['rotation'],
+): ConnectorPort[] {
+  const turns = rotation / 90
+  return ports.map((port) => {
+    let dr = port.dr
+    let dc = port.dc
+    for (let i = 0; i < turns; i++) {
+      const nextDr = dc
+      const nextDc = -dr
+      dr = nextDr
+      dc = nextDc
+    }
+    return {
+      dr,
+      dc,
+      dir: ((port.dir + turns * 2) % 8) as Dir,
+    }
+  })
 }
 
 export interface ValidationResult {
@@ -80,17 +126,18 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
 
   for (const p of pieces) {
     const key = cellKey(p.row, p.col)
-    const conns = connectorsOf(p)
+    const ports = connectorPortsOf(p)
     const adj: string[] = []
-    for (const d of conns) {
-      const { dr, dc } = DIR_OFFSETS[d]
-      const nKey = cellKey(p.row + dr, p.col + dc)
-      const neighbor = byAnchorCell.get(nKey)
+    for (const port of ports) {
+      const neighbor = findConnectedNeighbor(p, port, pieces)
+      const nKey = neighbor ? cellKey(neighbor.row, neighbor.col) : neighborAnchorKey(p, port)
       if (!neighbor || neighbor === p) {
-        return { ok: false, reason: `open connector at ${key} facing ${d}` }
+        return {
+          ok: false,
+          reason: `open connector at ${key} facing ${port.dir}`,
+        }
       }
-      const neighborConns = connectorsOf(neighbor)
-      if (!neighborConns.includes(opposite(d))) {
+      if (!portsConnect(p, port, neighbor)) {
         return {
           ok: false,
           reason: `connector mismatch between ${key} and ${nKey}`,
@@ -140,12 +187,54 @@ function isConnectorAnchorCell(
   key: string,
 ): boolean {
   if (key !== cellKey(neighbor.row, neighbor.col)) return false
-  for (const dir of connectorsOf(piece)) {
-    const { dr, dc } = DIR_OFFSETS[dir]
-    if (piece.row + dr !== neighbor.row || piece.col + dc !== neighbor.col) {
-      continue
-    }
-    return connectorsOf(neighbor).includes(opposite(dir))
+  for (const port of connectorPortsOf(piece)) {
+    if (neighborAnchorKey(piece, port) !== key) continue
+    return portsConnect(piece, port, neighbor)
   }
   return false
+}
+
+export function portCell(
+  piece: Pick<Piece, 'row' | 'col'>,
+  port: Pick<ConnectorPort, 'dr' | 'dc'>,
+): { row: number; col: number } {
+  return { row: piece.row + port.dr, col: piece.col + port.dc }
+}
+
+export function neighborAnchorKey(piece: Piece, port: ConnectorPort): string {
+  const cell = portCell(piece, port)
+  const { dr, dc } = DIR_OFFSETS[port.dir]
+  return cellKey(cell.row + dr, cell.col + dc)
+}
+
+export function portsConnect(
+  piece: Piece,
+  port: ConnectorPort,
+  neighbor: Piece,
+): boolean {
+  const cell = portCell(piece, port)
+  for (const neighborPort of connectorPortsOf(neighbor)) {
+    const neighborCell = portCell(neighbor, neighborPort)
+    const off = DIR_OFFSETS[neighborPort.dir]
+    if (
+      neighborCell.row + off.dr === cell.row &&
+      neighborCell.col + off.dc === cell.col &&
+      neighborPort.dir === opposite(port.dir)
+    ) {
+      return true
+    }
+  }
+  return false
+}
+
+export function findConnectedNeighbor(
+  piece: Piece,
+  port: ConnectorPort,
+  pieces: readonly Piece[],
+): Piece | null {
+  for (const candidate of pieces) {
+    if (candidate === piece) continue
+    if (portsConnect(piece, port, candidate)) return candidate
+  }
+  return null
 }

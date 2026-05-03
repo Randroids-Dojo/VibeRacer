@@ -1,26 +1,34 @@
 import type { Piece, TrackCheckpoint } from '@/lib/schemas'
-import { DIR_OFFSETS, cellKey, connectorsOf, opposite, type Dir } from './track'
+import { footprintCellKeys } from './trackFootprint'
+import {
+  cellKey,
+  connectorPortsOf,
+  findConnectedNeighbor,
+  portCell,
+  portsConnect,
+  type ConnectorPort,
+  type Dir,
+} from './track'
 
 // Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
 // whichever connector points at pieces[1] is the exit. Falls back to connB
 // when pieces[1] is absent or non-adjacent.
 export function getStartExitDir(pieces: Piece[]): Dir | null {
+  return getStartExitPort(pieces)?.dir ?? null
+}
+
+function getStartExitPort(pieces: Piece[]): ConnectorPort | null {
   if (pieces.length === 0) return null
   const first = pieces[0]
-  const conns = connectorsOf(first)
-  const [connA, connB] = conns
-  if (connA === undefined || connB === undefined) return null
+  const ports = connectorPortsOf(first)
+  const [portA, portB] = ports
+  if (portA === undefined || portB === undefined) return null
   if (pieces.length >= 2) {
     const second = pieces[1]
-    const aOff = DIR_OFFSETS[connA]
-    if (
-      first.row + aOff.dr === second.row &&
-      first.col + aOff.dc === second.col
-    ) {
-      return connA
-    }
+    const matching = ports.find((port) => portsConnect(first, port, second))
+    if (matching) return matching
   }
-  return connB
+  return portB
 }
 
 export const CELL_SIZE = 20
@@ -138,6 +146,11 @@ export function edgeMidpoint(row: number, col: number, dir: Dir): Vec3 {
   return { x: c.x + dx, y: 0, z: c.z + dz }
 }
 
+function portMidpoint(piece: Piece, port: ConnectorPort): Vec3 {
+  const cell = portCell(piece, port)
+  return edgeMidpoint(cell.row, cell.col, port.dir)
+}
+
 // Heading in radians where 0 = +X (east) and increases counter-clockwise around +Y.
 // North (-Z) = Math.PI/2, East (+X) = 0, South (+Z) = -Math.PI/2, West (-X) = Math.PI.
 const DIR_HEADINGS: Record<Dir, number> = {
@@ -155,10 +168,20 @@ export function dirToHeading(d: Dir): number {
   return DIR_HEADINGS[d]
 }
 
-function otherConnector(piece: Piece, entry: Dir): Dir {
-  const [a, b] = connectorsOf(piece)
+function otherConnectorPort(piece: Piece, entry: ConnectorPort): ConnectorPort {
+  const [a, b] = connectorPortsOf(piece)
   if (a === undefined || b === undefined) return entry
-  return entry === a ? b : a
+  return samePort(entry, a) ? b : a
+}
+
+function samePort(a: ConnectorPort, b: ConnectorPort): boolean {
+  return a.dr === b.dr && a.dc === b.dc && a.dir === b.dir
+}
+
+function matchingEntryPort(piece: Piece, previous: Piece): ConnectorPort {
+  const ports = connectorPortsOf(piece)
+  const found = ports.find((port) => portsConnect(piece, port, previous))
+  return found ?? ports[0]
 }
 
 function computeArcCenter(
@@ -327,6 +350,8 @@ const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 export const SWEEP_SAMPLE_COUNT = 33
 export const MEGA_SWEEP_SAMPLE_COUNT = 49
 export const MEGA_SWEEP_ARC_RADIUS = 1.5 * CELL_SIZE
+export const HAIRPIN_SAMPLE_COUNT = 65
+export const HAIRPIN_ARC_RADIUS = 1.5 * CELL_SIZE
 const SWEEP_OVERSAMPLE_COUNT = 257
 
 type BezierPoint = { x: number; z: number }
@@ -491,6 +516,26 @@ const MEGA_SWEEP_LEFT_LOCAL_SAMPLES = mirrorSweepSamples(
   MEGA_SWEEP_RIGHT_LOCAL_SAMPLES,
 )
 
+export function sampleHairpinLocal(): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  const p0 = { x: -HALF, z: -CELL_SIZE }
+  const p1 = { x: -HALF + HAIRPIN_ARC_RADIUS, z: -CELL_SIZE }
+  const p2 = { x: -HALF + HAIRPIN_ARC_RADIUS, z: CELL_SIZE }
+  const p3 = { x: -HALF, z: CELL_SIZE }
+  const sampleParameters = equalArcLengthParameters(
+    HAIRPIN_SAMPLE_COUNT,
+    (t) => cubicBezierPoint(p0, p1, p2, p3, t),
+  )
+  for (const t of sampleParameters) {
+    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
+    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
+    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
+  }
+  return samples
+}
+
+const HAIRPIN_LOCAL_SAMPLES = sampleHairpinLocal()
+
 function buildScurveSamples(
   piece: Piece,
   center: Vec3,
@@ -518,11 +563,13 @@ function buildScurveSamples(
 function buildSweepSamples(
   piece: Piece,
   center: Vec3,
-  entryDir: Dir,
+  entryPort: ConnectorPort,
 ): SampledPoint[] {
   const localSamples = sweepLocalSamplesFor(piece)
-  const baseEntryAfterRotation = (4 + (piece.rotation / 90) * 2) % 8
-  const reversed = entryDir !== baseEntryAfterRotation
+  const [baseEntryAfterRotation] = connectorPortsOf(piece)
+  const reversed =
+    baseEntryAfterRotation === undefined ||
+    !samePort(entryPort, baseEntryAfterRotation)
   const transformed = localSamples.map((s) =>
     transformSample(s, center.x, center.z, piece.rotation),
   )
@@ -532,6 +579,7 @@ function buildSweepSamples(
 }
 
 function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
+  if (piece.type === 'hairpin') return HAIRPIN_LOCAL_SAMPLES
   if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
   if (piece.type === 'megaSweepRight') return MEGA_SWEEP_RIGHT_LOCAL_SAMPLES
   if (piece.type === 'sweepLeft') return SWEEP_LEFT_LOCAL_SAMPLES
@@ -547,16 +595,15 @@ export function buildTrackPath(
     throw new Error('empty pieces')
   }
 
-  const byCell = new Map<string, Piece>()
-  for (const p of pieces) byCell.set(cellKey(p.row, p.col), p)
-
   const first = pieces[0]
-  const [connA, connB] = connectorsOf(first)
-  if (connA === undefined || connB === undefined) {
+  const [portA, portB] = connectorPortsOf(first)
+  if (portA === undefined || portB === undefined) {
     throw new Error('start piece has fewer than two connectors')
   }
-  let exitDir: Dir = getStartExitDir(pieces)!
-  let entryDir: Dir = exitDir === connA ? connB : connA
+  let exitPort = getStartExitPort(pieces)!
+  let entryPort = samePort(exitPort, portA) ? portB : portA
+  let exitDir: Dir = exitPort.dir
+  let entryDir: Dir = entryPort.dir
   let current = first
 
   const order: OrderedPiece[] = []
@@ -574,31 +621,32 @@ export function buildTrackPath(
       current.type === 'sweepRight' ||
       current.type === 'sweepLeft' ||
       current.type === 'megaSweepRight' ||
-      current.type === 'megaSweepLeft'
+      current.type === 'megaSweepLeft' ||
+      current.type === 'hairpin'
     order.push({
       piece: current,
       entryDir,
       exitDir,
       center,
-      entry: edgeMidpoint(current.row, current.col, entryDir),
-      exit: edgeMidpoint(current.row, current.col, exitDir),
+      entry: portMidpoint(current, entryPort),
+      exit: portMidpoint(current, exitPort),
       arcCenter: isCorner ? computeArcCenter(center, entryDir, exitDir) : null,
       samples: isScurve
         ? buildScurveSamples(current, center, entryDir)
         : isSweep
-          ? buildSweepSamples(current, center, entryDir)
+          ? buildSweepSamples(current, center, entryPort)
           : null,
     })
 
-    const { dr, dc } = DIR_OFFSETS[exitDir]
-    const nextKey = cellKey(current.row + dr, current.col + dc)
-    const next = byCell.get(nextKey)
+    const next = findConnectedNeighbor(current, exitPort, pieces)
     if (!next) break
-    const nextEntry = opposite(exitDir)
-    const nextExit = otherConnector(next, nextEntry)
+    const nextEntryPort = matchingEntryPort(next, current)
+    const nextExitPort = otherConnectorPort(next, nextEntryPort)
     current = next
-    entryDir = nextEntry
-    exitDir = nextExit
+    entryPort = nextEntryPort
+    exitPort = nextExitPort
+    entryDir = entryPort.dir
+    exitDir = exitPort.dir
   }
 
   const segment: PathSegment = {
@@ -612,7 +660,11 @@ export function buildTrackPath(
     const p = order[i].piece
     const key = cellKey(p.row, p.col)
     cellToOrderIdx.set(key, i)
-    cellToLocators.set(key, [{ segmentId: segment.id, idx: i }])
+    for (const footprintKey of footprintCellKeys(p)) {
+      const locators = cellToLocators.get(footprintKey) ?? []
+      locators.push({ segmentId: segment.id, idx: i })
+      cellToLocators.set(footprintKey, locators)
+    }
   }
 
   // Walk inward along the centerline (arc for corners, straight for straights)

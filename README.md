@@ -29,6 +29,7 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Place sharp left and right turns.
   - Place S-curves.
   - Place wide sweep turns.
+  - Place mega sweep turns and hairpins.
   - Rotate track pieces.
   - Undo and redo edits.
   - Pan and zoom around the editor.

@@ -27,12 +27,39 @@ export const MEGA_SWEEP_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: 1, dc: 1 },
 ]
 
+export const HAIRPIN_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: 0, dc: 0 },
+  { dr: 0, dc: 1 },
+  { dr: 1, dc: 0 },
+  { dr: 1, dc: 1 },
+]
+
 export function defaultFootprintForPiece(
-  piece: Pick<Piece, 'type'>,
+  piece: Pick<Piece, 'type' | 'rotation'>,
 ): readonly FootprintOffset[] {
   return piece.type === 'megaSweepRight' || piece.type === 'megaSweepLeft'
     ? MEGA_SWEEP_FOOTPRINT
-    : DEFAULT_FOOTPRINT
+    : piece.type === 'hairpin'
+      ? rotateFootprintByRotation(HAIRPIN_FOOTPRINT, piece.rotation)
+      : DEFAULT_FOOTPRINT
+}
+
+function rotateFootprintByRotation(
+  footprint: readonly FootprintOffset[],
+  rotation: Piece['rotation'],
+): FootprintOffset[] {
+  let rotated = normalizedFootprint(footprint)
+  for (let i = 0; i < rotation / 90; i++) {
+    rotated = normalizedFootprint(
+      rotated.map((cell) => ({
+        dr: cell.dc,
+        dc: -cell.dr,
+      })),
+    )
+  }
+  return rotated
 }
 
 export function normalizedFootprint(

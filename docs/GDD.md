@@ -218,8 +218,10 @@ Custom tick-based integrator. No Rapier or Cannon. Matches FrackingAsteroids' "c
 - S-curve left (mirror of S-curve right; bumps west off the centerline and returns)
 - Sweep right (single-cell smooth 90-degree right turn)
 - Sweep left (single-cell smooth 90-degree left turn)
+- Mega sweep right and left (multi-cell smooth 90-degree turns)
+- Hairpin (multi-cell 180-degree turn)
 
-Each piece occupies one cell on an infinite grid. Pieces have entry and exit connectors on cell edges. Both S-curve variants use the same connector pair as a straight (S-N at rotation 0) so they slot in wherever a straight does. Both sweep variants use the same connector pairs as the matching 90-degree turn, with a sampled centerline for a smoother cornering feel. Later addition: elevation ramp.
+Most pieces occupy one cell on an infinite grid. Multi-cell pieces reserve a footprint for clearance and overlap validation. Pieces have entry and exit connectors on cell edges. Both S-curve variants use the same connector pair as a straight (S-N at rotation 0) so they slot in wherever a straight does. Sweep and mega sweep variants use the same connector pairs as the matching 90-degree turn, with sampled centerlines for smoother cornering. The hairpin uses connector ports on different footprint cells so it can enter and exit on the same outer edge. Later addition: elevation ramp.
 
 ### Editor
 
