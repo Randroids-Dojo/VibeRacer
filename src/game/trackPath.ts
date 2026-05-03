@@ -352,6 +352,8 @@ export const MEGA_SWEEP_SAMPLE_COUNT = 49
 export const MEGA_SWEEP_ARC_RADIUS = 1.5 * CELL_SIZE
 export const HAIRPIN_SAMPLE_COUNT = 65
 export const HAIRPIN_ARC_RADIUS = 1.5 * CELL_SIZE
+export const ARC45_SAMPLE_COUNT = 25
+export const DIAGONAL_SAMPLE_COUNT = 17
 const SWEEP_OVERSAMPLE_COUNT = 257
 
 type BezierPoint = { x: number; z: number }
@@ -536,6 +538,37 @@ export function sampleHairpinLocal(): SampledPoint[] {
 
 const HAIRPIN_LOCAL_SAMPLES = sampleHairpinLocal()
 
+export function sampleArc45Local(): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  const p0 = { x: 0, z: HALF }
+  const p1 = { x: 0, z: HALF - CELL_SIZE * 0.55 }
+  const p2 = { x: HALF - CELL_SIZE * 0.55, z: -HALF + CELL_SIZE * 0.55 }
+  const p3 = { x: HALF, z: -HALF }
+  const sampleParameters = equalArcLengthParameters(ARC45_SAMPLE_COUNT, (t) =>
+    cubicBezierPoint(p0, p1, p2, p3, t),
+  )
+  for (const t of sampleParameters) {
+    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
+    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
+    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
+  }
+  return samples
+}
+
+export function sampleDiagonalLocal(): SampledPoint[] {
+  return Array.from({ length: DIAGONAL_SAMPLE_COUNT }, (_, i) => {
+    const t = i / (DIAGONAL_SAMPLE_COUNT - 1)
+    return {
+      x: -HALF + CELL_SIZE * t,
+      z: HALF - CELL_SIZE * t,
+      heading: Math.PI / 4,
+    }
+  })
+}
+
+const ARC45_LOCAL_SAMPLES = sampleArc45Local()
+const DIAGONAL_LOCAL_SAMPLES = sampleDiagonalLocal()
+
 function buildScurveSamples(
   piece: Piece,
   center: Vec3,
@@ -579,6 +612,8 @@ function buildSweepSamples(
 }
 
 function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
+  if (piece.type === 'diagonal') return DIAGONAL_LOCAL_SAMPLES
+  if (piece.type === 'arc45') return ARC45_LOCAL_SAMPLES
   if (piece.type === 'hairpin') return HAIRPIN_LOCAL_SAMPLES
   if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
   if (piece.type === 'megaSweepRight') return MEGA_SWEEP_RIGHT_LOCAL_SAMPLES
@@ -622,7 +657,9 @@ export function buildTrackPath(
       current.type === 'sweepLeft' ||
       current.type === 'megaSweepRight' ||
       current.type === 'megaSweepLeft' ||
-      current.type === 'hairpin'
+      current.type === 'hairpin' ||
+      current.type === 'arc45' ||
+      current.type === 'diagonal'
     order.push({
       piece: current,
       entryDir,

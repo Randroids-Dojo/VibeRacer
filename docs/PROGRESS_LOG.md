@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Diagonal Track Pieces
+
+- Branch: `feature/diagonal-track-pieces`
+- Changed: added `arc45` and `diagonal` track pieces. The 45 arc bridges cardinal connectors into corner connectors, and diagonal pieces chain corner-to-corner through the existing 8-direction connector scaffold. Wired both pieces into schema validation, sampled track paths, editor palette glyphs, pace notes, difficulty scoring, wheel contact coverage, player-facing feature copy, and Section 6 GDD coverage.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/wheelContact.test.ts tests/unit/tuningLabTrack.test.ts` passed with 219 tests, `npm test` passed with 3142 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: `arc45` should ship with the diagonal slice because it is the bridge that makes diagonal runs connect cleanly back into existing cardinal track pieces.
+- GDD coverage: Section 6 Track system now records 45-degree arcs and diagonal straights as shipped track pieces.
+- Followups: continue with Phase 2 double-wide tracks after the long-turn and diagonal piece set.
+
 ## 2026-05-03, Remove Home Race Calendar
 
 - Branch: `remove-home-race-calendar`

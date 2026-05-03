@@ -147,7 +147,9 @@
         "8-direction connector scaffold",
         "hash canonicalization plumbing",
         "mega sweep turns",
-        "hairpin turns"
+        "hairpin turns",
+        "45-degree arcs",
+        "diagonal straights"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",

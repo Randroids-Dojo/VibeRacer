@@ -52,6 +52,36 @@ describe('wheelTrackContact', () => {
     expect(contact.pieceIdx).toBe(0)
     expect(contact.distanceToCenterline).toBeLessThan(0.01)
   })
+
+  it('marks a wheel on a diagonal sampled centerline as on track', () => {
+    const diagonalLoop: Piece[] = [
+      { type: 'arc45', row: 0, col: 0, rotation: 0 },
+      { type: 'diagonal', row: -1, col: 1, rotation: 0 },
+      { type: 'arc45', row: -2, col: 2, rotation: 180 },
+      { type: 'left90', row: -3, col: 2, rotation: 0 },
+      { type: 'straight', row: -3, col: 1, rotation: 90 },
+      { type: 'straight', row: -3, col: 0, rotation: 90 },
+      { type: 'left90', row: -3, col: -1, rotation: 270 },
+      { type: 'straight', row: -2, col: -1, rotation: 0 },
+      { type: 'straight', row: -1, col: -1, rotation: 0 },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+      { type: 'left90', row: 1, col: -1, rotation: 180 },
+      { type: 'right90', row: 1, col: 0, rotation: 180 },
+    ]
+    const diagonalPath = buildTrackPath(diagonalLoop)
+    const sample = diagonalPath.order[1].samples![Math.floor(
+      diagonalPath.order[1].samples!.length / 2,
+    )]
+    const contact = wheelTrackContact(
+      diagonalPath,
+      'frontLeft',
+      sample.x,
+      sample.z,
+    )
+    expect(contact.onTrack).toBe(true)
+    expect(contact.pieceIdx).toBe(1)
+    expect(contact.distanceToCenterline).toBeLessThan(0.01)
+  })
 })
 
 describe('vehicleTrackContact', () => {

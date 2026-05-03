@@ -14,6 +14,8 @@ const pieceTypes: PieceType[] = [
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'arc45',
+  'diagonal',
 ]
 const rotations: Rotation[] = [0, 90, 180, 270]
 
@@ -35,14 +37,21 @@ describe('8-direction connector scaffold', () => {
     })
   })
 
-  it('keeps existing pieces on cardinal connectors only', () => {
+  it('keeps pre-diagonal pieces on cardinal connectors only', () => {
     for (const type of pieceTypes) {
+      if (type === 'arc45' || type === 'diagonal') continue
       for (const rotation of rotations) {
         const dirs = connectorsOf(piece(type, rotation))
         expect(dirs.length).toBe(2)
         expect(dirs.every((dir) => cardinalDirs.includes(dir))).toBe(true)
       }
     }
+  })
+
+  it('adds corner connectors for 45-degree pieces', () => {
+    expect(connectorsOf(piece('arc45', 0))).toEqual([4, 1])
+    expect(connectorsOf(piece('diagonal', 0))).toEqual([5, 1])
+    expect(connectorsOf(piece('diagonal', 90))).toEqual([7, 3])
   })
 
   it('rotates existing pieces in 90-degree steps across the 8-dir encoding', () => {

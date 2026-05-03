@@ -73,6 +73,15 @@ describe('PieceSchema', () => {
     ).toEqual({ type: 'hairpin', row: 0, col: 0, rotation: 0 })
   })
 
+  it('accepts the 45-degree connector piece types', () => {
+    expect(
+      PieceSchema.parse({ type: 'arc45', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'arc45', row: 0, col: 0, rotation: 0 })
+    expect(
+      PieceSchema.parse({ type: 'diagonal', row: 0, col: 0, rotation: 90 }),
+    ).toEqual({ type: 'diagonal', row: 0, col: 0, rotation: 90 })
+  })
+
   it('accepts an optional multi-cell footprint', () => {
     expect(
       PieceSchema.parse({

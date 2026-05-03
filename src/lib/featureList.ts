@@ -38,6 +38,7 @@ export const FEATURE_LIST: readonly FeatureCategory[] = [
       'Place S-curves.',
       'Place wide sweep turns.',
       'Place mega sweep turns and hairpins.',
+      'Place 45-degree arcs and diagonal straights.',
       'Rotate track pieces.',
       'Undo and redo edits.',
       'Pan and zoom around the editor.',
