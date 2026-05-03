@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Mega Sweep Track Pieces
+
+- Branch: `feature/mega-sweep-pieces`
+- Changed: added `megaSweepRight` and `megaSweepLeft` piece types with implicit 3x3 footprints, cardinal sweep connectors, 49-sample centerlines, editor palette entries, mirror support, pace notes, difficulty weights, and focused tests. Track validation now separates anchor-cell connector lookup from footprint occupancy, while still rejecting unrelated anchors inside a mega sweep footprint.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/wheelContact.test.ts` passed with 196 tests, `npm test` passed with 3126 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Assumptions: Phase 1a keeps connector matching on anchor-adjacent cells because the current track graph does not support per-connector footprint offsets. The 3x3 footprint reserves clearance around the anchor while direct connector neighbors may occupy the connector cells.
+- GDD coverage: Section 6 Track system now records mega sweep turns as a long-turn track piece.
+- Followups: continue with Phase 1b Hairpin.
+
 ## 2026-05-03, Hash Canonicalization Plumbing
 
 - Branch: `feature/hash-canonicalization-plumbing`
+- PR: #79
 - Changed: added hash canonicalization helpers for future optional track fields. Default `widthClass` values and empty `branchEdges` are omitted from canonical JSON, while non-default width metadata and non-empty branch edges are emitted deterministically. Current template hashes are pinned in tests to guard Phase 0 hash stability.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/hashTrack.test.ts tests/unit/schemas.test.ts tests/unit/trackTemplates.test.ts tests/unit/api.track.test.ts` passed with 94 tests, `npm test` passed with 3117 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after build.
+- Post-merge: PR #79 merged at commit `83f9678`. Main CodeQL passed, Vercel production deployment completed, direct smoke of the project deployment URL was blocked by Vercel SSO with HTTP 401 and `_vercel_sso_nonce`, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 0e should not add user-facing schema fields yet. It only prepares canonical hashing for Phase 2 width classes and Phase 3 branch metadata.
 - GDD coverage: Section 6 Track system now records hash canonicalization plumbing for future optional track fields.
 - Followups: continue with Phase 1 long-turn piece work after Phase 0 scaffolding.

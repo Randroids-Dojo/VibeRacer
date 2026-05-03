@@ -42,7 +42,7 @@ Pure refactor. No user-visible change. Existing tracks hash and play identically
 
 Depends on 0c (multi-cell footprint) and 0d (8-dir connectors).
 
-**1a. Mega Sweep (3x3, 90).** New piece type `'megaSweepRight'` and `'megaSweepLeft'` in `PieceTypeSchema` (`schemas.ts:27-35`). Footprint covers a 3x3 block. Connectors `[S, E]` for `megaSweepRight` (rotation 0). Centerline is a quarter-arc of radius `1.5 * CELL_SIZE = 30` (arc length about 47 units, roughly 3x a tight 90). Add `sampleMegaSweepLocal()` next to `sampleSweepLocal()` in `trackPath.ts`, sample count 49.
+**1a. Mega Sweep (3x3, 90). Done.** New piece types `'megaSweepRight'` and `'megaSweepLeft'` are in `PieceTypeSchema`. Mega sweeps resolve to an implicit 3x3 footprint around the anchor cell, with connector-neighbor anchors allowed inside that footprint only when the pieces directly connect. Connectors stay `[S, E]` for `megaSweepRight` and `[S, W]` for `megaSweepLeft` at rotation 0. `trackPath.ts` now samples mega sweeps with 49 points, `MEGA_SWEEP_ARC_RADIUS = 1.5 * CELL_SIZE`, and a longer cubic centerline that stays inside the reserved 3x3 footprint.
 
 **1b. Hairpin (2x3, 180).** New piece types `'hairpinUp'` / `'hairpinDown'` (or single `'hairpin'` with rotation handling all four orientations). Footprint covers a 2-wide x 3-tall block. Both connectors on the same outer edge (west, in rotation 0): one at the top row's W, one at the bottom row's W. Centerline is a 180 degree arc of radius `1.5 * CELL_SIZE = 30` between the two W connectors (arc length about 94 units, well over the 80-unit drift budget for a 4-second max-multiplier slide). Add `sampleHairpinLocal()`, sample count 65.
 

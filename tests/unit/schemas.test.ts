@@ -58,6 +58,15 @@ describe('PieceSchema', () => {
     ).toEqual({ type: 'sweepLeft', row: 0, col: 0, rotation: 0 })
   })
 
+  it('accepts the mega sweep turn piece types', () => {
+    expect(
+      PieceSchema.parse({ type: 'megaSweepRight', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'megaSweepRight', row: 0, col: 0, rotation: 0 })
+    expect(
+      PieceSchema.parse({ type: 'megaSweepLeft', row: 0, col: 0, rotation: 0 }),
+    ).toEqual({ type: 'megaSweepLeft', row: 0, col: 0, rotation: 0 })
+  })
+
   it('accepts an optional multi-cell footprint', () => {
     expect(
       PieceSchema.parse({

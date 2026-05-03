@@ -27,6 +27,8 @@ describe('TUNING_LAB_TRACK_PIECES', () => {
       scurveLeft: 0,
       sweepRight: 0,
       sweepLeft: 0,
+      megaSweepRight: 0,
+      megaSweepLeft: 0,
     }
     for (const p of TUNING_LAB_TRACK_PIECES) counts[p.type] += 1
     expect(counts.straight).toBeGreaterThanOrEqual(4)
