@@ -40,7 +40,8 @@ const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   megaSweepRight: [4, 2], // S -> E (3x3 smooth sampled right turn)
   megaSweepLeft: [4, 6], // S -> W (3x3 smooth sampled left turn)
   hairpin: [6, 6], // W -> W on different footprint rows
-  arc45: [4, 1], // S -> NE (cardinal-to-corner bridge)
+  arc45: [4, 1], // S -> NE (right-hand cardinal-to-corner bridge)
+  arc45Left: [4, 7], // S -> NW (left-hand cardinal-to-corner bridge)
   diagonal: [5, 1], // SW -> NE (straight across one cell corner-to-corner)
 }
 

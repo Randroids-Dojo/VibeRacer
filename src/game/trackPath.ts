@@ -555,6 +555,14 @@ export function sampleArc45Local(): SampledPoint[] {
   return samples
 }
 
+export function sampleArc45LeftLocal(): SampledPoint[] {
+  return sampleArc45Local().map((s) => ({
+    x: -s.x,
+    z: s.z,
+    heading: Math.PI - s.heading,
+  }))
+}
+
 export function sampleDiagonalLocal(): SampledPoint[] {
   return Array.from({ length: DIAGONAL_SAMPLE_COUNT }, (_, i) => {
     const t = i / (DIAGONAL_SAMPLE_COUNT - 1)
@@ -567,6 +575,7 @@ export function sampleDiagonalLocal(): SampledPoint[] {
 }
 
 const ARC45_LOCAL_SAMPLES = sampleArc45Local()
+const ARC45_LEFT_LOCAL_SAMPLES = sampleArc45LeftLocal()
 const DIAGONAL_LOCAL_SAMPLES = sampleDiagonalLocal()
 
 function buildScurveSamples(
@@ -613,6 +622,7 @@ function buildSweepSamples(
 
 function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
   if (piece.type === 'diagonal') return DIAGONAL_LOCAL_SAMPLES
+  if (piece.type === 'arc45Left') return ARC45_LEFT_LOCAL_SAMPLES
   if (piece.type === 'arc45') return ARC45_LOCAL_SAMPLES
   if (piece.type === 'hairpin') return HAIRPIN_LOCAL_SAMPLES
   if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
@@ -659,6 +669,7 @@ export function buildTrackPath(
       current.type === 'megaSweepLeft' ||
       current.type === 'hairpin' ||
       current.type === 'arc45' ||
+      current.type === 'arc45Left' ||
       current.type === 'diagonal'
     order.push({
       piece: current,

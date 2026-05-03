@@ -13,6 +13,7 @@ import {
   distanceToCenterline,
   samplePieceAt,
   sampleArc45Local,
+  sampleArc45LeftLocal,
   sampleDiagonalLocal,
   sampleHairpinLocal,
   sampleMegaSweepLeftLocal,
@@ -549,6 +550,18 @@ describe('45-degree connector pieces', () => {
     expect(samples[samples.length - 1].heading).toBeCloseTo(Math.PI / 4, 5)
   })
 
+  it('samples a mirrored arc for left-hand diagonal transitions', () => {
+    const right = sampleArc45Local()
+    const left = sampleArc45LeftLocal()
+    expect(left.length).toBe(ARC45_SAMPLE_COUNT)
+    for (let i = 0; i < right.length; i++) {
+      expect(left[i].x).toBeCloseTo(-right[i].x, 6)
+      expect(left[i].z).toBeCloseTo(right[i].z, 6)
+    }
+    expect(left[0].heading).toBeCloseTo(Math.PI / 2, 5)
+    expect(left[left.length - 1].heading).toBeCloseTo(3 * Math.PI / 4, 5)
+  })
+
   it('samples a diagonal across one cell corner-to-corner', () => {
     const samples = sampleDiagonalLocal()
     expect(samples.length).toBe(DIAGONAL_SAMPLE_COUNT)
@@ -585,6 +598,30 @@ describe('45-degree connector pieces', () => {
       { type: 'diagonal', row: -1, col: 1, rotation: 0 },
     ]
     expect(validateClosedLoop(invalid).ok).toBe(false)
+  })
+
+  it('forms a valid loop with left-hand 45 arcs', () => {
+    const leftDiagonalLoop: Piece[] = [
+      { type: 'arc45Left', row: 0, col: 0, rotation: 0 },
+      { type: 'diagonal', row: -1, col: -1, rotation: 90 },
+      { type: 'arc45Left', row: -2, col: -2, rotation: 180 },
+      { type: 'right90', row: -3, col: -2, rotation: 0 },
+      { type: 'straight', row: -3, col: -1, rotation: 90 },
+      { type: 'straight', row: -3, col: 0, rotation: 90 },
+      { type: 'left90', row: -3, col: 1, rotation: 0 },
+      { type: 'straight', row: -2, col: 1, rotation: 0 },
+      { type: 'straight', row: -1, col: 1, rotation: 0 },
+      { type: 'straight', row: 0, col: 1, rotation: 0 },
+      { type: 'right90', row: 1, col: 1, rotation: 180 },
+      { type: 'left90', row: 1, col: 0, rotation: 180 },
+    ]
+    expect(validateClosedLoop(leftDiagonalLoop)).toEqual({ ok: true })
+    const path = buildTrackPath(leftDiagonalLoop)
+    expect(path.order.map((op) => op.piece.type).slice(0, 3)).toEqual([
+      'arc45Left',
+      'diagonal',
+      'arc45Left',
+    ])
   })
 })
 

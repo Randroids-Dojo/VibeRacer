@@ -125,6 +125,9 @@ describe('TURN_PIECE_TYPES', () => {
     expect(TURN_PIECE_TYPES.has('megaSweepRight')).toBe(true)
     expect(TURN_PIECE_TYPES.has('megaSweepLeft')).toBe(true)
     expect(TURN_PIECE_TYPES.has('hairpin')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('arc45')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('arc45Left')).toBe(true)
+    expect(TURN_PIECE_TYPES.has('diagonal')).toBe(true)
   })
 
   it('does not contain straights', () => {

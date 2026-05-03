@@ -148,7 +148,7 @@
         "hash canonicalization plumbing",
         "mega sweep turns",
         "hairpin turns",
-        "45-degree arcs",
+        "right and left 45-degree arcs",
         "diagonal straights"
       ],
       "evidence": [
