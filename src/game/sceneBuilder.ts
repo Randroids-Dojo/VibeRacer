@@ -45,6 +45,7 @@ import {
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+import { halfWidthAt, widthAt } from './trackWidth'
 import {
   SKID_MARK_LENGTH,
   SKID_MARK_POOL_SIZE,
@@ -276,7 +277,7 @@ function buildFlatGeometry(verts: number[], idx: number[]): BufferGeometry {
 function straightGeometry(op: OrderedPiece): BufferGeometry {
   const isVertical = op.entryDir === 0 || op.entryDir === 2
   const halfLong = CELL_SIZE / 2
-  const halfShort = TRACK_WIDTH / 2
+  const halfShort = halfWidthAt(op, 0.5)
   const { x: cx, z: cz } = op.center
   const verts = isVertical
     ? [
@@ -296,8 +297,9 @@ function straightGeometry(op: OrderedPiece): BufferGeometry {
 
 function cornerGeometry(op: OrderedPiece, segments = 20): BufferGeometry {
   const { cx, cz } = op.arcCenter!
-  const innerR = CELL_SIZE / 2 - TRACK_WIDTH / 2
-  const outerR = CELL_SIZE / 2 + TRACK_WIDTH / 2
+  const halfWidth = halfWidthAt(op, 0.5)
+  const innerR = CELL_SIZE / 2 - halfWidth
+  const outerR = CELL_SIZE / 2 + halfWidth
 
   const a1 = Math.atan2(op.entry.z - cz, op.entry.x - cx)
   const a2 = Math.atan2(op.exit.z - cz, op.exit.x - cx)
@@ -329,10 +331,11 @@ function cornerGeometry(op: OrderedPiece, segments = 20): BufferGeometry {
 
 function polylineGeometry(op: OrderedPiece): BufferGeometry {
   const samples = op.samples!
-  const half = TRACK_WIDTH / 2
   const verts: number[] = []
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i]
+    const t = samples.length <= 1 ? 0 : i / (samples.length - 1)
+    const half = halfWidthAt(op, t)
     // Use the sample's analytical heading instead of differencing neighbours.
     // At the endpoints the analytical tangent is exactly perpendicular to the
     // cell edge, so the road vertices land exactly on the connecting piece's
@@ -1195,11 +1198,12 @@ function buildCheckpointMarkers(path: TrackPath): Group {
   // outer surface rather than clipping into it.
   const flagCenterOffset = flagWidth / 2 + poleRadius
   for (const marker of path.checkpointMarkers) {
+    const markerHalfWidth = halfWidthAt(path.order[marker.pieceIdx], 0.5)
     const sideX = -Math.sin(marker.heading)
     const sideZ = -Math.cos(marker.heading)
     for (const sign of [-1, 1]) {
-      const x = marker.position.x + sideX * sign * (TRACK_WIDTH / 2 + 0.85)
-      const z = marker.position.z + sideZ * sign * (TRACK_WIDTH / 2 + 0.85)
+      const x = marker.position.x + sideX * sign * (markerHalfWidth + 0.85)
+      const z = marker.position.z + sideZ * sign * (markerHalfWidth + 0.85)
       const pole = new Mesh(poleGeom, poleMat)
       pole.position.set(x, 1.2, z)
       group.add(pole)
@@ -2155,7 +2159,8 @@ export function buildScene(
   checkerTexture.magFilter = NearestFilter
   checkerTexture.minFilter = NearestFilter
   checkerTexture.needsUpdate = true
-  const stripeGeom = new PlaneGeometry(TRACK_WIDTH, FINISH_STRIPE_DEPTH)
+  const finishWidth = widthAt(path.order[0], 0)
+  const stripeGeom = new PlaneGeometry(finishWidth, FINISH_STRIPE_DEPTH)
   const stripeMat = new MeshStandardMaterial({
     map: checkerTexture,
     roughness: 0.85,
@@ -2173,7 +2178,7 @@ export function buildScene(
     path.finishLine.position.x,
     path.finishLine.position.z,
     path.finishLine.heading,
-    TRACK_WIDTH / 2,
+    finishWidth / 2,
     FINISH_GATE_POLE_INSET,
   )
   const poleMat = new MeshStandardMaterial({ color: 0xf2f2f2, roughness: 0.6 })

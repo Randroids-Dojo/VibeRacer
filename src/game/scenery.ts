@@ -17,12 +17,12 @@
 
 import {
   CELL_SIZE,
-  TRACK_WIDTH,
   cellCenter,
   distanceToCenterline,
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+import { DEFAULT_TRACK_WIDTH, halfWidthAt } from './trackWidth'
 import {
   getTrackBiomePreset,
   type TrackBiome,
@@ -35,7 +35,7 @@ import type { TrackDecoration } from '@/lib/decorations'
 // max distance from a track piece's center to any point in its cell, so this
 // number being a little larger than TRACK_WIDTH/2 keeps trees off the road
 // without leaving an obvious dead band of bare grass.
-export const SCENERY_TRACK_CLEARANCE = TRACK_WIDTH / 2 + 2.4
+export const SCENERY_TRACK_CLEARANCE = DEFAULT_TRACK_WIDTH / 2 + 2.4
 
 // Radial extent of the scenery field around the track. We sample candidate
 // positions on a regular grid spanning the track bounding box plus this
@@ -63,7 +63,7 @@ export const SCENERY_TREE_DENSITY = 0.55
 // outside line reads as a tight wall of orange. The offset is the radial
 // distance from the road centerline; OUTER_RADIUS = CELL_SIZE/2 + TRACK_WIDTH/2
 // is the outer edge of the asphalt, so this lands cones a little beyond it.
-export const SCENERY_CONE_RADIUS_OFFSET = TRACK_WIDTH / 2 + 1.0
+export const SCENERY_CONE_RADIUS_OFFSET = DEFAULT_TRACK_WIDTH / 2 + 1.0
 
 // How many cones per corner. Spread evenly across the outside arc.
 export const SCENERY_CONES_PER_CORNER = 4
@@ -332,7 +332,7 @@ function conesForCorner(
 ): SceneryItem[] {
   if (op.arcCenter === null) return []
   const { cx, cz } = op.arcCenter
-  const outerRadius = CELL_SIZE / 2 + TRACK_WIDTH / 2 + radiusOffset
+  const outerRadius = CELL_SIZE / 2 + halfWidthAt(op, 0.5) + radiusOffset
   const a1 = Math.atan2(op.entry.z - cz, op.entry.x - cx)
   const a2 = Math.atan2(op.exit.z - cz, op.exit.x - cx)
   let delta = a2 - a1
@@ -370,7 +370,7 @@ function conesForCorner(
 // Five blocks per side, color alternates, all heading-aligned.
 export const SCENERY_BARRIERS_PER_SIDE = 5
 export const SCENERY_BARRIER_SPACING = 1.6
-export const SCENERY_BARRIER_OFFSET = TRACK_WIDTH / 2 + 1.4
+export const SCENERY_BARRIER_OFFSET = DEFAULT_TRACK_WIDTH / 2 + 1.4
 
 export function buildStartBarriers(
   path: TrackPath,

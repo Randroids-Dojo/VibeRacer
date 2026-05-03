@@ -11,10 +11,10 @@
 
 import {
   CELL_SIZE,
-  TRACK_WIDTH,
   type OrderedPiece,
   type TrackPath,
 } from './trackPath'
+import { halfWidthAt } from './trackWidth'
 
 export const MINIMAP_DEFAULT_VIEW_SIZE = 100
 export const MINIMAP_DEFAULT_PADDING = 6
@@ -98,7 +98,10 @@ export function computeBounds(path: TrackPath): MinimapBounds {
   }
   // Pad by half the track width so the outline never clips a corner that
   // bows out exactly to the cell edge.
-  const half = TRACK_WIDTH / 2
+  const half = path.order.reduce(
+    (max, op) => Math.max(max, halfWidthAt(op, 0.5)),
+    0,
+  )
   return {
     minX: minX - half,
     maxX: maxX + half,

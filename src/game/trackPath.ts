@@ -22,7 +22,7 @@ export function getStartExitDir(pieces: Piece[]): Dir | null {
 }
 
 export const CELL_SIZE = 20
-export const TRACK_WIDTH = 8
+export { DEFAULT_TRACK_WIDTH as TRACK_WIDTH } from './trackWidth'
 export const CORNER_ARC_RADIUS = CELL_SIZE / 2
 const CORNER_ARC_LENGTH = CORNER_ARC_RADIUS * (Math.PI / 2)
 
