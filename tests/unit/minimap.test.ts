@@ -109,8 +109,10 @@ describe('buildMinimapGeometry', () => {
 
   it('throws on an empty path', () => {
     const fakePath = {
+      segments: [],
       order: [],
       cellToOrderIdx: new Map<string, number>(),
+      cellToLocators: new Map<string, never[]>(),
       spawn: { position: { x: 0, y: 0, z: 0 }, heading: 0 },
       finishLine: { position: { x: 0, y: 0, z: 0 }, heading: 0 },
       cpTriggerPieceIdx: [],

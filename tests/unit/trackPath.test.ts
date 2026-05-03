@@ -86,6 +86,25 @@ describe('buildTrackPath', () => {
     }
   })
 
+  it('exposes current tracks as one closed segment', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES)
+
+    expect(path.segments).toHaveLength(1)
+    expect(path.segments[0].id).toBe('main')
+    expect(path.segments[0].order).toBe(path.order)
+    expect(path.segments[0].closesLoop).toBe(true)
+  })
+
+  it('cellToLocators mirrors cellToOrderIdx for single-segment tracks', () => {
+    const path = buildTrackPath(DEFAULT_TRACK_PIECES)
+
+    for (let i = 0; i < path.order.length; i++) {
+      const p = path.order[i].piece
+      const key = `${p.row},${p.col}`
+      expect(path.cellToLocators.get(key)).toEqual([{ segmentId: 'main', idx: i }])
+    }
+  })
+
   it('centers are one CELL_SIZE apart along the loop', () => {
     const path = buildTrackPath(DEFAULT_TRACK_PIECES)
     for (let i = 0; i < path.order.length; i++) {

@@ -141,7 +141,8 @@
         "rectangle selection",
         "selected track transforms",
         "track templates",
-        "track width scaffold"
+        "track width scaffold",
+        "segment path scaffold"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
