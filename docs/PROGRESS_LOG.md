@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Remove Home Race Calendar
+
+- Branch: `remove-home-race-calendar`
+- Changed: removed the race calendar heatmap from the home page while keeping the daily challenge and daily streak widgets. Updated the GDD home-page description to reflect the leaner first screen.
+- Verification: dash checks, `git diff --check`, focused `npm test -- tests/unit/featureList.test.ts tests/unit/raceCalendar.test.ts tests/unit/dailyStreak.test.ts tests/unit/dailyChallenge.test.ts` passed with 124 tests, `npm run type-check` passed, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the daily streak widget carries the useful "race today" behavior, while the 12-week heatmap is passive history better suited to a future stats surface if it returns.
+- GDD coverage: Section 7 home-page scope now records daily challenge and daily streak without the home calendar.
+- Followups: decide later whether to delete the dormant race calendar component and helper after a second pass.
+
 ## 2026-05-03, Hairpin Track Piece
 
 - Branch: `feature/hairpin-track-piece`
