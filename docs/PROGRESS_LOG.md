@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Track Width Scaffold
+
+- Branch: `feature/track-width-scaffold`
+- Changed: added `src/game/trackWidth.ts` as the default-width resolver for upcoming wide-track work, re-exported the legacy `TRACK_WIDTH` from `trackPath.ts`, and routed wheel contact, kerbs, scenery, minimap bounds, thumbnails, checkpoint marker placement, finish-line geometry, and road extrusion through width helpers where piece context is available. The default helper still returns width 8 for every piece, so existing tracks remain visually and behaviorally unchanged.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackWidth.test.ts tests/unit/wheelContact.test.ts tests/unit/kerbs.test.ts tests/unit/minimap.test.ts tests/unit/scenery.test.ts tests/unit/trackThumbnail.test.ts tests/unit/sceneBuilder.test.ts` passed with 73 tests, `npm test` passed with 3080 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Assumptions: Phase 0a should preserve all legacy constants and leave `widthClass` schema work to Phase 2, so this slice introduces no track hash input.
+- GDD coverage: Section 6 Track system now records the track-width scaffold as Phase 0 groundwork for double-wide tracks.
+- Followups: continue with Phase 0b segment-based `TrackPath`.
+
 ## 2026-05-01, Music Editor Front-End Redesign
 
 - Branch: `feature/music-editor-redesign`

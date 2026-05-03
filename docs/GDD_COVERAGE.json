@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-01",
+  "updatedAt": "2026-05-03",
   "sections": [
     {
       "id": "2",
@@ -140,7 +140,8 @@
         "placed decorations",
         "rectangle selection",
         "selected track transforms",
-        "track templates"
+        "track templates",
+        "track width scaffold"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -149,6 +150,7 @@
         "src/game/editor.ts",
         "src/game/editorHistory.ts",
         "src/game/editorZoom.ts",
+        "src/game/trackWidth.ts",
         "src/game/trackTemplates.ts",
         "src/lib/biomes.ts",
         "src/lib/decorations.ts",
@@ -159,6 +161,7 @@
         "tests/unit/editor.test.ts",
         "tests/unit/editorHistory.test.ts",
         "tests/unit/editorZoom.test.ts",
+        "tests/unit/trackWidth.test.ts",
         "tests/unit/trackTemplates.test.ts",
         "tests/unit/biomes.test.ts",
         "tests/unit/decorations.test.ts",

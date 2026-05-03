@@ -1,10 +1,6 @@
 import { cellKey } from './track'
-import {
-  TRACK_WIDTH,
-  distanceToCenterline,
-  worldToCell,
-  type TrackPath,
-} from './trackPath'
+import { halfWidthAt } from './trackWidth'
+import { distanceToCenterline, worldToCell, type TrackPath } from './trackPath'
 
 export const WHEEL_CONTACT_FRONT_OFFSET = 1.55
 export const WHEEL_CONTACT_REAR_OFFSET = 1.35
@@ -101,7 +97,7 @@ export function wheelTrackContact(
     id,
     x,
     z,
-    onTrack: distance <= TRACK_WIDTH / 2,
+    onTrack: distance <= halfWidthAt(path.order[pieceIdx], 0.5),
     distanceToCenterline: distance,
     pieceIdx,
   }

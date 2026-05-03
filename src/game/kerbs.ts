@@ -13,7 +13,8 @@
 // affordance because they communicate "this is the apex, hug it" to the
 // player. Adding them to straights would just be visual noise.
 
-import { CELL_SIZE, TRACK_WIDTH, type OrderedPiece, type TrackPath } from './trackPath'
+import { halfWidthAt } from './trackWidth'
+import { CELL_SIZE, type OrderedPiece, type TrackPath } from './trackPath'
 
 // Visible kerb tile dimensions. KERB_TILE_LENGTH is the arc-aligned dimension
 // (i.e., how long each colored stripe reads as you drive past). KERB_DEPTH is
@@ -73,7 +74,7 @@ export function buildCornerKerbTiles(
   if (segmentCount < 1 || !Number.isFinite(segmentCount)) return []
 
   const { cx, cz } = op.arcCenter
-  const innerRadius = CELL_SIZE / 2 - TRACK_WIDTH / 2
+  const innerRadius = CELL_SIZE / 2 - halfWidthAt(op, 0.5)
 
   // Replicate the angle-sweep math from cornerGeometry so the kerb tiles
   // follow the exact same arc the road does.

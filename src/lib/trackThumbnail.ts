@@ -10,7 +10,8 @@
 // Vitest unit test without touching the DOM.
 
 import type { Piece } from './schemas'
-import { buildTrackPath, TRACK_WIDTH } from '@/game/trackPath'
+import { DEFAULT_TRACK_WIDTH } from '@/game/trackWidth'
+import { buildTrackPath } from '@/game/trackPath'
 import { buildMinimapGeometry } from '@/game/minimap'
 
 export const THUMBNAIL_DEFAULT_VIEW_SIZE = 64
@@ -18,7 +19,7 @@ export const THUMBNAIL_DEFAULT_PADDING = 6
 // The road in world units. We map this through the same scale that
 // buildMinimapGeometry uses so the road thickness on the thumbnail visually
 // matches the actual track-width-to-cell-size ratio of the world.
-export const THUMBNAIL_ROAD_WORLD_WIDTH = TRACK_WIDTH
+export const THUMBNAIL_ROAD_WORLD_WIDTH = DEFAULT_TRACK_WIDTH
 
 export interface TrackThumbnail {
   // The SVG viewBox edge length. Square so the thumbnail composes nicely on
