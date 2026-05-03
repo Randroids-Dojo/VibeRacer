@@ -54,9 +54,22 @@ export interface OrderedPiece {
   samples: SampledPoint[] | null
 }
 
+export interface PathLocator {
+  segmentId: string
+  idx: number
+}
+
+export interface PathSegment {
+  id: string
+  order: OrderedPiece[]
+  closesLoop: boolean
+}
+
 export interface TrackPath {
+  segments: PathSegment[]
   order: OrderedPiece[]
   cellToOrderIdx: Map<string, number>
+  cellToLocators: Map<string, PathLocator[]>
   spawn: { position: Vec3; heading: number }
   finishLine: { position: Vec3; heading: number }
   // Path-order index of the piece whose entry triggers checkpoint k. The last
@@ -538,10 +551,18 @@ export function buildTrackPath(
     exitDir = nextExit
   }
 
+  const segment: PathSegment = {
+    id: 'main',
+    order,
+    closesLoop: order.length === pieces.length,
+  }
   const cellToOrderIdx = new Map<string, number>()
+  const cellToLocators = new Map<string, PathLocator[]>()
   for (let i = 0; i < order.length; i++) {
     const p = order[i].piece
-    cellToOrderIdx.set(cellKey(p.row, p.col), i)
+    const key = cellKey(p.row, p.col)
+    cellToOrderIdx.set(key, i)
+    cellToLocators.set(key, [{ segmentId: segment.id, idx: i }])
   }
 
   // Walk inward along the centerline (arc for corners, straight for straights)
@@ -566,8 +587,10 @@ export function buildTrackPath(
   })
 
   return {
+    segments: [segment],
     order,
     cellToOrderIdx,
+    cellToLocators,
     spawn,
     finishLine,
     cpTriggerPieceIdx,

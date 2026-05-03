@@ -2,11 +2,22 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Track Path Segments
+
+- Branch: `feature/track-path-segments`
+- Changed: added `PathSegment` and `PathLocator` metadata to `TrackPath`, with current tracks exposed as one closed `main` segment. Added `cellToLocators` as the future branch-aware cell index while preserving the legacy `path.order` array and `cellToOrderIdx` map for existing callers.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackPath.test.ts tests/unit/minimap.test.ts tests/unit/tick.test.ts tests/unit/wheelContact.test.ts tests/unit/paceNotes.test.ts` passed with 92 tests, `npm test` passed with 3082 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Assumptions: Phase 0b should expose segment metadata without converting callers yet, so the current single-loop reader surface remains behaviorally identical.
+- GDD coverage: Section 6 Track system now records the segment-based path scaffold for future alternative routes.
+- Followups: continue with Phase 0c multi-cell footprint support.
+
 ## 2026-05-03, Track Width Scaffold
 
 - Branch: `feature/track-width-scaffold`
+- PR: #75
 - Changed: added `src/game/trackWidth.ts` as the default-width resolver for upcoming wide-track work, re-exported the legacy `TRACK_WIDTH` from `trackPath.ts`, and routed wheel contact, kerbs, scenery, minimap bounds, thumbnails, checkpoint marker placement, finish-line geometry, and road extrusion through width helpers where piece context is available. The default helper still returns width 8 for every piece, so existing tracks remain visually and behaviorally unchanged.
 - Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npx vitest run tests/unit/trackWidth.test.ts tests/unit/wheelContact.test.ts tests/unit/kerbs.test.ts tests/unit/minimap.test.ts tests/unit/scenery.test.ts tests/unit/trackThumbnail.test.ts tests/unit/sceneBuilder.test.ts` passed with 73 tests, `npm test` passed with 3080 tests, `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`, and `npm run type-check` passed after the build regenerated `.next/types`. The first concurrent type-check attempt failed because `.next/types` files were missing while `next build` was regenerating them, then passed on rerun.
+- Post-merge: PR #75 merged at commit `17102a1`. Main CodeQL passed, Vercel production deployment completed, direct smoke of the deployment URL was blocked by Vercel SSO with HTTP 401 and `_vercel_sso_nonce`, and `https://vibe-racer.vercel.app/` returned HTTP 200.
 - Assumptions: Phase 0a should preserve all legacy constants and leave `widthClass` schema work to Phase 2, so this slice introduces no track hash input.
 - GDD coverage: Section 6 Track system now records the track-width scaffold as Phase 0 groundwork for double-wide tracks.
 - Followups: continue with Phase 0b segment-based `TrackPath`.
