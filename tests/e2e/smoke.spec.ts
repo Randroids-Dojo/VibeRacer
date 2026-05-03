@@ -354,11 +354,12 @@ test('track editor applies starter templates as valid loops', async ({ page }) =
 
   await page.getByRole('button', { name: 'Templates' }).click()
   await expect(page.getByText('Starter oval')).toBeVisible()
-  await page.getByRole('button', { name: /Sweep loop/ }).click()
+  await expect(page.getByText('Reference GP')).toBeVisible()
+  await page.getByRole('button', { name: /Reference GP/ }).click()
 
   await expect(page.getByText('valid closed loop')).toBeVisible()
-  await expect(page.getByText('8 / 64 pieces')).toBeVisible()
-  await expect(page.getByText('8 selected pieces')).toBeVisible()
+  await expect(page.getByText('36 / 64 pieces')).toBeVisible()
+  await expect(page.getByText('36 selected pieces')).toBeVisible()
 })
 
 test('track editor highlights an open connector and target cell', async ({

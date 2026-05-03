@@ -40,6 +40,14 @@ describe('TRACK_TEMPLATES', () => {
     expect(getTrackTemplate(TRACK_TEMPLATES[0].id)).toBe(TRACK_TEMPLATES[0])
   })
 
+  it('includes the reference GP replica template', () => {
+    const template = getTrackTemplate('reference-gp')
+
+    expect(template?.label).toBe('Reference GP')
+    expect(template?.pieces.length).toBe(36)
+    expect(validateClosedLoop(template?.pieces ?? [])).toEqual({ ok: true })
+  })
+
   it('clones pieces so callers can mutate safely', () => {
     const original = TRACK_TEMPLATES[0]
     const clone = cloneTemplatePieces(original)
