@@ -41,8 +41,10 @@ import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import {
   CELL_SIZE,
   TRACK_WIDTH,
+  samplePieceAt,
   trackCenter,
   type OrderedPiece,
+  type SampledPoint,
   type TrackPath,
 } from './trackPath'
 import { halfWidthAt, widthAt } from './trackWidth'
@@ -363,6 +365,66 @@ function polylineGeometry(op: OrderedPiece): BufferGeometry {
 export function pieceGeometry(op: OrderedPiece): BufferGeometry {
   if (op.samples !== null) return polylineGeometry(op)
   return op.piece.type === 'straight' ? straightGeometry(op) : cornerGeometry(op)
+}
+
+function orderedPieceSamples(op: OrderedPiece): SampledPoint[] {
+  if (op.samples !== null) return op.samples
+  const steps = op.arcCenter === null ? 1 : 20
+  const out: SampledPoint[] = []
+  for (let i = 0; i <= steps; i++) {
+    const sample = samplePieceAt(op, i / steps)
+    out.push({
+      x: sample.position.x,
+      z: sample.position.z,
+      heading: sample.heading,
+    })
+  }
+  return out
+}
+
+function sameSamplePosition(a: SampledPoint, b: SampledPoint): boolean {
+  return Math.abs(a.x - b.x) < 1e-7 && Math.abs(a.z - b.z) < 1e-7
+}
+
+function continuousTrackSamples(path: TrackPath): Array<{
+  sample: SampledPoint
+  op: OrderedPiece
+  t: number
+}> {
+  const out: Array<{ sample: SampledPoint; op: OrderedPiece; t: number }> = []
+  for (const op of path.order) {
+    const samples = orderedPieceSamples(op)
+    for (let i = 0; i < samples.length; i++) {
+      const sample = samples[i]
+      const previous = out[out.length - 1]?.sample
+      if (previous && sameSamplePosition(previous, sample)) continue
+      out.push({
+        sample,
+        op,
+        t: samples.length <= 1 ? 0 : i / (samples.length - 1),
+      })
+    }
+  }
+  return out
+}
+
+export function trackSurfaceGeometry(path: TrackPath): BufferGeometry {
+  const samples = continuousTrackSamples(path)
+  const verts: number[] = []
+  for (const { sample, op, t } of samples) {
+    const half = halfWidthAt(op, t)
+    const px = Math.sin(sample.heading)
+    const pz = Math.cos(sample.heading)
+    verts.push(sample.x + px * half, 0, sample.z + pz * half)
+    verts.push(sample.x - px * half, 0, sample.z - pz * half)
+  }
+
+  const idx: number[] = []
+  for (let i = 0; i < samples.length - 1; i++) {
+    const base = i * 2
+    idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+  }
+  return buildFlatGeometry(verts, idx)
 }
 
 function buildCarFrame(
@@ -2044,11 +2106,9 @@ export function buildScene(
     color: biomePreset.trackColor,
     roughness: 0.9,
   })
-  for (const op of path.order) {
-    const mesh = new Mesh(pieceGeometry(op), trackMat)
-    mesh.position.y = 0.01
-    scene.add(mesh)
-  }
+  const trackMesh = new Mesh(trackSurfaceGeometry(path), trackMat)
+  trackMesh.position.y = 0.01
+  scene.add(trackMesh)
 
   const center = trackCenter(path)
   const groundMat = new MeshStandardMaterial({ color: 0x6fb26f, roughness: 1.0 })

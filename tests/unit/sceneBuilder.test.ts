@@ -1,7 +1,8 @@
 import { describe, it, expect } from 'vitest'
 import { buildTrackPath } from '@/game/trackPath'
-import { pieceGeometry } from '@/game/sceneBuilder'
+import { pieceGeometry, trackSurfaceGeometry } from '@/game/sceneBuilder'
 import { validateClosedLoop } from '@/game/track'
+import { getTrackTemplate } from '@/game/trackTemplates'
 import type { Piece } from '@/lib/schemas'
 
 // Regression for the bug where sweep / S-curve pieces rendered as invisible
@@ -37,6 +38,25 @@ function expectAllTrianglesFaceUp(pieces: Piece[]) {
         `triangle ${t} on ${op.piece.type} rot=${op.piece.rotation} at (${op.piece.row},${op.piece.col})`,
       ).toBeGreaterThan(0)
     }
+  }
+}
+
+function expectGeometryTrianglesFaceUp(pieces: Piece[]) {
+  const geom = trackSurfaceGeometry(buildTrackPath(pieces))
+  const pos = geom.getAttribute('position')
+  const idx = geom.getIndex()!
+  const triCount = idx.count / 3
+  for (let t = 0; t < triCount; t++) {
+    const a = idx.getX(t * 3)
+    const b = idx.getX(t * 3 + 1)
+    const c = idx.getX(t * 3 + 2)
+    const ax = pos.getX(a), az = pos.getZ(a)
+    const bx = pos.getX(b), bz = pos.getZ(b)
+    const cx = pos.getX(c), cz = pos.getZ(c)
+    const ux = bx - ax, uz = bz - az
+    const vx = cx - ax, vz = cz - az
+    const ny = uz * vx - ux * vz
+    expect(ny, `track triangle ${t}`).toBeGreaterThan(0)
   }
 }
 
@@ -133,5 +153,38 @@ describe('pieceGeometry face normals', () => {
     expect(pos.getX(last)).toBeCloseTo(10, 9)
     expect(Math.abs(pos.getZ(last - 1))).toBeCloseTo(4, 9)
     expect(Math.abs(pos.getZ(last))).toBeCloseTo(4, 9)
+  })
+
+  it('builds one upward-facing surface for the Reference GP template', () => {
+    const template = getTrackTemplate('reference-gp')
+    expect(template).not.toBeNull()
+    const pieces = template!.pieces
+    expect(validateClosedLoop(pieces).ok).toBe(true)
+    expectGeometryTrianglesFaceUp(pieces)
+  })
+
+  it('deduplicates connector samples into a shared road strip', () => {
+    const pieces: Piece[] = [
+      { type: 'arc45', row: 0, col: 0, rotation: 0 },
+      { type: 'diagonal', row: -1, col: 1, rotation: 0 },
+      { type: 'arc45', row: -2, col: 2, rotation: 180 },
+      { type: 'left90', row: -3, col: 2, rotation: 0 },
+      { type: 'straight', row: -3, col: 1, rotation: 90 },
+      { type: 'straight', row: -3, col: 0, rotation: 90 },
+      { type: 'left90', row: -3, col: -1, rotation: 270 },
+      { type: 'straight', row: -2, col: -1, rotation: 0 },
+      { type: 'straight', row: -1, col: -1, rotation: 0 },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+      { type: 'left90', row: 1, col: -1, rotation: 180 },
+      { type: 'right90', row: 1, col: 0, rotation: 180 },
+    ]
+    expect(validateClosedLoop(pieces).ok).toBe(true)
+    const path = buildTrackPath(pieces)
+    const separateVertexCount = path.order.reduce((total, op) => {
+      return total + pieceGeometry(op).getAttribute('position').count
+    }, 0)
+    const combinedVertexCount = trackSurfaceGeometry(path).getAttribute('position').count
+    expect(combinedVertexCount).toBeLessThan(separateVertexCount)
+    expectGeometryTrianglesFaceUp(pieces)
   })
 })
