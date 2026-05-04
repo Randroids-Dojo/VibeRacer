@@ -128,6 +128,33 @@ describe('withPieceRotated', () => {
       },
     ])
   })
+
+  it('prefers an exact anchor cell over another piece footprint', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'megaSweepRight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+      },
+      {
+        type: 'straight',
+        row: 1,
+        col: 0,
+        rotation: 0,
+      },
+    ]
+
+    expect(withPieceRotated(pieces, 1, 0)).toEqual([
+      pieces[0],
+      {
+        type: 'straight',
+        row: 1,
+        col: 0,
+        rotation: 90,
+      },
+    ])
+  })
 })
 
 describe('withPieceRemoved', () => {
@@ -164,6 +191,25 @@ describe('withPieceRemoved', () => {
     expect(withPieceRemoved(pieces, 0, 1)).toEqual([
       { type: 'left90', row: 2, col: 2, rotation: 0 },
     ])
+  })
+
+  it('prefers removing an exact anchor cell over another piece footprint', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'megaSweepRight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+      },
+      {
+        type: 'straight',
+        row: 1,
+        col: 0,
+        rotation: 0,
+      },
+    ]
+
+    expect(withPieceRemoved(pieces, 1, 0)).toEqual([pieces[0]])
   })
 })
 

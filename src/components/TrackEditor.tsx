@@ -1510,7 +1510,13 @@ const Cell = memo(function Cell({
   isDuplicateIssue,
 }: CellProps) {
   return (
-    <g transform={`translate(${x}, ${y})`} data-row={row} data-col={col}>
+    <g
+      transform={`translate(${x}, ${y})`}
+      data-row={row}
+      data-col={col}
+      data-piece-type={piece?.type}
+      data-piece-rotation={piece?.rotation}
+    >
       <rect
         width={CELL}
         height={CELL}

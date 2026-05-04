@@ -390,6 +390,26 @@ test('track editor keeps long-turn pieces when placing into their footprint', as
   await expect(page.getByText('2 / 64 pieces')).toBeVisible()
 })
 
+test('track editor rotates the clicked anchor when pieces overlap footprints', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.getByRole('button', { name: 'Mega sweep (right)' }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+  await page.getByRole('button', { name: 'Straight' }).click()
+  await page.locator('g[data-row="1"][data-col="0"]').click()
+  await page.locator('g[data-row="1"][data-col="0"]').click()
+
+  await expect(
+    page.locator('g[data-row="1"][data-col="0"][data-piece-rotation="90"]'),
+  ).toBeVisible()
+  await expect(
+    page.locator('g[data-row="0"][data-col="0"][data-piece-rotation="0"]'),
+  ).toBeVisible()
+})
+
 test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
   page,
 }) => {
