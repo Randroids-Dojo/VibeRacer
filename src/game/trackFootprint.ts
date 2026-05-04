@@ -38,6 +38,44 @@ export const HAIRPIN_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: 1, dc: 1 },
 ]
 
+export const HAIRPIN_WIDE_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: -1, dc: 2 },
+  { dr: 0, dc: 0 },
+  { dr: 0, dc: 1 },
+  { dr: 0, dc: 2 },
+  { dr: 1, dc: 0 },
+  { dr: 1, dc: 1 },
+  { dr: 1, dc: 2 },
+]
+
+export const WIDE_ARC45_RIGHT_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: 0, dc: 0 },
+]
+
+export const WIDE_ARC45_LEFT_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: -1 },
+  { dr: -1, dc: 0 },
+  { dr: 0, dc: 0 },
+]
+
+export const OFFSET_RIGHT_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: 0, dc: 0 },
+  { dr: 0, dc: 1 },
+]
+
+export const OFFSET_LEFT_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: -1 },
+  { dr: -1, dc: 0 },
+  { dr: 0, dc: -1 },
+  { dr: 0, dc: 0 },
+]
+
 export function defaultFootprintForPiece(
   piece: Pick<Piece, 'type' | 'rotation'>,
 ): readonly FootprintOffset[] {
@@ -45,8 +83,20 @@ export function defaultFootprintForPiece(
     ? rotateFootprintByRotation(MEGA_SWEEP_RIGHT_FOOTPRINT, piece.rotation)
     : piece.type === 'megaSweepLeft'
       ? rotateFootprintByRotation(MEGA_SWEEP_LEFT_FOOTPRINT, piece.rotation)
-    : piece.type === 'hairpin'
+    : piece.type === 'hairpin' || piece.type === 'hairpinTight'
       ? rotateFootprintByRotation(HAIRPIN_FOOTPRINT, piece.rotation)
+    : piece.type === 'hairpinWide'
+      ? rotateFootprintByRotation(HAIRPIN_WIDE_FOOTPRINT, piece.rotation)
+    : piece.type === 'wideArc45Right'
+      ? rotateFootprintByRotation(WIDE_ARC45_RIGHT_FOOTPRINT, piece.rotation)
+    : piece.type === 'wideArc45Left'
+      ? rotateFootprintByRotation(WIDE_ARC45_LEFT_FOOTPRINT, piece.rotation)
+    : piece.type === 'offsetStraightRight' ||
+        piece.type === 'grandSweepRight'
+      ? rotateFootprintByRotation(OFFSET_RIGHT_FOOTPRINT, piece.rotation)
+    : piece.type === 'offsetStraightLeft' ||
+        piece.type === 'grandSweepLeft'
+      ? rotateFootprintByRotation(OFFSET_LEFT_FOOTPRINT, piece.rotation)
       : DEFAULT_FOOTPRINT
 }
 

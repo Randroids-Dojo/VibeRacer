@@ -354,6 +354,11 @@ export const HAIRPIN_SAMPLE_COUNT = 65
 export const HAIRPIN_ARC_RADIUS = 1.5 * CELL_SIZE
 export const ARC45_SAMPLE_COUNT = 25
 export const DIAGONAL_SAMPLE_COUNT = 17
+export const WIDE_ARC45_SAMPLE_COUNT = 41
+export const DIAGONAL_SWEEP_SAMPLE_COUNT = 33
+export const KINK_SAMPLE_COUNT = 25
+export const OFFSET_STRAIGHT_SAMPLE_COUNT = 41
+export const GRAND_SWEEP_SAMPLE_COUNT = 57
 const SWEEP_OVERSAMPLE_COUNT = 257
 
 type BezierPoint = { x: number; z: number }
@@ -458,6 +463,25 @@ function mirrorSweepSamples(samples: SampledPoint[]): SampledPoint[] {
   }))
 }
 
+function sampleCubicLocal(
+  sampleCount: number,
+  p0: BezierPoint,
+  p1: BezierPoint,
+  p2: BezierPoint,
+  p3: BezierPoint,
+): SampledPoint[] {
+  const samples: SampledPoint[] = []
+  const sampleParameters = equalArcLengthParameters(sampleCount, (t) =>
+    cubicBezierPoint(p0, p1, p2, p3, t),
+  )
+  for (const t of sampleParameters) {
+    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
+    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
+    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
+  }
+  return samples
+}
+
 // Standard cubic-bezier coefficient for approximating a quarter circle:
 // 4*(sqrt(2)-1)/3 ≈ 0.5523. With this coefficient the curve's minimum
 // curvature radius stays well above TRACK_WIDTH / 2, so the extruded road
@@ -519,24 +543,39 @@ const MEGA_SWEEP_LEFT_LOCAL_SAMPLES = mirrorSweepSamples(
 )
 
 export function sampleHairpinLocal(): SampledPoint[] {
-  const samples: SampledPoint[] = []
-  const p0 = { x: -HALF, z: -CELL_SIZE }
-  const p1 = { x: -HALF + HAIRPIN_ARC_RADIUS, z: -CELL_SIZE }
-  const p2 = { x: -HALF + HAIRPIN_ARC_RADIUS, z: CELL_SIZE }
-  const p3 = { x: -HALF, z: CELL_SIZE }
-  const sampleParameters = equalArcLengthParameters(
+  return sampleCubicLocal(
     HAIRPIN_SAMPLE_COUNT,
-    (t) => cubicBezierPoint(p0, p1, p2, p3, t),
+    { x: -HALF, z: -CELL_SIZE },
+    { x: -HALF + HAIRPIN_ARC_RADIUS, z: -CELL_SIZE },
+    { x: -HALF + HAIRPIN_ARC_RADIUS, z: CELL_SIZE },
+    { x: -HALF, z: CELL_SIZE },
   )
-  for (const t of sampleParameters) {
-    const { x, z } = cubicBezierPoint(p0, p1, p2, p3, t)
-    const { dx, dz } = cubicBezierDerivative(p0, p1, p2, p3, t)
-    samples.push({ x, z, heading: Math.atan2(-dz, dx) })
-  }
-  return samples
 }
 
 const HAIRPIN_LOCAL_SAMPLES = sampleHairpinLocal()
+
+export function sampleHairpinTightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    HAIRPIN_SAMPLE_COUNT,
+    { x: -HALF, z: -CELL_SIZE },
+    { x: CELL_SIZE * 0.55, z: -CELL_SIZE },
+    { x: CELL_SIZE * 0.55, z: CELL_SIZE },
+    { x: -HALF, z: CELL_SIZE },
+  )
+}
+
+export function sampleHairpinWideLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    HAIRPIN_SAMPLE_COUNT,
+    { x: -HALF, z: -CELL_SIZE },
+    { x: CELL_SIZE * 2.0, z: -CELL_SIZE },
+    { x: CELL_SIZE * 2.0, z: CELL_SIZE },
+    { x: -HALF, z: CELL_SIZE },
+  )
+}
+
+const HAIRPIN_TIGHT_LOCAL_SAMPLES = sampleHairpinTightLocal()
+const HAIRPIN_WIDE_LOCAL_SAMPLES = sampleHairpinWideLocal()
 
 export function sampleArc45Local(): SampledPoint[] {
   const samples: SampledPoint[] = []
@@ -577,6 +616,87 @@ export function sampleDiagonalLocal(): SampledPoint[] {
 const ARC45_LOCAL_SAMPLES = sampleArc45Local()
 const ARC45_LEFT_LOCAL_SAMPLES = sampleArc45LeftLocal()
 const DIAGONAL_LOCAL_SAMPLES = sampleDiagonalLocal()
+
+export function sampleWideArc45RightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    WIDE_ARC45_SAMPLE_COUNT,
+    { x: 0, z: HALF },
+    { x: 0, z: -CELL_SIZE * 0.6 },
+    { x: CELL_SIZE * 0.9, z: -CELL_SIZE * 1.5 },
+    { x: CELL_SIZE * 1.5, z: -CELL_SIZE * 1.5 },
+  )
+}
+
+export function sampleWideArc45LeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(sampleWideArc45RightLocal())
+}
+
+export function sampleDiagonalSweepRightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    DIAGONAL_SWEEP_SAMPLE_COUNT,
+    { x: -HALF, z: HALF },
+    { x: 0, z: 0 },
+    { x: 0, z: 0 },
+    { x: HALF, z: HALF },
+  )
+}
+
+export function sampleDiagonalSweepLeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(sampleDiagonalSweepRightLocal())
+}
+
+export function sampleKinkRightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    KINK_SAMPLE_COUNT,
+    { x: 0, z: HALF },
+    { x: CELL_SIZE * 0.28, z: CELL_SIZE * 0.2 },
+    { x: CELL_SIZE * 0.28, z: -CELL_SIZE * 0.2 },
+    { x: 0, z: -HALF },
+  )
+}
+
+export function sampleKinkLeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(sampleKinkRightLocal())
+}
+
+export function sampleOffsetStraightRightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    OFFSET_STRAIGHT_SAMPLE_COUNT,
+    { x: 0, z: HALF },
+    { x: 0, z: -CELL_SIZE * 0.45 },
+    { x: CELL_SIZE, z: -CELL_SIZE * 0.75 },
+    { x: CELL_SIZE, z: -CELL_SIZE * 1.5 },
+  )
+}
+
+export function sampleOffsetStraightLeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(sampleOffsetStraightRightLocal())
+}
+
+export function sampleGrandSweepRightLocal(): SampledPoint[] {
+  return sampleCubicLocal(
+    GRAND_SWEEP_SAMPLE_COUNT,
+    { x: 0, z: HALF },
+    { x: 0, z: -CELL_SIZE * 1.0 },
+    { x: CELL_SIZE * 0.8, z: -CELL_SIZE },
+    { x: CELL_SIZE * 1.5, z: -CELL_SIZE },
+  )
+}
+
+export function sampleGrandSweepLeftLocal(): SampledPoint[] {
+  return mirrorSweepSamples(sampleGrandSweepRightLocal())
+}
+
+const WIDE_ARC45_RIGHT_LOCAL_SAMPLES = sampleWideArc45RightLocal()
+const WIDE_ARC45_LEFT_LOCAL_SAMPLES = sampleWideArc45LeftLocal()
+const DIAGONAL_SWEEP_RIGHT_LOCAL_SAMPLES = sampleDiagonalSweepRightLocal()
+const DIAGONAL_SWEEP_LEFT_LOCAL_SAMPLES = sampleDiagonalSweepLeftLocal()
+const KINK_RIGHT_LOCAL_SAMPLES = sampleKinkRightLocal()
+const KINK_LEFT_LOCAL_SAMPLES = sampleKinkLeftLocal()
+const OFFSET_STRAIGHT_RIGHT_LOCAL_SAMPLES = sampleOffsetStraightRightLocal()
+const OFFSET_STRAIGHT_LEFT_LOCAL_SAMPLES = sampleOffsetStraightLeftLocal()
+const GRAND_SWEEP_RIGHT_LOCAL_SAMPLES = sampleGrandSweepRightLocal()
+const GRAND_SWEEP_LEFT_LOCAL_SAMPLES = sampleGrandSweepLeftLocal()
 
 function buildScurveSamples(
   piece: Piece,
@@ -622,8 +742,20 @@ function buildSweepSamples(
 
 function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
   if (piece.type === 'diagonal') return DIAGONAL_LOCAL_SAMPLES
+  if (piece.type === 'wideArc45Right') return WIDE_ARC45_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'wideArc45Left') return WIDE_ARC45_LEFT_LOCAL_SAMPLES
+  if (piece.type === 'diagonalSweepRight') return DIAGONAL_SWEEP_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'diagonalSweepLeft') return DIAGONAL_SWEEP_LEFT_LOCAL_SAMPLES
+  if (piece.type === 'kinkRight') return KINK_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'kinkLeft') return KINK_LEFT_LOCAL_SAMPLES
+  if (piece.type === 'offsetStraightRight') return OFFSET_STRAIGHT_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'offsetStraightLeft') return OFFSET_STRAIGHT_LEFT_LOCAL_SAMPLES
+  if (piece.type === 'grandSweepRight') return GRAND_SWEEP_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'grandSweepLeft') return GRAND_SWEEP_LEFT_LOCAL_SAMPLES
   if (piece.type === 'arc45Left') return ARC45_LEFT_LOCAL_SAMPLES
   if (piece.type === 'arc45') return ARC45_LOCAL_SAMPLES
+  if (piece.type === 'hairpinTight') return HAIRPIN_TIGHT_LOCAL_SAMPLES
+  if (piece.type === 'hairpinWide') return HAIRPIN_WIDE_LOCAL_SAMPLES
   if (piece.type === 'hairpin') return HAIRPIN_LOCAL_SAMPLES
   if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
   if (piece.type === 'megaSweepRight') return MEGA_SWEEP_RIGHT_LOCAL_SAMPLES
@@ -668,9 +800,21 @@ export function buildTrackPath(
       current.type === 'megaSweepRight' ||
       current.type === 'megaSweepLeft' ||
       current.type === 'hairpin' ||
+      current.type === 'hairpinTight' ||
+      current.type === 'hairpinWide' ||
       current.type === 'arc45' ||
       current.type === 'arc45Left' ||
-      current.type === 'diagonal'
+      current.type === 'diagonal' ||
+      current.type === 'wideArc45Right' ||
+      current.type === 'wideArc45Left' ||
+      current.type === 'diagonalSweepRight' ||
+      current.type === 'diagonalSweepLeft' ||
+      current.type === 'kinkRight' ||
+      current.type === 'kinkLeft' ||
+      current.type === 'offsetStraightRight' ||
+      current.type === 'offsetStraightLeft' ||
+      current.type === 'grandSweepRight' ||
+      current.type === 'grandSweepLeft'
     order.push({
       piece: current,
       entryDir,

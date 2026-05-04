@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Expanded Smooth Piece Catalog
+
+- Branch: `feature/expanded-track-pieces`
+- Changed: added wide 45 arcs, diagonal sweeps, kinks, lane offsets, tight and wide hairpins, and grand sweeps as discrete track piece types. Wired them through schema validation, connector ports, footprints, sampled centerlines, editor labels and glyphs, mirror transforms, pace notes, and difficulty scoring.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/featureList.test.ts tests/unit/trackConnectors.test.ts tests/unit/schemas.test.ts tests/unit/trackPath.test.ts tests/unit/track.test.ts tests/unit/trackFootprint.test.ts tests/unit/editor.test.ts tests/unit/trackDifficulty.test.ts tests/unit/paceNotes.test.ts tests/unit/tuningLabTrack.test.ts` passed with 277 tests, `npm test` passed with 3156 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 8 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: discrete piece types are better than per-piece geometry parameters for this catalog pass because they keep saved track JSON simple, hash inputs deterministic, and editor controls familiar.
+- GDD coverage: Section 6 Track system now records the expanded smooth piece catalog.
+- Followups: rebuild the Reference GP template with the new pieces after this catalog slice is merged.
+
 ## 2026-05-04, Continuous Road Surface
 
 - Branch: `fix/continuous-road-strip`
