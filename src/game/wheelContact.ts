@@ -1,4 +1,4 @@
-import { cellKey } from './track'
+import { cellKey, DIR_OFFSETS } from './track'
 import { halfWidthAt } from './trackWidth'
 import { distanceToCenterline, worldToCell, type TrackPath } from './trackPath'
 
@@ -81,15 +81,19 @@ export function wheelTrackContact(
   z: number,
 ): WheelContact {
   const cell = worldToCell(x, z)
-  const key = cellKey(cell.row, cell.col)
-  const locators = path.cellToLocators.get(key)
-  const candidateIdxs =
-    locators !== undefined && locators.length > 0
-      ? locators.map((locator) => locator.idx)
-      : path.cellToOrderIdx.has(key)
-        ? [path.cellToOrderIdx.get(key)!]
-        : []
-  if (candidateIdxs.length === 0) {
+  const candidateIdxs = new Set<number>()
+  const cellsToCheck = [{ dr: 0, dc: 0 }, ...Object.values(DIR_OFFSETS)]
+  for (const offset of cellsToCheck) {
+    const key = cellKey(cell.row + offset.dr, cell.col + offset.dc)
+    const locators = path.cellToLocators.get(key)
+    if (locators !== undefined && locators.length > 0) {
+      for (const locator of locators) candidateIdxs.add(locator.idx)
+    } else {
+      const idx = path.cellToOrderIdx.get(key)
+      if (idx !== undefined) candidateIdxs.add(idx)
+    }
+  }
+  if (candidateIdxs.size === 0) {
     return {
       id,
       x,
@@ -99,7 +103,7 @@ export function wheelTrackContact(
       pieceIdx: null,
     }
   }
-  let pieceIdx = candidateIdxs[0]
+  let pieceIdx = candidateIdxs.values().next().value ?? 0
   let distance = Infinity
   for (const idx of candidateIdxs) {
     const candidateDistance = distanceToCenterline(path.order[idx], x, z)

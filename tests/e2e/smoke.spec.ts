@@ -358,8 +358,8 @@ test('track editor applies the Reference GP template as a valid loop', async ({ 
   await page.getByRole('button', { name: /Reference GP/ }).click()
 
   await expect(page.getByText('valid closed loop')).toBeVisible()
-  await expect(page.getByText('58 / 64 pieces')).toBeVisible()
-  await expect(page.getByText('58 selected pieces')).toBeVisible()
+  await expect(page.getByText('63 / 64 pieces')).toBeVisible()
+  await expect(page.getByText('63 selected pieces')).toBeVisible()
 })
 
 test('track editor highlights an open connector and target cell', async ({
