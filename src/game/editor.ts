@@ -405,6 +405,16 @@ function mirroredPieceType(type: PieceType): PieceType {
   if (type === 'megaSweepLeft') return 'megaSweepRight'
   if (type === 'arc45') return 'arc45Left'
   if (type === 'arc45Left') return 'arc45'
+  if (type === 'wideArc45Right') return 'wideArc45Left'
+  if (type === 'wideArc45Left') return 'wideArc45Right'
+  if (type === 'diagonalSweepRight') return 'diagonalSweepLeft'
+  if (type === 'diagonalSweepLeft') return 'diagonalSweepRight'
+  if (type === 'kinkRight') return 'kinkLeft'
+  if (type === 'kinkLeft') return 'kinkRight'
+  if (type === 'offsetStraightRight') return 'offsetStraightLeft'
+  if (type === 'offsetStraightLeft') return 'offsetStraightRight'
+  if (type === 'grandSweepRight') return 'grandSweepLeft'
+  if (type === 'grandSweepLeft') return 'grandSweepRight'
   return type
 }
 

@@ -91,9 +91,21 @@ const PIECE_TOOLS: PieceType[] = [
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'hairpinTight',
+  'hairpinWide',
   'arc45',
   'arc45Left',
   'diagonal',
+  'wideArc45Right',
+  'wideArc45Left',
+  'diagonalSweepRight',
+  'diagonalSweepLeft',
+  'kinkRight',
+  'kinkLeft',
+  'offsetStraightRight',
+  'offsetStraightLeft',
+  'grandSweepRight',
+  'grandSweepLeft',
 ]
 const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
@@ -109,9 +121,21 @@ const TOOL_LABELS: Record<Tool, string> = {
   megaSweepRight: 'Mega sweep (right)',
   megaSweepLeft: 'Mega sweep (left)',
   hairpin: 'Hairpin',
+  hairpinTight: 'Tight hairpin',
+  hairpinWide: 'Wide hairpin',
   arc45: '45 arc (right)',
   arc45Left: '45 arc (left)',
   diagonal: 'Diagonal',
+  wideArc45Right: 'Wide 45 (right)',
+  wideArc45Left: 'Wide 45 (left)',
+  diagonalSweepRight: 'Diag sweep (right)',
+  diagonalSweepLeft: 'Diag sweep (left)',
+  kinkRight: 'Kink (right)',
+  kinkLeft: 'Kink (left)',
+  offsetStraightRight: 'Lane offset (right)',
+  offsetStraightLeft: 'Lane offset (left)',
+  grandSweepRight: 'Grand sweep (right)',
+  grandSweepLeft: 'Grand sweep (left)',
   start: 'Set start',
   checkpoint: 'Checkpoint',
   ...TRACK_DECORATION_LABELS,
@@ -2006,11 +2030,53 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           </g>
         </>
       ) : null}
-      {piece.type === 'hairpin' ? (
+      {piece.type === 'grandSweepRight' || piece.type === 'grandSweepLeft' ? (
+        <>
+          <g
+            transform={
+              piece.type === 'grandSweepLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * -0.25} ${CELL * 0.35} ${CELL * -0.08} ${CELL} 0`}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * -0.25} ${CELL * 0.35} ${CELL * -0.08} ${CELL} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
+      {piece.type === 'hairpin' ||
+      piece.type === 'hairpinTight' ||
+      piece.type === 'hairpinWide' ? (
         <>
           <path
             d={`M 0 ${cy - CELL * 0.36}
-                C ${CELL * 0.82} ${cy - CELL * 0.36} ${CELL * 0.82} ${cy + CELL * 0.36} 0 ${cy + CELL * 0.36}`}
+                C ${
+                  piece.type === 'hairpinTight'
+                    ? CELL * 0.55
+                    : piece.type === 'hairpinWide'
+                      ? CELL * 1.08
+                      : CELL * 0.82
+                } ${cy - CELL * 0.36} ${
+                  piece.type === 'hairpinTight'
+                    ? CELL * 0.55
+                    : piece.type === 'hairpinWide'
+                      ? CELL * 1.08
+                      : CELL * 0.82
+                } ${cy + CELL * 0.36} 0 ${cy + CELL * 0.36}`}
             stroke={road}
             strokeWidth={roadWidth}
             strokeLinecap="butt"
@@ -2018,7 +2084,19 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           />
           <path
             d={`M 0 ${cy - CELL * 0.36}
-                C ${CELL * 0.82} ${cy - CELL * 0.36} ${CELL * 0.82} ${cy + CELL * 0.36} 0 ${cy + CELL * 0.36}`}
+                C ${
+                  piece.type === 'hairpinTight'
+                    ? CELL * 0.55
+                    : piece.type === 'hairpinWide'
+                      ? CELL * 1.08
+                      : CELL * 0.82
+                } ${cy - CELL * 0.36} ${
+                  piece.type === 'hairpinTight'
+                    ? CELL * 0.55
+                    : piece.type === 'hairpinWide'
+                      ? CELL * 1.08
+                      : CELL * 0.82
+                } ${cy + CELL * 0.36} 0 ${cy + CELL * 0.36}`}
             stroke={stroke}
             strokeWidth={2}
             strokeDasharray="4 4"
@@ -2046,6 +2124,105 @@ function PieceGlyph({ piece }: { piece: Piece }) {
             <path
               d={`M ${cx} ${CELL}
                   C ${cx} ${CELL * 0.45} ${CELL * 0.45} ${CELL * 0.08} ${CELL} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
+      {piece.type === 'wideArc45Right' || piece.type === 'wideArc45Left' ? (
+        <>
+          <g
+            transform={
+              piece.type === 'wideArc45Left'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * 0.08} ${CELL * 0.72} ${CELL * -0.18} ${CELL} 0`}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={`M ${cx} ${CELL}
+                  C ${cx} ${CELL * 0.08} ${CELL * 0.72} ${CELL * -0.18} ${CELL} 0`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
+      {piece.type === 'diagonalSweepRight' ||
+      piece.type === 'diagonalSweepLeft' ? (
+        <>
+          <g
+            transform={
+              piece.type === 'diagonalSweepLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={`M 0 ${CELL}
+                  C ${CELL * 0.35} ${CELL * 0.45} ${CELL * 0.65} ${CELL * 0.45} ${CELL} ${CELL}`}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={`M 0 ${CELL}
+                  C ${CELL * 0.35} ${CELL * 0.45} ${CELL * 0.65} ${CELL * 0.45} ${CELL} ${CELL}`}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+              fill="none"
+            />
+          </g>
+        </>
+      ) : null}
+      {piece.type === 'kinkRight' ||
+      piece.type === 'kinkLeft' ||
+      piece.type === 'offsetStraightRight' ||
+      piece.type === 'offsetStraightLeft' ? (
+        <>
+          <g
+            transform={
+              piece.type === 'kinkLeft' ||
+              piece.type === 'offsetStraightLeft'
+                ? `translate(${2 * cx} 0) scale(-1 1)`
+                : undefined
+            }
+          >
+            <path
+              d={
+                piece.type === 'kinkRight' || piece.type === 'kinkLeft'
+                  ? `M ${cx} ${CELL}
+                      C ${cx + CELL * 0.24} ${CELL * 0.7} ${cx + CELL * 0.24} ${CELL * 0.3} ${cx} 0`
+                  : `M ${cx} ${CELL}
+                      C ${cx} ${CELL * 0.62} ${cx + CELL * 0.36} ${CELL * 0.38} ${cx + CELL * 0.36} 0`
+              }
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+              fill="none"
+            />
+            <path
+              d={
+                piece.type === 'kinkRight' || piece.type === 'kinkLeft'
+                  ? `M ${cx} ${CELL}
+                      C ${cx + CELL * 0.24} ${CELL * 0.7} ${cx + CELL * 0.24} ${CELL * 0.3} ${cx} 0`
+                  : `M ${cx} ${CELL}
+                      C ${cx} ${CELL * 0.62} ${cx + CELL * 0.36} ${CELL * 0.38} ${cx + CELL * 0.36} 0`
+              }
               stroke={stroke}
               strokeWidth={2}
               strokeDasharray="4 4"

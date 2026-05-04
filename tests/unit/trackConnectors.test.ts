@@ -14,9 +14,21 @@ const pieceTypes: PieceType[] = [
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'hairpinTight',
+  'hairpinWide',
   'arc45',
   'arc45Left',
   'diagonal',
+  'wideArc45Right',
+  'wideArc45Left',
+  'diagonalSweepRight',
+  'diagonalSweepLeft',
+  'kinkRight',
+  'kinkLeft',
+  'offsetStraightRight',
+  'offsetStraightLeft',
+  'grandSweepRight',
+  'grandSweepLeft',
 ]
 const rotations: Rotation[] = [0, 90, 180, 270]
 
@@ -40,7 +52,15 @@ describe('8-direction connector scaffold', () => {
 
   it('keeps pre-diagonal pieces on cardinal connectors only', () => {
     for (const type of pieceTypes) {
-      if (type === 'arc45' || type === 'arc45Left' || type === 'diagonal') {
+      if (
+        type === 'arc45' ||
+        type === 'arc45Left' ||
+        type === 'diagonal' ||
+        type === 'wideArc45Right' ||
+        type === 'wideArc45Left' ||
+        type === 'diagonalSweepRight' ||
+        type === 'diagonalSweepLeft'
+      ) {
         continue
       }
       for (const rotation of rotations) {
@@ -57,6 +77,10 @@ describe('8-direction connector scaffold', () => {
     expect(connectorsOf(piece('arc45Left', 90))).toEqual([6, 1])
     expect(connectorsOf(piece('diagonal', 0))).toEqual([5, 1])
     expect(connectorsOf(piece('diagonal', 90))).toEqual([7, 3])
+    expect(connectorsOf(piece('wideArc45Right', 0))).toEqual([4, 1])
+    expect(connectorsOf(piece('wideArc45Left', 0))).toEqual([4, 7])
+    expect(connectorsOf(piece('diagonalSweepRight', 0))).toEqual([5, 3])
+    expect(connectorsOf(piece('diagonalSweepLeft', 0))).toEqual([3, 5])
   })
 
   it('rotates existing pieces in 90-degree steps across the 8-dir encoding', () => {

@@ -78,9 +78,21 @@ export const PIECE_COMPLEXITY_WEIGHTS: Record<PieceType, number> = {
   megaSweepRight: 1.1,
   megaSweepLeft: 1.1,
   hairpin: 1.4,
+  hairpinTight: 1.5,
+  hairpinWide: 1.3,
   arc45: 0.8,
   arc45Left: 0.8,
   diagonal: 0.2,
+  wideArc45Right: 0.7,
+  wideArc45Left: 0.7,
+  diagonalSweepRight: 0.9,
+  diagonalSweepLeft: 0.9,
+  kinkRight: 0.4,
+  kinkLeft: 0.4,
+  offsetStraightRight: 0.6,
+  offsetStraightLeft: 0.6,
+  grandSweepRight: 1.0,
+  grandSweepLeft: 1.0,
 }
 
 // Whether a piece type counts as a "turn" for the density and direction-flip
@@ -96,9 +108,21 @@ export const TURN_PIECE_TYPES: ReadonlySet<PieceType> = new Set<PieceType>([
   'megaSweepRight',
   'megaSweepLeft',
   'hairpin',
+  'hairpinTight',
+  'hairpinWide',
   'arc45',
   'arc45Left',
   'diagonal',
+  'wideArc45Right',
+  'wideArc45Left',
+  'diagonalSweepRight',
+  'diagonalSweepLeft',
+  'kinkRight',
+  'kinkLeft',
+  'offsetStraightRight',
+  'offsetStraightLeft',
+  'grandSweepRight',
+  'grandSweepLeft',
 ])
 
 // Score tier thresholds. A score at-or-below the threshold lands in that

@@ -128,6 +128,12 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
   if (type === 'hairpin') {
     return { pieceIdx: idx, kind: 'right', severity: 'sharp', label: 'Hairpin' }
   }
+  if (type === 'hairpinTight') {
+    return { pieceIdx: idx, kind: 'right', severity: 'sharp', label: 'Tight hairpin' }
+  }
+  if (type === 'hairpinWide') {
+    return { pieceIdx: idx, kind: 'right', severity: 'sharp', label: 'Wide hairpin' }
+  }
   if (type === 'arc45') {
     return {
       pieceIdx: idx,
@@ -146,6 +152,36 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
   }
   if (type === 'diagonal') {
     return { pieceIdx: idx, kind: 'straight', severity: 'easy', label: 'Diagonal' }
+  }
+  if (type === 'wideArc45Right') {
+    return { pieceIdx: idx, kind: 'right', severity: 'medium', label: 'Wide 45 right' }
+  }
+  if (type === 'wideArc45Left') {
+    return { pieceIdx: idx, kind: 'left', severity: 'medium', label: 'Wide 45 left' }
+  }
+  if (type === 'diagonalSweepRight') {
+    return { pieceIdx: idx, kind: 'right', severity: 'medium', label: 'Diagonal sweep right' }
+  }
+  if (type === 'diagonalSweepLeft') {
+    return { pieceIdx: idx, kind: 'left', severity: 'medium', label: 'Diagonal sweep left' }
+  }
+  if (type === 'kinkRight') {
+    return { pieceIdx: idx, kind: 'right', severity: 'easy', label: 'Kink right' }
+  }
+  if (type === 'kinkLeft') {
+    return { pieceIdx: idx, kind: 'left', severity: 'easy', label: 'Kink left' }
+  }
+  if (type === 'offsetStraightRight') {
+    return { pieceIdx: idx, kind: 'right', severity: 'easy', label: 'Offset right' }
+  }
+  if (type === 'offsetStraightLeft') {
+    return { pieceIdx: idx, kind: 'left', severity: 'easy', label: 'Offset left' }
+  }
+  if (type === 'grandSweepRight') {
+    return { pieceIdx: idx, kind: 'right', severity: 'medium', label: 'Grand sweep right' }
+  }
+  if (type === 'grandSweepLeft') {
+    return { pieceIdx: idx, kind: 'left', severity: 'medium', label: 'Grand sweep left' }
   }
   if (type === 'scurve') {
     return {

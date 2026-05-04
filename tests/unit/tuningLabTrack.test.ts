@@ -30,9 +30,21 @@ describe('TUNING_LAB_TRACK_PIECES', () => {
       megaSweepRight: 0,
       megaSweepLeft: 0,
       hairpin: 0,
+      hairpinTight: 0,
+      hairpinWide: 0,
       arc45: 0,
       arc45Left: 0,
       diagonal: 0,
+      wideArc45Right: 0,
+      wideArc45Left: 0,
+      diagonalSweepRight: 0,
+      diagonalSweepLeft: 0,
+      kinkRight: 0,
+      kinkLeft: 0,
+      offsetStraightRight: 0,
+      offsetStraightLeft: 0,
+      grandSweepRight: 0,
+      grandSweepLeft: 0,
     }
     for (const p of TUNING_LAB_TRACK_PIECES) counts[p.type] += 1
     expect(counts.straight).toBeGreaterThanOrEqual(4)

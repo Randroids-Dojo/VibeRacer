@@ -45,9 +45,21 @@ const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   megaSweepRight: [4, 2], // S -> E (3x3 smooth sampled right turn)
   megaSweepLeft: [4, 6], // S -> W (3x3 smooth sampled left turn)
   hairpin: [6, 6], // W -> W on different footprint rows
+  hairpinTight: [6, 6], // W -> W on different footprint rows
+  hairpinWide: [6, 6], // W -> W on different footprint rows
   arc45: [4, 1], // S -> NE (right-hand cardinal-to-corner bridge)
   arc45Left: [4, 7], // S -> NW (left-hand cardinal-to-corner bridge)
   diagonal: [5, 1], // SW -> NE (straight across one cell corner-to-corner)
+  wideArc45Right: [4, 1], // S -> NE across a wider footprint
+  wideArc45Left: [4, 7], // S -> NW across a wider footprint
+  diagonalSweepRight: [5, 3], // SW -> SE diagonal bend
+  diagonalSweepLeft: [3, 5], // SE -> SW diagonal bend
+  kinkRight: [4, 0], // S -> N with a shallow right kink
+  kinkLeft: [4, 0], // S -> N with a shallow left kink
+  offsetStraightRight: [4, 0], // S -> N with the exit shifted right
+  offsetStraightLeft: [4, 0], // S -> N with the exit shifted left
+  grandSweepRight: [4, 2], // S -> E across a larger footprint
+  grandSweepLeft: [4, 6], // S -> W across a larger footprint
 }
 
 export function connectorsOf(piece: Piece): Dir[] {
@@ -55,11 +67,69 @@ export function connectorsOf(piece: Piece): Dir[] {
 }
 
 export function connectorPortsOf(piece: Piece): ConnectorPort[] {
-  if (piece.type === 'hairpin') {
+  if (
+    piece.type === 'hairpin' ||
+    piece.type === 'hairpinTight' ||
+    piece.type === 'hairpinWide'
+  ) {
     return rotatePorts(
       [
         { dr: -1, dc: 0, dir: 6 },
         { dr: 1, dc: 0, dir: 6 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'wideArc45Right') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: 1, dir: 1 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'wideArc45Left') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: -1, dir: 7 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'offsetStraightRight') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: 1, dir: 0 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'offsetStraightLeft') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: -1, dir: 0 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'grandSweepRight') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: 1, dir: 2 },
+      ],
+      piece.rotation,
+    )
+  }
+  if (piece.type === 'grandSweepLeft') {
+    return rotatePorts(
+      [
+        { dr: 0, dc: 0, dir: 4 },
+        { dr: -1, dc: -1, dir: 6 },
       ],
       piece.rotation,
     )

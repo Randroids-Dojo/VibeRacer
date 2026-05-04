@@ -13,6 +13,7 @@ import {
   RaceTokenPayloadSchema,
   SubmissionSchema,
   MAX_PIECES_PER_TRACK,
+  type PieceType,
 } from '@/lib/schemas'
 import { DEFAULT_TRACK_MUSIC } from '@/lib/trackMusic'
 
@@ -83,6 +84,31 @@ describe('PieceSchema', () => {
     expect(
       PieceSchema.parse({ type: 'diagonal', row: 0, col: 0, rotation: 90 }),
     ).toEqual({ type: 'diagonal', row: 0, col: 0, rotation: 90 })
+  })
+
+  it('accepts expanded smooth piece types', () => {
+    const types: PieceType[] = [
+      'hairpinTight',
+      'hairpinWide',
+      'wideArc45Right',
+      'wideArc45Left',
+      'diagonalSweepRight',
+      'diagonalSweepLeft',
+      'kinkRight',
+      'kinkLeft',
+      'offsetStraightRight',
+      'offsetStraightLeft',
+      'grandSweepRight',
+      'grandSweepLeft',
+    ]
+    for (const type of types) {
+      expect(PieceSchema.parse({ type, row: 0, col: 0, rotation: 0 })).toEqual({
+        type,
+        row: 0,
+        col: 0,
+        rotation: 0,
+      })
+    }
   })
 
   it('accepts an optional multi-cell footprint', () => {
