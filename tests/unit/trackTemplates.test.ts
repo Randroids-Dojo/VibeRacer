@@ -44,7 +44,7 @@ describe('TRACK_TEMPLATES', () => {
     const template = getTrackTemplate('reference-gp')
 
     expect(template?.label).toBe('Reference GP')
-    expect(template?.pieces.length).toBe(36)
+    expect(template?.pieces.length).toBe(58)
     expect(validateClosedLoop(template?.pieces ?? [])).toEqual({ ok: true })
   })
 
