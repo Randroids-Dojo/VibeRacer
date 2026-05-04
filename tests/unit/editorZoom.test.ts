@@ -118,6 +118,19 @@ describe('fitZoom', () => {
     ).toBe(ZOOM_MAX)
   })
 
+  it('clamps to ZOOM_MIN when content is far larger than the viewport', () => {
+    // 100000x100000 content into 100x100 viewport => raw fit = 0.001,
+    // well below ZOOM_MIN. Result must be clamped up to ZOOM_MIN.
+    expect(
+      fitZoom({
+        contentWidth: 100000,
+        contentHeight: 100000,
+        viewportWidth: 100,
+        viewportHeight: 100,
+      }),
+    ).toBe(ZOOM_MIN)
+  })
+
   it('returns the default zoom on degenerate input', () => {
     expect(
       fitZoom({
