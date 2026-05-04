@@ -38,7 +38,7 @@ export function withPieceRotated(
   row: number,
   col: number,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
+  const idx = findPieceIndexForCellAction(pieces, row, col)
   if (idx === -1) return pieces
   const cur = pieces[idx]
   const copy = pieces.slice()
@@ -55,9 +55,19 @@ export function withPieceRemoved(
   row: number,
   col: number,
 ): Piece[] {
-  const idx = pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
+  const idx = findPieceIndexForCellAction(pieces, row, col)
   if (idx === -1) return pieces
   return pieces.filter((_, i) => i !== idx)
+}
+
+function findPieceIndexForCellAction(
+  pieces: Piece[],
+  row: number,
+  col: number,
+): number {
+  const anchorIdx = pieces.findIndex((p) => p.row === row && p.col === col)
+  if (anchorIdx !== -1) return anchorIdx
+  return pieces.findIndex((p) => pieceOccupiesCell(p, row, col))
 }
 
 export function moveStartTo(

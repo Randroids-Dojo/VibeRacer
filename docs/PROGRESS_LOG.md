@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Editor Anchor Hit Testing
+
+- Branch: `fix/editor-anchor-hit-testing`
+- Changed: rotate and erase actions now prefer an exact piece anchor before falling back to footprint cells. This keeps clicks on a visible adjacent piece from rotating or deleting the long-turn piece whose clearance footprint also covers that cell. The editor SVG now exposes piece type and rotation data attributes so hit-test behavior can be asserted directly in smoke tests.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/editor.test.ts tests/unit/track.test.ts tests/unit/trackFootprint.test.ts` passed with 77 tests, `npm test` passed with 3150 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 7 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: footprint-cell rotation and erase should still work when no visible anchor is present in the clicked cell, but exact anchors should always win because that is the piece the author can see and intends to edit.
+- GDD coverage: Section 6 Track system now records anchor-first editor actions for footprints.
+- Followups: none.
+
 ## 2026-05-03, Diagonal Connector Target Diagnostics
 
 - Branch: `fix/diagonal-footprint-diagnostics`

@@ -144,6 +144,7 @@
         "reference GP template",
         "editor connector diagnostics",
         "anchor-only editor placement for footprints",
+        "anchor-first editor actions for footprints",
         "connector-target footprint diagnostics",
         "track width scaffold",
         "segment path scaffold",
