@@ -15,6 +15,7 @@ import {
   sampleArc45Local,
   sampleArc45LeftLocal,
   sampleDiagonalLocal,
+  sampleFlexStraightLocal,
   sampleHairpinLocal,
   sampleMegaSweepLeftLocal,
   sampleMegaSweepRightLocal,
@@ -622,6 +623,110 @@ describe('45-degree connector pieces', () => {
       'diagonal',
       'arc45Left',
     ])
+  })
+})
+
+describe('flex straight piece', () => {
+  // Closed 8-piece loop: a 2-cell flex straight forms one column, and a
+  // simple cardinal U closes back through the other column. The flex
+  // straight's footprint covers cells (0, 1), (1, 1), (2, 1); the loop
+  // walks (-1, 1) -> (-1, 0) -> (0..2, 0) -> (3, 0) -> (3, 1) -> flex.
+  const flexLoop: Piece[] = [
+    {
+      type: 'flexStraight',
+      row: 2,
+      col: 1,
+      rotation: 0,
+      flex: { dr: -2, dc: 0 },
+    },
+    { type: 'right90', row: 3, col: 1, rotation: 180 },
+    { type: 'right90', row: 3, col: 0, rotation: 270 },
+    { type: 'straight', row: 2, col: 0, rotation: 0 },
+    { type: 'straight', row: 1, col: 0, rotation: 0 },
+    { type: 'straight', row: 0, col: 0, rotation: 0 },
+    { type: 'right90', row: -1, col: 0, rotation: 0 },
+    { type: 'right90', row: -1, col: 1, rotation: 90 },
+  ]
+
+  it('placeholder loop validates with a 2-cell flex straight', () => {
+    expect(validateClosedLoop(flexLoop).ok).toBe(true)
+  })
+
+  it('produces samples at every requested density', () => {
+    const path = buildTrackPath(flexLoop)
+    const op = path.order.find((o) => o.piece.type === 'flexStraight')!
+    expect(op.samples).not.toBeNull()
+    expect(op.samples!.length).toBeGreaterThanOrEqual(8)
+  })
+
+  it('first and last samples land on the connector edge midpoints', () => {
+    const path = buildTrackPath(flexLoop)
+    const op = path.order.find((o) => o.piece.type === 'flexStraight')!
+    const first = op.samples![0]
+    const last = op.samples![op.samples!.length - 1]
+    expect(Math.hypot(first.x - op.entry.x, first.z - op.entry.z))
+      .toBeLessThan(0.01)
+    expect(Math.hypot(last.x - op.exit.x, last.z - op.exit.z))
+      .toBeLessThan(0.01)
+  })
+
+  it('every sample sits exactly on the centerline', () => {
+    const path = buildTrackPath(flexLoop)
+    const op = path.order.find((o) => o.piece.type === 'flexStraight')!
+    for (const s of op.samples!) {
+      expect(distanceToCenterline(op, s.x, s.z)).toBeLessThan(0.01)
+    }
+  })
+
+  it('connectors for an angled flex straight stay cardinal', () => {
+    // A 5-cell-long, 2-cell-wide flex straight runs at ~26 degrees off
+    // cardinal but its endpoint connectors are still S and N, so it
+    // attaches to existing grid pieces.
+    const piece: Piece = {
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -5, dc: 2 },
+    }
+    expect(opposite(0)).toBe(4)
+    const path = buildTrackPath([
+      piece,
+      { type: 'straight', row: -5, col: 2, rotation: 0 },
+      { type: 'left90', row: -6, col: 2, rotation: 0 },
+      { type: 'straight', row: -6, col: 1, rotation: 90 },
+      { type: 'straight', row: -6, col: 0, rotation: 90 },
+      { type: 'left90', row: -6, col: -1, rotation: 270 },
+      { type: 'straight', row: -5, col: -1, rotation: 0 },
+      { type: 'straight', row: -4, col: -1, rotation: 0 },
+      { type: 'straight', row: -3, col: -1, rotation: 0 },
+      { type: 'straight', row: -2, col: -1, rotation: 0 },
+      { type: 'straight', row: -1, col: -1, rotation: 0 },
+      { type: 'straight', row: 0, col: -1, rotation: 0 },
+      { type: 'left90', row: 1, col: -1, rotation: 180 },
+      { type: 'right90', row: 1, col: 0, rotation: 180 },
+    ])
+    const op = path.order.find((o) => o.piece.type === 'flexStraight')!
+    // The path entered the flex straight from the south edge of (0, 0) and
+    // exits through the north edge of (-5, 2). Two connectors, both cardinal.
+    expect(op.entryDir % 2).toBe(0)
+    expect(op.exitDir % 2).toBe(0)
+  })
+
+  it('a steep flex straight delivers a heading off cardinal', () => {
+    const piece: Piece = {
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -3, dc: 1 },
+    }
+    const samples = sampleFlexStraightLocal(piece.flex!)
+    const heading = samples[0].heading
+    // Cardinal north would be Math.PI / 2; the angled run drifts a few
+    // degrees east of north. Check the angle is in the expected NE arc.
+    expect(heading).toBeGreaterThan(Math.PI / 4)
+    expect(heading).toBeLessThan(Math.PI / 2)
   })
 })
 

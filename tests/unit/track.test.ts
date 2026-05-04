@@ -301,4 +301,73 @@ describe('validateClosedLoop', () => {
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/too many pieces/)
   })
+
+  it('validates a closed loop that uses a 2-cell flex straight', () => {
+    // Vertical flex straight (no lateral offset) acting as a long straight
+    // segment between two corner pairs.
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 2,
+        col: 1,
+        rotation: 0,
+        flex: { dr: -2, dc: 0 },
+      },
+      { type: 'right90', row: 3, col: 1, rotation: 180 },
+      { type: 'right90', row: 3, col: 0, rotation: 270 },
+      { type: 'straight', row: 2, col: 0, rotation: 0 },
+      { type: 'straight', row: 1, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: -1, col: 0, rotation: 0 },
+      { type: 'right90', row: -1, col: 1, rotation: 90 },
+    ]
+    expect(validateClosedLoop(pieces)).toEqual({ ok: true })
+  })
+
+  it('rejects a flex straight whose endpoints have no neighbors', () => {
+    const res = validateClosedLoop([
+      {
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -2, dc: 0 },
+      },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/open connector/)
+  })
+
+  it('validates a closed loop with a sub-45 angled flex straight', () => {
+    // A flex straight with spec dr=-3, dc=1 runs at atan(1/2) ~= 26.6 degrees
+    // off cardinal, the kind of angle Miami's back straight needs and that
+    // the strict 45-degree grid could not previously express. The flex
+    // straight cuts diagonally up the loop's interior; the loop walks
+    // around its outside (col=2 corridor) to close.
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 3,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -3, dc: 1 },
+      },
+      { type: 'right90', row: 4, col: 0, rotation: 270 },
+      { type: 'straight', row: 4, col: 1, rotation: 90 },
+      { type: 'right90', row: 4, col: 2, rotation: 180 },
+      { type: 'straight', row: 3, col: 2, rotation: 0 },
+      { type: 'straight', row: 2, col: 2, rotation: 0 },
+      { type: 'straight', row: 1, col: 2, rotation: 0 },
+      { type: 'straight', row: 0, col: 2, rotation: 0 },
+      { type: 'right90', row: -1, col: 2, rotation: 90 },
+      { type: 'right90', row: -1, col: 1, rotation: 0 },
+    ]
+    const result = validateClosedLoop(pieces)
+    if (!result.ok) {
+      // Surface the validator's diagnostic if the loop fails so the test
+      // failure is debuggable without re-running by hand.
+      throw new Error(result.reason ?? 'validateClosedLoop failed')
+    }
+    expect(result.ok).toBe(true)
+  })
 })

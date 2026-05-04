@@ -93,6 +93,7 @@ export const PIECE_COMPLEXITY_WEIGHTS: Record<PieceType, number> = {
   offsetStraightLeft: 0.6,
   grandSweepRight: 1.0,
   grandSweepLeft: 1.0,
+  flexStraight: 0.3,
 }
 
 // Whether a piece type counts as a "turn" for the density and direction-flip
@@ -229,6 +230,7 @@ function turnHand(p: Piece): 'left' | 'right' | 'flip' | null {
     case 'scurveLeft':
       return 'flip'
     case 'straight':
+    case 'flexStraight':
       return null
     default:
       // Unknown / future piece type. Treat as a non-turn so a future schema

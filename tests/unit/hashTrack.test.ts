@@ -111,6 +111,27 @@ describe('hashTrack', () => {
     }
   })
 
+  it('emits a flex spec for flexStraight pieces and changes the hash', () => {
+    const flexPiece: Piece = {
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -3, dc: 1 },
+    }
+    const json = canonicalTrackJson([flexPiece, b, c])
+    expect(json).toContain('"flex"')
+    expect(json).toContain('"dr":-3')
+    expect(json).toContain('"dc":1')
+    const altered: Piece = { ...flexPiece, flex: { dr: -4, dc: 1 } }
+    expect(hashTrack([flexPiece, b, c])).not.toBe(hashTrack([altered, b, c]))
+  })
+
+  it('keeps non-flex pieces free of any flex field in canonical JSON', () => {
+    const json = canonicalTrackJson([a, b, c])
+    expect(json).not.toContain('"flex"')
+  })
+
   it('omits standard widthClass from legacy hashes', () => {
     const legacy = hashTrack([a, b, c])
     const withStandardWidth: HashablePiece[] = [

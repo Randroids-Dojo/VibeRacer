@@ -112,6 +112,15 @@ describe('PIECE_COMPLEXITY_WEIGHTS', () => {
       PIECE_COMPLEXITY_WEIGHTS.right90,
     )
   })
+
+  it('weights flex straights low because they are still straights', () => {
+    expect(PIECE_COMPLEXITY_WEIGHTS.flexStraight).toBeLessThan(
+      PIECE_COMPLEXITY_WEIGHTS.kinkRight,
+    )
+    expect(PIECE_COMPLEXITY_WEIGHTS.flexStraight).toBeGreaterThan(
+      PIECE_COMPLEXITY_WEIGHTS.straight,
+    )
+  })
 })
 
 describe('TURN_PIECE_TYPES', () => {
@@ -132,6 +141,10 @@ describe('TURN_PIECE_TYPES', () => {
 
   it('does not contain straights', () => {
     expect(TURN_PIECE_TYPES.has('straight')).toBe(false)
+  })
+
+  it('does not treat flex straights as turns', () => {
+    expect(TURN_PIECE_TYPES.has('flexStraight')).toBe(false)
   })
 })
 

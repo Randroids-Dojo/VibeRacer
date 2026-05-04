@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Flex Angle Straight Piece
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added a new `flexStraight` piece type that breaks the strict 45-degree grid for straight runs. Each flex straight stores a `flex` spec with integer cell offsets `(dr, dc)` from the entry cell to the exit cell; the path between the two cardinal edge midpoints is a single straight line at any sub-45-degree angle (e.g. `dr=-3, dc=1` produces 26.6 degrees, the kind of angle Miami's back straight needs and the existing pieces could not express). Wired the type through `PieceTypeSchema`, `FlexStraightSpecSchema`, connector ports, supercover-line footprint, sampled centerline, hash canonicalization, mirror logic, pace notes, difficulty weights, the editor palette glyph, and a length / lateral / angle control bar in the palette. Existing track JSON, hashes, and pieces remain unchanged.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3186 tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: a flex straight's endpoints stay on cardinal cell-edge midpoints so the piece connects to existing grid pieces with the unchanged 8-direction connector matching. The path itself is a single straight line, which produces a small tangent kink at the joins with cardinal pieces; smoothing the joins with Bezier endpoints is a future refinement.
+- GDD coverage: Section 6 Track system now records the flex-angle straight piece.
+- Followups: smooth flex-straight joins with Bezier endpoints; expose a free-rotation drag handle for the place tool; add Miami-style template that uses flex straights for the back straight.
+
 ## 2026-05-04, Reference GP Turn Sequence
 
 - Branch: `fix/reference-gp-turn-sequence`

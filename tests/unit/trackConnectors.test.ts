@@ -29,6 +29,7 @@ const pieceTypes: PieceType[] = [
   'offsetStraightLeft',
   'grandSweepRight',
   'grandSweepLeft',
+  'flexStraight',
 ]
 const rotations: Rotation[] = [0, 90, 180, 270]
 
@@ -94,5 +95,35 @@ describe('8-direction connector scaffold', () => {
     for (let dir = 0; dir < 8; dir++) {
       expect(opposite(dir as Dir)).toBe(((dir + 4) % 8) as Dir)
     }
+  })
+
+  it('exposes flex straight ports keyed off the flex spec', () => {
+    // Default spec dr=-3, dc=1 at rotation 0: entry south of anchor, exit
+    // north of cell (-3, 1).
+    expect(
+      connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 0 }),
+    ).toEqual([4, 0])
+    // Custom spec routes the exit cell through the flex offset, not a
+    // hard-coded port table.
+    const customPiece: Piece = {
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -5, dc: 2 },
+    }
+    expect(connectorsOf(customPiece)).toEqual([4, 0])
+    // Rotation 90: entry maps to W, exit to E. The exit cell offset rotates
+    // by one 90-degree step ((-3, 1) becomes (1, 3) under the cell-grid
+    // rotation rule).
+    expect(
+      connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 90 }),
+    ).toEqual([6, 2])
+    expect(
+      connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 180 }),
+    ).toEqual([0, 4])
+    expect(
+      connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 270 }),
+    ).toEqual([2, 6])
   })
 })
