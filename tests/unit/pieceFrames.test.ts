@@ -173,6 +173,35 @@ describe('tangentsAreAntiparallel', () => {
       tangentsAreAntiparallel(Math.PI / 2, -Math.PI / 2, DEFAULT_FRAME_EPSILON_THETA),
     ).toBe(true)
   })
+
+  it('returns true when antiparallel sits across the +PI / -PI seam', () => {
+    // a = 179 degrees, b = -1 degree: difference is 180, antiparallel.
+    const a = (179 * Math.PI) / 180
+    const b = (-1 * Math.PI) / 180
+    expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(true)
+    // Mirror: a = -179 degrees, b = 1 degree.
+    expect(
+      tangentsAreAntiparallel(-a, -b, DEFAULT_FRAME_EPSILON_THETA),
+    ).toBe(true)
+  })
+
+  it('returns false for two near-parallel tangents on opposite sides of the +PI seam', () => {
+    // a = 179 degrees, b = -179 degrees: only 2 degrees apart in reality.
+    // A naive subtraction reads 358 degrees; the wrap brings it back to -2.
+    // |((a - b) - PI) mod 2*PI| then sits near PI, well outside the 2-degree
+    // antiparallel epsilon, so the matcher must reject.
+    const a = (179 * Math.PI) / 180
+    const b = (-179 * Math.PI) / 180
+    expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(false)
+  })
+
+  it('rejects exactly parallel tangents', () => {
+    // a == b: delta = -PI after subtracting PI. The wrap leaves it at -PI
+    // (strict < -PI guard), so |delta| = PI which is well outside epsilon.
+    expect(
+      tangentsAreAntiparallel(0.7, 0.7, DEFAULT_FRAME_EPSILON_THETA),
+    ).toBe(false)
+  })
 })
 
 describe('cell-aligned legacy pieces still match exactly', () => {

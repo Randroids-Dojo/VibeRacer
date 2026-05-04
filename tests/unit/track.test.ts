@@ -338,6 +338,44 @@ describe('validateClosedLoop', () => {
     expect(res.reason).toMatch(/open connector/)
   })
 
+  it('validates a long cell-aligned chain without floating-point drift breaking closure', () => {
+    // The frame-based connector matcher uses an epsilon tolerance, which
+    // raises a question for long chains: does cumulative floating-point
+    // error in the per-piece frame computation push any join over the
+    // 0.5-unit position epsilon? This builds a 60-piece rectangle that
+    // exercises every cardinal direction and confirms validation still
+    // succeeds. Cell-aligned pieces should hit zero numerical drift; this
+    // test pins that contract before any continuous-angle pieces enter
+    // the migration path.
+    const pieces: Piece[] = []
+    // Top edge: 28 cells going east at row 0 (28 straights at rotation 90).
+    for (let c = 1; c <= 28; c++) {
+      pieces.push({ type: 'straight', row: 0, col: c, rotation: 90 })
+    }
+    // Top-right corner.
+    pieces.push({ type: 'right90', row: 0, col: 29, rotation: 90 })
+    // Right edge going south.
+    pieces.push({ type: 'straight', row: 1, col: 29, rotation: 0 })
+    // Bottom-right corner.
+    pieces.push({ type: 'right90', row: 2, col: 29, rotation: 180 })
+    // Bottom edge going west: 28 straights at rotation 90.
+    for (let c = 28; c >= 1; c--) {
+      pieces.push({ type: 'straight', row: 2, col: c, rotation: 90 })
+    }
+    // Bottom-left corner.
+    pieces.push({ type: 'right90', row: 2, col: 0, rotation: 270 })
+    // Left edge going north.
+    pieces.push({ type: 'straight', row: 1, col: 0, rotation: 0 })
+    // Top-left corner closes the loop.
+    pieces.push({ type: 'right90', row: 0, col: 0, rotation: 0 })
+    expect(pieces).toHaveLength(28 + 1 + 1 + 1 + 28 + 1 + 1 + 1)
+    const result = validateClosedLoop(pieces)
+    if (!result.ok) {
+      throw new Error(result.reason ?? 'validateClosedLoop failed')
+    }
+    expect(result.ok).toBe(true)
+  })
+
   it('validates a closed loop with a sub-45 angled flex straight', () => {
     // A flex straight with spec dr=-3, dc=1 runs at atan(1/2) ~= 26.6 degrees
     // off cardinal, the kind of angle Miami's back straight needs and that
