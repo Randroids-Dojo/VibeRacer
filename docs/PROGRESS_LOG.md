@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Reference GP Kink Refresh
+
+- Branch: `feature/reference-gp-smooth-pieces`
+- Changed: updated the Reference GP template to use shallow kink pieces through the top straight, lower run, and right-side stack while preserving its 58-piece valid closed loop and the 64-piece cap.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/hashTrack.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/sceneBuilder.test.ts` passed with 108 tests, `npm test` passed with 3156 tests, `npm run type-check` passed, targeted Playwright track-editor and Reference GP smoke passed with 8 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the first template refresh after the expanded catalog should prefer drop-in kink replacements over moving connector anchors, so the loop stays stable while still softening the most rigid straight runs.
+- GDD coverage: Section 6 Track system keeps Reference GP covered and now records the smoother kink refresh.
+- Followups: later template passes can use wide 45s, lane offsets, and grand sweeps where they require anchor relocation.
+
 ## 2026-05-04, Expanded Smooth Piece Catalog
 
 - Branch: `feature/expanded-track-pieces`

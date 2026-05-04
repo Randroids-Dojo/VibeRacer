@@ -357,7 +357,22 @@ function polylineGeometry(op: OrderedPiece): BufferGeometry {
   const idx: number[] = []
   for (let i = 0; i < samples.length - 1; i++) {
     const base = i * 2
-    idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+    const ax = verts[base * 3]
+    const az = verts[base * 3 + 2]
+    const bx = verts[(base + 2) * 3]
+    const bz = verts[(base + 2) * 3 + 2]
+    const cx = verts[(base + 1) * 3]
+    const cz = verts[(base + 1) * 3 + 2]
+    const ux = bx - ax
+    const uz = bz - az
+    const vx = cx - ax
+    const vz = cz - az
+    const facesUp = uz * vx - ux * vz > 0
+    if (facesUp) {
+      idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+    } else {
+      idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2)
+    }
   }
   return buildFlatGeometry(verts, idx)
 }
@@ -420,9 +435,27 @@ export function trackSurfaceGeometry(path: TrackPath): BufferGeometry {
   }
 
   const idx: number[] = []
+  function pushUpTriangle(a: number, b: number, c: number) {
+    const ax = verts[a * 3]
+    const az = verts[a * 3 + 2]
+    const bx = verts[b * 3]
+    const bz = verts[b * 3 + 2]
+    const cx = verts[c * 3]
+    const cz = verts[c * 3 + 2]
+    const ux = bx - ax
+    const uz = bz - az
+    const vx = cx - ax
+    const vz = cz - az
+    if (uz * vx - ux * vz > 0) {
+      idx.push(a, b, c)
+    } else {
+      idx.push(a, c, b)
+    }
+  }
   for (let i = 0; i < samples.length - 1; i++) {
     const base = i * 2
-    idx.push(base, base + 2, base + 1, base + 1, base + 2, base + 3)
+    pushUpTriangle(base, base + 2, base + 1)
+    pushUpTriangle(base + 1, base + 2, base + 3)
   }
   return buildFlatGeometry(verts, idx)
 }
