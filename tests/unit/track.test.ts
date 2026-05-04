@@ -5,6 +5,7 @@ import {
   opposite,
   validateClosedLoop,
 } from '@/game/track'
+import { frameOfPort, framesConnect } from '@/game/pieceFrames'
 import type { Piece } from '@/lib/schemas'
 
 describe('connectorsOf', () => {
@@ -344,9 +345,18 @@ describe('validateClosedLoop', () => {
     // error in the per-piece frame computation push any join over the
     // 0.5-unit position epsilon? This builds a 60-piece rectangle that
     // exercises every cardinal direction and confirms validation still
-    // succeeds. Cell-aligned pieces should hit zero numerical drift; this
-    // test pins that contract before any continuous-angle pieces enter
-    // the migration path.
+    // succeeds. Cell-aligned pieces should hit exact zero drift on every
+    // join, including the closure between the last and first piece.
+    //
+    // Three contract pins, one per migration stage:
+    //  - V1 (this test, today): closure error must be exactly 0 because
+    //    every frame is an integer multiple of CELL_SIZE / 2.
+    //  - Stage 1 (v2 transforms via round-trip from cells): same as v1,
+    //    bit-for-bit. Adding a transform field cannot introduce drift
+    //    while pieces are still placed on the integer grid.
+    //  - Stage 2 (continuous-angle loops): drift must stay below
+    //    DEFAULT_FRAME_EPSILON_POS so the matcher still closes; the
+    //    reconciliation pass tightens it back to zero before save.
     const pieces: Piece[] = []
     // Top edge: 28 cells going east at row 0 (28 straights at rotation 90).
     for (let c = 1; c <= 28; c++) {
@@ -374,6 +384,47 @@ describe('validateClosedLoop', () => {
       throw new Error(result.reason ?? 'validateClosedLoop failed')
     }
     expect(result.ok).toBe(true)
+
+    // Measure the actual numerical drift across every join, not just at
+    // the closure. The worst case anywhere in the loop is what bounds
+    // future continuous-angle reconciliation.
+    let maxJoinDistance = 0
+    let maxTangentDelta = 0
+    for (const piece of pieces) {
+      const ports = connectorPortsOf(piece)
+      for (const port of ports) {
+        const myFrame = frameOfPort(piece, port)
+        let matchedFrame: { x: number; z: number; theta: number } | null = null
+        for (const candidate of pieces) {
+          if (candidate === piece) continue
+          for (const candidatePort of connectorPortsOf(candidate)) {
+            const cf = frameOfPort(candidate, candidatePort)
+            if (framesConnect(myFrame, cf)) {
+              matchedFrame = cf
+              break
+            }
+          }
+          if (matchedFrame) break
+        }
+        expect(matchedFrame).not.toBeNull()
+        const distance = Math.hypot(
+          myFrame.x - matchedFrame!.x,
+          myFrame.z - matchedFrame!.z,
+        )
+        let dt = myFrame.theta - matchedFrame!.theta - Math.PI
+        while (dt > Math.PI) dt -= 2 * Math.PI
+        while (dt < -Math.PI) dt += 2 * Math.PI
+        const tangentDelta = Math.abs(dt)
+        if (distance > maxJoinDistance) maxJoinDistance = distance
+        if (tangentDelta > maxTangentDelta) maxTangentDelta = tangentDelta
+      }
+    }
+    // V1 baseline: every edge midpoint is an integer multiple of HALF_CELL,
+    // so subtracting two of them yields exact zero. Tangents are looked up
+    // from a static table, also exact. Both must be 0 today; Stage 1
+    // round-tripped transforms must match this exactly.
+    expect(maxJoinDistance).toBe(0)
+    expect(maxTangentDelta).toBe(0)
   })
 
   it('validates a closed loop with a sub-45 angled flex straight', () => {

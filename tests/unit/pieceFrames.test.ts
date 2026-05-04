@@ -174,25 +174,34 @@ describe('tangentsAreAntiparallel', () => {
     ).toBe(true)
   })
 
-  it('returns true when antiparallel sits across the +PI / -PI seam', () => {
-    // a = 179 degrees, b = -1 degree: difference is 180, antiparallel.
-    const a = (179 * Math.PI) / 180
-    const b = (-1 * Math.PI) / 180
-    expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(true)
-    // Mirror: a = -179 degrees, b = 1 degree.
-    expect(
-      tangentsAreAntiparallel(-a, -b, DEFAULT_FRAME_EPSILON_THETA),
-    ).toBe(true)
-  })
-
-  it('returns false for two near-parallel tangents on opposite sides of the +PI seam', () => {
-    // a = 179 degrees, b = -179 degrees: only 2 degrees apart in reality.
-    // A naive subtraction reads 358 degrees; the wrap brings it back to -2.
-    // |((a - b) - PI) mod 2*PI| then sits near PI, well outside the 2-degree
-    // antiparallel epsilon, so the matcher must reject.
+  // The +PI / -PI seam is the wrap point in atan2 output, so it's where a
+  // naive antiparallel check breaks. Three points pin the boundary, not one:
+  //   1. (179, -179): 2 degrees apart, parallel. Must reject.
+  //   2. (179.5, -0.5): exactly antiparallel within epsilon, near the seam.
+  //      Must accept.
+  //   3. (181.5, 1.5): exactly antiparallel, expressed with one tangent
+  //      already past +PI (un-normalized). Wrap math must accept.
+  it('rejects near-parallel tangents on opposite sides of the +PI seam', () => {
     const a = (179 * Math.PI) / 180
     const b = (-179 * Math.PI) / 180
     expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(false)
+  })
+
+  it('accepts antiparallel tangents that straddle the +PI seam from inside the range', () => {
+    const a = (179.5 * Math.PI) / 180
+    const b = (-0.5 * Math.PI) / 180
+    expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(true)
+    // Mirror across zero: same antiparallel relationship.
+    expect(tangentsAreAntiparallel(-a, -b, DEFAULT_FRAME_EPSILON_THETA)).toBe(true)
+  })
+
+  it('accepts antiparallel tangents when one is expressed past +PI', () => {
+    // 181.5 degrees is the un-normalized form of -178.5 degrees. The matcher
+    // must accept inputs outside [-PI, PI] gracefully because nothing in
+    // the contract requires callers to pre-normalize headings.
+    const a = (181.5 * Math.PI) / 180
+    const b = (1.5 * Math.PI) / 180
+    expect(tangentsAreAntiparallel(a, b, DEFAULT_FRAME_EPSILON_THETA)).toBe(true)
   })
 
   it('rejects exactly parallel tangents', () => {
