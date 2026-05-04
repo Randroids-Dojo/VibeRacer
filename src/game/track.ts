@@ -7,6 +7,7 @@ import {
 } from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
 import { frameOfPort, framesConnect } from './pieceFrames'
+import { geometryOf } from './pieceGeometry'
 
 export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
@@ -413,9 +414,11 @@ export function portsConnect(
   port: ConnectorPort,
   neighbor: Piece,
 ): boolean {
+  // Endpoints are the source of truth for connections. Stage 0.5 routes
+  // every match through geometryOf so Stage 1 proper can swap how
+  // endpoints are derived without touching the connection engine.
   const frame = frameOfPort(piece, port)
-  for (const neighborPort of connectorPortsOf(neighbor)) {
-    const candidate = frameOfPort(neighbor, neighborPort)
+  for (const candidate of geometryOf(neighbor).endpoints) {
     if (framesConnect(frame, candidate)) return true
   }
   return false
@@ -426,9 +429,15 @@ export function findConnectedNeighbor(
   port: ConnectorPort,
   pieces: readonly Piece[],
 ): Piece | null {
+  // Endpoint-driven match: iterate every other piece's endpoint frames and
+  // return the first whose frame connects to this port's frame. Stage 1
+  // proper changes only how geometryOf builds endpoints; nothing here.
+  const frame = frameOfPort(piece, port)
   for (const candidate of pieces) {
     if (candidate === piece) continue
-    if (portsConnect(piece, port, candidate)) return candidate
+    for (const candidateFrame of geometryOf(candidate).endpoints) {
+      if (framesConnect(frame, candidateFrame)) return candidate
+    }
   }
   return null
 }

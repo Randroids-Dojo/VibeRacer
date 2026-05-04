@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Geometry Shim and Output Snapshots (Stage 0.5)
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added the geometry accessor that Stage 1 proper (the schema swap to a `transform` field) will mutate. New module `src/game/pieceGeometry.ts` exports `geometryOf(piece)` returning `{ transform, endpoints, footprint }`, plus `transformOf(piece)` and `endpointsOf(piece)` helpers. The validator's `portsConnect` and `findConnectedNeighbor` now consume `geometryOf(piece).endpoints` directly, locking endpoints as the connector source of truth so the connection engine has zero surface to change in Stage 1 proper. The implementation still derives every field from `(row, col, rotation)`. Snapshot tests in `tests/unit/pieceGeometry.test.ts` bit-lock the v1 baseline for every track template across three downstream pipelines: sceneBuilder vertex buffer hash + vertex count, minimap path string hash, thumbnail path string hash. Stage 1 proper's new geometryOf implementation must reproduce these hashes exactly.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3216 tests including 10 new pieceGeometry tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the geometry shim is internal scaffolding; no user-visible change. Existing callers can keep using `connectorPortsOf` (it's the implementation detail behind `endpointsOf`), but new callers and the validator should consume `geometryOf` only. The four track templates are the snapshot wall; new templates need a baseline entry added to `EXPECTED` before they can land.
+- GDD coverage: no GDD section change; this is a refactor under existing Section 6 Track system functionality.
+- Followups: Stage 1 proper adds `transform: { x, y, theta }` to `PieceSchema` with a v1 to v2 converter on load; geometryOf reads transform when present and falls back to cells otherwise; hash canonicalization preserves v1 hashes for tracks whose transforms project exactly back to integer cells. Then Stage 2 (rotate handle, free placement behind a flag), then Stage 3 (flip the flag, deprecate Flex angle).
+
 ## 2026-05-04, Continuous-Angle Frame Layer (Stage 0 substrate)
 
 - Branch: `claude/add-flex-straight-piece-9Pjig`
