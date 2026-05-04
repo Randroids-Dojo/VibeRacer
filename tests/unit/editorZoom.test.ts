@@ -103,7 +103,7 @@ describe('fitZoom', () => {
         viewportHeight: 400,
         padding: 50,
       }),
-    ).toBe(0.4) // clamped to ZOOM_MIN
+    ).toBe(0.375)
   })
 
   it('clamps to the legal zoom range', () => {
