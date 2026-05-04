@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Continuous Road Surface
+
+- Branch: `fix/continuous-road-strip`
+- Changed: race scenes now render the asphalt as one continuous road strip from the ordered track path instead of adding one mesh per piece. Connector samples are deduplicated so diagonal and sweep joins share vertices and do not expose grass seams between adjacent pieces.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/sceneBuilder.test.ts tests/unit/trackPath.test.ts tests/unit/wheelContact.test.ts tests/unit/minimap.test.ts` passed with 71 tests, `npm test` passed with 3155 tests, `npm run type-check` passed, targeted Playwright track-editor and Reference GP smoke passed with 8 tests, targeted race HUD smoke passed, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: editor previews and piece-local geometry tests should keep using `pieceGeometry`, while the race scene should use the continuous strip because it is the user-visible road surface.
+- GDD coverage: Section 6 Track system now records the continuous road surface renderer.
+- Followups: continue with expanded Miami piece families after this seam fix is merged.
+
 ## 2026-05-03, Miami Reference Template Revision
 
 - Branch: `fix/miami-template-layout`
