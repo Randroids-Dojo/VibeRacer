@@ -17,6 +17,7 @@ const TEMPLATE_HASHES: Record<string, string> = {
   'starter-oval': 'bf3ea10b943ba5d4eefa822f9b408c50b53fac7076f0db54fca08b0b4e22a799',
   'sweep-loop': '2d3bc0958bea925a6f452cdd64a2759611eda2521a577aacfb5d6fdcb0d4bdaa',
   's-curve-loop': '3953a6ff5ac054540a8d93f178a0e37633b3262acf3b5b16f954d7ff259c9e95',
+  'reference-gp': '852ee148d1cf4f43d9ae43c5632f4d1b5fd8cdfed4b21ab037f0d77fb201aa2b',
 }
 
 describe('hashTrack', () => {

@@ -141,6 +141,7 @@
         "rectangle selection",
         "selected track transforms",
         "track templates",
+        "reference GP template",
         "editor connector diagnostics",
         "anchor-only editor placement for footprints",
         "connector-target footprint diagnostics",

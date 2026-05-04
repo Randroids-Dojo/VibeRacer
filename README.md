@@ -38,7 +38,7 @@ A browser-based 3D arcade racer where every URL is its own track. Build a loop f
   - Move selected pieces.
   - Rotate selected pieces.
   - Flip selected pieces horizontally or vertically.
-  - Apply starter track templates.
+  - Apply starter and replica track templates.
   - Set custom checkpoint locations.
   - Adjust checkpoint count.
   - Pick a track biome.
