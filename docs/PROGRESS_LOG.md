@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Continuous-Angle Frame Layer (Stage 0 substrate)
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added the connection-engine substrate the continuous-angle editor will rest on. New module `src/game/pieceFrames.ts` introduces `Frame` (world position plus outward tangent angle), `frameOfPort` (resolves any connector port to its world frame), `framesConnect` (epsilon matcher on position and antiparallel tangent), and `tangentsAreAntiparallel`. `portsConnect` in `src/game/track.ts` is rewritten to delegate to the frame matcher; integer cell-equality is gone, replaced by epsilon-tolerant world-frame matching with default thresholds 0.5 world units on position and 2 degrees on tangent. Cell-aligned legacy pieces hit zero distance, so every existing track and template validates identically and hashes are unchanged.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3201 tests including 15 new pieceFrames tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: this is the foundation slice, not the full data-model refactor. Pieces still serialize as `(row, col, rotation)` and the editor still places on the integer grid. Only the connection engine swaps under the hood. Subsequent PRs will add the `transform` field on `PieceSchema`, the v1 to v2 converter, the rotate handle, and the free-placement editor mode.
+- GDD coverage: no GDD section change; this is a refactor under existing Section 6 Track system functionality.
+- Followups: add `transform: { x, y, theta }` to `PieceSchema` with a v1 to v2 converter on load (Stage 1 proper); rotate-handle and free-placement editor UX behind a feature flag (Stage 2); flip the flag and deprecate Flex angle (Stage 3).
+
 ## 2026-05-04, Flex Angle Straight Piece
 
 - Branch: `claude/add-flex-straight-piece-9Pjig`

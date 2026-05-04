@@ -6,6 +6,7 @@ import {
   type PieceType,
 } from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
+import { frameOfPort, framesConnect } from './pieceFrames'
 
 export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
@@ -412,17 +413,10 @@ export function portsConnect(
   port: ConnectorPort,
   neighbor: Piece,
 ): boolean {
-  const cell = portCell(piece, port)
+  const frame = frameOfPort(piece, port)
   for (const neighborPort of connectorPortsOf(neighbor)) {
-    const neighborCell = portCell(neighbor, neighborPort)
-    const off = DIR_OFFSETS[neighborPort.dir]
-    if (
-      neighborCell.row + off.dr === cell.row &&
-      neighborCell.col + off.dc === cell.col &&
-      neighborPort.dir === opposite(port.dir)
-    ) {
-      return true
-    }
+    const candidate = frameOfPort(neighbor, neighborPort)
+    if (framesConnect(frame, candidate)) return true
   }
   return false
 }
