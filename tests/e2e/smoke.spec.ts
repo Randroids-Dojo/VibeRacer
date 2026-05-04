@@ -349,7 +349,7 @@ test('track editor decoration palette follows the selected biome', async ({
   await expect(page.getByText('1 decorations')).toBeVisible()
 })
 
-test('track editor applies starter templates as valid loops', async ({ page }) => {
+test('track editor applies the Reference GP template as a valid loop', async ({ page }) => {
   await page.goto('/start/edit')
 
   await page.getByRole('button', { name: 'Templates' }).click()
