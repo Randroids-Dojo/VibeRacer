@@ -2,7 +2,7 @@
 // All math here is deterministic and unit-tested. The React component owns
 // the DOM (scroll positions, refs) and calls into these helpers.
 
-export const ZOOM_MIN = 0.4
+export const ZOOM_MIN = 0.05
 export const ZOOM_MAX = 2.5
 export const ZOOM_DEFAULT = 1
 // Step factor used by zoom-in / zoom-out buttons and discrete keyboard taps.
