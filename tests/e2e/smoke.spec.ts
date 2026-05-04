@@ -389,6 +389,23 @@ test('track editor keeps long-turn pieces when placing into their footprint', as
   await expect(page.getByText('2 / 64 pieces')).toBeVisible()
 })
 
+test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.getByRole('button', { name: 'Mega sweep (right)' }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+  await page.getByRole('button', { name: 'Straight' }).click()
+  await page.locator('g[data-row="1"][data-col="0"]').click()
+  await page.getByRole('button', { name: 'Diagonal' }).click()
+  await page.locator('g[data-row="0"][data-col="1"]').click()
+
+  await expect(page.getByText('open connector at 0,0 facing 2')).toBeVisible()
+  await expect(page.getByText('needs matching connector at 0,1')).toBeVisible()
+})
+
 test('middleware sets racerId cookie on first visit', async ({ page, context }) => {
   await context.clearCookies()
   await page.goto('/')

@@ -257,7 +257,7 @@ function isConnectorAnchorCell(
   if (key !== cellKey(neighbor.row, neighbor.col)) return false
   for (const port of connectorPortsOf(piece)) {
     if (neighborAnchorKey(piece, port) !== key) continue
-    return portsConnect(piece, port, neighbor)
+    return true
   }
   return false
 }

@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Diagonal Connector Target Diagnostics
+
+- Branch: `fix/diagonal-footprint-diagnostics`
+- Changed: footprint overlap validation now allows connector target cells to reach connector validation even when the wrong piece type sits there. This keeps diagonals or 45 arcs placed in long-turn target cells from showing as duplicate-cell errors, and instead surfaces the open connector plus the exact target cell.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/trackFootprint.test.ts` passed with 82 tests, `npm test` passed with 3147 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 6 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: non-target anchors inside a multi-cell footprint should still be duplicate-cell errors, while target-cell anchors should be diagnosed by connector compatibility so authors get repair guidance.
+- GDD coverage: Section 6 Track system now records connector-target footprint diagnostics.
+- Followups: none.
+
 ## 2026-05-03, Editor Footprint Placement Fix
 
 - Branch: `fix/editor-footprint-placement`

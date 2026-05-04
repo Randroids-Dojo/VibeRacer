@@ -143,6 +143,7 @@
         "track templates",
         "editor connector diagnostics",
         "anchor-only editor placement for footprints",
+        "connector-target footprint diagnostics",
         "track width scaffold",
         "segment path scaffold",
         "multi-cell footprint scaffold",
