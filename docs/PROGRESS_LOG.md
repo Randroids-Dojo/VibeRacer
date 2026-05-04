@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Miami Reference Template Revision
+
+- Branch: `fix/miami-template-layout`
+- Changed: replaced the rough 36-piece Reference GP layout with a 58-piece Miami-style replica that follows the diagonal start sector, T1-T3 kink, lower-left sector, bottom run, right-side stack, and long top straight more closely.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/hashTrack.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts` passed with 103 tests, `npm test` passed with 3153 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 8 tests, `npx playwright test tests/e2e/smoke.spec.ts --grep "Reference GP"` passed, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: staying under the 64-piece cap is more important than pixel-tracing every radius, so the template uses the existing snapped straight, sweep, 45 arc, and diagonal pieces to preserve the turn sequence.
+- GDD coverage: Section 6 Track system keeps Reference GP covered as a template and now records its Miami-style 58-piece revision.
+- Followups: none.
+
 ## 2026-05-03, Mega Sweep Footprint Hole Fix
 
 - Branch: `fix/footprint-self-overlap`
