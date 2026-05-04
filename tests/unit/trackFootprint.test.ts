@@ -1,6 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import {
   DEFAULT_FOOTPRINT,
+  MEGA_SWEEP_LEFT_FOOTPRINT,
+  MEGA_SWEEP_RIGHT_FOOTPRINT,
+  defaultFootprintForPiece,
   flipFootprint,
   footprintCellKeys,
   footprintCells,
@@ -75,6 +78,35 @@ describe('track footprint helpers', () => {
       { dr: -1, dc: 0 },
       { dr: -1, dc: 1 },
       { dr: 0, dc: 0 },
+    ])
+  })
+
+  it('reserves only the swept quadrant for mega sweeps', () => {
+    expect(MEGA_SWEEP_RIGHT_FOOTPRINT).toEqual([
+      { dr: -1, dc: -1 },
+      { dr: -1, dc: 0 },
+      { dr: 0, dc: -1 },
+      { dr: 0, dc: 0 },
+    ])
+    expect(MEGA_SWEEP_LEFT_FOOTPRINT).toEqual([
+      { dr: -1, dc: 0 },
+      { dr: -1, dc: 1 },
+      { dr: 0, dc: 0 },
+      { dr: 0, dc: 1 },
+    ])
+  })
+
+  it('rotates default mega sweep footprints with the piece', () => {
+    expect(
+      defaultFootprintForPiece({
+        type: 'megaSweepRight',
+        rotation: 90,
+      }),
+    ).toEqual([
+      { dr: -1, dc: 0 },
+      { dr: -1, dc: 1 },
+      { dr: 0, dc: 0 },
+      { dr: 0, dc: 1 },
     ])
   })
 })

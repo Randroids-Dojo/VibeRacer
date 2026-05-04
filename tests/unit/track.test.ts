@@ -197,10 +197,20 @@ describe('validateClosedLoop', () => {
   it('rejects a non-connected anchor inside a mega sweep footprint', () => {
     const res = validateClosedLoop([
       { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: -1, col: -1, rotation: 0 },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/duplicate piece at -1,-1/)
+  })
+
+  it('does not reserve the empty inner cell of a mega sweep', () => {
+    const res = validateClosedLoop([
+      { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
       { type: 'straight', row: 1, col: 1, rotation: 0 },
     ])
     expect(res.ok).toBe(false)
-    expect(res.reason).toMatch(/duplicate piece at 1,1/)
+    expect(res.reason).not.toMatch(/duplicate piece at 1,1/)
+    expect(res.issue?.kind).toBe('openConnector')
   })
 
   it('reports an open connector when a wrong piece sits in a footprint connector target', () => {

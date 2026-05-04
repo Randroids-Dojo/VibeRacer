@@ -15,16 +15,18 @@ export const DEFAULT_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: 0, dc: 0 },
 ]
 
-export const MEGA_SWEEP_FOOTPRINT: readonly FootprintOffset[] = [
+export const MEGA_SWEEP_RIGHT_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: -1, dc: -1 },
   { dr: -1, dc: 0 },
-  { dr: -1, dc: 1 },
   { dr: 0, dc: -1 },
   { dr: 0, dc: 0 },
+]
+
+export const MEGA_SWEEP_LEFT_FOOTPRINT: readonly FootprintOffset[] = [
+  { dr: -1, dc: 0 },
+  { dr: -1, dc: 1 },
+  { dr: 0, dc: 0 },
   { dr: 0, dc: 1 },
-  { dr: 1, dc: -1 },
-  { dr: 1, dc: 0 },
-  { dr: 1, dc: 1 },
 ]
 
 export const HAIRPIN_FOOTPRINT: readonly FootprintOffset[] = [
@@ -39,8 +41,10 @@ export const HAIRPIN_FOOTPRINT: readonly FootprintOffset[] = [
 export function defaultFootprintForPiece(
   piece: Pick<Piece, 'type' | 'rotation'>,
 ): readonly FootprintOffset[] {
-  return piece.type === 'megaSweepRight' || piece.type === 'megaSweepLeft'
-    ? MEGA_SWEEP_FOOTPRINT
+  return piece.type === 'megaSweepRight'
+    ? rotateFootprintByRotation(MEGA_SWEEP_RIGHT_FOOTPRINT, piece.rotation)
+    : piece.type === 'megaSweepLeft'
+      ? rotateFootprintByRotation(MEGA_SWEEP_LEFT_FOOTPRINT, piece.rotation)
     : piece.type === 'hairpin'
       ? rotateFootprintByRotation(HAIRPIN_FOOTPRINT, piece.rotation)
       : DEFAULT_FOOTPRINT
