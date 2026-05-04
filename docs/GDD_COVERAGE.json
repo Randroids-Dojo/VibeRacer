@@ -145,6 +145,7 @@
         "editor connector diagnostics",
         "anchor-only editor placement for footprints",
         "anchor-first editor actions for footprints",
+        "mega sweep quadrant footprints",
         "connector-target footprint diagnostics",
         "track width scaffold",
         "segment path scaffold",

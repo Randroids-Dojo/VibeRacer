@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Mega Sweep Footprint Hole Fix
+
+- Branch: `fix/footprint-self-overlap`
+- Changed: mega sweep pieces now reserve only the swept road quadrant instead of a full 3x3 square. This keeps the visually empty inner cell available for other track pieces and stops the editor from reporting duplicate-cell errors in the hole of the sweep.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackFootprint.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/editor.test.ts` passed with 132 tests, `npm test` passed with 3153 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 8 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: connector target anchors do not need to be inside the long-turn footprint to connect correctly, so the footprint should model road occupancy rather than every cell inside the visual bounding square.
+- GDD coverage: Section 6 Track system now records mega sweep quadrant footprints.
+- Followups: none.
+
 ## 2026-05-03, Editor Anchor Hit Testing
 
 - Branch: `fix/editor-anchor-hit-testing`
