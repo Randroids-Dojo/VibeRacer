@@ -2,11 +2,20 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-03, Diagonal Connector Target Diagnostics
+
+- Branch: `fix/diagonal-footprint-diagnostics`
+- Changed: footprint overlap validation now allows connector target cells to reach connector validation even when the wrong piece type sits there. This keeps diagonals or 45 arcs placed in long-turn target cells from showing as duplicate-cell errors, and instead surfaces the open connector plus the exact target cell.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/trackFootprint.test.ts` passed with 82 tests, `npm test` passed with 3147 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 6 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: non-target anchors inside a multi-cell footprint should still be duplicate-cell errors, while target-cell anchors should be diagnosed by connector compatibility so authors get repair guidance.
+- GDD coverage: Section 6 Track system now records connector-target footprint diagnostics.
+- Followups: none.
+
 ## 2026-05-03, Reference GP Template
 
 - Branch: `feature/reference-track-template`
 - Changed: added a 36-piece Reference GP template that approximates the supplied circuit image with a long top straight, stacked right side, lower return, left-side sweep, and tight infield using existing straights, sweep turns, and S-curves.
-- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts` passed with 83 tests, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/hashTrack.test.ts tests/unit/featureList.test.ts` passed with 29 tests, `npm test` passed with 3147 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 5 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts` passed with 84 tests, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/hashTrack.test.ts tests/unit/featureList.test.ts` passed with 29 tests, `npm test` passed with 3148 tests, `npm run type-check` passed, targeted Playwright track-editor smoke passed with 6 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
 - Assumptions: this is a grid-piece replica rather than a pixel-perfect tracing, because the editor only supports snapped track pieces and planar cell connectors.
 - GDD coverage: Section 6 Track system now records the Reference GP template.
 - Followups: none.

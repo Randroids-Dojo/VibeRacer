@@ -203,6 +203,27 @@ describe('validateClosedLoop', () => {
     expect(res.reason).toMatch(/duplicate piece at 1,1/)
   })
 
+  it('reports an open connector when a wrong piece sits in a footprint connector target', () => {
+    const res = validateClosedLoop([
+      { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
+      { type: 'straight', row: 1, col: 0, rotation: 0 },
+      { type: 'diagonal', row: 0, col: 1, rotation: 0 },
+    ])
+
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/open connector at 0,0 facing 2/)
+    expect(res.issue).toEqual({
+      kind: 'openConnector',
+      row: 0,
+      col: 0,
+      connectorRow: 0,
+      connectorCol: 0,
+      dir: 2,
+      targetRow: 0,
+      targetCol: 1,
+    })
+  })
+
   it('accepts a loop that connects to both hairpin ports', () => {
     const pieces: Piece[] = [
       { type: 'hairpin', row: 0, col: 0, rotation: 0 },
