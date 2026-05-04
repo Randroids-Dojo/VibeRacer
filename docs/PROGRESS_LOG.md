@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Reference GP Turn Sequence
+
+- Branch: `fix/reference-gp-turn-sequence`
+- Changed: rebuilt Reference GP into a 63-piece valid loop that follows the supplied reference sectors turn for turn: diagonal start, T1-T3 complex, lower loop, right-side stack, long top straight, and T17-T19 return. Wheel contact now checks each wheel's current grid cell plus neighboring cells so road that visibly crosses a seam remains driveable.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, focused `npm test -- tests/unit/trackTemplates.test.ts tests/unit/hashTrack.test.ts tests/unit/track.test.ts tests/unit/trackPath.test.ts tests/unit/sceneBuilder.test.ts tests/unit/wheelContact.test.ts` passed with 115 tests, `npm test` passed with 3157 tests, `npm run type-check` passed, targeted Playwright track-editor and Reference GP smoke passed with 8 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the 64-piece cap remains mandatory, so the replica prioritizes the reference's turn order and sector placement over exact corner radii or every minor visual wiggle.
+- GDD coverage: Section 6 Track system records the turn-sequence rebuild and neighbor-cell wheel contact.
+- Followups: none.
+
 ## 2026-05-04, Reference GP Kink Refresh
 
 - Branch: `feature/reference-gp-smooth-pieces`

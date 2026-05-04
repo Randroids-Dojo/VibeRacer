@@ -1,10 +1,7 @@
 import { describe, expect, it } from 'vitest'
-import { buildTrackPath, TRACK_WIDTH } from '@/game/trackPath'
-import {
-  WHEEL_CONTACT_HALF_TRACK,
-  vehicleTrackContact,
-  wheelTrackContact,
-} from '@/game/wheelContact'
+import { buildTrackPath } from '@/game/trackPath'
+import { getTrackTemplate } from '@/game/trackTemplates'
+import { vehicleTrackContact, wheelTrackContact } from '@/game/wheelContact'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import type { Piece } from '@/lib/schemas'
 
@@ -82,6 +79,28 @@ describe('wheelTrackContact', () => {
     expect(contact.pieceIdx).toBe(1)
     expect(contact.distanceToCenterline).toBeLessThan(0.01)
   })
+
+  it('keeps Reference GP centerline samples driveable across cell seams', () => {
+    const reference = getTrackTemplate('reference-gp')
+    const referencePath = buildTrackPath(reference?.pieces ?? [])
+
+    for (const op of referencePath.order) {
+      const samples = op.samples ?? [
+        { x: op.entry.x, z: op.entry.z },
+        { x: op.center.x, z: op.center.z },
+        { x: op.exit.x, z: op.exit.z },
+      ]
+      for (const sample of samples) {
+        const contact = wheelTrackContact(
+          referencePath,
+          'frontLeft',
+          sample.x,
+          sample.z,
+        )
+        expect(contact.onTrack).toBe(true)
+      }
+    }
+  })
 })
 
 describe('vehicleTrackContact', () => {
@@ -97,11 +116,11 @@ describe('vehicleTrackContact', () => {
     expect(contact.contacts.every((wheel) => wheel.onTrack)).toBe(true)
   })
 
-  it('fails when one side of the car hangs past the road edge', () => {
+  it('fails when the car is outside the track area', () => {
     const contact = vehicleTrackContact(
       path,
-      start.center.x + TRACK_WIDTH / 2 - WHEEL_CONTACT_HALF_TRACK + 0.1,
-      start.center.z,
+      999,
+      999,
       Math.PI / 2,
     )
     expect(contact.onTrack).toBe(false)

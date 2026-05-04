@@ -146,6 +146,8 @@
         "continuous road surface renderer",
         "expanded smooth piece catalog",
         "Reference GP kink refresh",
+        "Reference GP turn-sequence rebuild",
+        "neighbor-cell wheel contact",
         "editor connector diagnostics",
         "anchor-only editor placement for footprints",
         "anchor-first editor actions for footprints",
