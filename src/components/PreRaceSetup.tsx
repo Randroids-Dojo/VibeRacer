@@ -1,15 +1,20 @@
 'use client'
 import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useRouter } from 'next/navigation'
 import {
-  cloneDefaultParams,
   isStockParams,
   isTrackPinned,
-  isTrackDecided,
   readLastLoaded,
   readPerTrack,
 } from '@/lib/tuningSettings'
 import { readSavedTunings, type SavedTuning } from '@/lib/tuningLab'
 import type { CarParams } from '@/game/physics'
+import type { LeaderboardResponse } from '@/lib/leaderboard'
+import {
+  buildPreRaceOptions,
+  type PreRaceSetupOption,
+  type PreRaceTopEntry,
+} from '@/lib/preRaceSetup'
 import {
   MenuButton,
   MenuHint,
@@ -28,112 +33,137 @@ export interface PreRaceSetupResult {
 
 interface Props {
   slug: string
+  versionHash: string
+  // Snapshot of the track author's car setup at save time. Null when the
+  // version predates this field, in which case the "Track creator's setup"
+  // option simply does not render.
+  creatorTuning: CarParams | null
   onConfirm: (result: PreRaceSetupResult) => void
 }
 
-interface Option {
-  id: string
-  label: string
-  params: CarParams
-}
+const OPEN_LAB_PROMPT =
+  'Leave this race to open the Tuning Lab? You can pick a setup again when you come back.'
 
-// Player-facing pre-race tuning picker. Shows a simple radio list of every
-// reasonable starting setup (the global last-used carryover, the per-track
-// save when one exists, the saved tunings library, and a default-car
-// fallback) plus a single pin toggle controlling whether the picked setup
-// becomes this track's pinned default. The host transitions out of the
-// 'preRace' phase via onConfirm.
-export function PreRaceSetup({ slug, onConfirm }: Props) {
+// Player-facing pre-race tuning picker. The picker now spells out the name
+// of every choice (no more "Saved setup for this track" mystery box) and
+// shows the highlighted choice in a header strip so it is always obvious
+// which setup is about to drive the race. Pinning a track suppresses this
+// modal entirely on the next visit; the pause menu's "Change car setup"
+// action is the explicit override.
+export function PreRaceSetup({
+  slug,
+  versionHash,
+  creatorTuning,
+  onConfirm,
+}: Props) {
+  const router = useRouter()
   const [hydrated, setHydrated] = useState(false)
   const [lastLoaded, setLastLoaded] = useState<CarParams | null>(null)
   const [perTrack, setPerTrack] = useState<CarParams | null>(null)
   const [pinned, setPinned] = useState(false)
-  const [decided, setDecided] = useState(false)
   const [savedList, setSavedList] = useState<SavedTuning[]>([])
+  const [topEntry, setTopEntry] = useState<PreRaceTopEntry | null>(null)
 
   useEffect(() => {
     setLastLoaded(readLastLoaded())
     setPerTrack(readPerTrack(slug))
     setPinned(isTrackPinned(slug))
-    setDecided(isTrackDecided(slug))
     setSavedList(readSavedTunings())
     setHydrated(true)
   }, [slug])
 
-  const options: Option[] = useMemo(() => {
-    const list: Option[] = []
-    if (perTrack) {
-      list.push({ id: 'perTrack', label: 'Saved setup for this track', params: perTrack })
+  // Fetch the top leaderboard entry so we can offer "Top of the
+  // leaderboard" as a one-click setup. The endpoint is best-effort: any
+  // failure (no laps, network blip, missing meta) just hides the option
+  // rather than blocking the modal. Reset state at the start of every
+  // effect run, write the resolved value (including null) directly, and
+  // gate the state write on a per-effect `cancelled` flag so a
+  // (slug, version) change can never paint the previous track's entry
+  // even if the prior fetch resolved between abort and cleanup.
+  useEffect(() => {
+    let cancelled = false
+    setTopEntry(null)
+    const controller = new AbortController()
+    fetchTopEntry(slug, versionHash, controller.signal)
+      .then((entry) => {
+        if (!cancelled) setTopEntry(entry)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+      controller.abort()
     }
-    if (lastLoaded && (!perTrack || !sameParams(lastLoaded, perTrack))) {
-      list.push({ id: 'lastLoaded', label: 'Last used setup', params: lastLoaded })
-    }
-    list.push({ id: 'default', label: 'Default car', params: cloneDefaultParams() })
-    for (const t of savedList) {
-      list.push({ id: `saved:${t.id}`, label: t.name, params: t.params })
-    }
-    return list
-  }, [perTrack, lastLoaded, savedList])
+  }, [slug, versionHash])
+
+  const options: PreRaceSetupOption[] = useMemo(
+    () =>
+      buildPreRaceOptions({
+        perTrack,
+        lastLoaded,
+        creatorTuning,
+        topEntry,
+        savedList,
+      }),
+    [perTrack, lastLoaded, creatorTuning, topEntry, savedList],
+  )
 
   const [pickId, setPickId] = useState<string | null>(null)
   const [pin, setPin] = useState(false)
 
-  // Derive default selection + pin state once we have hydrated data and the
-  // option list. Pinned tracks pre-select the per-track save. Legacy tracks
-  // (have a per-track save but the player has not yet been asked) also
-  // pre-select the per-track save and pre-check pin so just hitting Race
-  // preserves their existing experience. Otherwise the global last-used
-  // carryover is the default.
+  // Pre-select the first option once we have hydrated state. Pinned tracks
+  // pre-check pin so a quick re-pin is one click. Unpinned tracks default
+  // pin off so a casual one-shot pick does not silently suppress next
+  // visit's modal.
   useEffect(() => {
     if (!hydrated || pickId !== null) return
-    let initialPick: string
-    let initialPin = pinned
-    if (perTrack && (pinned || !decided)) {
-      initialPick = 'perTrack'
-      if (!decided) initialPin = true
-    } else if (lastLoaded) {
-      initialPick = 'lastLoaded'
-    } else {
-      initialPick = 'default'
-    }
-    if (!options.some((o) => o.id === initialPick)) {
-      initialPick = options[0]?.id ?? 'default'
-    }
-    setPickId(initialPick)
-    setPin(initialPin)
-  }, [hydrated, options, perTrack, pinned, decided, lastLoaded, pickId])
+    setPickId(options[0]?.id ?? null)
+    setPin(pinned)
+  }, [hydrated, options, pinned, pickId])
+
+  // The pickId/selected pair is internally consistent only after the
+  // hydration pass has assigned a pickId. Bail until then so the
+  // "Selected" banner and the radio rows always agree on the first paint.
+  if (!hydrated || pickId === null) return null
+  const selected = options.find((o) => o.id === pickId) ?? options[0]
+  if (!selected) return null
 
   function handleRace() {
-    const opt = options.find((o) => o.id === pickId) ?? options[0]
-    if (!opt) return
-    onConfirm({ params: opt.params, pin })
+    onConfirm({ params: selected.params, pin })
   }
 
-  if (!hydrated || pickId === null) return null
+  function handleOpenLab() {
+    if (typeof window !== 'undefined' && !window.confirm(OPEN_LAB_PROMPT)) {
+      return
+    }
+    router.push('/tune')
+  }
 
   return (
     <MenuOverlay zIndex={150} autoFocus>
       <MenuPanel width="narrow">
         <MenuTitle>SETUP</MenuTitle>
+        <SelectedBanner option={selected} />
         <MenuHint>
-          Pick a car setup for this race. Whatever you pick becomes your
-          carryover for the next track too.
+          The highlighted setup is what your car will use this race. Toggle
+          {' '}
+          <strong>Always use this setup</strong> below to skip this picker on
+          your next visit.
         </MenuHint>
 
         <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
-          {options.map((o) => {
-            const selected = o.id === pickId
-            return (
-              <RadioRow
-                key={o.id}
-                label={o.label}
-                stock={isStockParams(o.params)}
-                selected={selected}
-                onPick={() => setPickId(o.id)}
-              />
-            )
-          })}
+          {options.map((o) => (
+            <RadioRow
+              key={o.id}
+              option={o}
+              selected={o.id === pickId}
+              onPick={() => setPickId(o.id)}
+            />
+          ))}
         </div>
+
+        <MenuButton variant="ghost" onClick={handleOpenLab}>
+          Create a new tuning in the Lab
+        </MenuButton>
 
         <MenuToggle
           label="Always use this setup for this track"
@@ -149,19 +179,30 @@ export function PreRaceSetup({ slug, onConfirm }: Props) {
   )
 }
 
+function SelectedBanner({ option }: { option: PreRaceSetupOption }) {
+  return (
+    <div style={selectedBannerStyle} aria-live="polite">
+      <span style={selectedLabelStyle}>Selected</span>
+      <span style={selectedNameStyle}>{option.label}</span>
+      {isStockParams(option.params) ? (
+        <span style={stockTagStyle}>STOCK</span>
+      ) : null}
+    </div>
+  )
+}
+
 function RadioRow({
-  label,
-  stock,
+  option,
   selected,
   onPick,
 }: {
-  label: string
-  stock: boolean
+  option: PreRaceSetupOption
   selected: boolean
   onPick: () => void
 }) {
   const ref = useRef<HTMLButtonElement | null>(null)
   useRegisterFocusable(ref, { axis: 'vertical', onActivate: onPick })
+  const stock = isStockParams(option.params)
   return (
     <button
       ref={ref}
@@ -177,24 +218,49 @@ function RadioRow({
         borderColor: selected ? menuTheme.accentBg : menuTheme.panelBorder,
       }}
     >
-      <span style={{ fontSize: 14, fontWeight: 600 }}>{label}</span>
+      <span style={radioRowTextStyle}>
+        <span style={radioRowLabelStyle}>{option.label}</span>
+        {option.sublabel ? (
+          <span
+            style={{
+              ...radioRowSublabelStyle,
+              opacity: selected ? 0.85 : 0.6,
+            }}
+          >
+            {option.sublabel}
+          </span>
+        ) : null}
+      </span>
       {stock ? <span style={stockTagStyle}>STOCK</span> : null}
     </button>
   )
 }
 
-function sameParams(a: CarParams, b: CarParams): boolean {
-  for (const k of Object.keys(a) as Array<keyof CarParams>) {
-    if (Math.abs(a[k] - b[k]) > 1e-9) return false
+async function fetchTopEntry(
+  slug: string,
+  versionHash: string,
+  signal: AbortSignal,
+): Promise<PreRaceTopEntry | null> {
+  const url = `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${encodeURIComponent(
+    versionHash,
+  )}&limit=1`
+  const res = await fetch(url, { signal })
+  if (!res.ok) return null
+  const body = (await res.json()) as LeaderboardResponse
+  const top = body.entries[0]
+  if (!top || !top.tuning) return null
+  return {
+    initials: top.initials,
+    lapTimeMs: top.lapTimeMs,
+    params: top.tuning,
   }
-  return true
 }
 
 const radioListStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
-  maxHeight: 280,
+  maxHeight: 260,
   overflowY: 'auto',
   paddingRight: 4,
 }
@@ -212,9 +278,56 @@ const radioRowStyle: CSSProperties = {
   fontFamily: 'inherit',
 }
 
+const radioRowTextStyle: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 0,
+}
+
+const radioRowLabelStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 600,
+}
+
+const radioRowSublabelStyle: CSSProperties = {
+  fontSize: 11,
+  fontWeight: 500,
+  letterSpacing: 0.2,
+}
+
 const stockTagStyle: CSSProperties = {
   fontSize: 10,
   fontWeight: 700,
   letterSpacing: 1.2,
   opacity: 0.7,
+}
+
+const selectedBannerStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 10,
+  padding: '8px 12px',
+  borderRadius: 8,
+  border: `1px solid ${menuTheme.accentBg}`,
+  background: 'rgba(255, 107, 53, 0.12)',
+}
+
+const selectedLabelStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 1.6,
+  textTransform: 'uppercase',
+  color: menuTheme.accent,
+}
+
+const selectedNameStyle: CSSProperties = {
+  fontSize: 14,
+  fontWeight: 700,
+  color: 'white',
+  flex: 1,
+  minWidth: 0,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
+  whiteSpace: 'nowrap',
 }

@@ -195,6 +195,7 @@ export const TrackSchema = z
     decorations: z.array(TrackDecorationSchema)
       .max(MAX_DECORATIONS_PER_TRACK)
       .optional(),
+    creatorTuning: CarParamsSchema.optional(),
   })
   .superRefine((track, ctx) => {
     if (
@@ -293,6 +294,11 @@ export const TrackVersionSchema = z.object({
   decorations: z.array(TrackDecorationSchema)
     .max(MAX_DECORATIONS_PER_TRACK)
     .optional(),
+  // Snapshot of the author's car setup at save time. Surfaces in the pre-race
+  // setup picker as "Track creator's setup" so a racer can race the track the
+  // way the author intended. Optional so versions saved before this field was
+  // introduced still parse.
+  creatorTuning: CarParamsSchema.optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
   // Persisted schema version. Missing or 1 means v1 (cell-aligned only); 2
