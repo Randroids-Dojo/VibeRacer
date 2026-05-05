@@ -7,8 +7,12 @@ import {
 } from '@/lib/schemas'
 import { convertV1Pieces } from '@/lib/trackVersion'
 import { footprintCellKeys } from './trackFootprint'
-import { frameOfPort, framesConnect } from './pieceFrames'
-import { endpointsOf } from './pieceGeometry'
+import {
+  cardinalTurnsOfTheta,
+  frameOfPortAtTransform,
+  framesConnect,
+} from './pieceFrames'
+import { endpointsOf, transformOf } from './pieceGeometry'
 
 export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
@@ -79,15 +83,15 @@ export function flexSpecOf(piece: Piece): FlexStraightSpec {
   return piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC
 }
 
-// Apply the piece's 90-degree rotation to a local-frame (dr, dc) vector. At
-// rotation 0 the offset is unchanged; each 90-degree clockwise step rotates
-// row/col on the cell grid: (dr, dc) -> (dc, -dr).
-function rotateOffset(
+// Apply `turns` cardinal 90-degree CW rotations to a piece-local (dr, dc)
+// vector. At turns=0 the offset is unchanged; each step maps (dr, dc) ->
+// (dc, -dr). Used by both `flexStraightPorts` and `rotatePorts` so the cell
+// rotation table stays in one place.
+function rotateOffsetByTurns(
   dr: number,
   dc: number,
-  rotation: Piece['rotation'],
+  turns: number,
 ): { dr: number; dc: number } {
-  const turns = rotation / 90
   let r = dr
   let c = dc
   for (let i = 0; i < turns; i++) {
@@ -99,16 +103,28 @@ function rotateOffset(
   return { dr: r, dc: c }
 }
 
-// Connector ports for a flex straight at a given rotation. Entry sits on the
-// south edge of the anchor cell at rotation 0 (rotates with the piece). Exit
-// sits on the north edge of the cell at offset (flex.dr, flex.dc), which also
-// rotates with the piece. The exit edge is always cardinal (opposite of the
-// entry edge after rotation), so flex straights remain compatible with the
-// existing 8-direction connector matching against grid pieces.
+// Resolve the rotation theta for a piece in radians. Reads `transform.theta`
+// when present (Stage 1 invariant after the v1 to v2 converter runs);
+// falls back to `piece.rotation * PI / 180` for transform-less pieces so
+// callers (template literals, direct test inputs) don't have to run the
+// converter just to ask for a rotation.
+export function thetaOfPiece(piece: Piece): number {
+  if (piece.transform !== undefined) return piece.transform.theta
+  return (piece.rotation * Math.PI) / 180
+}
+
+// Connector ports for a flex straight at the piece's current theta. Entry
+// sits on the south edge of the anchor cell at rotation 0 (rotates with
+// the piece). Exit sits on the north edge of the cell at offset (flex.dr,
+// flex.dc), which also rotates with the piece. The exit edge is always
+// cardinal-snapped (opposite of the entry edge after the cardinal turn),
+// so flex straights remain compatible with the existing 8-direction
+// connector matching against grid pieces.
 export function flexStraightPorts(piece: Piece): ConnectorPort[] {
   const { dr, dc } = flexSpecOf(piece)
-  const exit = rotateOffset(dr, dc, piece.rotation)
-  const entryDir = ((4 + (piece.rotation / 90) * 2) % 8) as Dir
+  const turns = cardinalTurnsOfTheta(thetaOfPiece(piece))
+  const exit = rotateOffsetByTurns(dr, dc, turns)
+  const entryDir = ((4 + turns * 2) % 8) as Dir
   const exitDir = opposite(entryDir)
   return [
     { dr: 0, dc: 0, dir: entryDir },
@@ -120,78 +136,91 @@ export function connectorsOf(piece: Piece): Dir[] {
   return connectorPortsOf(piece).map((port) => port.dir)
 }
 
+// Stage 2 contract: ports are derived from `transform.theta` rather than
+// `piece.rotation`. The theta is cardinal-snapped to a 0..3 turn count via
+// `cardinalTurnsOfTheta` so the discrete `dir` and `(dr, dc)` table reads
+// stay integer-exact for grid-aligned input. The remaining residual angle
+// (transform.theta minus the cardinal projection) is applied in the world
+// frame by `frameOfPortAtTransform`. For v1-projectable pieces the residual
+// is exactly zero, so the geometry layer reproduces the legacy bytes
+// bit-for-bit and the snapshot wall in tests/unit/pieceGeometry.test.ts
+// stays pinned. For non-projectable pieces the cardinal-snapped port still
+// gives a sensible answer for cell-keyed diagnostics (footprint cells, port
+// dir for issue reporting), and the world frame follows the continuous
+// theta.
 export function connectorPortsOf(piece: Piece): ConnectorPort[] {
+  const turns = cardinalTurnsOfTheta(thetaOfPiece(piece))
   if (
     piece.type === 'hairpin' ||
     piece.type === 'hairpinTight' ||
     piece.type === 'hairpinWide'
   ) {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: -1, dc: 0, dir: 6 },
         { dr: 1, dc: 0, dir: 6 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'wideArc45Right') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: 1, dir: 1 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'wideArc45Left') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: -1, dir: 7 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'offsetStraightRight') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: 1, dir: 0 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'offsetStraightLeft') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: -1, dir: 0 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'grandSweepRight') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: 1, dir: 2 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'grandSweepLeft') {
-    return rotatePorts(
+    return rotatePortsByTurns(
       [
         { dr: 0, dc: 0, dir: 4 },
         { dr: -1, dc: -1, dir: 6 },
       ],
-      piece.rotation,
+      turns,
     )
   }
   if (piece.type === 'flexStraight') {
     return flexStraightPorts(piece)
   }
-  const shift = (piece.rotation / 90) * 2
+  const shift = turns * 2
   return BASE_CONNECTORS[piece.type].map((dir) => ({
     dr: 0,
     dc: 0,
@@ -199,20 +228,12 @@ export function connectorPortsOf(piece: Piece): ConnectorPort[] {
   }))
 }
 
-function rotatePorts(
+function rotatePortsByTurns(
   ports: readonly ConnectorPort[],
-  rotation: Piece['rotation'],
+  turns: number,
 ): ConnectorPort[] {
-  const turns = rotation / 90
   return ports.map((port) => {
-    let dr = port.dr
-    let dc = port.dc
-    for (let i = 0; i < turns; i++) {
-      const nextDr = dc
-      const nextDc = -dr
-      dr = nextDr
-      dc = nextDc
-    }
+    const { dr, dc } = rotateOffsetByTurns(port.dr, port.dc, turns)
     return {
       dr,
       dc,
@@ -422,9 +443,11 @@ export function portsConnect(
 ): boolean {
   // Endpoints are the source of truth for connections. Use `endpointsOf`
   // (not `geometryOf`) so the validator's hot path skips the supercover
-  // footprint computation that `geometryOf` would also do. Stage 1 proper
-  // can swap how endpoints are derived without touching this call site.
-  const frame = frameOfPort(piece, port)
+  // footprint computation that `geometryOf` would also do. Both source and
+  // candidate frames go through `frameOfPortAtTransform` so non-projectable
+  // (Stage 2) transforms produce the right world-space frame instead of the
+  // cell-keyed approximation `frameOfPort` would give.
+  const frame = frameOfPortAtTransform(transformOf(piece), port)
   for (const candidate of endpointsOf(neighbor)) {
     if (framesConnect(frame, candidate)) return true
   }
@@ -437,11 +460,11 @@ export function findConnectedNeighbor(
   pieces: readonly Piece[],
 ): Piece | null {
   // Endpoint-driven match: iterate every other piece's endpoint frames and
-  // return the first whose frame connects to this port's frame. `endpointsOf`
-  // (not `geometryOf`) keeps this inner loop free of supercover footprint
-  // work, which matters for O(n^2) validation passes. Stage 1 proper
-  // changes only how endpointsOf builds the array; nothing here.
-  const frame = frameOfPort(piece, port)
+  // return the first whose frame connects to this port's frame. Both sides
+  // run through `frameOfPortAtTransform` so non-projectable transforms
+  // close correctly; for grid-aligned pieces the residual rotation is zero
+  // and the result is bit-equal to the cell-keyed Stage 1 path.
+  const frame = frameOfPortAtTransform(transformOf(piece), port)
   for (const candidate of pieces) {
     if (candidate === piece) continue
     for (const candidateFrame of endpointsOf(candidate)) {

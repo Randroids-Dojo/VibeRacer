@@ -1,6 +1,6 @@
-// Stage 1 (continuous-angle): the v1 to v2 schema converter and the version
-// gate. Read docs/CONTINUOUS_ANGLE_PLAN.md "Schema model, pinned" before
-// changing anything here.
+// Continuous-angle: the v1 to v2 schema converter and the version gate.
+// Read docs/CONTINUOUS_ANGLE_PLAN.md "Schema model, pinned" and "Stage 2
+// Workstream A" before changing anything here.
 //
 // The converter populates `transform` on every piece using the deterministic
 // projection from cell coordinates to world space. It runs once, immediately
@@ -75,14 +75,16 @@ export function deriveTransformFromCells(
 //      without branching.
 //   2. Wire format carries transform (v2 payload): transform is the
 //      authoritative geometry. For v1-projectable transforms (every Stage 1
-//      track), re-derive (row, col, rotation) from the projection so the
-//      legacy fields can never disagree with the transform. This collapses
-//      the "transform vs cells" reconciliation problem into a single point:
-//      after the converter runs, validator / sort / canonical emit / sampler
-//      all read the same world geometry whether they touch transform or
-//      (row, col, rotation). Stage 2 introduces non-projectable transforms
-//      and decouples cells from transform; for now we leave them untouched
-//      so the rest of the pipeline can decide whether to error on them.
+//      track) the converter re-derives (row, col, rotation) from the
+//      projection so the legacy fields can never disagree with the
+//      transform. This is kept after Stage 2's runtime migration because
+//      the projection is idempotent and harmless for grid-aligned input,
+//      and several non-runtime call sites (canonical hashing, validator
+//      duplicate-cell detection, footprint enumeration) still read the
+//      cell fields. Non-projectable transforms (Stage 2 free placement)
+//      flow through untouched: their world geometry comes from
+//      `transform` directly via `frameOfPortAtTransform` and the path
+//      sampler.
 export function convertV1Piece(piece: Piece): Piece {
   if (piece.transform === undefined) {
     return { ...piece, transform: deriveTransformFromCells(piece) }
@@ -112,33 +114,4 @@ export function convertV1Pieces(pieces: readonly Piece[]): Piece[] {
 // transform set.
 export function convertV1Track(parsed: TrackVersion): TrackVersion {
   return { ...parsed, pieces: convertV1Pieces(parsed.pieces) }
-}
-
-// Stage 1 boundary check. Until Stage 2 rewires the runtime pipeline
-// (`connectorPortsOf`, `frameOfPortAtTransform`, `buildTrackPath` sampling)
-// to consume `transform.theta` directly, the system can only execute
-// v1-projectable transforms (`transform.theta` exactly a multiple of PI/2,
-// position on the integer grid). A non-projectable transform produces a
-// canonical hash that omits legacy `rotation`, but the runtime would still
-// read `piece.rotation` and silently disagree with the persisted geometry,
-// so two payloads differing only in rotation could collide on hash. Reject
-// at the load and write boundaries to keep this impossible.
-export class Stage1NonProjectableError extends Error {
-  constructor(public readonly pieceIndex: number) {
-    super(
-      `piece at index ${pieceIndex} has a non-v1-projectable transform; continuous-angle pieces ship in Stage 2`,
-    )
-    this.name = 'Stage1NonProjectableError'
-  }
-}
-
-// Throw Stage1NonProjectableError if any piece in `pieces` carries a
-// transform that does not project exactly back to the integer grid. Caller
-// should already have run `convertV1Pieces` so `transform` is populated.
-export function assertAllPiecesV1Projectable(pieces: readonly Piece[]): void {
-  for (let i = 0; i < pieces.length; i++) {
-    if (!isV1Projectable(pieces[i])) {
-      throw new Stage1NonProjectableError(i)
-    }
-  }
 }

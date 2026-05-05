@@ -25,6 +25,8 @@ import {
   sampleSweepRightLocal,
 } from '@/game/trackPath'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
+import { transformOf } from '@/game/pieceGeometry'
+import { convertV1Pieces } from '@/lib/trackVersion'
 import type { Piece } from '@/lib/schemas'
 
 describe('DEFAULT_TRACK_PIECES', () => {
@@ -39,6 +41,87 @@ describe('buildTrackPath', () => {
     expect(path.order.length).toBe(DEFAULT_TRACK_PIECES.length)
     const cells = new Set(path.order.map((o) => `${o.piece.row},${o.piece.col}`))
     expect(cells.size).toBe(DEFAULT_TRACK_PIECES.length)
+  })
+
+  it('renders non-projectable pieces at their world transform, not their cell coordinates', () => {
+    // Stage 2 Workstream A regression (PR #103 review): buildTrackPath used
+    // to source `center`, `entry`, `exit`, and `arcCenter` from
+    // `cellCenter(piece.row, piece.col)` and `edgeMidpoint`, which both
+    // ignore `transform.x / z`. After the load and write paths started
+    // accepting non-projectable transforms, that arithmetic rendered the
+    // road at the cell-projected location even though validation was
+    // happy with the rotated transforms. Rotating an entire valid loop
+    // rigidly around a pivot keeps every join geometrically exact in the
+    // continuous sense; if the path builder is wrong, consecutive piece
+    // exit / entry positions will not match. With the transform-driven
+    // path builder they match within a tight float epsilon.
+    const v1: Piece[] = []
+    for (let c = 1; c <= 4; c++) {
+      v1.push({ type: 'straight', row: 0, col: c, rotation: 90 })
+    }
+    v1.push({ type: 'right90', row: 0, col: 5, rotation: 90 })
+    v1.push({ type: 'straight', row: 1, col: 5, rotation: 0 })
+    v1.push({ type: 'right90', row: 2, col: 5, rotation: 180 })
+    for (let c = 4; c >= 1; c--) {
+      v1.push({ type: 'straight', row: 2, col: c, rotation: 90 })
+    }
+    v1.push({ type: 'right90', row: 2, col: 0, rotation: 270 })
+    v1.push({ type: 'straight', row: 1, col: 0, rotation: 0 })
+    v1.push({ type: 'right90', row: 0, col: 0, rotation: 0 })
+
+    const converted = convertV1Pieces(v1)
+    let cx = 0
+    let cz = 0
+    for (const piece of converted) {
+      const t = transformOf(piece)
+      cx += t.x
+      cz += t.z
+    }
+    cx /= converted.length
+    cz /= converted.length
+    const delta = (14 * Math.PI) / 180
+    const cs = Math.cos(delta)
+    const sn = Math.sin(delta)
+    const rotated = converted.map((piece) => {
+      const t = transformOf(piece)
+      const dx = t.x - cx
+      const dz = t.z - cz
+      return {
+        ...piece,
+        transform: {
+          x: cx + dx * cs - dz * sn,
+          z: cz + dx * sn + dz * cs,
+          theta: t.theta + delta,
+        },
+      }
+    })
+
+    expect(validateClosedLoop(rotated).ok).toBe(true)
+
+    const path = buildTrackPath(rotated)
+    expect(path.order).toHaveLength(rotated.length)
+
+    // Every piece's center must match its world transform within float
+    // round-off, not the cell projection. For grid-aligned input the
+    // converter sets `transform.x = col * CELL_SIZE` exactly and this is
+    // bit-equal anyway; the rotated transforms are off-grid so this
+    // assertion would fail without the migration.
+    for (const op of path.order) {
+      const t = transformOf(op.piece)
+      expect(op.center.x).toBeCloseTo(t.x, 9)
+      expect(op.center.z).toBeCloseTo(t.z, 9)
+    }
+
+    // Consecutive piece exit / entry positions must match within a tight
+    // float epsilon. In the buggy version they snapped to cell-projected
+    // coordinates, which for a 14-degree rotation would diverge by about
+    // 5 world units per piece.
+    for (let i = 0; i < path.order.length; i++) {
+      const cur = path.order[i]
+      const next = path.order[(i + 1) % path.order.length]
+      expect(Math.hypot(cur.exit.x - next.entry.x, cur.exit.z - next.entry.z))
+        .toBeLessThan(1e-9)
+    }
   })
 
   it('neighboring pieces share opposite connectors', () => {

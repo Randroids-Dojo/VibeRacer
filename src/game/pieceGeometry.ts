@@ -26,7 +26,11 @@ import {
   type FootprintCell,
   footprintCells,
 } from './trackFootprint'
-import { CELL_SIZE } from './cellSize'
+import {
+  CELL_SIZE,
+  V1_PROJECTABLE_POSITION_EPSILON,
+  V1_PROJECTABLE_ROTATION_EPSILON,
+} from './cellSize'
 
 export type { PieceTransform } from '@/lib/schemas'
 
@@ -36,20 +40,15 @@ export interface PieceGeometry {
   footprint: FootprintCell[]
 }
 
-// Epsilons for "v1-projectable" detection. These constants live with the
-// geometry layer so the converter, the canonicalizer, and the editor's
-// snap-on-save path all read the same numbers.
-//
-// The asymmetry is deliberate. Position epsilon is sub-micron (effectively
-// bit-equal float on a 20-unit cell) because cell-aligned positions are
-// integer multiples of CELL_SIZE and never accumulate representation error.
-// Rotation epsilon is two orders of magnitude looser because every rotate
-// operation runs through sin / cos and the editor's group-rotate / undo /
-// redo paths can compose several rotations before a save. A 1e-6 rotation
-// epsilon would reject pieces visually indistinguishable from grid-aligned.
-// See docs/CONTINUOUS_ANGLE_PLAN.md "Rule 1" for the rationale.
-export const V1_PROJECTABLE_POSITION_EPSILON = 1e-6
-export const V1_PROJECTABLE_ROTATION_EPSILON = 1e-4
+// Re-export the projectability epsilons under their long-standing names so
+// external callers (the canonicalizer, editor snap-on-save, tests) keep
+// working. The values themselves live in the leaf module `./cellSize`
+// alongside CELL_SIZE because both `pieceGeometry` and `pieceFrames` need
+// them, and routing through either of those would form an import cycle.
+export {
+  V1_PROJECTABLE_POSITION_EPSILON,
+  V1_PROJECTABLE_ROTATION_EPSILON,
+}
 const HALF_PI = Math.PI / 2
 
 // Resolve the geometry for a single piece. Reads from `piece.transform` (which
