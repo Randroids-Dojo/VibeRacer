@@ -113,7 +113,7 @@ import {
 import { FeatureListOverlay } from './FeatureListOverlay'
 import { SettingsAudioTab } from './SettingsAudioTab'
 import { SettingsGhostTab } from './SettingsGhostTab'
-import { useMenuNav } from './MenuNav'
+import { useMenuNav, useRegisterFocusable } from './MenuNav'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -670,26 +670,16 @@ export function SettingsPane({
                   entries keep their old tag.
                 </MenuHint>
                 <div style={initialsRow}>
-                  <input
+                  <InitialsInput
                     value={initialsDraft}
-                    maxLength={3}
-                    onChange={(e) => {
-                      setInitialsDraft(
-                        e.target.value.toUpperCase().replace(/[^A-Z]/g, ''),
-                      )
+                    onChangeValue={(v) => {
+                      setInitialsDraft(v)
                       setInitialsError(null)
                       setInitialsSaved(false)
                     }}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' && initialsDirty) {
-                        e.preventDefault()
-                        saveInitials()
-                      }
+                    onSubmitOnEnter={() => {
+                      if (initialsDirty) saveInitials()
                     }}
-                    autoComplete="off"
-                    spellCheck={false}
-                    aria-label="Initials"
-                    style={initialsInput}
                   />
                   <MenuButton
                     variant="primary"
@@ -1175,16 +1165,9 @@ export function SettingsPane({
                 >
                   Number
                 </label>
-                <input
-                  id="racing-number-input"
-                  type="text"
-                  inputMode="numeric"
-                  pattern="[0-9]*"
-                  maxLength={RACING_NUMBER_MAX_LENGTH}
+                <RacingNumberInput
                   value={settings.racingNumber.value}
-                  onChange={(e) => setRacingNumberValue(e.target.value)}
-                  style={racingNumberInput}
-                  aria-label="Racing number"
+                  onChange={setRacingNumberValue}
                 />
                 <RacingNumberPreview setting={settings.racingNumber} />
               </div>
@@ -1489,6 +1472,70 @@ function CaptureSuppression({ active }: { active: boolean }) {
   return null
 }
 
+// Initials and racing number text inputs are wrapped here so the controller
+// can land focus on them via dpad. The MenuNav provider's keyboard handler
+// already passes Arrow keys through to text inputs (caret nav), and pressing
+// A on a focused input is benign since `el.click()` does nothing on text
+// fields. Editing still happens via the on-screen keyboard or a paired
+// keyboard. Without the registration, the gamepad simply skipped over them.
+function InitialsInput({
+  value,
+  onChangeValue,
+  onSubmitOnEnter,
+}: {
+  value: string
+  onChangeValue: (next: string) => void
+  onSubmitOnEnter: () => void
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <input
+      ref={ref}
+      value={value}
+      maxLength={3}
+      onChange={(e) =>
+        onChangeValue(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
+      }
+      onKeyDown={(e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault()
+          onSubmitOnEnter()
+        }
+      }}
+      autoComplete="off"
+      spellCheck={false}
+      aria-label="Initials"
+      style={initialsInput}
+    />
+  )
+}
+
+function RacingNumberInput({
+  value,
+  onChange,
+}: {
+  value: string
+  onChange: (next: string) => void
+}) {
+  const ref = useRef<HTMLInputElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical' })
+  return (
+    <input
+      ref={ref}
+      id="racing-number-input"
+      type="text"
+      inputMode="numeric"
+      pattern="[0-9]*"
+      maxLength={RACING_NUMBER_MAX_LENGTH}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      style={racingNumberInput}
+      aria-label="Racing number"
+    />
+  )
+}
+
 function truncatePadId(id: string | null): string {
   if (!id) return ''
   // Browsers report a verbose vendor / product blob like
@@ -1512,9 +1559,13 @@ function PaintSwatch({
   selected: boolean
   onClick: () => void
 }) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
   return (
     <button
+      ref={ref}
       onClick={onClick}
+      className="menuui-focusable"
       style={{
         ...swatchBtn,
         borderColor: selected ? '#ffb74d' : '#3a3a3a',
@@ -1558,9 +1609,13 @@ function TimeOfDaySwatch({
   const ground = '#' + groundHex.toString(16).padStart(6, '0')
   // Half sky, half ground so the swatch reads as a horizon at a glance.
   const background = `linear-gradient(180deg, ${sky} 0%, ${sky} 55%, ${ground} 55%, ${ground} 100%)`
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
   return (
     <button
+      ref={ref}
       onClick={onClick}
+      className="menuui-focusable"
       style={{
         ...swatchBtn,
         borderColor: selected ? '#ffb74d' : '#3a3a3a',
@@ -1607,9 +1662,13 @@ function WeatherSwatch({
   // Map density 0..0.04 onto opacity 0..0.85. Hand-tuned so the swatch reads
   // proportionally to how much the preset actually obscures the scene.
   const fogOpacity = Math.min(0.85, fogDensity * 22)
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
   return (
     <button
+      ref={ref}
       onClick={onClick}
+      className="menuui-focusable"
       style={{
         ...swatchBtn,
         borderColor: selected ? '#ffb74d' : '#3a3a3a',
@@ -1706,9 +1765,13 @@ function CameraPresetSwatch({
   const tipX = camX + ux * coneLen
   const tipY = camY + uy * coneLen
   const spread = Math.tan(halfRad) * coneLen * 0.6
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'both' })
   return (
     <button
+      ref={ref}
       onClick={onClick}
+      className="menuui-focusable"
       style={{
         ...swatchBtn,
         borderColor: selected ? '#ffb74d' : '#3a3a3a',
@@ -1794,10 +1857,26 @@ function KeySlot({
   onClick: () => void
   onClear?: () => void
 }) {
+  const slotRef = useRef<HTMLButtonElement | null>(null)
+  // Register the slot button so a controller can focus it and press A to open
+  // the rebind capture. Horizontal axis pairs the two slots side by side; the
+  // grouping per action keeps left / right cycling within the row instead of
+  // bleeding into the next action's slots.
+  useRegisterFocusable(slotRef, { axis: 'horizontal' })
+  const clearRef = useRef<HTMLButtonElement | null>(null)
+  // Same grouping so the clear (x) sits on the same horizontal channel as the
+  // slots it belongs to. We register conditionally via the disabled flag so
+  // unrendered clear buttons do not stay in the registry.
+  useRegisterFocusable(clearRef, {
+    axis: 'horizontal',
+    disabled: !onClear,
+  })
   return (
     <div style={slotWrap}>
       <button
+        ref={slotRef}
         onClick={onClick}
+        className="menuui-focusable"
         style={{
           ...slotBtn,
           borderColor: highlighted ? '#ffb74d' : '#3a3a3a',
@@ -1807,7 +1886,13 @@ function KeySlot({
         {label}
       </button>
       {onClear ? (
-        <button onClick={onClear} style={clearBtn} aria-label="Clear binding">
+        <button
+          ref={clearRef}
+          onClick={onClear}
+          style={clearBtn}
+          aria-label="Clear binding"
+          className="menuui-focusable"
+        >
           x
         </button>
       ) : null}
