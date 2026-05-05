@@ -2,6 +2,7 @@
 import { memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type {
+  FlexStraightSpec,
   Piece,
   PieceType,
   Rotation,
@@ -10,7 +11,14 @@ import type {
   TrackDecoration,
   TrackMood,
 } from '@/lib/schemas'
-import { MAX_PIECES_PER_TRACK, MIN_CHECKPOINT_COUNT } from '@/lib/schemas'
+import {
+  DEFAULT_FLEX_STRAIGHT_SPEC,
+  FLEX_STRAIGHT_MAX_LATERAL,
+  FLEX_STRAIGHT_MAX_LENGTH,
+  FLEX_STRAIGHT_MIN_LENGTH,
+  MAX_PIECES_PER_TRACK,
+  MIN_CHECKPOINT_COUNT,
+} from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import {
@@ -106,6 +114,7 @@ const PIECE_TOOLS: PieceType[] = [
   'offsetStraightLeft',
   'grandSweepRight',
   'grandSweepLeft',
+  'flexStraight',
 ]
 const BASE_TOOLS: Tool[] = ['select', 'erase', ...PIECE_TOOLS, 'start', 'checkpoint']
 const TOOL_LABELS: Record<Tool, string> = {
@@ -136,9 +145,45 @@ const TOOL_LABELS: Record<Tool, string> = {
   offsetStraightLeft: 'Lane offset (left)',
   grandSweepRight: 'Grand sweep (right)',
   grandSweepLeft: 'Grand sweep (left)',
+  flexStraight: 'Flex angle',
   start: 'Set start',
   checkpoint: 'Checkpoint',
   ...TRACK_DECORATION_LABELS,
+}
+
+function clampFlexLength(value: number): number {
+  if (!Number.isFinite(value)) return -DEFAULT_FLEX_STRAIGHT_SPEC.dr
+  const clamped = Math.round(Math.abs(value))
+  if (clamped < FLEX_STRAIGHT_MIN_LENGTH) return FLEX_STRAIGHT_MIN_LENGTH
+  if (clamped > FLEX_STRAIGHT_MAX_LENGTH) return FLEX_STRAIGHT_MAX_LENGTH
+  return clamped
+}
+
+function clampFlexLateral(value: number): number {
+  if (!Number.isFinite(value)) return DEFAULT_FLEX_STRAIGHT_SPEC.dc
+  const clamped = Math.round(value)
+  if (clamped < -FLEX_STRAIGHT_MAX_LATERAL) return -FLEX_STRAIGHT_MAX_LATERAL
+  if (clamped > FLEX_STRAIGHT_MAX_LATERAL) return FLEX_STRAIGHT_MAX_LATERAL
+  return clamped
+}
+
+function makeFlexSpec(length: number, lateral: number): FlexStraightSpec {
+  return {
+    dr: -clampFlexLength(length),
+    dc: clampFlexLateral(lateral),
+  }
+}
+
+function flexAngleDegrees(spec: FlexStraightSpec): number {
+  // Match sampleFlexStraightLocal exactly: endpoints sit at the south edge
+  // midpoint of the anchor cell (z = +HALF) and the north edge midpoint of
+  // the exit cell (z = spec.dr * CELL_SIZE - HALF). The vertical delta in
+  // cell units is therefore (spec.dr - 1), so the absolute vertical span
+  // is |spec.dr - 1| = |spec.dr| + 1 cells (since spec.dr is negative).
+  // Lateral span is |spec.dc| cells. Angle measured off cardinal.
+  const verticalUnits = Math.abs(spec.dr - 1)
+  const lateralUnits = Math.abs(spec.dc)
+  return (Math.atan2(lateralUnits, Math.max(verticalUnits, 1e-6)) * 180) / Math.PI
 }
 
 interface TrackEditorProps {
@@ -246,6 +291,12 @@ export function TrackEditor({
   )
   const [tool, setTool] = useState<Tool>('straight')
   const [toolRotation, setToolRotation] = useState<Rotation>(0)
+  // Per-tool flex spec for the flex-straight tool. Decoupled from the spec
+  // already baked into placed pieces so adjusting the slider does not retro
+  // edit older flex straights.
+  const [toolFlexSpec, setToolFlexSpec] = useState<FlexStraightSpec>(
+    DEFAULT_FLEX_STRAIGHT_SPEC,
+  )
   const [selectionAnchor, setSelectionAnchor] = useState<{ row: number; col: number } | null>(null)
   const [selectedCells, setSelectedCells] = useState<Set<string>>(() => new Set())
   const [templatePanelOpen, setTemplatePanelOpen] = useState(false)
@@ -313,6 +364,7 @@ export function TrackEditor({
     error,
     tool,
     toolRotation,
+    toolFlexSpec,
     selectionAnchor,
   })
   latestRef.current = {
@@ -323,6 +375,7 @@ export function TrackEditor({
     error,
     tool,
     toolRotation,
+    toolFlexSpec,
     selectionAnchor,
   }
 
@@ -330,6 +383,7 @@ export function TrackEditor({
     const {
       tool: t,
       toolRotation: tr,
+      toolFlexSpec: tfs,
       cellMap: cm,
       checkpointKeys: ck,
       decorationMap: dm,
@@ -412,7 +466,9 @@ export function TrackEditor({
       current.filter((item) => decorationCellKey(item) !== key),
     )
     setPieces((prev) => {
-      const next = withPiecePlaced(prev, row, col, t as PieceType, tr)
+      const next = withPiecePlaced(prev, row, col, t as PieceType, tr, {
+        flex: t === 'flexStraight' ? tfs : undefined,
+      })
       if (next.length > MAX_PIECES_PER_TRACK) return prev
       return next
     })
@@ -965,6 +1021,7 @@ export function TrackEditor({
                       row: 0,
                       col: 0,
                       rotation: toolRotation,
+                      flex: t === 'flexStraight' ? toolFlexSpec : undefined,
                     }}
                   />
                 )}
@@ -975,6 +1032,66 @@ export function TrackEditor({
         })}
         <span style={paletteHint}>{paletteHintText(tool, toolRotation)}</span>
       </div>
+
+      {tool === 'flexStraight' ? (
+        <div style={flexBar} aria-label="Flex straight controls">
+          <div style={flexLabel}>Length</div>
+          <div style={flexControl}>
+            <button
+              type="button"
+              style={flexStepBtn}
+              onClick={() =>
+                setToolFlexSpec((s) => makeFlexSpec(-s.dr - 1, s.dc))
+              }
+              aria-label="Decrease flex straight length"
+            >
+              {'-'}
+            </button>
+            <span style={flexValue} aria-live="polite">
+              {-toolFlexSpec.dr}
+            </span>
+            <button
+              type="button"
+              style={flexStepBtn}
+              onClick={() =>
+                setToolFlexSpec((s) => makeFlexSpec(-s.dr + 1, s.dc))
+              }
+              aria-label="Increase flex straight length"
+            >
+              {'+'}
+            </button>
+          </div>
+          <div style={flexLabel}>Lateral</div>
+          <div style={flexControl}>
+            <button
+              type="button"
+              style={flexStepBtn}
+              onClick={() =>
+                setToolFlexSpec((s) => makeFlexSpec(-s.dr, s.dc - 1))
+              }
+              aria-label="Shift flex straight exit left"
+            >
+              {'-'}
+            </button>
+            <span style={flexValue} aria-live="polite">
+              {toolFlexSpec.dc}
+            </span>
+            <button
+              type="button"
+              style={flexStepBtn}
+              onClick={() =>
+                setToolFlexSpec((s) => makeFlexSpec(-s.dr, s.dc + 1))
+              }
+              aria-label="Shift flex straight exit right"
+            >
+              {'+'}
+            </button>
+          </div>
+          <span style={flexAngleHint}>
+            {flexAngleDegrees(toolFlexSpec).toFixed(1)} degrees off cardinal
+          </span>
+        </div>
+      ) : null}
 
       {templatePanelOpen ? (
         <div style={templatePanel}>
@@ -2281,6 +2398,38 @@ function PieceGlyph({ piece }: { piece: Piece }) {
           </g>
         </>
       ) : null}
+      {piece.type === 'flexStraight' ? (() => {
+        const spec = piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC
+        // Project the spec into the glyph cell with the same vertical span
+        // the sampler uses: |spec.dr - 1| = |spec.dr| + 1 cells. Using a
+        // larger denominator than the previous |spec.dr| keeps the tilt in
+        // sync with the angle readout and the actual road geometry.
+        const verticalUnits = Math.max(Math.abs(spec.dr - 1), 1)
+        const lateralRatio = spec.dc / verticalUnits
+        const exitX = cx + lateralRatio * cx * 0.7
+        return (
+          <>
+            <line
+              x1={cx}
+              y1={CELL}
+              x2={exitX}
+              y2={0}
+              stroke={road}
+              strokeWidth={roadWidth}
+              strokeLinecap="butt"
+            />
+            <line
+              x1={cx}
+              y1={CELL}
+              x2={exitX}
+              y2={0}
+              stroke={stroke}
+              strokeWidth={2}
+              strokeDasharray="4 4"
+            />
+          </>
+        )
+      })() : null}
       <circle cx={cx} cy={CELL - 8} r={3} fill="#9ad8ff" />
     </g>
   )
@@ -2410,6 +2559,47 @@ const toolBtnLabel: React.CSSProperties = {
   opacity: 0.85,
 }
 const paletteHint: React.CSSProperties = {
+  fontSize: 12,
+  opacity: 0.6,
+  marginLeft: 'auto',
+}
+const flexBar: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 12,
+  padding: '8px 16px',
+  borderBottom: '1px solid #1f2b3d',
+  background: '#101926',
+  flexWrap: 'wrap',
+}
+const flexLabel: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.75,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+}
+const flexControl: React.CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+}
+const flexStepBtn: React.CSSProperties = {
+  width: 26,
+  height: 26,
+  borderRadius: 6,
+  background: '#1a2536',
+  color: 'white',
+  border: '1px solid #2b3a50',
+  fontFamily: 'inherit',
+  fontWeight: 700,
+  cursor: 'pointer',
+}
+const flexValue: React.CSSProperties = {
+  minWidth: 26,
+  textAlign: 'center',
+  fontVariantNumeric: 'tabular-nums',
+}
+const flexAngleHint: React.CSSProperties = {
   fontSize: 12,
   opacity: 0.6,
   marginLeft: 'auto',

@@ -423,6 +423,19 @@ test('track editor keeps mega sweep inner cells available', async ({ page }) => 
   await expect(page.getByText('duplicate piece at 1,1')).toHaveCount(0)
 })
 
+test('track editor places a flex straight via the dedicated palette tool', async ({
+  page,
+}) => {
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.getByRole('button', { name: 'Flex angle' }).click()
+  // The flex bar should appear with length, lateral, and angle readouts.
+  await expect(page.getByText(/degrees off cardinal/)).toBeVisible()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+  await expect(page.getByText('1 / 64 pieces')).toBeVisible()
+})
+
 test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
   page,
 }) => {

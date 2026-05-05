@@ -76,6 +76,27 @@ describe('withPiecePlaced', () => {
       { type: 'straight', row: 1, col: -1, rotation: 0 },
     ])
   })
+
+  it('attaches the supplied flex spec when placing a flexStraight', () => {
+    const result = withPiecePlaced([], 0, 0, 'flexStraight', 0, {
+      flex: { dr: -4, dc: 1 },
+    })
+    expect(result).toEqual([
+      {
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -4, dc: 1 },
+      },
+    ])
+  })
+
+  it('falls back to the default flex spec when one is not supplied', () => {
+    const result = withPiecePlaced([], 0, 0, 'flexStraight', 0)
+    expect(result[0].flex).toBeDefined()
+    expect(result[0].flex!.dr).toBeLessThan(0)
+  })
 })
 
 describe('withPieceRotated', () => {
@@ -642,5 +663,54 @@ describe('flipSelectedPieces', () => {
           ],
         },
       ])
+  })
+
+  it('mirrors a flex straight horizontally by negating its lateral offset', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -3, dc: 1 },
+      },
+    ]
+    const selected = new Set([
+      '0,0',
+      '-1,0',
+      '-1,1',
+      '-2,0',
+      '-2,1',
+      '-3,1',
+    ])
+    const flipped = flipSelectedPieces(pieces, selected, 'horizontal')
+    expect(flipped[0].type).toBe('flexStraight')
+    expect(flipped[0].flex).toEqual({ dr: -3, dc: -1 })
+    // Horizontal flip leaves rotation untouched.
+    expect(flipped[0].rotation).toBe(0)
+  })
+
+  it('mirrors a flex straight vertically by adding 180 to rotation', () => {
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -3, dc: 1 },
+      },
+    ]
+    const selected = new Set([
+      '0,0',
+      '-1,0',
+      '-1,1',
+      '-2,0',
+      '-2,1',
+      '-3,1',
+    ])
+    const flipped = flipSelectedPieces(pieces, selected, 'vertical')
+    expect(flipped[0].type).toBe('flexStraight')
+    expect(flipped[0].flex).toEqual({ dr: -3, dc: -1 })
+    expect(flipped[0].rotation).toBe(180)
   })
 })

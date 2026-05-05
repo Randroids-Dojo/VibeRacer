@@ -161,7 +161,8 @@
         "mega sweep turns",
         "hairpin turns",
         "right and left 45-degree arcs",
-        "diagonal straights"
+        "diagonal straights",
+        "flex-angle straight piece"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",

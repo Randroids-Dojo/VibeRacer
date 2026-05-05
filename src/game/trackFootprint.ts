@@ -1,4 +1,5 @@
-import type { Piece } from '@/lib/schemas'
+import type { FlexStraightSpec, Piece } from '@/lib/schemas'
+import { DEFAULT_FLEX_STRAIGHT_SPEC } from '@/lib/schemas'
 import { cellKey } from './track'
 
 export interface FootprintOffset {
@@ -76,8 +77,118 @@ export const OFFSET_LEFT_FOOTPRINT: readonly FootprintOffset[] = [
   { dr: 0, dc: 0 },
 ]
 
+// Supercover line: every cell the line from cell (0, 0) to cell (spec.dr,
+// spec.dc) passes through, including the start and end cells. Uses Amanatides
+// and Woo's voxel traversal so cells whose interiors the line crosses (as
+// well as cells whose corners the line hits) all land in the footprint. This
+// matters because the road has visible width: a flex straight that grazes a
+// corner of a fourth cell still has paint inside that cell.
+export function flexStraightFootprintLocal(
+  spec: FlexStraightSpec,
+): FootprintOffset[] {
+  // Entry midpoint sits on the south edge of (0, 0), exit midpoint on the
+  // north edge of (spec.dr, spec.dc). Cell coords: col grows east, row grows
+  // south. Entry is at (col, row) = (0, 0.5), exit at (spec.dc, spec.dr - 0.5).
+  // Cells are centered on integer (row, col) and span [r-0.5, r+0.5).
+  const x0 = 0
+  const y0 = 0.5
+  const x1 = spec.dc
+  const y1 = spec.dr - 0.5
+  const cells = new Map<string, FootprintOffset>()
+
+  const ensure = (r: number, c: number) => {
+    const key = `${r},${c}`
+    if (!cells.has(key)) cells.set(key, { dr: r, dc: c })
+  }
+
+  ensure(0, 0)
+  ensure(spec.dr, spec.dc)
+
+  const dx = x1 - x0
+  const dy = y1 - y0
+  if (dx === 0 && dy === 0) {
+    return Array.from(cells.values())
+  }
+
+  // Cell containing the start point. Bias toward the anchor cell so the
+  // start (which lies exactly on the south edge of (0, 0)) snaps to (0, 0)
+  // rather than the cell south of the anchor.
+  let cx = Math.round(x0)
+  let cy = dy < 0 ? Math.round(y0 - 0.5) : Math.round(y0 + 0.5)
+  ensure(cy, cx)
+
+  const stepX = dx === 0 ? 0 : dx > 0 ? 1 : -1
+  const stepY = dy === 0 ? 0 : dy > 0 ? 1 : -1
+  const tDeltaX = stepX === 0 ? Infinity : Math.abs(1 / dx)
+  const tDeltaY = stepY === 0 ? Infinity : Math.abs(1 / dy)
+  let tMaxX =
+    stepX === 0
+      ? Infinity
+      : stepX > 0
+        ? (cx + 0.5 - x0) / dx
+        : (cx - 0.5 - x0) / dx
+  let tMaxY =
+    stepY === 0
+      ? Infinity
+      : stepY > 0
+        ? (cy + 0.5 - y0) / dy
+        : (cy - 0.5 - y0) / dy
+
+  // Defensive bound: at most one cell per axis crossing plus the start cell.
+  // |dx| + |dy| + 4 covers integer-aligned starts/ends and corner crossings.
+  const maxIter = Math.ceil(Math.abs(dx) + Math.abs(dy)) + 4
+  let iterations = 0
+  const epsilon = 1e-9
+  while (
+    iterations < maxIter &&
+    (tMaxX < 1 - epsilon || tMaxY < 1 - epsilon)
+  ) {
+    iterations++
+    if (Math.abs(tMaxX - tMaxY) < epsilon) {
+      // Corner crossing: include both diagonally adjacent cells along with
+      // the cell we are stepping into.
+      ensure(cy + stepY, cx)
+      ensure(cy, cx + stepX)
+      cx += stepX
+      cy += stepY
+      tMaxX += tDeltaX
+      tMaxY += tDeltaY
+    } else if (tMaxX < tMaxY) {
+      cx += stepX
+      tMaxX += tDeltaX
+    } else {
+      cy += stepY
+      tMaxY += tDeltaY
+    }
+    ensure(cy, cx)
+  }
+  return Array.from(cells.values())
+}
+
+// Apply the piece's 90-degree rotation to a local-frame footprint cell. The
+// flex straight's local cells live in the rotation-0 frame; rotation maps
+// (dr, dc) -> (dc, -dr) per 90-degree turn.
+export function rotateFlexStraightFootprint(
+  spec: FlexStraightSpec,
+  rotation: Piece['rotation'],
+): FootprintOffset[] {
+  const local = flexStraightFootprintLocal(spec)
+  return normalizedFootprint(rotateRawFootprint(local, rotation))
+}
+
+function rotateRawFootprint(
+  cells: readonly FootprintOffset[],
+  rotation: Piece['rotation'],
+): FootprintOffset[] {
+  let out = cells.map((c) => ({ dr: c.dr, dc: c.dc }))
+  for (let i = 0; i < rotation / 90; i++) {
+    out = out.map((c) => ({ dr: c.dc, dc: -c.dr }))
+  }
+  return out
+}
+
 export function defaultFootprintForPiece(
-  piece: Pick<Piece, 'type' | 'rotation'>,
+  piece: Pick<Piece, 'type' | 'rotation' | 'flex'>,
 ): readonly FootprintOffset[] {
   return piece.type === 'megaSweepRight'
     ? rotateFootprintByRotation(MEGA_SWEEP_RIGHT_FOOTPRINT, piece.rotation)
@@ -97,6 +208,11 @@ export function defaultFootprintForPiece(
     : piece.type === 'offsetStraightLeft' ||
         piece.type === 'grandSweepLeft'
       ? rotateFootprintByRotation(OFFSET_LEFT_FOOTPRINT, piece.rotation)
+    : piece.type === 'flexStraight'
+      ? rotateFlexStraightFootprint(
+          piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC,
+          piece.rotation,
+        )
       : DEFAULT_FOOTPRINT
 }
 

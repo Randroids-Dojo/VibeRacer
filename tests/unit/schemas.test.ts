@@ -111,6 +111,79 @@ describe('PieceSchema', () => {
     }
   })
 
+  it('accepts a flexStraight piece with a flex spec', () => {
+    const piece = PieceSchema.parse({
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -3, dc: 1 },
+    })
+    expect(piece).toEqual({
+      type: 'flexStraight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      flex: { dr: -3, dc: 1 },
+    })
+  })
+
+  it('rejects flexStraight without a flex spec', () => {
+    expect(
+      PieceSchema.safeParse({
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects non-flex pieces that carry a flex spec', () => {
+    expect(
+      PieceSchema.safeParse({
+        type: 'straight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -2, dc: 0 },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects flex specs with positive or zero dr', () => {
+    expect(
+      PieceSchema.safeParse({
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: 0, dc: 1 },
+      }).success,
+    ).toBe(false)
+    expect(
+      PieceSchema.safeParse({
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: 1, dc: 1 },
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects flex specs beyond the lateral bound', () => {
+    expect(
+      PieceSchema.safeParse({
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -4, dc: 99 },
+      }).success,
+    ).toBe(false)
+  })
+
   it('accepts an optional multi-cell footprint', () => {
     expect(
       PieceSchema.parse({

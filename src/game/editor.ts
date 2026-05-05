@@ -1,6 +1,6 @@
-import type { Piece, PieceType, Rotation } from '@/lib/schemas'
+import type { FlexStraightSpec, Piece, PieceType, Rotation } from '@/lib/schemas'
 import { buildTrackPath, getStartExitDir } from './trackPath'
-import { connectorsOf, type Dir } from './track'
+import { connectorsOf, flexSpecOf, type Dir } from './track'
 import {
   flipFootprint,
   footprintCells,
@@ -24,9 +24,13 @@ export function withPiecePlaced(
   col: number,
   type: PieceType,
   rotation: Rotation,
+  options: { flex?: FlexStraightSpec } = {},
 ): Piece[] {
   const idx = pieces.findIndex((p) => p.row === row && p.col === col)
   const updated: Piece = { row, col, type, rotation }
+  if (type === 'flexStraight') {
+    updated.flex = options.flex ?? flexSpecOf({ ...updated, flex: undefined } as Piece)
+  }
   if (idx === -1) return [...pieces, updated]
   const copy = pieces.slice()
   copy[idx] = updated
@@ -381,6 +385,9 @@ function mirroredCell(
 }
 
 function mirrorPieceShape(piece: Piece, axis: SelectionFlipAxis): Piece {
+  if (piece.type === 'flexStraight') {
+    return mirrorFlexStraight(piece, axis)
+  }
   const targetType = mirroredPieceType(piece.type)
   const mirroredConnectors = connectorsOf(piece).map((dir) =>
     mirrorDir(dir, axis),
@@ -391,6 +398,25 @@ function mirrorPieceShape(piece: Piece, axis: SelectionFlipAxis): Piece {
     type: targetType,
     rotation,
     footprint: flipFootprint(piece.footprint, axis),
+  }
+}
+
+// Flex straights store geometry in their `flex` spec (dr, dc) rather than a
+// type swap. Horizontal flip negates spec.dc; vertical flip also negates
+// spec.dc and rotates the piece 180 degrees so the entry / exit edges swap.
+// The rotation update keeps spec.dr negative, which the schema requires.
+function mirrorFlexStraight(piece: Piece, axis: SelectionFlipAxis): Piece {
+  const spec = flexSpecOf(piece)
+  const flipped: FlexStraightSpec = { dr: spec.dr, dc: -spec.dc }
+  const rotation: Rotation =
+    axis === 'vertical'
+      ? (((piece.rotation + 180) % 360) as Rotation)
+      : piece.rotation
+  return {
+    ...piece,
+    rotation,
+    flex: flipped,
+    footprint: undefined,
   }
 }
 

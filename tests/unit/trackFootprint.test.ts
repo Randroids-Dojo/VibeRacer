@@ -4,12 +4,14 @@ import {
   MEGA_SWEEP_LEFT_FOOTPRINT,
   MEGA_SWEEP_RIGHT_FOOTPRINT,
   defaultFootprintForPiece,
+  flexStraightFootprintLocal,
   flipFootprint,
   footprintCellKeys,
   footprintCells,
   isDefaultFootprint,
   normalizedFootprint,
   pieceOccupiesCell,
+  rotateFlexStraightFootprint,
   rotateFootprintClockwise,
 } from '@/game/trackFootprint'
 import type { Piece } from '@/lib/schemas'
@@ -94,6 +96,59 @@ describe('track footprint helpers', () => {
       { dr: 0, dc: 0 },
       { dr: 0, dc: 1 },
     ])
+  })
+
+  it('flex straight footprint covers every cell the line crosses', () => {
+    // dr=-2, dc=0 (straight 2-cell): line from (0, 0.5) to (0, -2.5).
+    // Crosses cells (0, 0), (-1, 0), (-2, 0).
+    const straightCells = flexStraightFootprintLocal({ dr: -2, dc: 0 })
+    expect(straightCells).toContainEqual({ dr: 0, dc: 0 })
+    expect(straightCells).toContainEqual({ dr: -1, dc: 0 })
+    expect(straightCells).toContainEqual({ dr: -2, dc: 0 })
+    expect(straightCells).toHaveLength(3)
+  })
+
+  it('flex straight footprint includes corner-touched cells', () => {
+    // dr=-1, dc=1: line passes exactly through the corner where four cells
+    // meet. The corner-aware supercover algorithm should claim all four so
+    // adjacent pieces cannot overlap the road's painted edge.
+    const cornerCells = flexStraightFootprintLocal({ dr: -1, dc: 1 })
+    expect(cornerCells).toContainEqual({ dr: 0, dc: 0 })
+    expect(cornerCells).toContainEqual({ dr: -1, dc: 1 })
+    expect(cornerCells).toContainEqual({ dr: 0, dc: 1 })
+    expect(cornerCells).toContainEqual({ dr: -1, dc: 0 })
+  })
+
+  it('flex straight footprint stays inside a long shallow run', () => {
+    // dr=-5, dc=1: a long, gentle angle. Cells should march mostly forward
+    // and bow once into the lateral side.
+    const cells = flexStraightFootprintLocal({ dr: -5, dc: 1 })
+    expect(cells).toContainEqual({ dr: 0, dc: 0 })
+    expect(cells).toContainEqual({ dr: -5, dc: 1 })
+    // No cell ever reaches dc = 2 because the lateral run is one cell.
+    for (const cell of cells) {
+      expect(cell.dc).toBeLessThanOrEqual(1)
+      expect(cell.dc).toBeGreaterThanOrEqual(0)
+    }
+  })
+
+  it('rotates the flex straight footprint with the piece', () => {
+    const baseSpec = { dr: -3, dc: 1 }
+    const rotated = rotateFlexStraightFootprint(baseSpec, 90)
+    // After a 90-degree clockwise rotation in cell coords (dr, dc) -> (dc, -dr).
+    // (0, 0) stays at (0, 0); (-3, 1) lands at (1, 3).
+    expect(rotated).toContainEqual({ dr: 0, dc: 0 })
+    expect(rotated).toContainEqual({ dr: 1, dc: 3 })
+  })
+
+  it('default flex straight footprint reads the spec', () => {
+    const cells = defaultFootprintForPiece({
+      type: 'flexStraight',
+      rotation: 0,
+      flex: { dr: -2, dc: 0 },
+    })
+    expect(cells).toContainEqual({ dr: 0, dc: 0 })
+    expect(cells).toContainEqual({ dr: -2, dc: 0 })
   })
 
   it('rotates default mega sweep footprints with the piece', () => {

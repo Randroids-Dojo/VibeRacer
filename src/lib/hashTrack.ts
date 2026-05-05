@@ -100,6 +100,10 @@ export function canonicalTrackJson(
         ? undefined
         : normalizedFootprint(piece.footprint),
       widthClass: effectiveWidthClass(piece) ?? undefined,
+      flex:
+        piece.type === 'flexStraight' && piece.flex !== undefined
+          ? { dr: piece.flex.dr, dc: piece.flex.dc }
+          : undefined,
     }
   })
   const cp = effectiveCheckpointCount(pieces, checkpointCount, checkpoints)

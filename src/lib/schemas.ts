@@ -51,6 +51,7 @@ export const PieceTypeSchema = z.enum([
   'offsetStraightLeft',
   'grandSweepRight',
   'grandSweepLeft',
+  'flexStraight',
 ])
 export type PieceType = z.infer<typeof PieceTypeSchema>
 
@@ -70,13 +71,57 @@ export const PieceFootprintCellSchema = z
   .strict()
 export type PieceFootprintCell = z.infer<typeof PieceFootprintCellSchema>
 
-export const PieceSchema = z.object({
-  type: PieceTypeSchema,
-  row: z.number().int(),
-  col: z.number().int(),
-  rotation: RotationSchema,
-  footprint: z.array(PieceFootprintCellSchema).min(1).optional(),
-})
+// Flex straight runs from the anchor cell's south edge midpoint to the cell at
+// (anchor.row + dr, anchor.col + dc)'s north edge midpoint, in the local frame
+// at rotation 0. Endpoints sit at row +0.5 and row (dr - 0.5) in cell units,
+// so the vertical run is |dr - 1| cells (i.e. |dr| + 1 cells when dr is
+// negative, which is the only allowed sign). The line angle off cardinal is
+// therefore atan2(|dc|, |dr - 1|), which can be any sub-45 (or super-45)
+// angle the user picks. Constraints: the line must travel forward
+// (dr < 0 in the local frame) so it has a well-defined entry and exit.
+export const FLEX_STRAIGHT_MIN_LENGTH = 1
+export const FLEX_STRAIGHT_MAX_LENGTH = 12
+export const FLEX_STRAIGHT_MAX_LATERAL = 8
+
+export const FlexStraightSpecSchema = z
+  .object({
+    dr: z
+      .number()
+      .int()
+      .min(-FLEX_STRAIGHT_MAX_LENGTH)
+      .max(-FLEX_STRAIGHT_MIN_LENGTH),
+    dc: z.number().int().min(-FLEX_STRAIGHT_MAX_LATERAL).max(FLEX_STRAIGHT_MAX_LATERAL),
+  })
+  .strict()
+export type FlexStraightSpec = z.infer<typeof FlexStraightSpecSchema>
+
+export const DEFAULT_FLEX_STRAIGHT_SPEC: FlexStraightSpec = { dr: -3, dc: 1 }
+
+export const PieceSchema = z
+  .object({
+    type: PieceTypeSchema,
+    row: z.number().int(),
+    col: z.number().int(),
+    rotation: RotationSchema,
+    footprint: z.array(PieceFootprintCellSchema).min(1).optional(),
+    flex: FlexStraightSpecSchema.optional(),
+  })
+  .superRefine((piece, ctx) => {
+    if (piece.type === 'flexStraight' && piece.flex === undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['flex'],
+        message: 'flexStraight requires a flex spec',
+      })
+    }
+    if (piece.type !== 'flexStraight' && piece.flex !== undefined) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['flex'],
+        message: 'flex is only allowed on flexStraight pieces',
+      })
+    }
+  })
 export type Piece = z.infer<typeof PieceSchema>
 
 export const TrackCheckpointSchema = z

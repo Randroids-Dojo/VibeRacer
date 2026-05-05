@@ -5,6 +5,7 @@ import {
   opposite,
   validateClosedLoop,
 } from '@/game/track'
+import { frameOfPort, framesConnect } from '@/game/pieceFrames'
 import type { Piece } from '@/lib/schemas'
 
 describe('connectorsOf', () => {
@@ -300,5 +301,163 @@ describe('validateClosedLoop', () => {
     const res = validateClosedLoop(pieces)
     expect(res.ok).toBe(false)
     expect(res.reason).toMatch(/too many pieces/)
+  })
+
+  it('validates a closed loop that uses a 2-cell flex straight', () => {
+    // Vertical flex straight (no lateral offset) acting as a long straight
+    // segment between two corner pairs.
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 2,
+        col: 1,
+        rotation: 0,
+        flex: { dr: -2, dc: 0 },
+      },
+      { type: 'right90', row: 3, col: 1, rotation: 180 },
+      { type: 'right90', row: 3, col: 0, rotation: 270 },
+      { type: 'straight', row: 2, col: 0, rotation: 0 },
+      { type: 'straight', row: 1, col: 0, rotation: 0 },
+      { type: 'straight', row: 0, col: 0, rotation: 0 },
+      { type: 'right90', row: -1, col: 0, rotation: 0 },
+      { type: 'right90', row: -1, col: 1, rotation: 90 },
+    ]
+    expect(validateClosedLoop(pieces)).toEqual({ ok: true })
+  })
+
+  it('rejects a flex straight whose endpoints have no neighbors', () => {
+    const res = validateClosedLoop([
+      {
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -2, dc: 0 },
+      },
+    ])
+    expect(res.ok).toBe(false)
+    expect(res.reason).toMatch(/open connector/)
+  })
+
+  it('validates a long cell-aligned chain without floating-point drift breaking closure', () => {
+    // The frame-based connector matcher uses an epsilon tolerance, which
+    // raises a question for long chains: does cumulative floating-point
+    // error in the per-piece frame computation push any join over the
+    // 0.5-unit position epsilon? This builds a 60-piece rectangle that
+    // exercises every cardinal direction and confirms validation still
+    // succeeds. Cell-aligned pieces should hit exact zero drift on every
+    // join, including the closure between the last and first piece.
+    //
+    // Three contract pins, one per migration stage:
+    //  - V1 (this test, today): closure error must be exactly 0 because
+    //    every frame is an integer multiple of CELL_SIZE / 2.
+    //  - Stage 1 (v2 transforms via round-trip from cells): same as v1,
+    //    bit-for-bit. Adding a transform field cannot introduce drift
+    //    while pieces are still placed on the integer grid.
+    //  - Stage 2 (continuous-angle loops): drift must stay below
+    //    DEFAULT_FRAME_EPSILON_POS so the matcher still closes; the
+    //    reconciliation pass tightens it back to zero before save.
+    const pieces: Piece[] = []
+    // Top edge: 28 cells going east at row 0 (28 straights at rotation 90).
+    for (let c = 1; c <= 28; c++) {
+      pieces.push({ type: 'straight', row: 0, col: c, rotation: 90 })
+    }
+    // Top-right corner.
+    pieces.push({ type: 'right90', row: 0, col: 29, rotation: 90 })
+    // Right edge going south.
+    pieces.push({ type: 'straight', row: 1, col: 29, rotation: 0 })
+    // Bottom-right corner.
+    pieces.push({ type: 'right90', row: 2, col: 29, rotation: 180 })
+    // Bottom edge going west: 28 straights at rotation 90.
+    for (let c = 28; c >= 1; c--) {
+      pieces.push({ type: 'straight', row: 2, col: c, rotation: 90 })
+    }
+    // Bottom-left corner.
+    pieces.push({ type: 'right90', row: 2, col: 0, rotation: 270 })
+    // Left edge going north.
+    pieces.push({ type: 'straight', row: 1, col: 0, rotation: 0 })
+    // Top-left corner closes the loop.
+    pieces.push({ type: 'right90', row: 0, col: 0, rotation: 0 })
+    expect(pieces).toHaveLength(28 + 1 + 1 + 1 + 28 + 1 + 1 + 1)
+    const result = validateClosedLoop(pieces)
+    if (!result.ok) {
+      throw new Error(result.reason ?? 'validateClosedLoop failed')
+    }
+    expect(result.ok).toBe(true)
+
+    // Measure the actual numerical drift across every join, not just at
+    // the closure. The worst case anywhere in the loop is what bounds
+    // future continuous-angle reconciliation.
+    let maxJoinDistance = 0
+    let maxTangentDelta = 0
+    for (const piece of pieces) {
+      const ports = connectorPortsOf(piece)
+      for (const port of ports) {
+        const myFrame = frameOfPort(piece, port)
+        let matchedFrame: { x: number; z: number; theta: number } | null = null
+        for (const candidate of pieces) {
+          if (candidate === piece) continue
+          for (const candidatePort of connectorPortsOf(candidate)) {
+            const cf = frameOfPort(candidate, candidatePort)
+            if (framesConnect(myFrame, cf)) {
+              matchedFrame = cf
+              break
+            }
+          }
+          if (matchedFrame) break
+        }
+        expect(matchedFrame).not.toBeNull()
+        const distance = Math.hypot(
+          myFrame.x - matchedFrame!.x,
+          myFrame.z - matchedFrame!.z,
+        )
+        let dt = myFrame.theta - matchedFrame!.theta - Math.PI
+        while (dt > Math.PI) dt -= 2 * Math.PI
+        while (dt < -Math.PI) dt += 2 * Math.PI
+        const tangentDelta = Math.abs(dt)
+        if (distance > maxJoinDistance) maxJoinDistance = distance
+        if (tangentDelta > maxTangentDelta) maxTangentDelta = tangentDelta
+      }
+    }
+    // V1 baseline: every edge midpoint is an integer multiple of HALF_CELL,
+    // so subtracting two of them yields exact zero. Tangents are looked up
+    // from a static table, also exact. Both must be 0 today; Stage 1
+    // round-tripped transforms must match this exactly.
+    expect(maxJoinDistance).toBe(0)
+    expect(maxTangentDelta).toBe(0)
+  })
+
+  it('validates a closed loop with a sub-45 angled flex straight', () => {
+    // A flex straight with spec dr=-3, dc=1 runs at atan(1/4) ~= 14.04
+    // degrees off cardinal (vertical span is |dr - 1| = 4 cells from the
+    // south edge of the anchor row to the north edge of the exit row).
+    // That shallow angle is the kind the strict 45-degree grid could not
+    // previously express. The flex straight cuts diagonally up the loop's
+    // interior; the loop walks around its outside (col=2 corridor) to close.
+    const pieces: Piece[] = [
+      {
+        type: 'flexStraight',
+        row: 3,
+        col: 0,
+        rotation: 0,
+        flex: { dr: -3, dc: 1 },
+      },
+      { type: 'right90', row: 4, col: 0, rotation: 270 },
+      { type: 'straight', row: 4, col: 1, rotation: 90 },
+      { type: 'right90', row: 4, col: 2, rotation: 180 },
+      { type: 'straight', row: 3, col: 2, rotation: 0 },
+      { type: 'straight', row: 2, col: 2, rotation: 0 },
+      { type: 'straight', row: 1, col: 2, rotation: 0 },
+      { type: 'straight', row: 0, col: 2, rotation: 0 },
+      { type: 'right90', row: -1, col: 2, rotation: 90 },
+      { type: 'right90', row: -1, col: 1, rotation: 0 },
+    ]
+    const result = validateClosedLoop(pieces)
+    if (!result.ok) {
+      // Surface the validator's diagnostic if the loop fails so the test
+      // failure is debuggable without re-running by hand.
+      throw new Error(result.reason ?? 'validateClosedLoop failed')
+    }
+    expect(result.ok).toBe(true)
   })
 })

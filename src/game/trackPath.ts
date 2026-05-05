@@ -1,9 +1,10 @@
-import type { Piece, TrackCheckpoint } from '@/lib/schemas'
+import type { FlexStraightSpec, Piece, TrackCheckpoint } from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
 import {
   cellKey,
   connectorPortsOf,
   findConnectedNeighbor,
+  flexSpecOf,
   portCell,
   portsConnect,
   type ConnectorPort,
@@ -346,6 +347,55 @@ export function transformSample(
 // the local x = 0 axis (negate x and reflect headings: atan2(-z, -x) = pi - h).
 const SCURVE_LOCAL_SAMPLES = sampleScurveLocal()
 const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
+
+// Density of samples along a flex straight. Each cell-length of straight
+// gets this many points, so a 5-cell flex straight produces ~40 samples and
+// the centerline distance / wheel-contact / ribbon extrusion all stay smooth.
+export const FLEX_STRAIGHT_SAMPLES_PER_CELL = 8
+
+// World-space length in units of a flex straight described by `spec`. The
+// path runs from the south edge midpoint of the anchor cell (z = +HALF) to
+// the north edge midpoint of the cell at offset (spec.dr, spec.dc) (z =
+// spec.dr * CELL_SIZE - HALF), so the vertical span is |spec.dr - 1| cells
+// (which is |spec.dr| + 1 cells since spec.dr is always negative) and the
+// lateral span is |spec.dc| cells. The +1 cell of vertical run beyond
+// |spec.dr| accounts for the two half-cell skins (south edge of the anchor
+// row plus north edge of the exit row) that together add one full cell.
+export function flexStraightLength(spec: FlexStraightSpec): number {
+  const dx = CELL_SIZE * spec.dc
+  const dz = CELL_SIZE * spec.dr - CELL_SIZE
+  return Math.hypot(dx, dz)
+}
+
+// Sample the flex straight centerline in LOCAL coordinates (anchor cell
+// origin at (0, 0), piece rotation 0). Entry sits at the south edge midpoint
+// of the anchor cell at (0, HALF); exit sits at the north edge midpoint of
+// the cell at (spec.dr, spec.dc) at (CELL_SIZE * spec.dc, CELL_SIZE * spec.dr - HALF).
+// The path is a straight line, so heading is constant across the samples.
+export function sampleFlexStraightLocal(
+  spec: FlexStraightSpec,
+): SampledPoint[] {
+  const startX = 0
+  const startZ = HALF
+  const endX = CELL_SIZE * spec.dc
+  const endZ = CELL_SIZE * spec.dr - HALF
+  const dx = endX - startX
+  const dz = endZ - startZ
+  const length = Math.hypot(dx, dz)
+  const heading = Math.atan2(-dz, dx)
+  const sampleCount = Math.max(
+    2,
+    Math.round((length / CELL_SIZE) * FLEX_STRAIGHT_SAMPLES_PER_CELL) + 1,
+  )
+  return Array.from({ length: sampleCount }, (_, i) => {
+    const t = i / (sampleCount - 1)
+    return {
+      x: startX + dx * t,
+      z: startZ + dz * t,
+      heading,
+    }
+  })
+}
 
 export const SWEEP_SAMPLE_COUNT = 33
 export const MEGA_SWEEP_SAMPLE_COUNT = 49
@@ -759,6 +809,7 @@ function sweepLocalSamplesFor(piece: Piece): SampledPoint[] {
   if (piece.type === 'hairpin') return HAIRPIN_LOCAL_SAMPLES
   if (piece.type === 'megaSweepLeft') return MEGA_SWEEP_LEFT_LOCAL_SAMPLES
   if (piece.type === 'megaSweepRight') return MEGA_SWEEP_RIGHT_LOCAL_SAMPLES
+  if (piece.type === 'flexStraight') return sampleFlexStraightLocal(flexSpecOf(piece))
   if (piece.type === 'sweepLeft') return SWEEP_LEFT_LOCAL_SAMPLES
   return SWEEP_RIGHT_LOCAL_SAMPLES
 }
@@ -814,7 +865,8 @@ export function buildTrackPath(
       current.type === 'offsetStraightRight' ||
       current.type === 'offsetStraightLeft' ||
       current.type === 'grandSweepRight' ||
-      current.type === 'grandSweepLeft'
+      current.type === 'grandSweepLeft' ||
+      current.type === 'flexStraight'
     order.push({
       piece: current,
       entryDir,

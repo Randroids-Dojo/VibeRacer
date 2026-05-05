@@ -2,6 +2,33 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-04, Geometry Shim and Output Snapshots (Stage 0.5)
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added the geometry accessor that Stage 1 proper (the schema swap to a `transform` field) will mutate. New module `src/game/pieceGeometry.ts` exports `geometryOf(piece)` returning `{ transform, endpoints, footprint }`, plus `transformOf(piece)` and `endpointsOf(piece)` helpers. The validator's `portsConnect` and `findConnectedNeighbor` now consume `geometryOf(piece).endpoints` directly, locking endpoints as the connector source of truth so the connection engine has zero surface to change in Stage 1 proper. The implementation still derives every field from `(row, col, rotation)`. Snapshot tests in `tests/unit/pieceGeometry.test.ts` bit-lock the v1 baseline for every track template across three downstream pipelines: sceneBuilder vertex buffer hash + vertex count, minimap path string hash, thumbnail path string hash. Stage 1 proper's new geometryOf implementation must reproduce these hashes exactly.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3216 tests including 10 new pieceGeometry tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: the geometry shim is internal scaffolding; no user-visible change. Existing callers can keep using `connectorPortsOf` (it's the implementation detail behind `endpointsOf`), but new callers and the validator should consume `geometryOf` only. The four track templates are the snapshot wall; new templates need a baseline entry added to `EXPECTED` before they can land.
+- GDD coverage: no GDD section change; this is a refactor under existing Section 6 Track system functionality.
+- Followups: Stage 1 proper adds `transform: { x, y, theta }` to `PieceSchema` with a v1 to v2 converter on load; geometryOf reads transform when present and falls back to cells otherwise; hash canonicalization preserves v1 hashes for tracks whose transforms project exactly back to integer cells. Then Stage 2 (rotate handle, free placement behind a flag), then Stage 3 (flip the flag, deprecate Flex angle).
+
+## 2026-05-04, Continuous-Angle Frame Layer (Stage 0 substrate)
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added the connection-engine substrate the continuous-angle editor will rest on. New module `src/game/pieceFrames.ts` introduces `Frame` (world position plus outward tangent angle), `frameOfPort` (resolves any connector port to its world frame), `framesConnect` (epsilon matcher on position and antiparallel tangent), and `tangentsAreAntiparallel`. `portsConnect` in `src/game/track.ts` is rewritten to delegate to the frame matcher; integer cell-equality is gone, replaced by epsilon-tolerant world-frame matching with default thresholds 0.5 world units on position and 2 degrees on tangent. Cell-aligned legacy pieces hit zero distance, so every existing track and template validates identically and hashes are unchanged.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3201 tests including 15 new pieceFrames tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: this is the foundation slice, not the full data-model refactor. Pieces still serialize as `(row, col, rotation)` and the editor still places on the integer grid. Only the connection engine swaps under the hood. Subsequent PRs will add the `transform` field on `PieceSchema`, the v1 to v2 converter, the rotate handle, and the free-placement editor mode.
+- GDD coverage: no GDD section change; this is a refactor under existing Section 6 Track system functionality.
+- Followups: add `transform: { x, y, theta }` to `PieceSchema` with a v1 to v2 converter on load (Stage 1 proper); rotate-handle and free-placement editor UX behind a feature flag (Stage 2); flip the flag and deprecate Flex angle (Stage 3).
+
+## 2026-05-04, Flex Angle Straight Piece
+
+- Branch: `claude/add-flex-straight-piece-9Pjig`
+- Changed: added a new `flexStraight` piece type that breaks the strict 45-degree grid for straight runs. Each flex straight stores a `flex` spec with integer cell offsets `(dr, dc)` from the entry cell to the exit cell; the path between the two cardinal edge midpoints is a single straight line at any sub-45-degree angle. The vertical run is `|dr - 1|` cells (the south edge of the anchor row plus the north edge of the exit row add one full cell beyond `|dr|`), so e.g. `dr=-3, dc=1` produces `atan(1/4) ≈ 14.04` degrees off cardinal, and `dr=-1, dc=1` produces `atan(1/2) ≈ 26.57` degrees. Author picks the spec that matches the corner-to-corner geometry the track needs. Wired the type through `PieceTypeSchema`, `FlexStraightSpecSchema`, connector ports, supercover-line footprint, sampled centerline, hash canonicalization, mirror logic, pace notes, difficulty weights, the editor palette glyph, and a length / lateral / angle control bar in the palette. Existing track JSON, hashes, and pieces remain unchanged.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `npm run type-check`, `npm test` passed with 3186 tests, focused Playwright track-editor smoke passed with 9 tests, and `npm run build` passed with the existing React hook warnings in `RaceCanvas.tsx`, `TouchControls.tsx`, and `useGamepad.ts`.
+- Assumptions: a flex straight's endpoints stay on cardinal cell-edge midpoints so the piece connects to existing grid pieces with the unchanged 8-direction connector matching. The path itself is a single straight line, which produces a small tangent kink at the joins with cardinal pieces; smoothing the joins with Bezier endpoints is a future refinement.
+- GDD coverage: Section 6 Track system now records the flex-angle straight piece.
+- Followups: smooth flex-straight joins with Bezier endpoints; expose a free-rotation drag handle for the place tool; add Miami-style template that uses flex straights for the back straight.
+
 ## 2026-05-04, Reference GP Turn Sequence
 
 - Branch: `fix/reference-gp-turn-sequence`

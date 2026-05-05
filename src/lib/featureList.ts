@@ -40,6 +40,7 @@ export const FEATURE_LIST: readonly FeatureCategory[] = [
       'Place mega sweep turns and hairpins.',
       'Place 45-degree arcs and diagonal straights.',
       'Place wide 45s, diagonal sweeps, kinks, lane offsets, hairpin variants, and grand sweeps.',
+      'Place flex-angle straights at any user-chosen length and lateral offset for sub-45-degree runs.',
       'Rotate track pieces.',
       'Undo and redo edits.',
       'Pan and zoom around the editor.',

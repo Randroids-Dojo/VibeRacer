@@ -45,6 +45,7 @@ describe('TUNING_LAB_TRACK_PIECES', () => {
       offsetStraightLeft: 0,
       grandSweepRight: 0,
       grandSweepLeft: 0,
+      flexStraight: 0,
     }
     for (const p of TUNING_LAB_TRACK_PIECES) counts[p.type] += 1
     expect(counts.straight).toBeGreaterThanOrEqual(4)

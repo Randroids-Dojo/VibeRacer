@@ -183,6 +183,9 @@ function noteForPiece(op: OrderedPiece, idx: number): PaceNote {
   if (type === 'grandSweepLeft') {
     return { pieceIdx: idx, kind: 'left', severity: 'medium', label: 'Grand sweep left' }
   }
+  if (type === 'flexStraight') {
+    return { pieceIdx: idx, kind: 'straight', severity: 'easy', label: 'Flex straight' }
+  }
   if (type === 'scurve') {
     return {
       pieceIdx: idx,

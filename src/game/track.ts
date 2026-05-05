@@ -1,5 +1,13 @@
-import { MAX_PIECES_PER_TRACK, type Piece, type PieceType } from '@/lib/schemas'
+import {
+  DEFAULT_FLEX_STRAIGHT_SPEC,
+  MAX_PIECES_PER_TRACK,
+  type FlexStraightSpec,
+  type Piece,
+  type PieceType,
+} from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
+import { frameOfPort, framesConnect } from './pieceFrames'
+import { endpointsOf } from './pieceGeometry'
 
 export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
@@ -60,6 +68,51 @@ const BASE_CONNECTORS: Record<PieceType, Dir[]> = {
   offsetStraightLeft: [4, 0], // S -> N with the exit shifted left
   grandSweepRight: [4, 2], // S -> E across a larger footprint
   grandSweepLeft: [4, 6], // S -> W across a larger footprint
+  flexStraight: [4, 0], // S -> N (placeholder; real ports use the flex spec)
+}
+
+// Resolve the flex spec for a piece, falling back to the default when missing
+// so consumers do not have to branch on undefined. Validation rejects pieces
+// of other types that carry a flex spec, so this stays consistent.
+export function flexSpecOf(piece: Piece): FlexStraightSpec {
+  return piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC
+}
+
+// Apply the piece's 90-degree rotation to a local-frame (dr, dc) vector. At
+// rotation 0 the offset is unchanged; each 90-degree clockwise step rotates
+// row/col on the cell grid: (dr, dc) -> (dc, -dr).
+function rotateOffset(
+  dr: number,
+  dc: number,
+  rotation: Piece['rotation'],
+): { dr: number; dc: number } {
+  const turns = rotation / 90
+  let r = dr
+  let c = dc
+  for (let i = 0; i < turns; i++) {
+    const nr = c
+    const nc = -r
+    r = nr
+    c = nc
+  }
+  return { dr: r, dc: c }
+}
+
+// Connector ports for a flex straight at a given rotation. Entry sits on the
+// south edge of the anchor cell at rotation 0 (rotates with the piece). Exit
+// sits on the north edge of the cell at offset (flex.dr, flex.dc), which also
+// rotates with the piece. The exit edge is always cardinal (opposite of the
+// entry edge after rotation), so flex straights remain compatible with the
+// existing 8-direction connector matching against grid pieces.
+export function flexStraightPorts(piece: Piece): ConnectorPort[] {
+  const { dr, dc } = flexSpecOf(piece)
+  const exit = rotateOffset(dr, dc, piece.rotation)
+  const entryDir = ((4 + (piece.rotation / 90) * 2) % 8) as Dir
+  const exitDir = opposite(entryDir)
+  return [
+    { dr: 0, dc: 0, dir: entryDir },
+    { dr: exit.dr, dc: exit.dc, dir: exitDir },
+  ]
 }
 
 export function connectorsOf(piece: Piece): Dir[] {
@@ -133,6 +186,9 @@ export function connectorPortsOf(piece: Piece): ConnectorPort[] {
       ],
       piece.rotation,
     )
+  }
+  if (piece.type === 'flexStraight') {
+    return flexStraightPorts(piece)
   }
   const shift = (piece.rotation / 90) * 2
   return BASE_CONNECTORS[piece.type].map((dir) => ({
@@ -358,17 +414,13 @@ export function portsConnect(
   port: ConnectorPort,
   neighbor: Piece,
 ): boolean {
-  const cell = portCell(piece, port)
-  for (const neighborPort of connectorPortsOf(neighbor)) {
-    const neighborCell = portCell(neighbor, neighborPort)
-    const off = DIR_OFFSETS[neighborPort.dir]
-    if (
-      neighborCell.row + off.dr === cell.row &&
-      neighborCell.col + off.dc === cell.col &&
-      neighborPort.dir === opposite(port.dir)
-    ) {
-      return true
-    }
+  // Endpoints are the source of truth for connections. Use `endpointsOf`
+  // (not `geometryOf`) so the validator's hot path skips the supercover
+  // footprint computation that `geometryOf` would also do. Stage 1 proper
+  // can swap how endpoints are derived without touching this call site.
+  const frame = frameOfPort(piece, port)
+  for (const candidate of endpointsOf(neighbor)) {
+    if (framesConnect(frame, candidate)) return true
   }
   return false
 }
@@ -378,9 +430,17 @@ export function findConnectedNeighbor(
   port: ConnectorPort,
   pieces: readonly Piece[],
 ): Piece | null {
+  // Endpoint-driven match: iterate every other piece's endpoint frames and
+  // return the first whose frame connects to this port's frame. `endpointsOf`
+  // (not `geometryOf`) keeps this inner loop free of supercover footprint
+  // work, which matters for O(n^2) validation passes. Stage 1 proper
+  // changes only how endpointsOf builds the array; nothing here.
+  const frame = frameOfPort(piece, port)
   for (const candidate of pieces) {
     if (candidate === piece) continue
-    if (portsConnect(piece, port, candidate)) return candidate
+    for (const candidateFrame of endpointsOf(candidate)) {
+      if (framesConnect(frame, candidateFrame)) return candidate
+    }
   }
   return null
 }
