@@ -164,4 +164,46 @@ describe('track footprint helpers', () => {
       { dr: 0, dc: 1 },
     ])
   })
+
+  it('snaps footprint rotation to transform.theta when present', () => {
+    // Stage 2 Workstream A regression (PR #103 review): for non-projectable
+    // transforms `convertV1Piece` leaves `piece.rotation` untouched, so the
+    // legacy field can disagree with the cardinal snap of `transform.theta`.
+    // Connector ports already follow `cardinalTurnsOfTheta(transform.theta)`,
+    // so the footprint must follow the same snapped turn count or the
+    // piece would extend in directions inconsistent with its own
+    // connectors. A wire payload with `rotation: 0` and
+    // `transform.theta = PI/2 + 0.05` (about 93 degrees) must produce the
+    // same footprint as a v1-projectable piece at `rotation: 90`.
+    const cardinal = defaultFootprintForPiece({
+      type: 'hairpin',
+      rotation: 90,
+      flex: undefined,
+    })
+    const fromTransform = defaultFootprintForPiece({
+      type: 'hairpin',
+      rotation: 0,
+      flex: undefined,
+      transform: { x: 0, z: 0, theta: Math.PI / 2 + 0.05 },
+    })
+    expect(normalizedFootprint(fromTransform)).toEqual(
+      normalizedFootprint(cardinal),
+    )
+  })
+
+  it('falls back to piece.rotation when transform is absent', () => {
+    // Direct unit-test inputs that never run the converter still drive
+    // footprint rotation off the legacy field. This pins the fallback so
+    // editor literals and existing test code keep working.
+    const a = defaultFootprintForPiece({
+      type: 'megaSweepRight',
+      rotation: 180,
+    })
+    const b = defaultFootprintForPiece({
+      type: 'megaSweepRight',
+      rotation: 180,
+      transform: { x: 0, z: 0, theta: Math.PI },
+    })
+    expect(normalizedFootprint(a)).toEqual(normalizedFootprint(b))
+  })
 })

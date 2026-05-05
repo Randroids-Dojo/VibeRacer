@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import {
   SchemaTooNewError,
-  Stage1NonProjectableError,
-  assertAllPiecesV1Projectable,
   assertSchemaVersionSupported,
   convertV1Piece,
   convertV1Pieces,
@@ -182,59 +180,6 @@ describe('assertSchemaVersionSupported', () => {
       schemaVersion: 1.5,
     })
     expect(parsed.success).toBe(false)
-  })
-})
-
-describe('assertAllPiecesV1Projectable (Stage 1 boundary gate)', () => {
-  // Stage 1 ships only the cell-keyed runtime pipeline (connectorPortsOf,
-  // frameOfPortAtTransform, buildTrackPath sampling all read piece.rotation).
-  // A v2 wire payload with a non-projectable transform would silently pass
-  // canonical hashing (which omits legacy rotation for non-projectable
-  // pieces) but the runtime would still execute the cell-derived geometry,
-  // letting two payloads that differ only in `rotation` collide on hash.
-  // The boundary gate refuses such payloads until Stage 2 rewires the
-  // runtime to consume transform.theta directly.
-  it('passes for an all-cell-aligned track', () => {
-    const pieces = convertV1Pieces([
-      { type: 'straight', row: 0, col: 0, rotation: 0 },
-      { type: 'right90', row: 1, col: 1, rotation: 90 },
-    ])
-    expect(() => assertAllPiecesV1Projectable(pieces)).not.toThrow()
-  })
-
-  it('throws Stage1NonProjectableError for a non-cell-aligned transform', () => {
-    const pieces: Piece[] = [
-      {
-        type: 'straight',
-        row: 0,
-        col: 0,
-        rotation: 0,
-        transform: { x: 0, z: 0, theta: (14 * Math.PI) / 180 },
-      },
-    ]
-    expect(() => assertAllPiecesV1Projectable(pieces)).toThrow(
-      Stage1NonProjectableError,
-    )
-  })
-
-  it('reports the offending piece index', () => {
-    const pieces: Piece[] = [
-      ...convertV1Pieces([{ type: 'straight', row: 0, col: 0, rotation: 0 }]),
-      {
-        type: 'straight',
-        row: 1,
-        col: 1,
-        rotation: 0,
-        transform: { x: 1.7, z: 19.3, theta: 0 },
-      },
-    ]
-    try {
-      assertAllPiecesV1Projectable(pieces)
-      throw new Error('expected throw')
-    } catch (err) {
-      expect(err).toBeInstanceOf(Stage1NonProjectableError)
-      expect((err as Stage1NonProjectableError).pieceIndex).toBe(1)
-    }
   })
 })
 

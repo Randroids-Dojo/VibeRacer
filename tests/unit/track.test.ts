@@ -5,7 +5,14 @@ import {
   opposite,
   validateClosedLoop,
 } from '@/game/track'
-import { frameOfPort, framesConnect } from '@/game/pieceFrames'
+import {
+  DEFAULT_FRAME_EPSILON_POS,
+  frameOfPort,
+  frameOfPortAtTransform,
+  framesConnect,
+} from '@/game/pieceFrames'
+import { transformOf } from '@/game/pieceGeometry'
+import { convertV1Pieces } from '@/lib/trackVersion'
 import type { Piece } from '@/lib/schemas'
 
 describe('connectorsOf', () => {
@@ -425,6 +432,124 @@ describe('validateClosedLoop', () => {
     // round-tripped transforms must match this exactly.
     expect(maxJoinDistance).toBe(0)
     expect(maxTangentDelta).toBe(0)
+  })
+
+  it('validates a non-projectable continuous-angle loop with drift below the position epsilon', () => {
+    // Stage 2 pin (Workstream A): the runtime now consumes `transform.theta`
+    // for arbitrary angles, so the system must accept loops whose
+    // transforms do not snap to a multiple of PI/2. Rotating an entire
+    // valid loop rigidly around a pivot keeps every join geometrically
+    // exact in the continuous sense; the only error left is the float
+    // round-off of cos / sin applied to the rotation. That error must
+    // stay well below DEFAULT_FRAME_EPSILON_POS so the frame matcher
+    // still closes the loop.
+    const v1: Piece[] = []
+    for (let c = 1; c <= 28; c++) {
+      v1.push({ type: 'straight', row: 0, col: c, rotation: 90 })
+    }
+    v1.push({ type: 'right90', row: 0, col: 29, rotation: 90 })
+    v1.push({ type: 'straight', row: 1, col: 29, rotation: 0 })
+    v1.push({ type: 'right90', row: 2, col: 29, rotation: 180 })
+    for (let c = 28; c >= 1; c--) {
+      v1.push({ type: 'straight', row: 2, col: c, rotation: 90 })
+    }
+    v1.push({ type: 'right90', row: 2, col: 0, rotation: 270 })
+    v1.push({ type: 'straight', row: 1, col: 0, rotation: 0 })
+    v1.push({ type: 'right90', row: 0, col: 0, rotation: 0 })
+
+    // Rigidly rotate every piece around the loop centroid by delta. Each
+    // piece's transform.x / z gets the cell-aligned position rotated CW;
+    // each piece's transform.theta gains the same delta. The loop
+    // topology and all join offsets are preserved in the continuous
+    // sense, so the validator must close it.
+    const converted = convertV1Pieces(v1)
+    let cx = 0
+    let cz = 0
+    for (const piece of converted) {
+      const t = transformOf(piece)
+      cx += t.x
+      cz += t.z
+    }
+    cx /= converted.length
+    cz /= converted.length
+    const delta = (14 * Math.PI) / 180 // 14 degrees, well off cardinal
+    const cs = Math.cos(delta)
+    const sn = Math.sin(delta)
+    const rotated = converted.map((piece) => {
+      const t = transformOf(piece)
+      const dx = t.x - cx
+      const dz = t.z - cz
+      return {
+        ...piece,
+        transform: {
+          x: cx + dx * cs - dz * sn,
+          z: cz + dx * sn + dz * cs,
+          theta: t.theta + delta,
+        },
+      }
+    })
+
+    // Sanity: at least one piece is non-projectable so we are exercising
+    // the new transform-driven path rather than the v1-projectable fast
+    // path the converter still re-derives cells from.
+    let anyNonProjectable = false
+    for (const piece of rotated) {
+      const wrapped = ((piece.transform.theta % (Math.PI / 2)) + Math.PI / 2) % (Math.PI / 2)
+      const residual = Math.min(wrapped, Math.PI / 2 - wrapped)
+      if (residual > 1e-3) {
+        anyNonProjectable = true
+        break
+      }
+    }
+    expect(anyNonProjectable).toBe(true)
+
+    const result = validateClosedLoop(rotated)
+    if (!result.ok) {
+      throw new Error(result.reason ?? 'validateClosedLoop failed')
+    }
+    expect(result.ok).toBe(true)
+
+    // Measure the worst-case join drift across every connector. Drift is
+    // bounded by float round-off in the per-piece cos / sin; for a
+    // 60-piece loop this is many orders of magnitude below the
+    // 0.5-world-unit position epsilon. Pinning the bound at one tenth of
+    // the epsilon documents the headroom; if a future change blows past
+    // this it is worth re-checking the rotation arithmetic before
+    // loosening the assertion.
+    let maxJoinDistance = 0
+    let maxTangentDelta = 0
+    for (const piece of rotated) {
+      for (const port of connectorPortsOf(piece)) {
+        const myFrame = frameOfPortAtTransform(transformOf(piece), port)
+        let matched: { x: number; z: number; theta: number } | null = null
+        for (const candidate of rotated) {
+          if (candidate === piece) continue
+          for (const candidatePort of connectorPortsOf(candidate)) {
+            const cf = frameOfPortAtTransform(
+              transformOf(candidate),
+              candidatePort,
+            )
+            if (framesConnect(myFrame, cf)) {
+              matched = cf
+              break
+            }
+          }
+          if (matched) break
+        }
+        expect(matched).not.toBeNull()
+        const distance = Math.hypot(
+          myFrame.x - matched!.x,
+          myFrame.z - matched!.z,
+        )
+        let dt = myFrame.theta - matched!.theta - Math.PI
+        while (dt > Math.PI) dt -= 2 * Math.PI
+        while (dt < -Math.PI) dt += 2 * Math.PI
+        if (distance > maxJoinDistance) maxJoinDistance = distance
+        if (Math.abs(dt) > maxTangentDelta) maxTangentDelta = Math.abs(dt)
+      }
+    }
+    expect(maxJoinDistance).toBeLessThan(DEFAULT_FRAME_EPSILON_POS / 10)
+    expect(maxTangentDelta).toBeLessThan(1e-9)
   })
 
   it('validates a closed loop with a sub-45 angled flex straight', () => {

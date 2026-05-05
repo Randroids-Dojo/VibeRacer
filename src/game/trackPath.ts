@@ -12,6 +12,13 @@ import {
   type ConnectorPort,
   type Dir,
 } from './track'
+import { transformOf } from './pieceGeometry'
+import {
+  cardinalTurnsOfTheta,
+  frameOfPortAtTransform,
+  residualThetaAfterCardinalSnap,
+} from './pieceFrames'
+import type { PieceTransform } from '@/lib/schemas'
 
 // Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
 // whichever connector points at pieces[1] is the exit. Falls back to connB
@@ -153,8 +160,13 @@ export function edgeMidpoint(row: number, col: number, dir: Dir): Vec3 {
 }
 
 function portMidpoint(piece: Piece, port: ConnectorPort): Vec3 {
-  const cell = portCell(piece, port)
-  return edgeMidpoint(cell.row, cell.col, port.dir)
+  // Stage 2: read the world-frame port position from the piece's transform
+  // rather than from cell coordinates so non-projectable pieces render at
+  // the correct location. For grid-aligned pieces the residual rotation in
+  // `frameOfPortAtTransform` is exactly zero and the result is bit-equal
+  // to the legacy `edgeMidpoint(cell.row, cell.col, port.dir)` arithmetic.
+  const frame = frameOfPortAtTransform(transformOf(piece), port)
+  return { x: frame.x, y: 0, z: frame.z }
 }
 
 // Heading in radians where 0 = +X (east) and increases counter-clockwise around +Y.
@@ -191,13 +203,32 @@ function matchingEntryPort(piece: Piece, previous: Piece): ConnectorPort {
 }
 
 function computeArcCenter(
-  center: Vec3,
+  transform: PieceTransform,
   entryDir: Dir,
   exitDir: Dir,
 ): { cx: number; cz: number } {
+  // The arc center for a 90-degree corner sits at the cell corner where
+  // the two open edges meet. In the piece-local frame that point is the
+  // sum of the two edge-midpoint offsets relative to cell center. For
+  // grid-aligned pieces the residual rotation is zero and this collapses
+  // to the legacy `(center.x + e1.dx + e2.dx, center.z + e1.dz + e2.dz)`
+  // arithmetic; for non-projectable corners it rotates the local corner
+  // offset by the residual angle so the arc center tracks the rotated
+  // piece.
   const e1 = EDGE_OFFSETS[entryDir]
   const e2 = EDGE_OFFSETS[exitDir]
-  return { cx: center.x + e1.dx + e2.dx, cz: center.z + e1.dz + e2.dz }
+  const offsetX = e1.dx + e2.dx
+  const offsetZ = e1.dz + e2.dz
+  const residual = residualThetaAfterCardinalSnap(transform.theta)
+  if (residual === 0) {
+    return { cx: transform.x + offsetX, cz: transform.z + offsetZ }
+  }
+  const cs = Math.cos(residual)
+  const sn = Math.sin(residual)
+  return {
+    cx: transform.x + offsetX * cs - offsetZ * sn,
+    cz: transform.z + offsetX * sn + offsetZ * cs,
+  }
 }
 
 // S-curve geometry parameters. Local layout (piece rotation 0): a south to
@@ -326,24 +357,30 @@ function scurvePointAtArcLength(s: number): SampledPoint {
   return { x: 0, z: z0 - 4 * r - s, heading: Math.PI / 2 }
 }
 
-// Apply piece rotation to a LOCAL sample, then translate to the piece center.
-// Rotation R degrees clockwise (compass-wise) maps local (lx, lz) to
-// (lx cos R - lz sin R, lx sin R + lz cos R) in the global x/z frame, since
+// Apply a piece transform to a LOCAL sample. Rotation by `theta` radians
+// clockwise (compass-wise) maps local (lx, lz) to
+// (lx cos t - lz sin t, lx sin t + lz cos t) in the global x/z frame, since
 // +Z points south on the top-down map. Heading (atan2(-z, x)) rotates by
-// -R radians.
+// -theta radians.
+//
+// Stage 2 contract: the sampler reads `transform` directly. For
+// v1-projectable pieces (every Stage 1 piece) the converter populates
+// `transform.x = col * CELL_SIZE`, `transform.z = row * CELL_SIZE`, and
+// `transform.theta = rotation * PI / 180` exactly, so the rotated samples
+// produced here are bit-equal to the legacy
+// `transformSample(..., piece.rotation)` output and the snapshot wall in
+// tests/unit/pieceGeometry.test.ts stays pinned. For non-projectable
+// pieces the rendered road follows the continuous theta directly.
 export function transformSample(
   s: SampledPoint,
-  centerX: number,
-  centerZ: number,
-  rotationDeg: number,
+  transform: { x: number; z: number; theta: number },
 ): SampledPoint {
-  const R = (rotationDeg * Math.PI) / 180
-  const cs = Math.cos(R)
-  const sn = Math.sin(R)
+  const cs = Math.cos(transform.theta)
+  const sn = Math.sin(transform.theta)
   return {
-    x: centerX + s.x * cs - s.z * sn,
-    z: centerZ + s.x * sn + s.z * cs,
-    heading: s.heading - R,
+    x: transform.x + s.x * cs - s.z * sn,
+    z: transform.z + s.x * sn + s.z * cs,
+    heading: s.heading - transform.theta,
   }
 }
 
@@ -755,23 +792,23 @@ const GRAND_SWEEP_LEFT_LOCAL_SAMPLES = sampleGrandSweepLeftLocal()
 
 function buildScurveSamples(
   piece: Piece,
-  center: Vec3,
   entryDir: Dir,
 ): SampledPoint[] {
   // The local samples enter at the base south connector (rotation 0). After
-  // rotating the piece, the rotated base entry sits at dir (4 + rot/90*2) % 8.
-  // If the loop traversal enters from the OPPOSITE end, the car drives the
-  // path in reverse, so flip the sample order and rotate every heading by
-  // 180 degrees so headings still face the direction of travel.
+  // rotating the piece, the rotated base entry's discrete dir is the
+  // cardinal-snapped projection of `transform.theta`. If the loop traversal
+  // enters from the OPPOSITE end, the car drives the path in reverse, so
+  // flip the sample order and rotate every heading by 180 degrees so
+  // headings still face the direction of travel.
   const localSamples =
     piece.type === 'scurveLeft'
       ? SCURVE_LEFT_LOCAL_SAMPLES
       : SCURVE_LOCAL_SAMPLES
-  const baseEntryAfterRotation = (4 + (piece.rotation / 90) * 2) % 8
+  const transform = transformOf(piece)
+  const baseEntryAfterRotation =
+    (4 + cardinalTurnsOfTheta(transform.theta) * 2) % 8
   const reversed = entryDir !== baseEntryAfterRotation
-  const transformed = localSamples.map((s) =>
-    transformSample(s, center.x, center.z, piece.rotation),
-  )
+  const transformed = localSamples.map((s) => transformSample(s, transform))
   if (!reversed) return transformed
   const out = transformed.slice().reverse()
   return out.map((s) => ({ x: s.x, z: s.z, heading: s.heading + Math.PI }))
@@ -779,7 +816,6 @@ function buildScurveSamples(
 
 function buildSweepSamples(
   piece: Piece,
-  center: Vec3,
   entryPort: ConnectorPort,
 ): SampledPoint[] {
   const localSamples = sweepLocalSamplesFor(piece)
@@ -787,9 +823,8 @@ function buildSweepSamples(
   const reversed =
     baseEntryAfterRotation === undefined ||
     !samePort(entryPort, baseEntryAfterRotation)
-  const transformed = localSamples.map((s) =>
-    transformSample(s, center.x, center.z, piece.rotation),
-  )
+  const transform = transformOf(piece)
+  const transformed = localSamples.map((s) => transformSample(s, transform))
   if (!reversed) return transformed
   const out = transformed.slice().reverse()
   return out.map((s) => ({ x: s.x, z: s.z, heading: s.heading + Math.PI }))
@@ -850,7 +885,13 @@ export function buildTrackPath(
     const key = cellKey(current.row, current.col)
     if (seen.has(key)) break
     seen.add(key)
-    const center = cellCenter(current.row, current.col)
+    // Source the piece center from `transform.x / z` so non-projectable
+    // pieces render at the right world coordinates. For grid-aligned
+    // pieces the converter sets `transform.x = col * CELL_SIZE` and
+    // `transform.z = row * CELL_SIZE` exactly, so this is bit-equal to
+    // the legacy `cellCenter(current.row, current.col)`.
+    const transform = transformOf(current)
+    const center: Vec3 = { x: transform.x, y: 0, z: transform.z }
     const isCorner = current.type === 'left90' || current.type === 'right90'
     const isScurve =
       current.type === 'scurve' || current.type === 'scurveLeft'
@@ -883,11 +924,11 @@ export function buildTrackPath(
       center,
       entry: portMidpoint(current, entryPort),
       exit: portMidpoint(current, exitPort),
-      arcCenter: isCorner ? computeArcCenter(center, entryDir, exitDir) : null,
+      arcCenter: isCorner ? computeArcCenter(transform, entryDir, exitDir) : null,
       samples: isScurve
-        ? buildScurveSamples(current, center, entryDir)
+        ? buildScurveSamples(current, entryDir)
         : isSweep
-          ? buildSweepSamples(current, center, entryPort)
+          ? buildSweepSamples(current, entryPort)
           : null,
     })
 

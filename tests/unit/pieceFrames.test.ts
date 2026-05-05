@@ -6,8 +6,11 @@ import {
   DEFAULT_FRAME_EPSILON_POS,
   DEFAULT_FRAME_EPSILON_THETA,
   FRAME_CELL_SIZE,
+  cardinalTurnsOfTheta,
   framesConnect,
   frameOfPort,
+  frameOfPortAtTransform,
+  residualThetaAfterCardinalSnap,
   tangentsAreAntiparallel,
 } from '@/game/pieceFrames'
 
@@ -211,6 +214,74 @@ describe('tangentsAreAntiparallel', () => {
     expect(
       tangentsAreAntiparallel(0.7, 0.7, DEFAULT_FRAME_EPSILON_THETA),
     ).toBe(false)
+  })
+})
+
+describe('residualThetaAfterCardinalSnap and cardinalTurnsOfTheta', () => {
+  // Regression pin (Copilot review on PR #103): the snap must use the full
+  // rounded quotient so thetas outside [0, 2*PI) still resolve to zero
+  // residual when they sit on a cardinal. Editor group-rotate / undo /
+  // redo can compose past one full revolution, and a buggy snap that ran
+  // turns mod 4 first would return 2*PI for theta = 5*PI/2, defeating the
+  // bit-equal cardinal fast path and piling sin / cos round-off into
+  // long accumulated rotations.
+  it('returns exactly zero residual for cardinal multiples in [0, 2*PI)', () => {
+    expect(residualThetaAfterCardinalSnap(0)).toBe(0)
+    expect(residualThetaAfterCardinalSnap(Math.PI / 2)).toBe(0)
+    expect(residualThetaAfterCardinalSnap(Math.PI)).toBe(0)
+    expect(residualThetaAfterCardinalSnap((3 * Math.PI) / 2)).toBe(0)
+  })
+
+  it('returns exactly zero residual for cardinals past 2*PI', () => {
+    expect(residualThetaAfterCardinalSnap(2 * Math.PI)).toBe(0)
+    expect(residualThetaAfterCardinalSnap((5 * Math.PI) / 2)).toBe(0)
+    expect(residualThetaAfterCardinalSnap(7 * Math.PI)).toBe(0)
+    expect(residualThetaAfterCardinalSnap(-Math.PI / 2)).toBe(0)
+    expect(residualThetaAfterCardinalSnap(-3 * Math.PI)).toBe(0)
+  })
+
+  it('returns the leftover continuous angle for non-cardinal thetas', () => {
+    const fourteenDeg = (14 * Math.PI) / 180
+    expect(residualThetaAfterCardinalSnap(fourteenDeg)).toBeCloseTo(
+      fourteenDeg,
+      12,
+    )
+    // Same offset added to a cardinal multiple still yields the same residual.
+    expect(
+      residualThetaAfterCardinalSnap(Math.PI / 2 + fourteenDeg),
+    ).toBeCloseTo(fourteenDeg, 12)
+    expect(
+      residualThetaAfterCardinalSnap((5 * Math.PI) / 2 + fourteenDeg),
+    ).toBeCloseTo(fourteenDeg, 12)
+  })
+
+  it('cardinalTurnsOfTheta wraps modulo 4 even for thetas past 2*PI', () => {
+    expect(cardinalTurnsOfTheta(0)).toBe(0)
+    expect(cardinalTurnsOfTheta(Math.PI / 2)).toBe(1)
+    expect(cardinalTurnsOfTheta(Math.PI)).toBe(2)
+    expect(cardinalTurnsOfTheta((3 * Math.PI) / 2)).toBe(3)
+    expect(cardinalTurnsOfTheta(2 * Math.PI)).toBe(0)
+    expect(cardinalTurnsOfTheta((5 * Math.PI) / 2)).toBe(1)
+    expect(cardinalTurnsOfTheta(-Math.PI / 2)).toBe(3)
+  })
+
+  it('frameOfPortAtTransform stays bit-equal for theta = 5*PI/2', () => {
+    // The cardinal fast path must trigger for any cardinal multiple, not
+    // just thetas in [0, 2*PI). Compare the frame at theta = PI/2 against
+    // the frame at theta = 5*PI/2 (same orientation): both must produce
+    // identical output, otherwise the bug Copilot caught is back.
+    const port = { dr: 0, dc: 0, dir: 6 as const }
+    const a = frameOfPortAtTransform(
+      { x: 0, z: 0, theta: Math.PI / 2 },
+      port,
+    )
+    const b = frameOfPortAtTransform(
+      { x: 0, z: 0, theta: (5 * Math.PI) / 2 },
+      port,
+    )
+    expect(b.x).toBe(a.x)
+    expect(b.z).toBe(a.z)
+    expect(b.theta).toBe(a.theta)
   })
 })
 

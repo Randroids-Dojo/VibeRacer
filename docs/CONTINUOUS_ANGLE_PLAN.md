@@ -213,7 +213,89 @@ to compute (non-deterministic transform), the converter falls back to
 "every piece in a saved v2 track emits transform". With the property
 derived, this fallback is dead code; should never trigger.
 
-### Stage 2: editor UX, behind a feature flag. NOT STARTED.
+### Stage 2: editor UX, behind a feature flag. PARTIAL.
+
+Two workstreams. Workstream A (runtime migration) has shipped; Workstream
+B (editor UX) is still pending.
+
+#### Stage 2 Workstream A: runtime migration. SHIPPED.
+
+PR #103 on branch `claude/continuous-angle-stage-2-runtime`. Merge
+commit recorded here when squashed onto main.
+
+What landed:
+
+- `connectorPortsOf` and `flexStraightPorts` in `src/game/track.ts` no
+  longer key off `piece.rotation`; both derive their cardinal-snapped
+  turn count from `transform.theta` via `cardinalTurnsOfTheta` (defined
+  in `pieceFrames.ts`). A `thetaOfPiece` helper falls back to
+  `piece.rotation * PI / 180` for transform-less pieces so direct unit
+  tests (which never run the converter) keep working. The same cardinal
+  snap drives footprint rotation in `defaultFootprintForPiece`
+  (`src/game/trackFootprint.ts`) via a private
+  `snappedRotationFromPiece` helper, so non-projectable pieces whose
+  legacy `piece.rotation` field is stale still produce footprint cells
+  that match their connector frames.
+- `frameOfPortAtTransform` in `src/game/pieceFrames.ts` now applies the
+  residual rotation `transform.theta minus cardinalSnap(transform.theta)`
+  to the port's local offset and heading. For v1-projectable pieces the
+  residual is exactly zero (within `V1_PROJECTABLE_ROTATION_EPSILON =
+  1e-4`, sourced from the leaf module `src/game/cellSize.ts` so
+  `pieceGeometry` and `pieceFrames` share one canonical value) so the
+  function reduces to translate-only arithmetic and the Stage 0.5
+  snapshot wall plus every existing template hash reproduce bit-for-bit.
+  The cardinal snap uses the full rounded quotient
+  `n = Math.round(theta / (PI / 2))` so thetas outside `[0, 2*PI)`
+  (accumulated rotations from group rotate, undo, redo) still resolve
+  to zero residual when they land on a cardinal multiple.
+- The validator's `portsConnect` and `findConnectedNeighbor` swapped the
+  source-side frame from the cell-keyed `frameOfPort` to
+  `frameOfPortAtTransform(transformOf(piece), port)` so non-projectable
+  pieces close correctly. `frameOfPort` itself is left in place for the
+  legacy long-chain closure test and the existing `pieceFrames` unit
+  tests, which call it on transform-less pieces.
+- `transformSample` in `src/game/trackPath.ts` now consumes a
+  `{ x, z, theta }` transform directly (radians) instead of a rotation
+  in degrees. `buildScurveSamples` and `buildSweepSamples` read
+  `transformOf(piece)` rather than `piece.rotation`. For v1-projectable
+  pieces the converter sets `transform.theta = piece.rotation * PI / 180`
+  exactly, so the rotated samples are bit-equal to the legacy output.
+- `buildTrackPath` itself sources `center`, `entry`, `exit`, and
+  `arcCenter` from `transformOf(piece)` and `frameOfPortAtTransform`
+  rather than `cellCenter` / `portMidpoint`, so non-projectable straight
+  and corner pieces render at the correct world coordinates. For
+  grid-aligned input the converter sets `transform.x = col * CELL_SIZE`
+  and `transform.z = row * CELL_SIZE` exactly, so this is bit-equal to
+  the legacy cell-keyed arithmetic.
+- The Stage 1 boundary gate is gone. `Stage1NonProjectableError` and
+  `assertAllPiecesV1Projectable` are removed from
+  `src/lib/trackVersion.ts`; the load path
+  (`src/lib/loadTrack.ts`) and write path
+  (`src/app/api/track/[slug]/route.ts`) no longer reject non-projectable
+  payloads. Continuous-angle pieces flow through end-to-end.
+- The converter still re-derives `(row, col, rotation)` from a
+  v1-projectable transform on entry. The choice is documented in
+  `convertV1Piece`'s comment: cell fields remain load-bearing for
+  canonical hashing (Rule 2's "v1-projectable emits legacy bytes"),
+  validator duplicate-cell detection, and footprint enumeration. The
+  re-derivation is idempotent and harmless for grid-aligned input;
+  Workstream B's free placement will set transforms that bypass this
+  normalization, and the runtime path that ships here will handle them.
+- New long-chain closure test in `tests/unit/track.test.ts` rotates
+  the existing 60-piece rectangle rigidly by 14 degrees around its
+  centroid and asserts `validateClosedLoop` accepts it with
+  `maxJoinDistance < DEFAULT_FRAME_EPSILON_POS / 10` and
+  `maxTangentDelta < 1e-9`. A second new test in
+  `tests/unit/trackPath.test.ts` rotates a 12-piece rectangle and
+  asserts `buildTrackPath` puts every piece center at its `transform`
+  and every consecutive `exit` / `entry` pair within `1e-9` world units.
+  Regression tests in `tests/unit/pieceFrames.test.ts` pin
+  `residualThetaAfterCardinalSnap` and `cardinalTurnsOfTheta` against
+  thetas outside `[0, 2*PI)` and assert `frameOfPortAtTransform` is
+  bit-equal between `theta = PI/2` and `theta = 5*PI/2`. The original
+  v1-projectable closure test still reports zero drift exactly.
+
+#### Stage 2 Workstream B: editor UX. NOT STARTED.
 
 - Translate handle (already exists for selection drag).
 - Rotate handle: a small ring around an endpoint. Drag rotates the
@@ -228,30 +310,10 @@ derived, this fallback is dead code; should never trigger.
 - Feature-flag gated. Internal testing without exposing it.
 - Reconciliation pass for nearly-closed continuous-angle loops: detect
   "loop closes within wider epsilon" and snap the last endpoint exactly
-  to the first before save. Belongs here, not Stage 1.
+  to the first before save.
 - OBB-vs-OBB overlap detection: spatial hash + AABB pre-check before
-  full OBB. Footprint contract stays a list of cells in Stage 1 and
-  arbitrary-angle pieces enumerate cells via the existing supercover.
-- Decouple from the Stage 1 "cells follow transform" invariant: the
-  converter currently re-projects `(row, col, rotation)` from any
-  v1-projectable transform on load, so legacy fields can never disagree
-  with the transform. Stage 2 introduces non-projectable transforms,
-  at which point three call sites need to migrate from cell-derived to
-  transform-derived input:
-  - `connectorPortsOf(piece)` keys off `piece.rotation`. Rewire it to
-    consume `transform.theta` directly (rotating port offsets by theta
-    instead of relying on the piece-rotation table), or move port
-    rotation into a transform-aware helper called from `endpointsOf`.
-  - `frameOfPortAtTransform` in `src/game/pieceFrames.ts` does not yet
-    apply `transform.theta` to the port offset / heading; the comment
-    on the helper flags this. Update once continuous-angle ports land.
-  - `buildTrackPath` samples piece-local centerlines and calls
-    `transformSample(..., piece.rotation)`. Update the sampler to
-    consume `piece.transform` directly so the rendered road matches
-    the canonical hash at any theta.
-  Until those three call sites migrate, Stage 2 must keep the
-  converter's transform-to-cells projection as a normalization step on
-  any v2 wire payload it accepts.
+  full OBB. Footprint contract stays a list of cells; arbitrary-angle
+  pieces enumerate cells via the existing supercover.
 
 ### Stage 3: flip the flag. NOT STARTED.
 
@@ -297,16 +359,16 @@ derived, this fallback is dead code; should never trigger.
 
 ## Picking up where this left off
 
-Stage 1 has shipped (PR #101 on branch
-`claude/continuous-angle-stage-1-Vho8x`). The next slice is Stage 2:
-the editor UX behind a feature flag, plus the migration of
-`connectorPortsOf` / `frameOfPortAtTransform` / `buildTrackPath` to
-fully transform-driven port computation. The Stage 2 section above
-lists the specific call sites to migrate so the converter's "cells
-follow transform" normalization can become a no-op for non-projectable
-pieces. Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
-and the most recent `PROGRESS_LOG` entry; the templates and Stage 0.5
-snapshot wall remain the load-bearing tests.
+Stage 1 (PR #101) and Stage 2 Workstream A (the runtime migration on
+branch `claude/continuous-angle-stage-2-runtime`) have shipped. The
+next slice is Stage 2 Workstream B: the editor UX behind a feature
+flag (rotate handle, free placement, snap-radius nearest-neighbor
+matching, optional numeric input, reconciliation pass for nearly-closed
+loops, OBB-vs-OBB overlap). Before starting, read `AGENTS.md`, this
+plan, `FOLLOWUPS.md`, and the most recent `PROGRESS_LOG` entry; the
+templates and Stage 0.5 snapshot wall plus the new continuous-angle
+long-chain closure test in `tests/unit/track.test.ts` remain the
+load-bearing tests.
 
 The historical Stage 1 ten-step plan below is preserved for reference.
 A fresh session should not re-implement it; the work shipped in PR
