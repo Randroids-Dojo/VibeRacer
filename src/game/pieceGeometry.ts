@@ -1,52 +1,34 @@
-// Stage 0.5: a single accessor that returns everything callers need to
-// reason about a piece's geometry. Today the implementation derives every
-// field from the existing (row, col, rotation) helpers; in Stage 1 proper
-// it will read a `transform` field directly off the piece schema. Call
-// sites consume only this accessor, so the schema swap touches one
-// implementation file rather than the entire codebase.
-//
-//   transform: anchor-frame in world space: where the piece sits and how
-//     it is rotated. Cell-aligned today; arbitrary later.
-//   endpoints: outward-facing world-space frames for every connector.
-//     The connection engine consumes these directly; nothing further down
-//     the pipe needs to know about cells or cardinal directions.
-//   footprint: world cells the piece occupies, for overlap / placement
-//     checks in the editor.
+// Stage 1 (continuous-angle): the single accessor for piece geometry. After
+// the v1 to v2 schema swap shipped, every loaded piece carries a populated
+// `transform` field that is the authoritative source of position and rotation.
+// `transformOf`, `endpointsOf`, and `geometryOf` read from `transform`
+// directly. There is no fallback to cell derivation: the v1 to v2 converter
+// (src/lib/trackVersion.ts) runs immediately after schema parse on every load
+// path so unstamped pieces never reach this layer in production.
 //
 // Two design rules locked in by the shim:
 //
-//   1. Connectors are addressed by frame, not by cardinal port. After
-//      Stage 0.5 lands, the validator should never iterate
-//      `connectorPortsOf` directly. Only `geometryOf(piece).endpoints`.
-//      Stage 1 proper then has zero connection-engine surface to change.
+//   1. Connectors are addressed by frame, not by cardinal port. The validator
+//      consumes `endpointsOf(piece)` and never iterates `connectorPortsOf`
+//      directly for matching. Stage 2's continuous-angle pieces plug in by
+//      reporting their endpoints in world space; nothing about the matching
+//      pipeline cares whether the piece's transform is grid-aligned.
 //
-//   2. Footprint is a list of (row, col) cells regardless of how the
-//      piece's transform looks in the future. A continuous-angle piece
-//      that lands between cells still reports the cells it occupies via
-//      a supercover-style enumeration, so editor placement stays sane.
+//   2. Footprint is a list of (row, col) cells regardless of how the piece's
+//      transform looks. A continuous-angle piece that lands between cells
+//      still reports the cells it occupies via a supercover-style enumeration,
+//      so editor placement stays sane.
 
-import type { Piece } from '@/lib/schemas'
+import type { Piece, PieceTransform } from '@/lib/schemas'
 import { connectorPortsOf } from './track'
-import { type Frame, frameOfPort } from './pieceFrames'
+import { type Frame, frameOfPortAtTransform } from './pieceFrames'
 import {
   type FootprintCell,
   footprintCells,
 } from './trackFootprint'
 import { CELL_SIZE } from './trackPath'
 
-export interface PieceTransform {
-  // World position of the piece's anchor point. y is implicit (0) because
-  // the world is a flat ground plane.
-  x: number
-  z: number
-  // Rotation in radians, measured clockwise (compass-wise) to match the
-  // existing `piece.rotation` field that this transform replaces in Stage 1
-  // proper. The same R value can be passed straight to `transformSample` and
-  // the rest of the renderer code that already assumes the CW convention.
-  // Game heading angles (CCW, +PI/2 = north) flow through `Frame.theta` on
-  // endpoints and stay independent of this field.
-  theta: number
-}
+export type { PieceTransform } from '@/lib/schemas'
 
 export interface PieceGeometry {
   transform: PieceTransform
@@ -54,10 +36,25 @@ export interface PieceGeometry {
   footprint: FootprintCell[]
 }
 
-// Resolve the geometry for a single piece. Today every field is derived
-// from (row, col, rotation); Stage 1 proper changes only this function's
-// implementation. Callers must not poke piece.row / piece.col / piece.rotation
-// directly when they could ask geometryOf instead.
+// Epsilons for "v1-projectable" detection. These constants live with the
+// geometry layer so the converter, the canonicalizer, and the editor's
+// snap-on-save path all read the same numbers.
+//
+// The asymmetry is deliberate. Position epsilon is sub-micron (effectively
+// bit-equal float on a 20-unit cell) because cell-aligned positions are
+// integer multiples of CELL_SIZE and never accumulate representation error.
+// Rotation epsilon is two orders of magnitude looser because every rotate
+// operation runs through sin / cos and the editor's group-rotate / undo /
+// redo paths can compose several rotations before a save. A 1e-6 rotation
+// epsilon would reject pieces visually indistinguishable from grid-aligned.
+// See docs/CONTINUOUS_ANGLE_PLAN.md "Rule 1" for the rationale.
+export const V1_PROJECTABLE_POSITION_EPSILON = 1e-6
+export const V1_PROJECTABLE_ROTATION_EPSILON = 1e-4
+const HALF_PI = Math.PI / 2
+
+// Resolve the geometry for a single piece. Reads from `piece.transform` (which
+// the v1 to v2 converter populates on load). Stage 2's continuous-angle pieces
+// just plug in different transforms; this function does not change.
 export function geometryOf(piece: Piece): PieceGeometry {
   return {
     transform: transformOf(piece),
@@ -66,23 +63,64 @@ export function geometryOf(piece: Piece): PieceGeometry {
   }
 }
 
-// World-space anchor transform for a piece. Cell coordinates project to
-// (col * CELL_SIZE, row * CELL_SIZE) on the ground plane; rotation in
-// degrees becomes radians with the same clockwise convention `piece.rotation`
-// already uses (so transformSample and other downstream renderers see the
-// same R value they always have).
+// World-space anchor transform for a piece. Reads `piece.transform` directly;
+// the v1 to v2 converter ensures every loaded piece has it populated, so this
+// is a strict read with no derivation fallback. If you hit the throw, the
+// caller skipped the converter; see src/lib/trackVersion.ts.
 export function transformOf(piece: Piece): PieceTransform {
-  return {
-    x: piece.col * CELL_SIZE,
-    z: piece.row * CELL_SIZE,
-    theta: (piece.rotation * Math.PI) / 180,
+  if (piece.transform === undefined) {
+    throw new Error(
+      'piece.transform missing; run the v1 to v2 converter (convertV1Piece) before reading geometry',
+    )
   }
+  return piece.transform
 }
 
-// Outward-facing world frames for every connector port on a piece. The
-// returned array follows the order from connectorPortsOf so legacy code
-// that still indexes by "entry / exit" position keeps working during the
-// transition.
+// Outward-facing world frames for every connector port on a piece. Built from
+// the piece's transform, so a future continuous-angle piece with arbitrary
+// theta produces frames at the correct world position automatically.
 export function endpointsOf(piece: Piece): Frame[] {
-  return connectorPortsOf(piece).map((port) => frameOfPort(piece, port))
+  const transform = transformOf(piece)
+  return connectorPortsOf(piece).map((port) =>
+    frameOfPortAtTransform(transform, port),
+  )
+}
+
+// Derived check: does this piece's transform project exactly back to integer
+// cell coordinates and a cardinal rotation? Pure function, no caching, called
+// fresh on every read by both the canonicalizer and any editor test that
+// asserts mutations preserve grid alignment. See FOLLOWUPS Rule 2 for why
+// this is derived rather than stored.
+export function isV1Projectable(piece: Piece): boolean {
+  const t = piece.transform
+  if (t === undefined) return false
+  const colReal = t.x / CELL_SIZE
+  const rowReal = t.z / CELL_SIZE
+  const col = Math.round(colReal)
+  const row = Math.round(rowReal)
+  if (Math.abs(colReal - col) > V1_PROJECTABLE_POSITION_EPSILON) return false
+  if (Math.abs(rowReal - row) > V1_PROJECTABLE_POSITION_EPSILON) return false
+  // theta mod PI/2 within rotation epsilon. Reduce theta into [0, PI/2) and
+  // check the residual against zero with wrap on both sides so values like
+  // -0.000001 don't read as PI/2 - 0.000001.
+  const wrapped = ((t.theta % HALF_PI) + HALF_PI) % HALF_PI
+  const residual = Math.min(wrapped, HALF_PI - wrapped)
+  if (residual > V1_PROJECTABLE_ROTATION_EPSILON) return false
+  return true
+}
+
+// Project a v1-projectable transform back to its (row, col, rotation) form.
+// Snaps to the nearest integer cell and 90-degree multiple within the same
+// epsilons isV1Projectable uses. Caller is responsible for checking
+// isV1Projectable first; this function does not validate the input.
+export function projectToV1Cells(transform: PieceTransform): {
+  row: number
+  col: number
+  rotation: 0 | 90 | 180 | 270
+} {
+  const col = Math.round(transform.x / CELL_SIZE)
+  const row = Math.round(transform.z / CELL_SIZE)
+  const turns = ((Math.round(transform.theta / HALF_PI) % 4) + 4) % 4
+  const rotation = (turns * 90) as 0 | 90 | 180 | 270
+  return { row, col, rotation }
 }

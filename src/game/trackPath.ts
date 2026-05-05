@@ -1,4 +1,5 @@
 import type { FlexStraightSpec, Piece, TrackCheckpoint } from '@/lib/schemas'
+import { convertV1Pieces } from '@/lib/trackVersion'
 import { footprintCellKeys } from './trackFootprint'
 import {
   cellKey,
@@ -822,6 +823,10 @@ export function buildTrackPath(
   if (pieces.length === 0) {
     throw new Error('empty pieces')
   }
+  // Normalize to v2 (every piece has transform populated) so the geometry
+  // layer can read transform without a fallback. Idempotent. See the same
+  // call at the head of validateClosedLoop.
+  pieces = convertV1Pieces(pieces)
 
   const first = pieces[0]
   const [portA, portB] = connectorPortsOf(first)

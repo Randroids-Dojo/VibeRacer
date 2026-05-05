@@ -20,6 +20,16 @@ import {
 import { buildTrackPath } from '@/game/trackPath'
 import type { Piece } from '@/lib/schemas'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
+import { convertV1Pieces } from '@/lib/trackVersion'
+import { isV1Projectable } from '@/game/pieceGeometry'
+
+// Stage 1 invariant: editor mutations populate `transform` on every piece they
+// emit, so deep-equal expectations need transforms baked into the expected
+// values. `expectV1` wraps the legacy literal shape with the same converter
+// the editor uses internally so the comparison stays bit-exact.
+function expectV1(pieces: Piece[]): Piece[] {
+  return convertV1Pieces(pieces)
+}
 
 describe('nextRotation', () => {
   it('advances 0 to 90 to 180 to 270 to 0', () => {
@@ -33,21 +43,25 @@ describe('nextRotation', () => {
 describe('withPiecePlaced', () => {
   it('appends a new piece when the cell is empty', () => {
     const result = withPiecePlaced([], 2, 3, 'straight', 90)
-    expect(result).toEqual([{ type: 'straight', row: 2, col: 3, rotation: 90 }])
+    expect(result).toEqual(
+      expectV1([{ type: 'straight', row: 2, col: 3, rotation: 90 }]),
+    )
   })
 
   it('replaces an existing piece in place without changing array order', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'left90', row: 1, col: 1, rotation: 90 },
-    ]
+    ])
     const result = withPiecePlaced(pieces, 1, 1, 'right90', 270)
     expect(result[0]).toEqual(pieces[0])
-    expect(result[1]).toEqual({ type: 'right90', row: 1, col: 1, rotation: 270 })
+    expect(result[1]).toEqual(
+      expectV1([{ type: 'right90', row: 1, col: 1, rotation: 270 }])[0],
+    )
   })
 
   it('does not replace a piece when the target cell is only inside its footprint', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'straight',
         row: 0,
@@ -58,22 +72,22 @@ describe('withPiecePlaced', () => {
           { dr: 0, dc: 1 },
         ],
       },
-    ]
+    ])
 
     expect(withPiecePlaced(pieces, 0, 1, 'right90', 90)).toEqual([
       pieces[0],
-      { type: 'right90', row: 0, col: 1, rotation: 90 },
+      ...expectV1([{ type: 'right90', row: 0, col: 1, rotation: 90 }]),
     ])
   })
 
   it('keeps a mega sweep when placing a visible neighbor inside its footprint', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'megaSweepRight', row: 0, col: 0, rotation: 0 },
-    ]
+    ])
 
     expect(withPiecePlaced(pieces, 1, -1, 'straight', 0)).toEqual([
       pieces[0],
-      { type: 'straight', row: 1, col: -1, rotation: 0 },
+      ...expectV1([{ type: 'straight', row: 1, col: -1, rotation: 0 }]),
     ])
   })
 
@@ -81,15 +95,17 @@ describe('withPiecePlaced', () => {
     const result = withPiecePlaced([], 0, 0, 'flexStraight', 0, {
       flex: { dr: -4, dc: 1 },
     })
-    expect(result).toEqual([
-      {
-        type: 'flexStraight',
-        row: 0,
-        col: 0,
-        rotation: 0,
-        flex: { dr: -4, dc: 1 },
-      },
-    ])
+    expect(result).toEqual(
+      expectV1([
+        {
+          type: 'flexStraight',
+          row: 0,
+          col: 0,
+          rotation: 0,
+          flex: { dr: -4, dc: 1 },
+        },
+      ]),
+    )
   })
 
   it('falls back to the default flex spec when one is not supplied', () => {
@@ -101,11 +117,13 @@ describe('withPiecePlaced', () => {
 
 describe('withPieceRotated', () => {
   it('rotates the piece at the cell by 90', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'left90', row: 1, col: 1, rotation: 90 },
-    ]
+    ])
     const result = withPieceRotated(pieces, 1, 1)
-    expect(result[0]).toEqual({ type: 'left90', row: 1, col: 1, rotation: 180 })
+    expect(result[0]).toEqual(
+      expectV1([{ type: 'left90', row: 1, col: 1, rotation: 180 }])[0],
+    )
   })
 
   it('returns the same array when the cell is empty', () => {
@@ -124,7 +142,7 @@ describe('withPieceRotated', () => {
   })
 
   it('rotates a piece by any occupied footprint cell', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'straight',
         row: 0,
@@ -135,23 +153,25 @@ describe('withPieceRotated', () => {
           { dr: 1, dc: 0 },
         ],
       },
-    ]
-    expect(withPieceRotated(pieces, 1, 0)).toEqual([
-      {
-        type: 'straight',
-        row: 0,
-        col: 0,
-        rotation: 90,
-        footprint: [
-          { dr: 0, dc: -1 },
-          { dr: 0, dc: 0 },
-        ],
-      },
     ])
+    expect(withPieceRotated(pieces, 1, 0)).toEqual(
+      expectV1([
+        {
+          type: 'straight',
+          row: 0,
+          col: 0,
+          rotation: 90,
+          footprint: [
+            { dr: 0, dc: -1 },
+            { dr: 0, dc: 0 },
+          ],
+        },
+      ]),
+    )
   })
 
   it('prefers an exact anchor cell over another piece footprint', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'megaSweepRight',
         row: 0,
@@ -164,16 +184,18 @@ describe('withPieceRotated', () => {
         col: 0,
         rotation: 0,
       },
-    ]
+    ])
 
     expect(withPieceRotated(pieces, 1, 0)).toEqual([
       pieces[0],
-      {
-        type: 'straight',
-        row: 1,
-        col: 0,
-        rotation: 90,
-      },
+      ...expectV1([
+        {
+          type: 'straight',
+          row: 1,
+          col: 0,
+          rotation: 90,
+        },
+      ]),
     ])
   })
 })
@@ -422,31 +444,35 @@ describe('countSelectedPieces', () => {
 
 describe('moveSelectedPieces', () => {
   it('moves only selected pieces and keeps unselected pieces in place', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'left90', row: 0, col: 1, rotation: 90 },
       { type: 'right90', row: 3, col: 3, rotation: 180 },
-    ]
+    ])
     const selected = new Set(['0,0', '0,1'])
 
-    expect(moveSelectedPieces(pieces, selected, 2, -1)).toEqual([
-      { type: 'straight', row: 2, col: -1, rotation: 0 },
-      { type: 'left90', row: 2, col: 0, rotation: 90 },
-      { type: 'right90', row: 3, col: 3, rotation: 180 },
-    ])
+    expect(moveSelectedPieces(pieces, selected, 2, -1)).toEqual(
+      expectV1([
+        { type: 'straight', row: 2, col: -1, rotation: 0 },
+        { type: 'left90', row: 2, col: 0, rotation: 90 },
+        { type: 'right90', row: 3, col: 3, rotation: 180 },
+      ]),
+    )
   })
 
   it('allows selected pieces to move through their own current cells', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'straight', row: 0, col: 1, rotation: 0 },
-    ]
+    ])
     const selected = new Set(['0,0', '0,1'])
 
-    expect(moveSelectedPieces(pieces, selected, 0, 1)).toEqual([
-      { type: 'straight', row: 0, col: 1, rotation: 0 },
-      { type: 'straight', row: 0, col: 2, rotation: 0 },
-    ])
+    expect(moveSelectedPieces(pieces, selected, 0, 1)).toEqual(
+      expectV1([
+        { type: 'straight', row: 0, col: 1, rotation: 0 },
+        { type: 'straight', row: 0, col: 2, rotation: 0 },
+      ]),
+    )
   })
 
   it('blocks moves into unselected pieces', () => {
@@ -466,7 +492,7 @@ describe('moveSelectedPieces', () => {
   })
 
   it('moves a footprinted piece atomically when any occupied cell is selected', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'straight',
         row: 0,
@@ -477,20 +503,22 @@ describe('moveSelectedPieces', () => {
           { dr: 0, dc: 1 },
         ],
       },
-    ]
-
-    expect(moveSelectedPieces(pieces, new Set(['0,1']), 1, 0)).toEqual([
-      {
-        type: 'straight',
-        row: 1,
-        col: 0,
-        rotation: 0,
-        footprint: [
-          { dr: 0, dc: 0 },
-          { dr: 0, dc: 1 },
-        ],
-      },
     ])
+
+    expect(moveSelectedPieces(pieces, new Set(['0,1']), 1, 0)).toEqual(
+      expectV1([
+        {
+          type: 'straight',
+          row: 1,
+          col: 0,
+          rotation: 0,
+          footprint: [
+            { dr: 0, dc: 0 },
+            { dr: 0, dc: 1 },
+          ],
+        },
+      ]),
+    )
   })
 
   it('blocks footprint moves into unselected occupied cells', () => {
@@ -514,18 +542,20 @@ describe('moveSelectedPieces', () => {
 
 describe('rotateSelectedPieces', () => {
   it('rotates every selected piece by one step', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'left90', row: 1, col: 1, rotation: 270 },
       { type: 'right90', row: 2, col: 2, rotation: 180 },
-    ]
+    ])
     const selected = new Set(['0,0', '1,1'])
 
-    expect(rotateSelectedPieces(pieces, selected)).toEqual([
-      { type: 'straight', row: 0, col: 0, rotation: 90 },
-      { type: 'left90', row: 1, col: 1, rotation: 0 },
-      { type: 'right90', row: 2, col: 2, rotation: 180 },
-    ])
+    expect(rotateSelectedPieces(pieces, selected)).toEqual(
+      expectV1([
+        { type: 'straight', row: 0, col: 0, rotation: 90 },
+        { type: 'left90', row: 1, col: 1, rotation: 0 },
+        { type: 'right90', row: 2, col: 2, rotation: 180 },
+      ]),
+    )
   })
 
   it('returns the original array when no pieces are selected', () => {
@@ -535,7 +565,7 @@ describe('rotateSelectedPieces', () => {
   })
 
   it('rotates selected footprints with the piece', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'straight',
         row: 0,
@@ -546,20 +576,22 @@ describe('rotateSelectedPieces', () => {
           { dr: 1, dc: 0 },
         ],
       },
-    ]
-
-    expect(rotateSelectedPieces(pieces, new Set(['1,0']))).toEqual([
-      {
-        type: 'straight',
-        row: 0,
-        col: 0,
-        rotation: 90,
-        footprint: [
-          { dr: 0, dc: -1 },
-          { dr: 0, dc: 0 },
-        ],
-      },
     ])
+
+    expect(rotateSelectedPieces(pieces, new Set(['1,0']))).toEqual(
+      expectV1([
+        {
+          type: 'straight',
+          row: 0,
+          col: 0,
+          rotation: 90,
+          footprint: [
+            { dr: 0, dc: -1 },
+            { dr: 0, dc: 0 },
+          ],
+        },
+      ]),
+    )
   })
 
   it('blocks selected footprint rotations into unselected occupied cells', () => {
@@ -583,44 +615,50 @@ describe('rotateSelectedPieces', () => {
 
 describe('flipSelectedPieces', () => {
   it('mirrors selected positions horizontally and swaps handed piece types', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'right90', row: 0, col: 0, rotation: 0 },
       { type: 'sweepLeft', row: 0, col: 2, rotation: 90 },
       { type: 'straight', row: 3, col: 3, rotation: 0 },
-    ]
+    ])
     const selected = new Set(['0,0', '0,1', '0,2'])
 
-    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual([
-      { type: 'left90', row: 0, col: 2, rotation: 0 },
-      { type: 'sweepRight', row: 0, col: 0, rotation: 270 },
-      { type: 'straight', row: 3, col: 3, rotation: 0 },
-    ])
+    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual(
+      expectV1([
+        { type: 'left90', row: 0, col: 2, rotation: 0 },
+        { type: 'sweepRight', row: 0, col: 0, rotation: 270 },
+        { type: 'straight', row: 3, col: 3, rotation: 0 },
+      ]),
+    )
   })
 
   it('mirrors selected positions vertically and updates turn rotations', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'right90', row: 0, col: 0, rotation: 0 },
       { type: 'scurve', row: 2, col: 0, rotation: 0 },
-    ]
+    ])
     const selected = new Set(['0,0', '1,0', '2,0'])
 
-    expect(flipSelectedPieces(pieces, selected, 'vertical')).toEqual([
-      { type: 'left90', row: 2, col: 0, rotation: 180 },
-      { type: 'scurveLeft', row: 0, col: 0, rotation: 0 },
-    ])
+    expect(flipSelectedPieces(pieces, selected, 'vertical')).toEqual(
+      expectV1([
+        { type: 'left90', row: 2, col: 0, rotation: 180 },
+        { type: 'scurveLeft', row: 0, col: 0, rotation: 0 },
+      ]),
+    )
   })
 
   it('blocks flips into unselected pieces', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       { type: 'straight', row: 0, col: 0, rotation: 0 },
       { type: 'straight', row: 0, col: 2, rotation: 0 },
-    ]
+    ])
     const selected = new Set(['0,0', '0,1', '0,2'])
 
-    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual([
-      { type: 'straight', row: 0, col: 2, rotation: 0 },
-      { type: 'straight', row: 0, col: 0, rotation: 0 },
-    ])
+    expect(flipSelectedPieces(pieces, selected, 'horizontal')).toEqual(
+      expectV1([
+        { type: 'straight', row: 0, col: 2, rotation: 0 },
+        { type: 'straight', row: 0, col: 0, rotation: 0 },
+      ]),
+    )
 
     expect(flipSelectedPieces(pieces, new Set(['0,0', '1,2']), 'horizontal')).toBe(
       pieces,
@@ -637,7 +675,7 @@ describe('flipSelectedPieces', () => {
   })
 
   it('mirrors footprint offsets with selected pieces', () => {
-    const pieces: Piece[] = [
+    const pieces: Piece[] = expectV1([
       {
         type: 'straight',
         row: 0,
@@ -648,21 +686,23 @@ describe('flipSelectedPieces', () => {
           { dr: 0, dc: 1 },
         ],
       },
-    ]
+    ])
 
     expect(flipSelectedPieces(pieces, new Set(['0,0', '0,1']), 'horizontal'))
-      .toEqual([
-        {
-          type: 'straight',
-          row: 0,
-          col: 1,
-          rotation: 0,
-          footprint: [
-            { dr: 0, dc: -1 },
-            { dr: 0, dc: 0 },
-          ],
-        },
-      ])
+      .toEqual(
+        expectV1([
+          {
+            type: 'straight',
+            row: 0,
+            col: 1,
+            rotation: 0,
+            footprint: [
+              { dr: 0, dc: -1 },
+              { dr: 0, dc: 0 },
+            ],
+          },
+        ]),
+      )
   })
 
   it('mirrors a flex straight horizontally by negating its lateral offset', () => {
@@ -712,5 +752,73 @@ describe('flipSelectedPieces', () => {
     expect(flipped[0].type).toBe('flexStraight')
     expect(flipped[0].flex).toEqual({ dr: -3, dc: -1 })
     expect(flipped[0].rotation).toBe(180)
+  })
+})
+
+describe('editor mutations preserve isV1Projectable', () => {
+  // FOLLOWUPS Rule 2: every editor mutation that touches an algebraically
+  // grid-aligned piece must produce a piece whose transform is still
+  // grid-aligned, so the canonical JSON for unedited regions of a v1 track
+  // stays byte-identical. Because isV1Projectable is derived from transform
+  // (no stored tag), this is a single algebraic check rather than a per-op
+  // tag-update audit. If a future mutation forgets to populate transform
+  // (or populates it incorrectly), one of these assertions fails.
+  function assertEveryV1Projectable(pieces: Piece[]): void {
+    for (const piece of pieces) {
+      expect(isV1Projectable(piece)).toBe(true)
+    }
+  }
+
+  const SEED: Piece[] = expectV1([
+    { type: 'straight', row: 1, col: 0, rotation: 0 },
+    { type: 'right90', row: 0, col: 0, rotation: 0 },
+    { type: 'left90', row: 0, col: 1, rotation: 90 },
+  ])
+
+  it('seed pieces are v1 projectable', () => {
+    assertEveryV1Projectable(SEED)
+  })
+
+  it('withPiecePlaced produces a v1 projectable piece', () => {
+    const next = withPiecePlaced(SEED, 5, 5, 'straight', 90)
+    assertEveryV1Projectable(next)
+  })
+
+  it('withPieceRotated keeps the rotated piece v1 projectable', () => {
+    const next = withPieceRotated(SEED, 0, 0)
+    assertEveryV1Projectable(next)
+  })
+
+  it('moveSelectedPieces keeps moved pieces v1 projectable', () => {
+    const next = moveSelectedPieces(SEED, new Set(['0,0', '0,1']), 4, -2)
+    assertEveryV1Projectable(next)
+  })
+
+  it('rotateSelectedPieces keeps rotated pieces v1 projectable', () => {
+    const next = rotateSelectedPieces(SEED, new Set(['0,0', '0,1']))
+    assertEveryV1Projectable(next)
+  })
+
+  it('flipSelectedPieces keeps flipped pieces v1 projectable', () => {
+    const next = flipSelectedPieces(
+      SEED,
+      new Set(['0,0', '0,1', '1,0']),
+      'horizontal',
+    )
+    assertEveryV1Projectable(next)
+  })
+
+  it('a piece with a deliberately non-grid transform is not v1 projectable', () => {
+    // Sanity-check the algebraic check itself. If isV1Projectable always
+    // returned true, the assertions above would silently pass. A piece whose
+    // transform sits 14 degrees off cardinal must be rejected.
+    const offGrid: Piece = {
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 0, z: 0, theta: (14 * Math.PI) / 180 },
+    }
+    expect(isV1Projectable(offGrid)).toBe(false)
   })
 })

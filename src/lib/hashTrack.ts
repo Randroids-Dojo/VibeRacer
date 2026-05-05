@@ -1,6 +1,8 @@
 import { createHash } from 'node:crypto'
 import type { Piece, TrackCheckpoint } from './schemas'
 import { isDefaultFootprint, normalizedFootprint } from '@/game/trackFootprint'
+import { isV1Projectable, projectToV1Cells } from '@/game/pieceGeometry'
+import { convertV1Pieces } from './trackVersion'
 
 export type HashablePiece = Piece & {
   widthClass?: string
@@ -89,13 +91,41 @@ export function canonicalTrackJson(
   checkpoints?: TrackCheckpoint[],
   options?: HashTrackOptions,
 ): string {
-  const canonical = canonicalizePieces(pieces).map((p) => {
+  // Stage 1: normalize to v2 so isV1Projectable can read transform on every
+  // piece. Idempotent on already-converted pieces. v1-projectable pieces
+  // canonicalize to byte-identical legacy form (omit transform, emit
+  // (row, col, rotation) projected from transform), so unedited v1 tracks
+  // hash unchanged. See docs/CONTINUOUS_ANGLE_PLAN.md "Schema model, pinned"
+  // and FOLLOWUPS Rule 1 / Rule 2.
+  const populated = convertV1Pieces(pieces)
+  let anyV2 = false
+  const canonical = canonicalizePieces(populated).map((p) => {
     const piece = p as HashablePiece
+    if (isV1Projectable(piece)) {
+      const cells = projectToV1Cells(piece.transform!)
+      return {
+        type: piece.type,
+        row: cells.row,
+        col: cells.col,
+        rotation: cells.rotation,
+        footprint: isDefaultFootprint(piece.footprint)
+          ? undefined
+          : normalizedFootprint(piece.footprint),
+        widthClass: effectiveWidthClass(piece) ?? undefined,
+        flex:
+          piece.type === 'flexStraight' && piece.flex !== undefined
+            ? { dr: piece.flex.dr, dc: piece.flex.dc }
+            : undefined,
+      }
+    }
+    anyV2 = true
     return {
       type: piece.type,
-      row: piece.row,
-      col: piece.col,
-      rotation: piece.rotation,
+      transform: {
+        x: piece.transform!.x,
+        z: piece.transform!.z,
+        theta: piece.transform!.theta,
+      },
       footprint: isDefaultFootprint(piece.footprint)
         ? undefined
         : normalizedFootprint(piece.footprint),
@@ -106,13 +136,19 @@ export function canonicalTrackJson(
           : undefined,
     }
   })
-  const cp = effectiveCheckpointCount(pieces, checkpointCount, checkpoints)
+  const cp = effectiveCheckpointCount(populated, checkpointCount, checkpoints)
   const checkpointOut =
     checkpoints !== undefined && checkpoints.length > 0
       ? canonicalizeCheckpoints(checkpoints)
       : null
   const branchEdges = effectiveBranchEdges(options)
-  if (cp === null && checkpointOut === null && branchEdges === null) {
+  const schemaVersion = anyV2 ? 2 : null
+  if (
+    cp === null &&
+    checkpointOut === null &&
+    branchEdges === null &&
+    schemaVersion === null
+  ) {
     return JSON.stringify(canonical)
   }
   return JSON.stringify({
@@ -120,6 +156,7 @@ export function canonicalTrackJson(
     checkpointCount: cp ?? undefined,
     checkpoints: checkpointOut ?? undefined,
     branchEdges: branchEdges ?? undefined,
+    schemaVersion: schemaVersion ?? undefined,
   })
 }
 

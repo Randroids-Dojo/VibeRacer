@@ -24,7 +24,7 @@
 // This module imports only types from track.ts to avoid runtime circular
 // imports; track.ts is the runtime caller.
 
-import type { Piece } from '@/lib/schemas'
+import type { Piece, PieceTransform } from '@/lib/schemas'
 import type { ConnectorPort, Dir } from './track'
 
 export interface Frame {
@@ -94,6 +94,27 @@ export function frameOfPort(
   const cellCz = piece.row * FRAME_CELL_SIZE
   const cx = cellCx + port.dc * FRAME_CELL_SIZE
   const cz = cellCz + port.dr * FRAME_CELL_SIZE
+  const delta = EDGE_DELTAS[port.dir]
+  return {
+    x: cx + delta.dx,
+    z: cz + delta.dz,
+    theta: DIR_HEADINGS[port.dir],
+  }
+}
+
+// Stage 1 transform-driven sibling of frameOfPort. Uses the piece's anchor
+// transform as the cell center instead of (col * CELL_SIZE, row * CELL_SIZE).
+// For grid-aligned pieces this returns bit-identical values to frameOfPort
+// because the v1 to v2 converter populates transform.x = col * CELL_SIZE and
+// transform.z = row * CELL_SIZE exactly. The port's dr / dc / dir already
+// encode piece rotation (connectorPortsOf rotates them), so transform.theta
+// is not applied to the port offsets at this layer.
+export function frameOfPortAtTransform(
+  transform: PieceTransform,
+  port: ConnectorPort,
+): Frame {
+  const cx = transform.x + port.dc * FRAME_CELL_SIZE
+  const cz = transform.z + port.dr * FRAME_CELL_SIZE
   const delta = EDGE_DELTAS[port.dir]
   return {
     x: cx + delta.dx,

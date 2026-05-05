@@ -92,7 +92,10 @@ What landed:
   proper must reproduce them exactly or the geometry path silently
   shifted.
 
-### Stage 1 proper: schema swap. NOT STARTED.
+### Stage 1 proper: schema swap. SHIPPED.
+
+Pending PR on branch `claude/continuous-angle-stage-1-Vho8x`. Merge commit
+recorded here when squashed onto main.
 
 Add `transform: { x: number; z: number; theta: number }` to
 `PieceSchema` as the authoritative geometry. Bump the schema version.
