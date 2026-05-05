@@ -9,6 +9,13 @@ import {
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
 import { hasKvConfigured } from '@/lib/kv'
+import {
+  SchemaTooNewError,
+  Stage1NonProjectableError,
+  assertAllPiecesV1Projectable,
+  assertSchemaVersionSupported,
+  convertV1Pieces,
+} from '@/lib/trackVersion'
 
 const DEFAULT_TRACK = {
   pieces: DEFAULT_TRACK_PIECES,
@@ -52,9 +59,35 @@ export async function loadTrack(
       const version = await kv.get(kvKeys.trackVersion(slug, targetHash))
       const parsed = TrackVersionSchema.safeParse(version)
       if (parsed.success) {
+        // Reject payloads tagged with a schemaVersion this build does not
+        // understand. Run the v1 to v2 converter so every downstream caller
+        // sees pieces with transform populated; this is the load-path
+        // converter Stage 1 references. Then enforce the Stage 1 boundary:
+        // continuous-angle pieces (non-v1-projectable transforms) ship in
+        // Stage 2, so loading one in this build is safer than running the
+        // cell-keyed runtime against geometry it cannot represent.
+        try {
+          assertSchemaVersionSupported(parsed.data)
+        } catch (err) {
+          if (err instanceof SchemaTooNewError) {
+            if (requestedHash) return { kind: 'notFound' }
+            return defaultOrNotFound(requestedHash)
+          }
+          throw err
+        }
+        const pieces = convertV1Pieces(parsed.data.pieces) as Piece[]
+        try {
+          assertAllPiecesV1Projectable(pieces)
+        } catch (err) {
+          if (err instanceof Stage1NonProjectableError) {
+            if (requestedHash) return { kind: 'notFound' }
+            return defaultOrNotFound(requestedHash)
+          }
+          throw err
+        }
         return {
           kind: 'ok',
-          pieces: parsed.data.pieces as Piece[],
+          pieces,
           versionHash: targetHash,
           checkpointCount: parsed.data.checkpointCount,
           checkpoints: parsed.data.checkpoints,

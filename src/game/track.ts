@@ -5,6 +5,7 @@ import {
   type Piece,
   type PieceType,
 } from '@/lib/schemas'
+import { convertV1Pieces } from '@/lib/trackVersion'
 import { footprintCellKeys } from './trackFootprint'
 import { frameOfPort, framesConnect } from './pieceFrames'
 import { endpointsOf } from './pieceGeometry'
@@ -253,6 +254,11 @@ export function validateClosedLoop(pieces: Piece[]): ValidationResult {
   if (pieces.length > MAX_PIECES_PER_TRACK) {
     return { ok: false, reason: `too many pieces (>${MAX_PIECES_PER_TRACK})` }
   }
+  // Normalize to v2 (every piece has transform populated) so the geometry
+  // layer can read transform without a fallback. Idempotent: pieces already
+  // carrying transform are returned as-is. This is the same converter the
+  // load path runs immediately after schema parse.
+  pieces = convertV1Pieces(pieces)
 
   const byAnchorCell = new Map<string, Piece>()
   for (const p of pieces) {

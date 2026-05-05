@@ -24,7 +24,8 @@
 // This module imports only types from track.ts to avoid runtime circular
 // imports; track.ts is the runtime caller.
 
-import type { Piece } from '@/lib/schemas'
+import type { Piece, PieceTransform } from '@/lib/schemas'
+import { CELL_SIZE } from './cellSize'
 import type { ConnectorPort, Dir } from './track'
 
 export interface Frame {
@@ -53,10 +54,12 @@ export interface FrameConnectOptions {
 export const DEFAULT_FRAME_EPSILON_POS = 0.5
 export const DEFAULT_FRAME_EPSILON_THETA = (2 * Math.PI) / 180 // 2 degrees
 
-// CELL_SIZE is duplicated here to avoid a runtime import cycle with track.ts.
-// The single source of truth is trackPath.ts; if that constant ever changes,
-// update both. Tests assert this stays in sync.
-export const FRAME_CELL_SIZE = 20
+// FRAME_CELL_SIZE is the world-units-per-grid-cell constant; it is the same
+// value as `CELL_SIZE` and is sourced from the leaf module `./cellSize` so
+// pieceFrames does not have to duplicate it. The export is kept under the
+// historical name for backward compatibility with existing test imports;
+// any future change to `CELL_SIZE` propagates here automatically.
+export const FRAME_CELL_SIZE = CELL_SIZE
 const HALF = FRAME_CELL_SIZE / 2
 
 // Static table of edge offsets in world space for each cardinal/diagonal
@@ -94,6 +97,27 @@ export function frameOfPort(
   const cellCz = piece.row * FRAME_CELL_SIZE
   const cx = cellCx + port.dc * FRAME_CELL_SIZE
   const cz = cellCz + port.dr * FRAME_CELL_SIZE
+  const delta = EDGE_DELTAS[port.dir]
+  return {
+    x: cx + delta.dx,
+    z: cz + delta.dz,
+    theta: DIR_HEADINGS[port.dir],
+  }
+}
+
+// Stage 1 transform-driven sibling of frameOfPort. Uses the piece's anchor
+// transform as the cell center instead of (col * CELL_SIZE, row * CELL_SIZE).
+// For grid-aligned pieces this returns bit-identical values to frameOfPort
+// because the v1 to v2 converter populates transform.x = col * CELL_SIZE and
+// transform.z = row * CELL_SIZE exactly. The port's dr / dc / dir already
+// encode piece rotation (connectorPortsOf rotates them), so transform.theta
+// is not applied to the port offsets at this layer.
+export function frameOfPortAtTransform(
+  transform: PieceTransform,
+  port: ConnectorPort,
+): Frame {
+  const cx = transform.x + port.dc * FRAME_CELL_SIZE
+  const cz = transform.z + port.dr * FRAME_CELL_SIZE
   const delta = EDGE_DELTAS[port.dir]
   return {
     x: cx + delta.dx,

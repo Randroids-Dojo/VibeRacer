@@ -1,5 +1,6 @@
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { MAX_PIECES_PER_TRACK, type Piece } from '@/lib/schemas'
+import { convertV1Pieces } from '@/lib/trackVersion'
 
 export interface TrackTemplate {
   id: string
@@ -8,7 +9,7 @@ export interface TrackTemplate {
   pieces: Piece[]
 }
 
-const SWEEP_LOOP: Piece[] = [
+const SWEEP_LOOP: Piece[] = convertV1Pieces([
   { type: 'straight', row: 1, col: 0, rotation: 0 },
   { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
   { type: 'straight', row: 0, col: 1, rotation: 90 },
@@ -17,9 +18,9 @@ const SWEEP_LOOP: Piece[] = [
   { type: 'sweepRight', row: 2, col: 2, rotation: 180 },
   { type: 'straight', row: 2, col: 1, rotation: 90 },
   { type: 'sweepRight', row: 2, col: 0, rotation: 270 },
-]
+])
 
-const S_CURVE_LOOP: Piece[] = [
+const S_CURVE_LOOP: Piece[] = convertV1Pieces([
   { type: 'scurve', row: 1, col: 0, rotation: 0 },
   { type: 'right90', row: 0, col: 0, rotation: 0 },
   { type: 'scurveLeft', row: 0, col: 1, rotation: 90 },
@@ -28,9 +29,9 @@ const S_CURVE_LOOP: Piece[] = [
   { type: 'right90', row: 2, col: 2, rotation: 180 },
   { type: 'scurve', row: 2, col: 1, rotation: 90 },
   { type: 'right90', row: 2, col: 0, rotation: 270 },
-]
+])
 
-const REFERENCE_GP_LOOP: Piece[] = [
+const REFERENCE_GP_LOOP: Piece[] = convertV1Pieces([
   { type: 'arc45Left', row: 0, col: 0, rotation: 180 },
   { type: 'diagonal', row: 1, col: 1, rotation: 90 },
   { type: 'diagonal', row: 2, col: 2, rotation: 90 },
@@ -94,7 +95,7 @@ const REFERENCE_GP_LOOP: Piece[] = [
   { type: 'arc45Left', row: -3, col: 1, rotation: 0 },
   { type: 'arc45', row: -2, col: 1, rotation: 180 },
   { type: 'arc45', row: -1, col: 0, rotation: 0 },
-]
+])
 
 export const TRACK_TEMPLATES: TrackTemplate[] = [
   {

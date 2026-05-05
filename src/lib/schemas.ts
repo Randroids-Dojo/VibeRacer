@@ -71,6 +71,25 @@ export const PieceFootprintCellSchema = z
   .strict()
 export type PieceFootprintCell = z.infer<typeof PieceFootprintCellSchema>
 
+// Stage 1 (continuous-angle): every piece carries a world-space transform that
+// is the authoritative source of geometry. The wire format keeps this field
+// OPTIONAL so v1 payloads (which omit transform) still parse; the v1 to v2
+// converter in trackVersion.ts populates transform immediately after schema
+// parse, so the in-memory invariant is "every piece has transform set".
+// Downstream code reads transform directly and never branches on whether it
+// is defined. See docs/CONTINUOUS_ANGLE_PLAN.md "Schema model, pinned".
+export const PieceTransformSchema = z
+  .object({
+    // Finite-only: NaN / Infinity slip past epsilon comparisons in
+    // isV1Projectable (because `NaN > epsilon` is false), which would let a
+    // malformed payload produce unstable canonical JSON or runtime crashes.
+    x: z.number().finite(),
+    z: z.number().finite(),
+    theta: z.number().finite(),
+  })
+  .strict()
+export type PieceTransform = z.infer<typeof PieceTransformSchema>
+
 // Flex straight runs from the anchor cell's south edge midpoint to the cell at
 // (anchor.row + dr, anchor.col + dc)'s north edge midpoint, in the local frame
 // at rotation 0. Endpoints sit at row +0.5 and row (dr - 0.5) in cell units,
@@ -105,6 +124,10 @@ export const PieceSchema = z
     rotation: RotationSchema,
     footprint: z.array(PieceFootprintCellSchema).min(1).optional(),
     flex: FlexStraightSpecSchema.optional(),
+    // Authoritative geometry for v2 pieces. Optional on the wire so v1 payloads
+    // parse unchanged; populated for every piece in memory by the v1 to v2
+    // converter that runs immediately after schema parse on every load path.
+    transform: PieceTransformSchema.optional(),
   })
   .superRefine((piece, ctx) => {
     if (piece.type === 'flexStraight' && piece.flex === undefined) {
@@ -251,6 +274,13 @@ export const TrackSchema = z
   })
 export type Track = z.infer<typeof TrackSchema>
 
+// Highest persisted track-version schema this build understands. Bumping this
+// constant is a one-way door: once a server emits versions tagged at the new
+// number, prior builds reject them via the SchemaTooNew gate. Coordinate the
+// rollout end-to-end before increasing it. See docs/CONTINUOUS_ANGLE_PLAN.md
+// "Schema model, pinned" and the PROGRESS_LOG entry for Stage 1 proper.
+export const MAX_SCHEMA_VERSION = 2
+
 export const TrackVersionSchema = z.object({
   pieces: z.array(PieceSchema),
   checkpointCount: CheckpointCountSchema.optional(),
@@ -265,6 +295,16 @@ export const TrackVersionSchema = z.object({
     .optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
+  // Persisted schema version. Missing or 1 means v1 (cell-aligned only); 2
+  // means v2 (per-piece transform may carry continuous-angle geometry). The
+  // schema accepts any positive integer so the runtime SchemaTooNew gate in
+  // assertSchemaVersionSupported is the single source of truth for "is this
+  // version supported"; pinning it to a literal union here would short-circuit
+  // the gate at parse time and force MAX_SCHEMA_VERSION to be edited in two
+  // places on every bump. TrackVersionSchema stays non-strict so additive
+  // future fields can be ignored without breaking older clients on read of
+  // the same major version.
+  schemaVersion: z.number().int().min(1).optional(),
 })
 export type TrackVersion = z.infer<typeof TrackVersionSchema>
 

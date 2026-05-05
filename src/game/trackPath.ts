@@ -1,4 +1,6 @@
 import type { FlexStraightSpec, Piece, TrackCheckpoint } from '@/lib/schemas'
+import { convertV1Pieces } from '@/lib/trackVersion'
+import { CELL_SIZE } from './cellSize'
 import { footprintCellKeys } from './trackFootprint'
 import {
   cellKey,
@@ -32,7 +34,10 @@ function getStartExitPort(pieces: Piece[]): ConnectorPort | null {
   return portB
 }
 
-export const CELL_SIZE = 20
+// CELL_SIZE lives in the leaf module `./cellSize` to keep pieceGeometry /
+// trackVersion / trackPath out of a runtime import cycle. Re-exported here
+// so external callers can keep importing it from the path module.
+export { CELL_SIZE }
 export { DEFAULT_TRACK_WIDTH as TRACK_WIDTH } from './trackWidth'
 export const CORNER_ARC_RADIUS = CELL_SIZE / 2
 const CORNER_ARC_LENGTH = CORNER_ARC_RADIUS * (Math.PI / 2)
@@ -822,6 +827,10 @@ export function buildTrackPath(
   if (pieces.length === 0) {
     throw new Error('empty pieces')
   }
+  // Normalize to v2 (every piece has transform populated) so the geometry
+  // layer can read transform without a fallback. Idempotent. See the same
+  // call at the head of validateClosedLoop.
+  pieces = convertV1Pieces(pieces)
 
   const first = pieces[0]
   const [portA, portB] = connectorPortsOf(first)

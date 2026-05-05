@@ -1,4 +1,5 @@
 import type { FlexStraightSpec, Piece, PieceType, Rotation } from '@/lib/schemas'
+import { convertV1Piece } from '@/lib/trackVersion'
 import { buildTrackPath, getStartExitDir } from './trackPath'
 import { connectorsOf, flexSpecOf, type Dir } from './track'
 import {
@@ -8,6 +9,17 @@ import {
   pieceOccupiesCell,
   rotateFootprintClockwise,
 } from './trackFootprint'
+
+// Editor mutations create new pieces or change their (row, col, rotation).
+// Stage 1 invariant: every in-memory piece carries `transform`. The helper
+// drops the previous transform (if any) and re-derives it from the v1 cell
+// coordinates of the mutated piece. v2 pieces with non-grid transforms reach
+// the editor through the load path and the upcoming Stage 2 free-placement
+// flow; this helper is for grid-aligned mutations only and intentionally
+// re-projects to the cell grid.
+function v1Piece(piece: Piece): Piece {
+  return convertV1Piece({ ...piece, transform: undefined })
+}
 
 export { getStartExitDir }
 
@@ -27,10 +39,11 @@ export function withPiecePlaced(
   options: { flex?: FlexStraightSpec } = {},
 ): Piece[] {
   const idx = pieces.findIndex((p) => p.row === row && p.col === col)
-  const updated: Piece = { row, col, type, rotation }
+  const base: Piece = { row, col, type, rotation }
   if (type === 'flexStraight') {
-    updated.flex = options.flex ?? flexSpecOf({ ...updated, flex: undefined } as Piece)
+    base.flex = options.flex ?? flexSpecOf({ ...base, flex: undefined } as Piece)
   }
+  const updated = v1Piece(base)
   if (idx === -1) return [...pieces, updated]
   const copy = pieces.slice()
   copy[idx] = updated
@@ -46,11 +59,11 @@ export function withPieceRotated(
   if (idx === -1) return pieces
   const cur = pieces[idx]
   const copy = pieces.slice()
-  copy[idx] = {
+  copy[idx] = v1Piece({
     ...cur,
     rotation: nextRotation(cur.rotation),
     footprint: rotateFootprintClockwise(cur.footprint),
-  }
+  })
   return copy
 }
 
@@ -223,11 +236,11 @@ export function moveSelectedPieces(
     if (!selectedPieceIndexes.has(index)) {
       return piece
     }
-    return {
+    return v1Piece({
       ...piece,
       row: piece.row + rowDelta,
       col: piece.col + colDelta,
-    }
+    })
   })
 }
 
@@ -239,11 +252,11 @@ export function rotateSelectedPieces(
   if (selectedPieceIndexes.size === 0) return pieces
   const next = pieces.map((piece, index) => {
     if (!selectedPieceIndexes.has(index)) return piece
-    return {
+    return v1Piece({
       ...piece,
       rotation: nextRotation(piece.rotation),
       footprint: rotateFootprintClockwise(piece.footprint),
-    }
+    })
   })
   return footprintsCollide(next) ? pieces : next
 }
@@ -313,11 +326,11 @@ export function flipSelectedPieces(
       return piece
     }
     const target = mirroredCell(piece.row, piece.col, bounds, axis)
-    return {
+    return v1Piece({
       ...mirrorPieceShape(piece, axis),
       row: target.row,
       col: target.col,
-    }
+    })
   })
 }
 

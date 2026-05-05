@@ -111,6 +111,43 @@ describe('hashTrack', () => {
     }
   })
 
+  it('hashes depend only on serialized canonical data (not on legacy cells when transform disagrees)', () => {
+    // canonicalTrackJson now sorts by a transform-derived key so a v2 piece
+    // whose legacy (row, col, rotation) drift from its transform cannot
+    // change the hash purely through sort order. The converter aligns cells
+    // with transform at entry, so this regression is academic for Stage 1
+    // (every reachable piece has consistent fields), but the test pins the
+    // property so a future canonicalizer that re-introduces a legacy-cell
+    // sort key cannot silently break hash stability.
+    const truthful: Piece = {
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 0, z: 0, theta: 0 },
+    }
+    const driftedCells: Piece = {
+      type: 'straight',
+      row: 99,
+      col: 77,
+      rotation: 270,
+      transform: { x: 0, z: 0, theta: 0 },
+    }
+    const second: Piece = {
+      type: 'right90',
+      row: 0,
+      col: 1,
+      rotation: 0,
+      transform: { x: 20, z: 0, theta: 0 },
+    }
+    expect(canonicalTrackJson([truthful, second])).toBe(
+      canonicalTrackJson([driftedCells, second]),
+    )
+    expect(hashTrack([truthful, second])).toBe(
+      hashTrack([driftedCells, second]),
+    )
+  })
+
   it('emits a flex spec for flexStraight pieces and changes the hash', () => {
     const flexPiece: Piece = {
       type: 'flexStraight',
