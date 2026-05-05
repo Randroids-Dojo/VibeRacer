@@ -75,15 +75,24 @@ export function PreRaceSetup({
   // Fetch the top leaderboard entry so we can offer "Top of the
   // leaderboard" as a one-click setup. The endpoint is best-effort: any
   // failure (no laps, network blip, missing meta) just hides the option
-  // rather than blocking the modal.
+  // rather than blocking the modal. Reset state at the start of every
+  // effect run, write the resolved value (including null) directly, and
+  // gate the state write on a per-effect `cancelled` flag so a
+  // (slug, version) change can never paint the previous track's entry
+  // even if the prior fetch resolved between abort and cleanup.
   useEffect(() => {
+    let cancelled = false
+    setTopEntry(null)
     const controller = new AbortController()
     fetchTopEntry(slug, versionHash, controller.signal)
       .then((entry) => {
-        if (entry) setTopEntry(entry)
+        if (!cancelled) setTopEntry(entry)
       })
       .catch(() => {})
-    return () => controller.abort()
+    return () => {
+      cancelled = true
+      controller.abort()
+    }
   }, [slug, versionHash])
 
   const options: PreRaceSetupOption[] = useMemo(
