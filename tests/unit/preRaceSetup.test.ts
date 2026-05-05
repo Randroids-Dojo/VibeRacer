@@ -42,9 +42,9 @@ describe('buildPreRaceOptions', () => {
   })
 
   it('lists every distinct option in the documented user-priority order', () => {
-    // Each variant tweaks maxSpeed to a value distinct from both each other
-    // and from DEFAULT_CAR_PARAMS.maxSpeed (26) so the dedupe pass keeps
-    // every option, including the always-on Default row.
+    // Each variant tweaks maxSpeed to a value distinct from both each
+    // other and from DEFAULT_CAR_PARAMS.maxSpeed (26) so the dedupe
+    // pass keeps every option.
     const perTrack = tuned({ maxSpeed: 30 })
     const lastLoaded = tuned({ maxSpeed: 28 })
     const creator = tuned({ maxSpeed: 27 })
@@ -72,6 +72,20 @@ describe('buildPreRaceOptions', () => {
     const out = buildPreRaceOptions({
       perTrack: params,
       lastLoaded: { ...params },
+      creatorTuning: null,
+      topEntry: null,
+      savedList: [],
+    })
+    expect(out.map((o) => o.id)).toEqual(['perTrack', 'default'])
+  })
+
+  it('keeps the Default row even when an earlier source carries stock params', () => {
+    // perTrack is exactly the default car. Without the always-show rule
+    // the Default fallback would dedupe away, hiding the explicit
+    // "stock car" affordance. This test pins the documented behavior.
+    const out = buildPreRaceOptions({
+      perTrack: cloneDefaultParams(),
+      lastLoaded: null,
       creatorTuning: null,
       topEntry: null,
       savedList: [],
@@ -114,6 +128,21 @@ describe('sameParams', () => {
 
   it('treats any differing field as unequal', () => {
     expect(sameParams(tuned(), tuned({ maxSpeed: 99 }))).toBe(false)
+  })
+
+  it('treats objects with missing canonical keys as unequal', () => {
+    // A hand-edited or schema-migrated CarParams missing fields would
+    // otherwise produce NaN comparisons that read as "equal". Forcing a
+    // canonical-key + finite-value walk catches it.
+    const malformed = { ...tuned() } as unknown as Record<string, number>
+    delete malformed.maxSpeed
+    expect(sameParams(malformed as unknown as ReturnType<typeof tuned>, tuned())).toBe(
+      false,
+    )
+  })
+
+  it('treats NaN-bearing inputs as unequal', () => {
+    expect(sameParams(tuned({ maxSpeed: Number.NaN }), tuned())).toBe(false)
   })
 })
 

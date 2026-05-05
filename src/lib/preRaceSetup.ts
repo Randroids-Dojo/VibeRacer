@@ -1,5 +1,5 @@
 import type { CarParams } from '@/game/physics'
-import { cloneDefaultParams } from './tuningSettings'
+import { TUNING_KEYS, cloneDefaultParams } from './tuningSettings'
 import type { SavedTuning } from './tuningLab'
 
 // Option as rendered in the pre-race setup picker. Keeping this in pure
@@ -35,7 +35,8 @@ export interface BuildPreRaceOptionsArgs {
 // order and dedupes by parameter equality so the player never sees the
 // same setup listed twice (e.g. when the per-track save is also the
 // global carryover, only one row appears). The Default car always
-// appears last as an anytime-available fallback.
+// appears last as an anytime-available fallback, even when an earlier
+// source happens to carry stock params.
 export function buildPreRaceOptions({
   perTrack,
   lastLoaded,
@@ -99,7 +100,10 @@ export function buildPreRaceOptions({
       params: t.params,
     })
   }
-  pushUnique({
+  // Default is appended unconditionally so the explicit "I want stock"
+  // affordance is always present. If an earlier source happened to carry
+  // stock params, both rows show; their labels disambiguate intent.
+  out.push({
     id: 'default',
     label: 'Default car (Stock)',
     sublabel: 'The factory tune. Always available.',
@@ -108,9 +112,17 @@ export function buildPreRaceOptions({
   return out
 }
 
+// Iterates the canonical key list rather than `Object.keys(a)` so a
+// malformed input (e.g. a stored CarParams missing fields after a
+// schema migration, or a hand-edited localStorage blob) cannot slip
+// through the comparison via NaN propagation. Both sides must carry a
+// finite number on every key for the params to count as equal.
 export function sameParams(a: CarParams, b: CarParams): boolean {
-  for (const k of Object.keys(a) as Array<keyof CarParams>) {
-    if (Math.abs(a[k] - b[k]) > 1e-9) return false
+  for (const k of TUNING_KEYS) {
+    const av = a[k]
+    const bv = b[k]
+    if (!Number.isFinite(av) || !Number.isFinite(bv)) return false
+    if (Math.abs(av - bv) > 1e-9) return false
   }
   return true
 }

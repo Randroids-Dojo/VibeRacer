@@ -111,10 +111,14 @@ export function PreRaceSetup({
     setPin(pinned)
   }, [hydrated, options, pinned, pickId])
 
+  // The pickId/selected pair is internally consistent only after the
+  // hydration pass has assigned a pickId. Bail until then so the
+  // "Selected" banner and the radio rows always agree on the first paint.
+  if (!hydrated || pickId === null) return null
   const selected = options.find((o) => o.id === pickId) ?? options[0]
+  if (!selected) return null
 
   function handleRace() {
-    if (!selected) return
     onConfirm({ params: selected.params, pin })
   }
 
@@ -124,8 +128,6 @@ export function PreRaceSetup({
     }
     router.push('/tune')
   }
-
-  if (!hydrated || !selected) return null
 
   return (
     <MenuOverlay zIndex={150} autoFocus>
