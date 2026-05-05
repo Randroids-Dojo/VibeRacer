@@ -594,6 +594,51 @@ describe('TrackVersionSchema', () => {
       }).success,
     ).toBe(false)
   })
+
+  it('round-trips a version with a creatorTuning snapshot', () => {
+    const creatorTuning = {
+      maxSpeed: 30,
+      maxReverseSpeed: 8,
+      accel: 22,
+      brake: 36,
+      reverseAccel: 12,
+      rollingFriction: 4,
+      steerRateLow: 2.2,
+      steerRateHigh: 2.2,
+      minSpeedForSteering: 0.8,
+      offTrackMaxSpeed: 10,
+      offTrackDrag: 16,
+    }
+    const parsed = TrackVersionSchema.safeParse({
+      ...validVersion,
+      creatorTuning,
+    })
+    expect(parsed.success).toBe(true)
+    if (parsed.success) {
+      expect(parsed.data.creatorTuning).toEqual(creatorTuning)
+    }
+  })
+
+  it('rejects a creatorTuning with an out-of-range field', () => {
+    expect(
+      TrackVersionSchema.safeParse({
+        ...validVersion,
+        creatorTuning: {
+          maxSpeed: 9999,
+          maxReverseSpeed: 8,
+          accel: 22,
+          brake: 36,
+          reverseAccel: 12,
+          rollingFriction: 4,
+          steerRateLow: 2.2,
+          steerRateHigh: 2.2,
+          minSpeedForSteering: 0.8,
+          offTrackMaxSpeed: 10,
+          offTrackDrag: 16,
+        },
+      }).success,
+    ).toBe(false)
+  })
 })
 
 describe('TrackMusicSchema', () => {

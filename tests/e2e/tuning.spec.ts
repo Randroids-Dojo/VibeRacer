@@ -38,12 +38,13 @@ test('/tune home exposes the Recent changes view', async ({ page }) => {
   await expect(page.getByRole('heading', { name: 'Tuning Lab' })).toBeVisible()
 })
 
-test('pre-race setup modal: legacy per-track save is pre-selected and pin pre-checked', async ({
+test('pre-race setup modal: per-track save is the first option and pin sticks across visits', async ({
   page,
 }) => {
   // Seed a per-track save and a different lastLoaded for the /start slug.
-  // The track is undecided, so the modal should pre-select "Saved setup
-  // for this track" and pre-check the pin toggle.
+  // The picker should highlight the per-track save as the first option,
+  // ticking the "always use" toggle should stick the pin, and a follow-up
+  // visit should bypass the modal entirely.
   const tuned = {
     maxSpeed: 30,
     maxReverseSpeed: 8,
@@ -74,18 +75,21 @@ test('pre-race setup modal: legacy per-track save is pre-selected and pin pre-ch
   await expect(page.getByRole('button', { name: 'Start race' })).toBeVisible({
     timeout: 15_000,
   })
-  // The per-track radio is selected.
+  // The per-track radio carries the "Last setup you raced here" label and
+  // is pre-selected as the top option.
   const perTrack = page.getByRole('radio', {
-    name: 'Saved setup for this track',
+    name: /Last setup you raced here/,
   })
   await expect(perTrack).toHaveAttribute('aria-checked', 'true')
-  // The pin toggle is pre-checked because this track has not been decided.
+  // Pin toggle defaults off on a fresh track. Tick it explicitly so we can
+  // confirm the modal is suppressed on the next visit.
   const pin = page.getByRole('switch', {
     name: 'Always use this setup for this track',
   })
+  await expect(pin).toHaveAttribute('aria-checked', 'false')
+  await pin.click()
   await expect(pin).toHaveAttribute('aria-checked', 'true')
 
-  // Confirm with Start race; the pin sticks and the track is marked decided.
   await page.getByRole('button', { name: 'Start race' }).click()
   await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({
     timeout: 15_000,
@@ -94,10 +98,16 @@ test('pre-race setup modal: legacy per-track save is pre-selected and pin pre-ch
     JSON.parse(localStorage.getItem('viberacer.tuning.pinnedTracks') ?? '[]'),
   )
   expect(pinned).toContain('start')
-  const decided = await page.evaluate(() =>
-    JSON.parse(localStorage.getItem('viberacer.tuning.decidedTracks') ?? '[]'),
-  )
-  expect(decided).toContain('start')
+
+  // Visit the track again. With the pin set, the picker should be gone and
+  // the countdown should be the only overlay before racing.
+  await page.goto('/start')
+  await expect(page.getByRole('button', { name: 'Pause' })).toBeVisible({
+    timeout: 15_000,
+  })
+  await expect(
+    page.getByRole('button', { name: 'Start race' }),
+  ).toHaveCount(0)
 })
 
 test('intro-only session leaves no auto-saved tuning behind', async ({

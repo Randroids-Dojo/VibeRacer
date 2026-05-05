@@ -126,6 +126,9 @@ export async function PUT(
     ...(track.data.decorations !== undefined && track.data.decorations.length > 0
       ? { decorations: track.data.decorations }
       : {}),
+    ...(track.data.creatorTuning !== undefined
+      ? { creatorTuning: track.data.creatorTuning }
+      : {}),
     createdByRacerId: racerId,
     createdAt,
   }
