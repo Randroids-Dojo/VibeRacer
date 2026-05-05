@@ -175,16 +175,15 @@ function makeFlexSpec(length: number, lateral: number): FlexStraightSpec {
 }
 
 function flexAngleDegrees(spec: FlexStraightSpec): number {
-  const length = -spec.dr
-  if (length <= 0) return 0
-  // Endpoints are half-cell-shrunk on both sides, so the line spans
-  // (length cells) of vertical run minus 1 half on each end. Lateral run
-  // equals spec.dc cells. Angle from the cardinal direction (degrees).
-  const verticalUnits = length - 1
-  return (
-    Math.atan2(Math.abs(spec.dc), Math.max(verticalUnits, 1e-6)) * 180 /
-    Math.PI
-  )
+  // Match sampleFlexStraightLocal exactly: endpoints sit at the south edge
+  // midpoint of the anchor cell (z = +HALF) and the north edge midpoint of
+  // the exit cell (z = spec.dr * CELL_SIZE - HALF). The vertical delta in
+  // cell units is therefore (spec.dr - 1), so the absolute vertical span
+  // is |spec.dr - 1| = |spec.dr| + 1 cells (since spec.dr is negative).
+  // Lateral span is |spec.dc| cells. Angle measured off cardinal.
+  const verticalUnits = Math.abs(spec.dr - 1)
+  const lateralUnits = Math.abs(spec.dc)
+  return (Math.atan2(lateralUnits, Math.max(verticalUnits, 1e-6)) * 180) / Math.PI
 }
 
 interface TrackEditorProps {
@@ -2401,10 +2400,12 @@ function PieceGlyph({ piece }: { piece: Piece }) {
       ) : null}
       {piece.type === 'flexStraight' ? (() => {
         const spec = piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC
-        // Project the spec into the glyph cell. Lateral offset rendered as a
-        // proportional tilt across the glyph so the user sees the angle.
-        const verticalUnits = Math.max(-spec.dr, 1)
-        const lateralRatio = spec.dc / Math.max(verticalUnits, 1)
+        // Project the spec into the glyph cell with the same vertical span
+        // the sampler uses: |spec.dr - 1| = |spec.dr| + 1 cells. Using a
+        // larger denominator than the previous |spec.dr| keeps the tilt in
+        // sync with the angle readout and the actual road geometry.
+        const verticalUnits = Math.max(Math.abs(spec.dr - 1), 1)
+        const lateralRatio = spec.dc / verticalUnits
         const exitX = cx + lateralRatio * cx * 0.7
         return (
           <>

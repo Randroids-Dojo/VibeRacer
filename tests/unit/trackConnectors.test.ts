@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest'
-import { DIR_OFFSETS, connectorsOf, opposite, type Dir } from '@/game/track'
+import {
+  DIR_OFFSETS,
+  connectorPortsOf,
+  connectorsOf,
+  opposite,
+  type Dir,
+} from '@/game/track'
 import type { Piece, PieceType, Rotation } from '@/lib/schemas'
 
 const cardinalDirs: Dir[] = [0, 2, 4, 6]
@@ -99,10 +105,18 @@ describe('8-direction connector scaffold', () => {
 
   it('exposes flex straight ports keyed off the flex spec', () => {
     // Default spec dr=-3, dc=1 at rotation 0: entry south of anchor, exit
-    // north of cell (-3, 1).
+    // north of cell (-3, 1). connectorsOf only returns directions; assert
+    // connectorPortsOf so the (dr, dc) cell offsets are pinned too.
     expect(
       connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 0 }),
     ).toEqual([4, 0])
+    expect(
+      connectorPortsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 0 }),
+    ).toEqual([
+      { dr: 0, dc: 0, dir: 4 },
+      { dr: -3, dc: 1, dir: 0 },
+    ])
+
     // Custom spec routes the exit cell through the flex offset, not a
     // hard-coded port table.
     const customPiece: Piece = {
@@ -113,17 +127,55 @@ describe('8-direction connector scaffold', () => {
       flex: { dr: -5, dc: 2 },
     }
     expect(connectorsOf(customPiece)).toEqual([4, 0])
+    expect(connectorPortsOf(customPiece)).toEqual([
+      { dr: 0, dc: 0, dir: 4 },
+      { dr: -5, dc: 2, dir: 0 },
+    ])
+
     // Rotation 90: entry maps to W, exit to E. The exit cell offset rotates
-    // by one 90-degree step ((-3, 1) becomes (1, 3) under the cell-grid
-    // rotation rule).
+    // by one 90-degree step (clockwise on the row/col grid: (dr, dc) ->
+    // (dc, -dr)). For the default spec (-3, 1) that lands at (1, 3); for
+    // the custom spec (-5, 2) it lands at (2, 5).
     expect(
       connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 90 }),
     ).toEqual([6, 2])
     expect(
+      connectorPortsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 90 }),
+    ).toEqual([
+      { dr: 0, dc: 0, dir: 6 },
+      { dr: 1, dc: 3, dir: 2 },
+    ])
+    expect(
+      connectorPortsOf({
+        type: 'flexStraight',
+        row: 0,
+        col: 0,
+        rotation: 90,
+        flex: { dr: -5, dc: 2 },
+      }),
+    ).toEqual([
+      { dr: 0, dc: 0, dir: 6 },
+      { dr: 2, dc: 5, dir: 2 },
+    ])
+
+    // Rotations 180 and 270 still match the connectorsOf direction view.
+    expect(
       connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 180 }),
     ).toEqual([0, 4])
     expect(
+      connectorPortsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 180 }),
+    ).toEqual([
+      { dr: 0, dc: 0, dir: 0 },
+      { dr: 3, dc: -1, dir: 4 },
+    ])
+    expect(
       connectorsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 270 }),
     ).toEqual([2, 6])
+    expect(
+      connectorPortsOf({ type: 'flexStraight', row: 0, col: 0, rotation: 270 }),
+    ).toEqual([
+      { dr: 0, dc: 0, dir: 2 },
+      { dr: -1, dc: -3, dir: 6 },
+    ])
   })
 })

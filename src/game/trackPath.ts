@@ -354,10 +354,13 @@ const SCURVE_LEFT_LOCAL_SAMPLES = sampleScurveLeftLocal()
 export const FLEX_STRAIGHT_SAMPLES_PER_CELL = 8
 
 // World-space length in units of a flex straight described by `spec`. The
-// path runs from the south edge midpoint of the anchor cell to the north
-// edge midpoint of the cell at offset (spec.dr, spec.dc), so the line spans
-// |spec.dr| cells north plus |spec.dc| cells laterally, minus the half-cell
-// skin at each end where the line lives inside the entry / exit cells.
+// path runs from the south edge midpoint of the anchor cell (z = +HALF) to
+// the north edge midpoint of the cell at offset (spec.dr, spec.dc) (z =
+// spec.dr * CELL_SIZE - HALF), so the vertical span is |spec.dr - 1| cells
+// (which is |spec.dr| + 1 cells since spec.dr is always negative) and the
+// lateral span is |spec.dc| cells. The +1 cell of vertical run beyond
+// |spec.dr| accounts for the two half-cell skins (south edge of the anchor
+// row plus north edge of the exit row) that together add one full cell.
 export function flexStraightLength(spec: FlexStraightSpec): number {
   const dx = CELL_SIZE * spec.dc
   const dz = CELL_SIZE * spec.dr - CELL_SIZE

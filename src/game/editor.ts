@@ -6,7 +6,6 @@ import {
   footprintCells,
   footprintCellKeys,
   pieceOccupiesCell,
-  rotateFlexStraightFootprint,
   rotateFootprintClockwise,
 } from './trackFootprint'
 

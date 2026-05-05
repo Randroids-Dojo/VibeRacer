@@ -679,9 +679,10 @@ describe('flex straight piece', () => {
   })
 
   it('connectors for an angled flex straight stay cardinal', () => {
-    // A 5-cell-long, 2-cell-wide flex straight runs at ~26 degrees off
-    // cardinal but its endpoint connectors are still S and N, so it
-    // attaches to existing grid pieces.
+    // A flex straight with spec dr=-5, dc=2 runs at atan(2/6) ~= 18.43
+    // degrees off cardinal (vertical span |dr - 1| = 6 cells, lateral
+    // span |dc| = 2 cells). The endpoint connectors are still S and N,
+    // so it attaches to existing grid pieces.
     const piece: Piece = {
       type: 'flexStraight',
       row: 0,

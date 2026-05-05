@@ -73,10 +73,12 @@ export type PieceFootprintCell = z.infer<typeof PieceFootprintCellSchema>
 
 // Flex straight runs from the anchor cell's south edge midpoint to the cell at
 // (anchor.row + dr, anchor.col + dc)'s north edge midpoint, in the local frame
-// at rotation 0. The line between the two midpoints is at angle atan2(dc, -dr)
-// from north, which can be any sub-45 (or super-45) angle the user picks.
-// Constraints: the line must travel forward (dr < 0 in the local frame) so it
-// has a well-defined entry and exit.
+// at rotation 0. Endpoints sit at row +0.5 and row (dr - 0.5) in cell units,
+// so the vertical run is |dr - 1| cells (i.e. |dr| + 1 cells when dr is
+// negative, which is the only allowed sign). The line angle off cardinal is
+// therefore atan2(|dc|, |dr - 1|), which can be any sub-45 (or super-45)
+// angle the user picks. Constraints: the line must travel forward
+// (dr < 0 in the local frame) so it has a well-defined entry and exit.
 export const FLEX_STRAIGHT_MIN_LENGTH = 1
 export const FLEX_STRAIGHT_MAX_LENGTH = 12
 export const FLEX_STRAIGHT_MAX_LATERAL = 8

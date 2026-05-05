@@ -428,11 +428,12 @@ describe('validateClosedLoop', () => {
   })
 
   it('validates a closed loop with a sub-45 angled flex straight', () => {
-    // A flex straight with spec dr=-3, dc=1 runs at atan(1/2) ~= 26.6 degrees
-    // off cardinal, the kind of angle Miami's back straight needs and that
-    // the strict 45-degree grid could not previously express. The flex
-    // straight cuts diagonally up the loop's interior; the loop walks
-    // around its outside (col=2 corridor) to close.
+    // A flex straight with spec dr=-3, dc=1 runs at atan(1/4) ~= 14.04
+    // degrees off cardinal (vertical span is |dr - 1| = 4 cells from the
+    // south edge of the anchor row to the north edge of the exit row).
+    // That shallow angle is the kind the strict 45-degree grid could not
+    // previously express. The flex straight cuts diagonally up the loop's
+    // interior; the loop walks around its outside (col=2 corridor) to close.
     const pieces: Piece[] = [
       {
         type: 'flexStraight',
