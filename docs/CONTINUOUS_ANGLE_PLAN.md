@@ -220,8 +220,7 @@ B (editor UX) is still pending.
 
 #### Stage 2 Workstream A: runtime migration. SHIPPED.
 
-PR #103 on branch `claude/continuous-angle-stage-2-runtime`. Merge
-commit recorded here when squashed onto main.
+PR #103, squash-merged as `9786404`.
 
 What landed:
 
