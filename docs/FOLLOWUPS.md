@@ -16,12 +16,13 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Continuous-angle migration
 
-Stages 0, 0.5, and 1 have shipped. See `docs/CONTINUOUS_ANGLE_PLAN.md`
-for the authoritative status, file map, and the contract that pinned
-Stage 1 (Rule 1 and Rule 2 are reproduced inside the plan). The
-remaining work lives ahead in Stages 2 and 3.
+Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
+shipped. See `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative
+status, file map, and the contract that pinned Stage 1 (Rule 1 and Rule
+2 are reproduced inside the plan). The remaining work lives ahead in
+Stage 2 Workstream B and Stage 3.
 
-### Stage 2 (deferred from Stage 1)
+### Stage 2 Workstream B: editor UX
 
 - Rotate handle on the editor selection: drag rotates the entire piece
   around an endpoint, preserving connection at the other end.
@@ -34,8 +35,8 @@ remaining work lives ahead in Stages 2 and 3.
   "loop closes within wider epsilon" and snap the last endpoint exactly
   to the first before save.
 - OBB-vs-OBB overlap detection: spatial hash plus AABB pre-check before
-  full OBB. The footprint contract stays a list of cells in Stage 1;
-  arbitrary-angle pieces enumerate cells via the existing supercover.
+  full OBB. The footprint contract stays a list of cells; arbitrary-angle
+  pieces enumerate cells via the existing supercover.
 
 ### Stage 3
 

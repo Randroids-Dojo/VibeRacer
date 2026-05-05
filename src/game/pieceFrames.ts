@@ -105,25 +105,80 @@ export function frameOfPort(
   }
 }
 
-// Stage 1 transform-driven sibling of frameOfPort. Uses the piece's anchor
-// transform as the cell center instead of (col * CELL_SIZE, row * CELL_SIZE).
-// For grid-aligned pieces this returns bit-identical values to frameOfPort
-// because the v1 to v2 converter populates transform.x = col * CELL_SIZE and
-// transform.z = row * CELL_SIZE exactly. The port's dr / dc / dir already
-// encode piece rotation (connectorPortsOf rotates them), so transform.theta
-// is not applied to the port offsets at this layer.
+// Stage 2 transform-driven sibling of frameOfPort. Uses the piece's anchor
+// transform as the cell center instead of (col * CELL_SIZE, row * CELL_SIZE),
+// and rotates the port offset / heading by the residual angle that
+// `connectorPortsOf` did not already apply.
+//
+// Decomposition: every port produced by `connectorPortsOf` has its `dr`,
+// `dc`, and `dir` rotated by the cardinal-snapped projection of
+// `transform.theta` (an integer multiple of PI/2 within
+// `THETA_PROJECTION_EPSILON`). The remaining residual = transform.theta
+// minus that projection, in radians. For grid-aligned pieces (every Stage 1
+// piece) the residual is exactly zero, and this function reduces to the
+// legacy "translate the rotated port relative to transform" arithmetic, so
+// the snapshot wall in tests/unit/pieceGeometry.test.ts and the existing
+// hashTrack template digests stay pinned bit-for-bit. For non-projectable
+// pieces the residual is non-zero and we apply it via cos / sin so the
+// world frame matches `transform.theta` exactly.
 export function frameOfPortAtTransform(
   transform: PieceTransform,
   port: ConnectorPort,
 ): Frame {
-  const cx = transform.x + port.dc * FRAME_CELL_SIZE
-  const cz = transform.z + port.dr * FRAME_CELL_SIZE
-  const delta = EDGE_DELTAS[port.dir]
-  return {
-    x: cx + delta.dx,
-    z: cz + delta.dz,
-    theta: DIR_HEADINGS[port.dir],
+  const offsetX = port.dc * FRAME_CELL_SIZE + EDGE_DELTAS[port.dir].dx
+  const offsetZ = port.dr * FRAME_CELL_SIZE + EDGE_DELTAS[port.dir].dz
+  const residual = residualThetaAfterCardinalSnap(transform.theta)
+  if (residual === 0) {
+    return {
+      x: transform.x + offsetX,
+      z: transform.z + offsetZ,
+      theta: DIR_HEADINGS[port.dir],
+    }
   }
+  // Clockwise rotation by `residual` radians in the (x, z) plane, matching
+  // the convention `transformSample` uses elsewhere: x' = x cos t - z sin t,
+  // z' = x sin t + z cos t. Heading rotates by -residual because heading is
+  // measured CCW from +X.
+  const cs = Math.cos(residual)
+  const sn = Math.sin(residual)
+  return {
+    x: transform.x + offsetX * cs - offsetZ * sn,
+    z: transform.z + offsetX * sn + offsetZ * cs,
+    theta: DIR_HEADINGS[port.dir] - residual,
+  }
+}
+
+// Mirror of `V1_PROJECTABLE_ROTATION_EPSILON` from `pieceGeometry`. Defined
+// here to avoid an import cycle (pieceGeometry imports this module). The
+// value is the rotation epsilon spec'd in docs/CONTINUOUS_ANGLE_PLAN.md
+// "Rule 1": two orders of magnitude looser than the position epsilon
+// because rotations accumulate sin / cos error through composed editor
+// operations. Keep this in sync with pieceGeometry's constant.
+const THETA_PROJECTION_EPSILON = 1e-4
+
+const HALF_PI_RAD = Math.PI / 2
+
+// Residual rotation after snapping `theta` to the nearest multiple of PI/2
+// within THETA_PROJECTION_EPSILON. For cardinal thetas the residual is
+// exactly zero so callers can short-circuit to the integer arithmetic path.
+// `connectorPortsOf` does the cardinal snap for the integer-rotation table;
+// this helper exposes the leftover continuous angle for the world-frame
+// step.
+export function residualThetaAfterCardinalSnap(theta: number): number {
+  const turns = ((Math.round(theta / HALF_PI_RAD) % 4) + 4) % 4
+  const residual = theta - turns * HALF_PI_RAD
+  if (Math.abs(residual) <= THETA_PROJECTION_EPSILON) return 0
+  return residual
+}
+
+// Cardinal-snapped turn count (0..3) for `theta`. Used by `connectorPortsOf`
+// to drive the integer rotation table for `dir` and `(dr, dc)`. For
+// v1-projectable thetas this returns the same value as `piece.rotation / 90`
+// did, so grid-aligned ports stay bit-equal. For non-projectable thetas it
+// snaps to the nearest cardinal so cell-based diagnostics (footprint, port
+// dir) still produce a sensible discrete answer.
+export function cardinalTurnsOfTheta(theta: number): number {
+  return ((Math.round(theta / HALF_PI_RAD) % 4) + 4) % 4
 }
 
 // Check whether two frames represent the same join. Frames must agree in
