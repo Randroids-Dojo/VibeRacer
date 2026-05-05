@@ -10,6 +10,11 @@ import { hashTrack } from '@/lib/hashTrack'
 import { validateClosedLoop } from '@/game/track'
 import { getKv, kvKeys } from '@/lib/kv'
 import { isValidRacerId, RACER_ID_COOKIE } from '@/lib/racerId'
+import {
+  Stage1NonProjectableError,
+  assertAllPiecesV1Projectable,
+  convertV1Pieces,
+} from '@/lib/trackVersion'
 
 export const runtime = 'nodejs'
 
@@ -91,7 +96,25 @@ export async function PUT(
     return NextResponse.json({ error: 'invalid track' }, { status: 400 })
   }
 
-  const loop = validateClosedLoop(track.data.pieces)
+  // Stage 1 boundary: reject continuous-angle pieces until Stage 2 rewires
+  // the runtime pipeline to consume `transform.theta` directly. The
+  // converter populates `transform` and projects cells from transform when
+  // v1-projectable; assertAllPiecesV1Projectable then refuses any piece
+  // whose transform sits off the integer grid.
+  const populated = convertV1Pieces(track.data.pieces) as Piece[]
+  try {
+    assertAllPiecesV1Projectable(populated)
+  } catch (err) {
+    if (err instanceof Stage1NonProjectableError) {
+      return NextResponse.json(
+        { error: 'unsupported transform', reason: err.message },
+        { status: 400 },
+      )
+    }
+    throw err
+  }
+
+  const loop = validateClosedLoop(populated)
   if (!loop.ok) {
     return NextResponse.json(
       { error: 'invalid loop', reason: loop.reason },
@@ -100,7 +123,7 @@ export async function PUT(
   }
 
   const hash = hashTrack(
-    track.data.pieces,
+    populated,
     track.data.checkpointCount,
     track.data.checkpoints,
   )
@@ -114,7 +137,7 @@ export async function PUT(
       ? track.data.mood
       : undefined
   const version: TrackVersion = {
-    pieces: track.data.pieces as Piece[],
+    pieces: populated,
     ...(track.data.checkpointCount !== undefined
       ? { checkpointCount: track.data.checkpointCount }
       : {}),

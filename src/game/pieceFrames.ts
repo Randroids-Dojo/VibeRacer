@@ -25,6 +25,7 @@
 // imports; track.ts is the runtime caller.
 
 import type { Piece, PieceTransform } from '@/lib/schemas'
+import { CELL_SIZE } from './cellSize'
 import type { ConnectorPort, Dir } from './track'
 
 export interface Frame {
@@ -53,10 +54,12 @@ export interface FrameConnectOptions {
 export const DEFAULT_FRAME_EPSILON_POS = 0.5
 export const DEFAULT_FRAME_EPSILON_THETA = (2 * Math.PI) / 180 // 2 degrees
 
-// CELL_SIZE is duplicated here to avoid a runtime import cycle with track.ts.
-// The single source of truth is trackPath.ts; if that constant ever changes,
-// update both. Tests assert this stays in sync.
-export const FRAME_CELL_SIZE = 20
+// FRAME_CELL_SIZE is the world-units-per-grid-cell constant; it is the same
+// value as `CELL_SIZE` and is sourced from the leaf module `./cellSize` so
+// pieceFrames does not have to duplicate it. The export is kept under the
+// historical name for backward compatibility with existing test imports;
+// any future change to `CELL_SIZE` propagates here automatically.
+export const FRAME_CELL_SIZE = CELL_SIZE
 const HALF = FRAME_CELL_SIZE / 2
 
 // Static table of edge offsets in world space for each cardinal/diagonal

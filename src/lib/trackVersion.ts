@@ -113,3 +113,32 @@ export function convertV1Pieces(pieces: readonly Piece[]): Piece[] {
 export function convertV1Track(parsed: TrackVersion): TrackVersion {
   return { ...parsed, pieces: convertV1Pieces(parsed.pieces) }
 }
+
+// Stage 1 boundary check. Until Stage 2 rewires the runtime pipeline
+// (`connectorPortsOf`, `frameOfPortAtTransform`, `buildTrackPath` sampling)
+// to consume `transform.theta` directly, the system can only execute
+// v1-projectable transforms (`transform.theta` exactly a multiple of PI/2,
+// position on the integer grid). A non-projectable transform produces a
+// canonical hash that omits legacy `rotation`, but the runtime would still
+// read `piece.rotation` and silently disagree with the persisted geometry,
+// so two payloads differing only in rotation could collide on hash. Reject
+// at the load and write boundaries to keep this impossible.
+export class Stage1NonProjectableError extends Error {
+  constructor(public readonly pieceIndex: number) {
+    super(
+      `piece at index ${pieceIndex} has a non-v1-projectable transform; continuous-angle pieces ship in Stage 2`,
+    )
+    this.name = 'Stage1NonProjectableError'
+  }
+}
+
+// Throw Stage1NonProjectableError if any piece in `pieces` carries a
+// transform that does not project exactly back to the integer grid. Caller
+// should already have run `convertV1Pieces` so `transform` is populated.
+export function assertAllPiecesV1Projectable(pieces: readonly Piece[]): void {
+  for (let i = 0; i < pieces.length; i++) {
+    if (!isV1Projectable(pieces[i])) {
+      throw new Stage1NonProjectableError(i)
+    }
+  }
+}

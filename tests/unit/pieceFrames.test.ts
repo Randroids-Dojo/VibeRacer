@@ -13,9 +13,10 @@ import {
 
 describe('pieceFrames constants', () => {
   it('keeps FRAME_CELL_SIZE in sync with the path module', () => {
-    // pieceFrames duplicates CELL_SIZE locally to avoid an import cycle
-    // with track.ts. If trackPath ever changes the constant, the duplicate
-    // must move with it. This test pins them together.
+    // FRAME_CELL_SIZE is an alias for CELL_SIZE sourced from the leaf
+    // module `src/game/cellSize.ts`. The export name is kept for backward
+    // compatibility; this test pins that the two constants stay equal so
+    // any callers that still read FRAME_CELL_SIZE see the canonical value.
     expect(FRAME_CELL_SIZE).toBe(CELL_SIZE)
   })
 })
