@@ -39,8 +39,12 @@ export interface PieceTransform {
   // the world is a flat ground plane.
   x: number
   z: number
-  // Rotation in radians, measured CCW around the +Y axis using the same
-  // sign convention as the game heading: +PI/2 = north (-Z).
+  // Rotation in radians, measured clockwise (compass-wise) to match the
+  // existing `piece.rotation` field that this transform replaces in Stage 1
+  // proper. The same R value can be passed straight to `transformSample` and
+  // the rest of the renderer code that already assumes the CW convention.
+  // Game heading angles (CCW, +PI/2 = north) flow through `Frame.theta` on
+  // endpoints and stay independent of this field.
   theta: number
 }
 
@@ -64,7 +68,9 @@ export function geometryOf(piece: Piece): PieceGeometry {
 
 // World-space anchor transform for a piece. Cell coordinates project to
 // (col * CELL_SIZE, row * CELL_SIZE) on the ground plane; rotation in
-// degrees becomes radians with the existing sign convention.
+// degrees becomes radians with the same clockwise convention `piece.rotation`
+// already uses (so transformSample and other downstream renderers see the
+// same R value they always have).
 export function transformOf(piece: Piece): PieceTransform {
   return {
     x: piece.col * CELL_SIZE,

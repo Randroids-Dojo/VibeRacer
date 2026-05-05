@@ -7,7 +7,7 @@ import {
 } from '@/lib/schemas'
 import { footprintCellKeys } from './trackFootprint'
 import { frameOfPort, framesConnect } from './pieceFrames'
-import { geometryOf } from './pieceGeometry'
+import { endpointsOf } from './pieceGeometry'
 
 export type Dir = 0 | 1 | 2 | 3 | 4 | 5 | 6 | 7 // N, NE, E, SE, S, SW, W, NW
 
@@ -414,11 +414,12 @@ export function portsConnect(
   port: ConnectorPort,
   neighbor: Piece,
 ): boolean {
-  // Endpoints are the source of truth for connections. Stage 0.5 routes
-  // every match through geometryOf so Stage 1 proper can swap how
-  // endpoints are derived without touching the connection engine.
+  // Endpoints are the source of truth for connections. Use `endpointsOf`
+  // (not `geometryOf`) so the validator's hot path skips the supercover
+  // footprint computation that `geometryOf` would also do. Stage 1 proper
+  // can swap how endpoints are derived without touching this call site.
   const frame = frameOfPort(piece, port)
-  for (const candidate of geometryOf(neighbor).endpoints) {
+  for (const candidate of endpointsOf(neighbor)) {
     if (framesConnect(frame, candidate)) return true
   }
   return false
@@ -430,12 +431,14 @@ export function findConnectedNeighbor(
   pieces: readonly Piece[],
 ): Piece | null {
   // Endpoint-driven match: iterate every other piece's endpoint frames and
-  // return the first whose frame connects to this port's frame. Stage 1
-  // proper changes only how geometryOf builds endpoints; nothing here.
+  // return the first whose frame connects to this port's frame. `endpointsOf`
+  // (not `geometryOf`) keeps this inner loop free of supercover footprint
+  // work, which matters for O(n^2) validation passes. Stage 1 proper
+  // changes only how endpointsOf builds the array; nothing here.
   const frame = frameOfPort(piece, port)
   for (const candidate of pieces) {
     if (candidate === piece) continue
-    for (const candidateFrame of geometryOf(candidate).endpoints) {
+    for (const candidateFrame of endpointsOf(candidate)) {
       if (framesConnect(frame, candidateFrame)) return candidate
     }
   }
