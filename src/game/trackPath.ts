@@ -1,5 +1,6 @@
 import type { FlexStraightSpec, Piece, TrackCheckpoint } from '@/lib/schemas'
 import { convertV1Pieces } from '@/lib/trackVersion'
+import { CELL_SIZE } from './cellSize'
 import { footprintCellKeys } from './trackFootprint'
 import {
   cellKey,
@@ -33,7 +34,10 @@ function getStartExitPort(pieces: Piece[]): ConnectorPort | null {
   return portB
 }
 
-export const CELL_SIZE = 20
+// CELL_SIZE lives in the leaf module `./cellSize` to keep pieceGeometry /
+// trackVersion / trackPath out of a runtime import cycle. Re-exported here
+// so external callers can keep importing it from the path module.
+export { CELL_SIZE }
 export { DEFAULT_TRACK_WIDTH as TRACK_WIDTH } from './trackWidth'
 export const CORNER_ARC_RADIUS = CELL_SIZE / 2
 const CORNER_ARC_LENGTH = CORNER_ARC_RADIUS * (Math.PI / 2)

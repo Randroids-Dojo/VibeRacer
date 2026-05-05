@@ -19,13 +19,12 @@ import {
   type TrackVersion,
 } from './schemas'
 import { isV1Projectable, projectToV1Cells } from '@/game/pieceGeometry'
-
-// CELL_SIZE is duplicated here to avoid a runtime import cycle with track
-// path: trackPath imports this module so it can normalize raw pieces at the
-// buildTrackPath / validateClosedLoop entry points. The single source of
-// truth is `src/game/trackPath.ts`; if that constant ever changes, update
-// this duplicate too. Tests pin the two values together.
-const CELL_SIZE = 20
+// CELL_SIZE comes from the leaf module `@/game/cellSize` rather than from
+// `@/game/trackPath`. trackPath imports this module to normalize pieces at
+// buildTrackPath / validateClosedLoop entry, so importing CELL_SIZE from
+// trackPath would form a runtime cycle (trackPath -> trackVersion ->
+// pieceGeometry -> trackPath). The leaf module breaks the loop.
+import { CELL_SIZE } from '@/game/cellSize'
 
 // Thrown when a parsed TrackVersion declares a schemaVersion this build does
 // not support. Callers translate this into a "track not found" or "please

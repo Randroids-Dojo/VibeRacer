@@ -85,6 +85,24 @@ export function canonicalizeCheckpoints(
   })
 }
 
+// Sort key for the canonical JSON pipeline. Reads only `transform`, which the
+// v1 to v2 converter populates on every piece, so the hash depends solely on
+// values that appear in the serialized output. For v1-projectable pieces
+// `transform.z = row * CELL_SIZE` and `transform.x = col * CELL_SIZE`
+// exactly, so the order matches the legacy `(row, col, type, rotation)` sort
+// bit-for-bit and existing template hashes are preserved. For non-projectable
+// pieces (Stage 2 territory) the legacy cell fields are not emitted, so
+// sorting by them would let hashes drift on values that are not in the
+// canonical bytes; sorting by transform avoids that.
+function canonicalSortKey(a: Piece, b: Piece): number {
+  const at = a.transform!
+  const bt = b.transform!
+  if (at.z !== bt.z) return at.z - bt.z
+  if (at.x !== bt.x) return at.x - bt.x
+  if (a.type !== b.type) return a.type < b.type ? -1 : 1
+  return at.theta - bt.theta
+}
+
 export function canonicalTrackJson(
   pieces: Piece[],
   checkpointCount?: number,
@@ -99,7 +117,7 @@ export function canonicalTrackJson(
   // and FOLLOWUPS Rule 1 / Rule 2.
   const populated = convertV1Pieces(pieces)
   let anyV2 = false
-  const canonical = canonicalizePieces(populated).map((p) => {
+  const canonical = [...populated].sort(canonicalSortKey).map((p) => {
     const piece = p as HashablePiece
     if (isV1Projectable(piece)) {
       const cells = projectToV1Cells(piece.transform!)

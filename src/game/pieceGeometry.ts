@@ -26,7 +26,7 @@ import {
   type FootprintCell,
   footprintCells,
 } from './trackFootprint'
-import { CELL_SIZE } from './trackPath'
+import { CELL_SIZE } from './cellSize'
 
 export type { PieceTransform } from '@/lib/schemas'
 
@@ -76,9 +76,17 @@ export function transformOf(piece: Piece): PieceTransform {
   return piece.transform
 }
 
-// Outward-facing world frames for every connector port on a piece. Built from
-// the piece's transform, so a future continuous-angle piece with arbitrary
-// theta produces frames at the correct world position automatically.
+// Outward-facing world frames for every connector port on a piece.
+// Stage 1 contract: position is transform-driven (`frameOfPortAtTransform`
+// reads `transform.x` and `transform.z`), but orientation comes from
+// `connectorPortsOf` which is keyed off `piece.rotation`. The v1 to v2
+// converter in `src/lib/trackVersion.ts` re-derives `(row, col, rotation)`
+// from the projection at converter entry whenever the transform is
+// v1-projectable, so `transform.theta` and `piece.rotation * PI / 180`
+// are guaranteed equal for every piece that reaches this layer in Stage 1.
+// Stage 2 introduces non-projectable transforms and rewires
+// `connectorPortsOf` (or the helper layer) to consume `transform.theta`
+// directly so `endpointsOf` becomes fully transform-driven.
 export function endpointsOf(piece: Piece): Frame[] {
   const transform = transformOf(piece)
   return connectorPortsOf(piece).map((port) =>
