@@ -220,7 +220,7 @@ B (editor UX) is still pending.
 
 #### Stage 2 Workstream A: runtime migration. SHIPPED.
 
-Pending PR on branch `claude/continuous-angle-stage-2-runtime`. Merge
+PR #103 on branch `claude/continuous-angle-stage-2-runtime`. Merge
 commit recorded here when squashed onto main.
 
 What landed:
@@ -234,10 +234,15 @@ What landed:
 - `frameOfPortAtTransform` in `src/game/pieceFrames.ts` now applies the
   residual rotation `transform.theta minus cardinalSnap(transform.theta)`
   to the port's local offset and heading. For v1-projectable pieces the
-  residual is exactly zero (within `THETA_PROJECTION_EPSILON = 1e-4`,
-  mirroring `V1_PROJECTABLE_ROTATION_EPSILON` in `pieceGeometry.ts`) so
-  the function reduces to translate-only arithmetic and the Stage 0.5
+  residual is exactly zero (within `V1_PROJECTABLE_ROTATION_EPSILON =
+  1e-4`, sourced from the leaf module `src/game/cellSize.ts` so
+  `pieceGeometry` and `pieceFrames` share one canonical value) so the
+  function reduces to translate-only arithmetic and the Stage 0.5
   snapshot wall plus every existing template hash reproduce bit-for-bit.
+  The cardinal snap uses the full rounded quotient
+  `n = Math.round(theta / (PI / 2))` so thetas outside `[0, 2*PI)`
+  (accumulated rotations from group rotate, undo, redo) still resolve
+  to zero residual when they land on a cardinal multiple.
 - The validator's `portsConnect` and `findConnectedNeighbor` swapped the
   source-side frame from the cell-keyed `frameOfPort` to
   `frameOfPortAtTransform(transformOf(piece), port)` so non-projectable
@@ -250,6 +255,13 @@ What landed:
   `transformOf(piece)` rather than `piece.rotation`. For v1-projectable
   pieces the converter sets `transform.theta = piece.rotation * PI / 180`
   exactly, so the rotated samples are bit-equal to the legacy output.
+- `buildTrackPath` itself sources `center`, `entry`, `exit`, and
+  `arcCenter` from `transformOf(piece)` and `frameOfPortAtTransform`
+  rather than `cellCenter` / `portMidpoint`, so non-projectable straight
+  and corner pieces render at the correct world coordinates. For
+  grid-aligned input the converter sets `transform.x = col * CELL_SIZE`
+  and `transform.z = row * CELL_SIZE` exactly, so this is bit-equal to
+  the legacy cell-keyed arithmetic.
 - The Stage 1 boundary gate is gone. `Stage1NonProjectableError` and
   `assertAllPiecesV1Projectable` are removed from
   `src/lib/trackVersion.ts`; the load path
@@ -268,8 +280,15 @@ What landed:
   the existing 60-piece rectangle rigidly by 14 degrees around its
   centroid and asserts `validateClosedLoop` accepts it with
   `maxJoinDistance < DEFAULT_FRAME_EPSILON_POS / 10` and
-  `maxTangentDelta < 1e-9`. The original v1-projectable closure test
-  still reports zero drift exactly.
+  `maxTangentDelta < 1e-9`. A second new test in
+  `tests/unit/trackPath.test.ts` rotates a 12-piece rectangle and
+  asserts `buildTrackPath` puts every piece center at its `transform`
+  and every consecutive `exit` / `entry` pair within `1e-9` world units.
+  Regression tests in `tests/unit/pieceFrames.test.ts` pin
+  `residualThetaAfterCardinalSnap` and `cardinalTurnsOfTheta` against
+  thetas outside `[0, 2*PI)` and assert `frameOfPortAtTransform` is
+  bit-equal between `theta = PI/2` and `theta = 5*PI/2`. The original
+  v1-projectable closure test still reports zero drift exactly.
 
 #### Stage 2 Workstream B: editor UX. NOT STARTED.
 

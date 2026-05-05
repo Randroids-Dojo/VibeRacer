@@ -13,7 +13,12 @@ import {
   type Dir,
 } from './track'
 import { transformOf } from './pieceGeometry'
-import { cardinalTurnsOfTheta } from './pieceFrames'
+import {
+  cardinalTurnsOfTheta,
+  frameOfPortAtTransform,
+  residualThetaAfterCardinalSnap,
+} from './pieceFrames'
+import type { PieceTransform } from '@/lib/schemas'
 
 // Travel direction is encoded by pieces[1]'s cell-adjacency to pieces[0]:
 // whichever connector points at pieces[1] is the exit. Falls back to connB
@@ -155,8 +160,13 @@ export function edgeMidpoint(row: number, col: number, dir: Dir): Vec3 {
 }
 
 function portMidpoint(piece: Piece, port: ConnectorPort): Vec3 {
-  const cell = portCell(piece, port)
-  return edgeMidpoint(cell.row, cell.col, port.dir)
+  // Stage 2: read the world-frame port position from the piece's transform
+  // rather than from cell coordinates so non-projectable pieces render at
+  // the correct location. For grid-aligned pieces the residual rotation in
+  // `frameOfPortAtTransform` is exactly zero and the result is bit-equal
+  // to the legacy `edgeMidpoint(cell.row, cell.col, port.dir)` arithmetic.
+  const frame = frameOfPortAtTransform(transformOf(piece), port)
+  return { x: frame.x, y: 0, z: frame.z }
 }
 
 // Heading in radians where 0 = +X (east) and increases counter-clockwise around +Y.
@@ -193,13 +203,32 @@ function matchingEntryPort(piece: Piece, previous: Piece): ConnectorPort {
 }
 
 function computeArcCenter(
-  center: Vec3,
+  transform: PieceTransform,
   entryDir: Dir,
   exitDir: Dir,
 ): { cx: number; cz: number } {
+  // The arc center for a 90-degree corner sits at the cell corner where
+  // the two open edges meet. In the piece-local frame that point is the
+  // sum of the two edge-midpoint offsets relative to cell center. For
+  // grid-aligned pieces the residual rotation is zero and this collapses
+  // to the legacy `(center.x + e1.dx + e2.dx, center.z + e1.dz + e2.dz)`
+  // arithmetic; for non-projectable corners it rotates the local corner
+  // offset by the residual angle so the arc center tracks the rotated
+  // piece.
   const e1 = EDGE_OFFSETS[entryDir]
   const e2 = EDGE_OFFSETS[exitDir]
-  return { cx: center.x + e1.dx + e2.dx, cz: center.z + e1.dz + e2.dz }
+  const offsetX = e1.dx + e2.dx
+  const offsetZ = e1.dz + e2.dz
+  const residual = residualThetaAfterCardinalSnap(transform.theta)
+  if (residual === 0) {
+    return { cx: transform.x + offsetX, cz: transform.z + offsetZ }
+  }
+  const cs = Math.cos(residual)
+  const sn = Math.sin(residual)
+  return {
+    cx: transform.x + offsetX * cs - offsetZ * sn,
+    cz: transform.z + offsetX * sn + offsetZ * cs,
+  }
 }
 
 // S-curve geometry parameters. Local layout (piece rotation 0): a south to
@@ -856,7 +885,13 @@ export function buildTrackPath(
     const key = cellKey(current.row, current.col)
     if (seen.has(key)) break
     seen.add(key)
-    const center = cellCenter(current.row, current.col)
+    // Source the piece center from `transform.x / z` so non-projectable
+    // pieces render at the right world coordinates. For grid-aligned
+    // pieces the converter sets `transform.x = col * CELL_SIZE` and
+    // `transform.z = row * CELL_SIZE` exactly, so this is bit-equal to
+    // the legacy `cellCenter(current.row, current.col)`.
+    const transform = transformOf(current)
+    const center: Vec3 = { x: transform.x, y: 0, z: transform.z }
     const isCorner = current.type === 'left90' || current.type === 'right90'
     const isScurve =
       current.type === 'scurve' || current.type === 'scurveLeft'
@@ -889,7 +924,7 @@ export function buildTrackPath(
       center,
       entry: portMidpoint(current, entryPort),
       exit: portMidpoint(current, exitPort),
-      arcCenter: isCorner ? computeArcCenter(center, entryDir, exitDir) : null,
+      arcCenter: isCorner ? computeArcCenter(transform, entryDir, exitDir) : null,
       samples: isScurve
         ? buildScurveSamples(current, entryDir)
         : isSweep
