@@ -422,14 +422,12 @@ export function Leaderboard({
                   typeof activeRivalNonce === 'string' &&
                   e.nonce === activeRivalNonce
                 return (
-                  <div
+                  <LeaderboardEntryRow
                     key={`${e.rank}-${e.ts}`}
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`View lap details for ${e.initials}, rank ${e.rank}`}
-                    onClick={() => openEntryDetails(e)}
+                    label={`View lap details for ${e.initials}, rank ${e.rank}`}
+                    onActivate={() => openEntryDetails(e)}
                     onKeyDown={(event) => handleRowKeyDown(event, e)}
-                    style={{ ...row, ...rowButton, ...(e.isMe ? meRow : null) }}
+                    isMe={e.isMe}
                   >
                     <div style={{ ...cell, ...rankCell }}>{e.rank}</div>
                     <div style={{ ...cell, ...inputCell }}>
@@ -470,47 +468,33 @@ export function Leaderboard({
                         </button>
                       ) : null}
                     </div>
-                  </div>
+                  </LeaderboardEntryRow>
                 )
               })}
             </div>
             {pagination ? (
               <div style={pagerRow}>
-                <button
-                  type="button"
+                <PagerButton
+                  label="Prev"
+                  disabled={!pagination.hasPrev}
                   onClick={() => {
                     clickSort()
                     setPageOffset((prev) => Math.max(0, prev - pagination.limit))
                   }}
-                  disabled={!pagination.hasPrev}
-                  style={{
-                    ...pagerBtn,
-                    opacity: pagination.hasPrev ? 1 : 0.4,
-                    cursor: pagination.hasPrev ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  Prev
-                </button>
+                />
                 <div style={pagerLabel}>
                   {firstRow > 0 && lastRow > 0
                     ? `${firstRow}-${lastRow} of ${totalRows}`
                     : `0 of ${totalRows}`}
                 </div>
-                <button
-                  type="button"
+                <PagerButton
+                  label="Next"
+                  disabled={!pagination.hasNext}
                   onClick={() => {
                     clickSort()
                     setPageOffset((prev) => prev + pagination.limit)
                   }}
-                  disabled={!pagination.hasNext}
-                  style={{
-                    ...pagerBtn,
-                    opacity: pagination.hasNext ? 1 : 0.4,
-                    cursor: pagination.hasNext ? 'pointer' : 'not-allowed',
-                  }}
-                >
-                  Next
-                </button>
+                />
               </div>
             ) : null}
             {board.meBestRank !== null ? (
@@ -535,6 +519,66 @@ export function Leaderboard({
       ) : null}
     </div>
     </MenuNavProvider>
+  )
+}
+
+function LeaderboardEntryRow({
+  label,
+  onActivate,
+  onKeyDown,
+  isMe,
+  children,
+}: {
+  label: string
+  onActivate: () => void
+  onKeyDown: (event: React.KeyboardEvent<HTMLDivElement>) => void
+  isMe: boolean
+  children: React.ReactNode
+}) {
+  const ref = useRef<HTMLDivElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical', onActivate })
+  return (
+    <div
+      ref={ref}
+      role="button"
+      tabIndex={0}
+      aria-label={label}
+      onClick={onActivate}
+      onKeyDown={onKeyDown}
+      className="menuui-focusable"
+      style={{ ...row, ...rowButton, ...(isMe ? meRow : null) }}
+    >
+      {children}
+    </div>
+  )
+}
+
+function PagerButton({
+  label,
+  disabled,
+  onClick,
+}: {
+  label: string
+  disabled: boolean
+  onClick: () => void
+}) {
+  const ref = useRef<HTMLButtonElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'horizontal', disabled })
+  return (
+    <button
+      ref={ref}
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="menuui-focusable"
+      style={{
+        ...pagerBtn,
+        opacity: disabled ? 0.4 : 1,
+        cursor: disabled ? 'not-allowed' : 'pointer',
+      }}
+    >
+      {label}
+    </button>
   )
 }
 
