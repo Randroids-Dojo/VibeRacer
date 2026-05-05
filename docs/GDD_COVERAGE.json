@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-03",
+  "updatedAt": "2026-05-05",
   "sections": [
     {
       "id": "2",
@@ -162,7 +162,10 @@
         "hairpin turns",
         "right and left 45-degree arcs",
         "diagonal straights",
-        "flex-angle straight piece"
+        "flex-angle straight piece",
+        "continuous-angle frame matcher (Stage 0)",
+        "continuous-angle geometry shim (Stage 0.5)",
+        "continuous-angle schema swap with v1 to v2 transform converter (Stage 1)"
       ],
       "evidence": [
         "src/components/TrackEditor.tsx",
@@ -174,9 +177,14 @@
         "src/game/trackFootprint.ts",
         "src/game/trackWidth.ts",
         "src/game/trackTemplates.ts",
+        "src/game/pieceFrames.ts",
+        "src/game/pieceGeometry.ts",
         "src/lib/biomes.ts",
         "src/lib/decorations.ts",
         "src/lib/schemas.ts",
+        "src/lib/trackVersion.ts",
+        "src/lib/loadTrack.ts",
+        "src/lib/hashTrack.ts",
         "src/app/api/track/[slug]/route.ts",
         "tests/unit/track.test.ts",
         "tests/unit/trackConnectors.test.ts",
@@ -187,6 +195,9 @@
         "tests/unit/trackFootprint.test.ts",
         "tests/unit/trackWidth.test.ts",
         "tests/unit/trackTemplates.test.ts",
+        "tests/unit/pieceFrames.test.ts",
+        "tests/unit/pieceGeometry.test.ts",
+        "tests/unit/trackVersion.test.ts",
         "tests/unit/biomes.test.ts",
         "tests/unit/decorations.test.ts",
         "tests/unit/schemas.test.ts",
