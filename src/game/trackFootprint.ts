@@ -1,6 +1,7 @@
 import type { FlexStraightSpec, Piece } from '@/lib/schemas'
 import { DEFAULT_FLEX_STRAIGHT_SPEC } from '@/lib/schemas'
 import { cellKey } from './track'
+import { cardinalTurnsOfTheta } from './pieceFrames'
 
 export interface FootprintOffset {
   dr: number
@@ -187,31 +188,52 @@ function rotateRawFootprint(
   return out
 }
 
+// Snap the piece's rotation to the cardinal multiple of PI/2 derived from
+// `transform.theta` when a transform is present. Otherwise fall back to the
+// legacy `piece.rotation` field. This keeps footprint rotation in lock-step
+// with connector rotation: `connectorPortsOf` reads `transform.theta`
+// (cardinal-snapped via `cardinalTurnsOfTheta`), so the footprint must
+// follow the same snapped turn count or non-projectable pieces would
+// extend in directions inconsistent with their connectors. For
+// v1-projectable pieces the converter already aligns `transform.theta`
+// with `piece.rotation * PI / 180`, so the snapped result is exactly
+// `piece.rotation` and grid-aligned footprints stay bit-identical.
+function snappedRotationFromPiece(
+  piece: Pick<Piece, 'rotation' | 'transform'>,
+): Piece['rotation'] {
+  if (piece.transform !== undefined) {
+    const turns = cardinalTurnsOfTheta(piece.transform.theta)
+    return (turns * 90) as Piece['rotation']
+  }
+  return piece.rotation
+}
+
 export function defaultFootprintForPiece(
-  piece: Pick<Piece, 'type' | 'rotation' | 'flex'>,
+  piece: Pick<Piece, 'type' | 'rotation' | 'flex' | 'transform'>,
 ): readonly FootprintOffset[] {
+  const rotation = snappedRotationFromPiece(piece)
   return piece.type === 'megaSweepRight'
-    ? rotateFootprintByRotation(MEGA_SWEEP_RIGHT_FOOTPRINT, piece.rotation)
+    ? rotateFootprintByRotation(MEGA_SWEEP_RIGHT_FOOTPRINT, rotation)
     : piece.type === 'megaSweepLeft'
-      ? rotateFootprintByRotation(MEGA_SWEEP_LEFT_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(MEGA_SWEEP_LEFT_FOOTPRINT, rotation)
     : piece.type === 'hairpin' || piece.type === 'hairpinTight'
-      ? rotateFootprintByRotation(HAIRPIN_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(HAIRPIN_FOOTPRINT, rotation)
     : piece.type === 'hairpinWide'
-      ? rotateFootprintByRotation(HAIRPIN_WIDE_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(HAIRPIN_WIDE_FOOTPRINT, rotation)
     : piece.type === 'wideArc45Right'
-      ? rotateFootprintByRotation(WIDE_ARC45_RIGHT_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(WIDE_ARC45_RIGHT_FOOTPRINT, rotation)
     : piece.type === 'wideArc45Left'
-      ? rotateFootprintByRotation(WIDE_ARC45_LEFT_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(WIDE_ARC45_LEFT_FOOTPRINT, rotation)
     : piece.type === 'offsetStraightRight' ||
         piece.type === 'grandSweepRight'
-      ? rotateFootprintByRotation(OFFSET_RIGHT_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(OFFSET_RIGHT_FOOTPRINT, rotation)
     : piece.type === 'offsetStraightLeft' ||
         piece.type === 'grandSweepLeft'
-      ? rotateFootprintByRotation(OFFSET_LEFT_FOOTPRINT, piece.rotation)
+      ? rotateFootprintByRotation(OFFSET_LEFT_FOOTPRINT, rotation)
     : piece.type === 'flexStraight'
       ? rotateFlexStraightFootprint(
           piece.flex ?? DEFAULT_FLEX_STRAIGHT_SPEC,
-          piece.rotation,
+          rotation,
         )
       : DEFAULT_FOOTPRINT
 }

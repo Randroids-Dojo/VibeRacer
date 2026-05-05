@@ -230,7 +230,12 @@ What landed:
   turn count from `transform.theta` via `cardinalTurnsOfTheta` (defined
   in `pieceFrames.ts`). A `thetaOfPiece` helper falls back to
   `piece.rotation * PI / 180` for transform-less pieces so direct unit
-  tests (which never run the converter) keep working.
+  tests (which never run the converter) keep working. The same cardinal
+  snap drives footprint rotation in `defaultFootprintForPiece`
+  (`src/game/trackFootprint.ts`) via a private
+  `snappedRotationFromPiece` helper, so non-projectable pieces whose
+  legacy `piece.rotation` field is stale still produce footprint cells
+  that match their connector frames.
 - `frameOfPortAtTransform` in `src/game/pieceFrames.ts` now applies the
   residual rotation `transform.theta minus cardinalSnap(transform.theta)`
   to the port's local offset and heading. For v1-projectable pieces the
