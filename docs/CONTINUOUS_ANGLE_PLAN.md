@@ -94,8 +94,8 @@ What landed:
 
 ### Stage 1 proper: schema swap. SHIPPED.
 
-Pending PR on branch `claude/continuous-angle-stage-1-Vho8x`. Merge commit
-recorded here when squashed onto main.
+Pending PR on branch `claude/continuous-angle-stage-1-Vho8x` (#101).
+Merge commit recorded here when squashed onto main.
 
 Add `transform: { x: number; z: number; theta: number }` to
 `PieceSchema` as the authoritative geometry. Bump the schema version.
@@ -108,30 +108,51 @@ door, hence the deliberate sequencing after Stage 0.5 stabilises).
 
 - `Piece.transform` is OPTIONAL on the wire format only so v1 payloads
   parse without rewriting historical KV entries. v1 omits `transform`;
-  v2 includes it.
+  v2 includes it. `PieceTransformSchema` uses `z.number().finite()` for
+  `x` / `z` / `theta` so NaN and Infinity cannot poison the epsilon
+  comparisons in `isV1Projectable`.
 - The v1 → v2 converter runs once at load, immediately after schema
   parse, and populates `transform` for every piece using the deterministic
   `(row, col, rotation) → { x: col*CELL_SIZE, z: row*CELL_SIZE,
   theta: rotation*PI/180 }` mapping. This is exact and lossless.
+- The converter is also a normalizer: when a v2 payload carries
+  `transform` that is v1-projectable, the converter re-derives
+  `(row, col, rotation)` from the projection so the legacy fields can
+  never disagree with the transform. Stage 1's invariant after load
+  is therefore "transform is authoritative; cells follow". Stage 2
+  introduces non-projectable transforms and decouples cells from
+  transform; until then, every piece reaching the geometry layer has
+  `transform.theta == piece.rotation * PI / 180` exactly.
 - After load, the in-memory invariant is: every piece has `transform`
   populated. `geometryOf`, `transformOf`, and `endpointsOf` all read
   from `transform` directly; no fallback to cell derivation, no branch
   on whether `transform` is defined. The "fallback to cells" path the
   Stage 0.5 doc gestured at is removed; the converter makes it
-  unreachable.
+  unreachable. The validator's high-level entry points
+  (`validateClosedLoop`, `buildTrackPath`, `canonicalTrackJson`) call
+  the converter on raw input so callers (templates, defaults, tests
+  with literal pieces) do not have to.
 - The version gate lives on `TrackVersionSchema` (the persisted form
   with `createdByRacerId` / `createdAt`), NOT on `TrackSchema`
-  (in-memory edit-time only). New optional field
-  `schemaVersion: z.literal(1).or(z.literal(2)).optional()` on
-  `TrackVersionSchema`; missing or `1` is v1, explicit `2` is v2.
-- "Old clients refuse v2" mechanism: the read path explicitly checks
-  `parsed.schemaVersion` after parse and throws a typed
-  `SchemaTooNew` error when the value exceeds the build's
-  `MAX_SCHEMA_VERSION` constant. This is more reliable than relying on
-  zod strict mode (current `TrackVersionSchema` is non-strict and
-  silently passes unknown fields). The strict-vs-explicit choice is
-  recorded so future contributors don't try to "simplify" by adding
-  `.strict()` and losing forward-compat for additive fields.
+  (in-memory edit-time only). The schema parses
+  `schemaVersion: z.number().int().min(1).optional()`; missing is v1.
+  The runtime gate `assertSchemaVersionSupported(parsed)` throws a
+  typed `SchemaTooNewError` when the value exceeds the build's
+  `MAX_SCHEMA_VERSION` constant. The literal-union approach was
+  considered and rejected: it short-circuits the gate at parse time
+  and forces `MAX_SCHEMA_VERSION` to be edited in two places on every
+  bump.
+- Canonical JSON sort is keyed off `transform`, not legacy cells:
+  `(transform.z, transform.x, type, transform.theta)`. For
+  v1-projectable pieces this is bit-identical to the legacy
+  `(row, col, type, rotation)` order, so existing template hashes
+  reproduce exactly. For non-projectable pieces (Stage 2 territory)
+  the legacy cells are not emitted, and the new sort key reads only
+  fields that appear in the canonical bytes.
+- `CELL_SIZE` lives in the leaf module `src/game/cellSize.ts` so
+  `pieceGeometry`, `trackVersion`, and `trackPath` can all import it
+  without forming a runtime cycle. `trackPath` re-exports the constant
+  for external consumers.
 
 Hash canonicalization preserves v1 hashes for tracks whose transforms
 project exactly back to integer cells (every track that exists today).
@@ -211,6 +232,26 @@ derived, this fallback is dead code; should never trigger.
 - OBB-vs-OBB overlap detection: spatial hash + AABB pre-check before
   full OBB. Footprint contract stays a list of cells in Stage 1 and
   arbitrary-angle pieces enumerate cells via the existing supercover.
+- Decouple from the Stage 1 "cells follow transform" invariant: the
+  converter currently re-projects `(row, col, rotation)` from any
+  v1-projectable transform on load, so legacy fields can never disagree
+  with the transform. Stage 2 introduces non-projectable transforms,
+  at which point three call sites need to migrate from cell-derived to
+  transform-derived input:
+  - `connectorPortsOf(piece)` keys off `piece.rotation`. Rewire it to
+    consume `transform.theta` directly (rotating port offsets by theta
+    instead of relying on the piece-rotation table), or move port
+    rotation into a transform-aware helper called from `endpointsOf`.
+  - `frameOfPortAtTransform` in `src/game/pieceFrames.ts` does not yet
+    apply `transform.theta` to the port offset / heading; the comment
+    on the helper flags this. Update once continuous-angle ports land.
+  - `buildTrackPath` samples piece-local centerlines and calls
+    `transformSample(..., piece.rotation)`. Update the sampler to
+    consume `piece.transform` directly so the rendered road matches
+    the canonical hash at any theta.
+  Until those three call sites migrate, Stage 2 must keep the
+  converter's transform-to-cells projection as a normalization step on
+  any v2 wire payload it accepts.
 
 ### Stage 3: flip the flag. NOT STARTED.
 
@@ -233,23 +274,43 @@ derived, this fallback is dead code; should never trigger.
 
 | File | Role |
 |---|---|
-| `src/game/pieceFrames.ts` | Stage 0 substrate. `Frame`, `frameOfPort`, `framesConnect`, antiparallel matcher. |
-| `src/game/pieceGeometry.ts` | Stage 0.5 shim. `geometryOf`, `transformOf`, `endpointsOf`. Stage 1 changes the implementation. |
-| `src/game/track.ts` | Validator. `portsConnect` and `findConnectedNeighbor` consume `endpointsOf`. |
-| `src/lib/schemas.ts` | `PieceSchema`. Stage 1 adds `transform` field, bumps version. |
-| `src/lib/hashTrack.ts` | Canonical JSON. Stage 1 implements Rule 1 + Rule 2 here. |
+| `src/game/cellSize.ts` | Stage 1 leaf module. Owns `CELL_SIZE` so pieceGeometry / trackVersion / trackPath import it without forming a runtime cycle. |
+| `src/game/pieceFrames.ts` | Stage 0 substrate. `Frame`, `frameOfPort`, `framesConnect`, antiparallel matcher. Stage 1 added `frameOfPortAtTransform`. |
+| `src/game/pieceGeometry.ts` | Stage 0.5 shim, Stage 1 implementation. `geometryOf`, `transformOf`, `endpointsOf`, `isV1Projectable`, `projectToV1Cells`, plus the `V1_PROJECTABLE_*` epsilons with the asymmetry rationale comment. |
+| `src/game/track.ts` | Validator. `validateClosedLoop` normalizes raw input through the converter; `portsConnect` and `findConnectedNeighbor` consume `endpointsOf`. |
+| `src/game/trackPath.ts` | Path builder. `buildTrackPath` normalizes raw input through the converter. Re-exports `CELL_SIZE` from the leaf module. |
+| `src/lib/schemas.ts` | `PieceSchema` with optional `transform`, `PieceTransformSchema` (`z.number().finite()` x / z / theta), `TrackVersionSchema` with optional `schemaVersion: z.number().int().min(1)`, `MAX_SCHEMA_VERSION = 2`. |
+| `src/lib/trackVersion.ts` | Stage 1 converter and gate. `convertV1Piece` (idempotent; populates transform from cells when missing, projects cells from transform when v1-projectable), `convertV1Pieces`, `convertV1Track`, `assertSchemaVersionSupported`, `SchemaTooNewError`. |
+| `src/lib/loadTrack.ts` | Read path. Calls `assertSchemaVersionSupported` then `convertV1Pieces` immediately after schema parse. |
+| `src/lib/hashTrack.ts` | Canonical JSON. Sorts by `(transform.z, transform.x, type, transform.theta)` so the hash depends only on serialized canonical data. Implements Rule 1 + Rule 2. |
+| `src/lib/defaultTrack.ts`, `src/game/trackTemplates.ts`, `src/lib/tuningLabTrack.ts` | Apply `convertV1Pieces` at module init so static piece data satisfies the post-load invariant. |
+| `src/game/editor.ts` | Editor mutations populate `transform` after every grid-aligned change via the converter. |
 | `src/components/TrackEditor.tsx` | Stage 2 adds rotate handle + free-placement mode. |
 | `tests/unit/pieceFrames.test.ts` | Stage 0 contract tests. |
-| `tests/unit/pieceGeometry.test.ts` | Stage 0.5 baseline hashes. The wall Stage 1 must not break. |
+| `tests/unit/pieceGeometry.test.ts` | Stage 0.5 baseline hashes (the wall) plus Stage 1 epsilon edges, transform-strict reads, non-finite guards. |
 | `tests/unit/track.test.ts` | Long-chain closure test, sub-45 angled flex straight test. |
-| `tests/unit/hashTrack.test.ts` | Existing template hash pins (Stage 0a). |
-| `docs/FOLLOWUPS.md` | Stage 1 pre-decisions (Rule 1, Rule 2). |
+| `tests/unit/hashTrack.test.ts` | Existing template hash pins plus Stage 1 sort-stability regression. |
+| `tests/unit/trackVersion.test.ts` | Converter, version gate, schema-finite guard, long-chain converter round-trip. |
+| `tests/unit/editor.test.ts` | Editor mutations preserving v1 projection. |
+| `docs/FOLLOWUPS.md` | Stage 2 / Stage 3 outline (Stage 1 pre-decisions are now history; the plan is the source of truth). |
 | `docs/PROGRESS_LOG.md` | One entry per shipped slice. Read for context, not for plan. |
 
 ## Picking up where this left off
 
-Next slice is Stage 1 proper. Order of work matches the pinned schema
-model above; do not deviate without updating that section first.
+Stage 1 has shipped (PR #101 on branch
+`claude/continuous-angle-stage-1-Vho8x`). The next slice is Stage 2:
+the editor UX behind a feature flag, plus the migration of
+`connectorPortsOf` / `frameOfPortAtTransform` / `buildTrackPath` to
+fully transform-driven port computation. The Stage 2 section above
+lists the specific call sites to migrate so the converter's "cells
+follow transform" normalization can become a no-op for non-projectable
+pieces. Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
+and the most recent `PROGRESS_LOG` entry; the templates and Stage 0.5
+snapshot wall remain the load-bearing tests.
+
+The historical Stage 1 ten-step plan below is preserved for reference.
+A fresh session should not re-implement it; the work shipped in PR
+#101 and the schema-model section above describes what landed.
 
 1. Add `transform: { x: number; z: number; theta: number }` to
    `PieceSchema` as optional in the wire format. Optional only because

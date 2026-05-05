@@ -177,6 +177,7 @@
         "src/game/trackFootprint.ts",
         "src/game/trackWidth.ts",
         "src/game/trackTemplates.ts",
+        "src/game/cellSize.ts",
         "src/game/pieceFrames.ts",
         "src/game/pieceGeometry.ts",
         "src/lib/biomes.ts",
