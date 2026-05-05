@@ -18,6 +18,7 @@ import {
   type PieceTransform,
   type TrackVersion,
 } from './schemas'
+import { isV1Projectable, projectToV1Cells } from '@/game/pieceGeometry'
 
 // CELL_SIZE is duplicated here to avoid a runtime import cycle with track
 // path: trackPath imports this module so it can normalize raw pieces at the
@@ -68,12 +69,37 @@ export function deriveTransformFromCells(
   }
 }
 
-// Idempotent. If the piece already carries a transform, return it as-is so the
-// converter never overwrites authored v2 geometry. Otherwise populate transform
-// from the cell-derived projection.
+// Idempotent. Two cases:
+//
+//   1. Wire format omits transform (v1 payload): derive transform from the
+//      legacy (row, col, rotation) so downstream code can read transform
+//      without branching.
+//   2. Wire format carries transform (v2 payload): transform is the
+//      authoritative geometry. For v1-projectable transforms (every Stage 1
+//      track), re-derive (row, col, rotation) from the projection so the
+//      legacy fields can never disagree with the transform. This collapses
+//      the "transform vs cells" reconciliation problem into a single point:
+//      after the converter runs, validator / sort / canonical emit / sampler
+//      all read the same world geometry whether they touch transform or
+//      (row, col, rotation). Stage 2 introduces non-projectable transforms
+//      and decouples cells from transform; for now we leave them untouched
+//      so the rest of the pipeline can decide whether to error on them.
 export function convertV1Piece(piece: Piece): Piece {
-  if (piece.transform !== undefined) return piece
-  return { ...piece, transform: deriveTransformFromCells(piece) }
+  if (piece.transform === undefined) {
+    return { ...piece, transform: deriveTransformFromCells(piece) }
+  }
+  if (isV1Projectable(piece)) {
+    const cells = projectToV1Cells(piece.transform)
+    if (
+      cells.row === piece.row &&
+      cells.col === piece.col &&
+      cells.rotation === piece.rotation
+    ) {
+      return piece
+    }
+    return { ...piece, ...cells }
+  }
+  return piece
 }
 
 // Convenience for arrays of pieces. Same idempotent contract as convertV1Piece.

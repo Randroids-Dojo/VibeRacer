@@ -90,10 +90,17 @@ export function endpointsOf(piece: Piece): Frame[] {
 // cell coordinates and a cardinal rotation? Pure function, no caching, called
 // fresh on every read by both the canonicalizer and any editor test that
 // asserts mutations preserve grid alignment. See FOLLOWUPS Rule 2 for why
-// this is derived rather than stored.
+// this is derived rather than stored. Non-finite components (NaN, Infinity)
+// short-circuit to false because epsilon comparisons against NaN are always
+// false and would let a malformed transform sneak past the projectability
+// gate; PieceTransformSchema rejects non-finite values at the wire boundary,
+// but in-memory pieces created from non-validated sources stay defended here.
 export function isV1Projectable(piece: Piece): boolean {
   const t = piece.transform
   if (t === undefined) return false
+  if (!Number.isFinite(t.x) || !Number.isFinite(t.z) || !Number.isFinite(t.theta)) {
+    return false
+  }
   const colReal = t.x / CELL_SIZE
   const rowReal = t.z / CELL_SIZE
   const col = Math.round(colReal)
@@ -112,12 +119,20 @@ export function isV1Projectable(piece: Piece): boolean {
 // Project a v1-projectable transform back to its (row, col, rotation) form.
 // Snaps to the nearest integer cell and 90-degree multiple within the same
 // epsilons isV1Projectable uses. Caller is responsible for checking
-// isV1Projectable first; this function does not validate the input.
+// isV1Projectable first; this function returns deterministic snapped values
+// for finite input and (0, 0, 0) for non-finite input as a safety net.
 export function projectToV1Cells(transform: PieceTransform): {
   row: number
   col: number
   rotation: 0 | 90 | 180 | 270
 } {
+  if (
+    !Number.isFinite(transform.x) ||
+    !Number.isFinite(transform.z) ||
+    !Number.isFinite(transform.theta)
+  ) {
+    return { row: 0, col: 0, rotation: 0 }
+  }
   const col = Math.round(transform.x / CELL_SIZE)
   const row = Math.round(transform.z / CELL_SIZE)
   const turns = ((Math.round(transform.theta / HALF_PI) % 4) + 4) % 4

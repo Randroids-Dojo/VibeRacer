@@ -80,9 +80,12 @@ export type PieceFootprintCell = z.infer<typeof PieceFootprintCellSchema>
 // is defined. See docs/CONTINUOUS_ANGLE_PLAN.md "Schema model, pinned".
 export const PieceTransformSchema = z
   .object({
-    x: z.number(),
-    z: z.number(),
-    theta: z.number(),
+    // Finite-only: NaN / Infinity slip past epsilon comparisons in
+    // isV1Projectable (because `NaN > epsilon` is false), which would let a
+    // malformed payload produce unstable canonical JSON or runtime crashes.
+    x: z.number().finite(),
+    z: z.number().finite(),
+    theta: z.number().finite(),
   })
   .strict()
 export type PieceTransform = z.infer<typeof PieceTransformSchema>
@@ -292,13 +295,16 @@ export const TrackVersionSchema = z.object({
     .optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
-  // Persisted schema version. Missing or 1 means v1 (cell-aligned only); 2 means
-  // v2 (per-piece transform may carry continuous-angle geometry). The reader
-  // explicitly rejects values greater than MAX_SCHEMA_VERSION via SchemaTooNew
-  // rather than relying on zod strict mode, because TrackVersionSchema stays
-  // non-strict so additive future fields can be ignored without breaking older
-  // clients on read of the same major version.
-  schemaVersion: z.literal(1).or(z.literal(2)).optional(),
+  // Persisted schema version. Missing or 1 means v1 (cell-aligned only); 2
+  // means v2 (per-piece transform may carry continuous-angle geometry). The
+  // schema accepts any positive integer so the runtime SchemaTooNew gate in
+  // assertSchemaVersionSupported is the single source of truth for "is this
+  // version supported"; pinning it to a literal union here would short-circuit
+  // the gate at parse time and force MAX_SCHEMA_VERSION to be edited in two
+  // places on every bump. TrackVersionSchema stays non-strict so additive
+  // future fields can be ignored without breaking older clients on read of
+  // the same major version.
+  schemaVersion: z.number().int().min(1).optional(),
 })
 export type TrackVersion = z.infer<typeof TrackVersionSchema>
 

@@ -8,7 +8,7 @@ import {
   deriveTransformFromCells,
 } from '@/lib/trackVersion'
 import type { Piece, TrackVersion } from '@/lib/schemas'
-import { MAX_SCHEMA_VERSION } from '@/lib/schemas'
+import { MAX_SCHEMA_VERSION, TrackVersionSchema } from '@/lib/schemas'
 import { CELL_SIZE } from '@/game/trackPath'
 import { connectorPortsOf, validateClosedLoop } from '@/game/track'
 import { frameOfPort, framesConnect } from '@/game/pieceFrames'
@@ -71,6 +71,45 @@ describe('convertV1Piece', () => {
       theta: 0.25,
     })
   })
+
+  it('treats transform as authoritative and re-derives (row, col, rotation) when v1-projectable', () => {
+    // A v2 wire payload could carry a transform that disagrees with the
+    // legacy (row, col, rotation) fields (the schema does not couple them).
+    // For v1-projectable transforms the converter projects cells back from
+    // transform so the validator, sort key, sample paths, and canonical
+    // emit can never disagree on world geometry.
+    const piece: Piece = {
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 5 * CELL_SIZE, z: 3 * CELL_SIZE, theta: Math.PI / 2 },
+    }
+    const out = convertV1Piece(piece)
+    expect(out.row).toBe(3)
+    expect(out.col).toBe(5)
+    expect(out.rotation).toBe(90)
+    expect(out.transform).toEqual({
+      x: 5 * CELL_SIZE,
+      z: 3 * CELL_SIZE,
+      theta: Math.PI / 2,
+    })
+  })
+
+  it('leaves (row, col, rotation) untouched for non-v1-projectable transforms', () => {
+    const piece: Piece = {
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 0, z: 0, theta: (14 * Math.PI) / 180 },
+    }
+    const out = convertV1Piece(piece)
+    expect(out.row).toBe(0)
+    expect(out.col).toBe(0)
+    expect(out.rotation).toBe(0)
+    expect(out.transform).toEqual({ x: 0, z: 0, theta: (14 * Math.PI) / 180 })
+  })
 })
 
 describe('convertV1Pieces and convertV1Track', () => {
@@ -112,6 +151,75 @@ describe('assertSchemaVersionSupported', () => {
     expect(() =>
       assertSchemaVersionSupported({ schemaVersion: MAX_SCHEMA_VERSION + 1 }),
     ).toThrow(SchemaTooNewError)
+  })
+
+  it('is reachable through TrackVersionSchema parse (gate is the source of truth, not the literal union)', () => {
+    // Pinning schemaVersion to a literal union of 1 / 2 would short-circuit
+    // the gate at parse time and force MAX_SCHEMA_VERSION to be edited in
+    // two places on every bump. The schema accepts any positive int and
+    // assertSchemaVersionSupported is the one place that decides what is
+    // supported.
+    const future = TrackVersionSchema.safeParse({
+      pieces: [{ type: 'straight', row: 0, col: 0, rotation: 0 }],
+      createdByRacerId: '00000000-0000-0000-0000-000000000000',
+      createdAt: '2026-05-04T00:00:00.000Z',
+      schemaVersion: MAX_SCHEMA_VERSION + 5,
+    })
+    expect(future.success).toBe(true)
+    if (!future.success) return
+    expect(() => assertSchemaVersionSupported(future.data)).toThrow(
+      SchemaTooNewError,
+    )
+  })
+
+  it('rejects non-integer schemaVersion at the schema layer', () => {
+    const parsed = TrackVersionSchema.safeParse({
+      pieces: [{ type: 'straight', row: 0, col: 0, rotation: 0 }],
+      createdByRacerId: '00000000-0000-0000-0000-000000000000',
+      createdAt: '2026-05-04T00:00:00.000Z',
+      schemaVersion: 1.5,
+    })
+    expect(parsed.success).toBe(false)
+  })
+})
+
+describe('PieceTransformSchema rejects non-finite components', () => {
+  // NaN, Infinity, and -Infinity slip past epsilon comparisons in
+  // isV1Projectable (because `NaN > epsilon` is false), which would let a
+  // malformed payload produce unstable canonical JSON or runtime crashes.
+  // The schema layer is the single canonical guard.
+  it('rejects NaN x', () => {
+    const parsed = TrackVersionSchema.safeParse({
+      pieces: [
+        {
+          type: 'straight',
+          row: 0,
+          col: 0,
+          rotation: 0,
+          transform: { x: Number.NaN, z: 0, theta: 0 },
+        },
+      ],
+      createdByRacerId: '00000000-0000-0000-0000-000000000000',
+      createdAt: '2026-05-04T00:00:00.000Z',
+    })
+    expect(parsed.success).toBe(false)
+  })
+
+  it('rejects Infinity theta', () => {
+    const parsed = TrackVersionSchema.safeParse({
+      pieces: [
+        {
+          type: 'straight',
+          row: 0,
+          col: 0,
+          rotation: 0,
+          transform: { x: 0, z: 0, theta: Number.POSITIVE_INFINITY },
+        },
+      ],
+      createdByRacerId: '00000000-0000-0000-0000-000000000000',
+      createdAt: '2026-05-04T00:00:00.000Z',
+    })
+    expect(parsed.success).toBe(false)
   })
 })
 
