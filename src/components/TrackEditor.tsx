@@ -22,11 +22,18 @@ import {
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
-import { rotatePieceAroundEndpoint } from '@/game/continuousAngleEdit'
+import {
+  findFreePlacementSnap,
+  rotatePieceAroundEndpoint,
+  setPieceTransform,
+  unconnectedEndpoints,
+  type FreePlacementSnap,
+} from '@/game/continuousAngleEdit'
 import { cardinalTurnsOfTheta } from '@/game/pieceFrames'
 import { footprintCellKeys } from '@/game/trackFootprint'
 import { CELL_SIZE } from '@/game/cellSize'
 import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
+import type { PieceTransform } from '@/lib/schemas'
 import {
   TIME_OF_DAY_LABELS,
   TIME_OF_DAY_NAMES,
@@ -380,21 +387,54 @@ export function TrackEditor({
     preview: Piece
   } | null>(null)
 
+  // Stage 2 Workstream B slice 4 free-placement drag state. The user
+  // can drag any piece around freely with the Select tool active; the
+  // dragged piece soft-pulls onto unconnected endpoints within the
+  // FREE_PLACEMENT_SNAP_RADIUS / SNAP_ANGLE thresholds defined in
+  // continuousAngleEdit.ts. `mode` distinguishes a click that has not
+  // yet crossed the drag threshold (`pending`) from a real drag
+  // (`active`); pointer-up in `pending` mode lets the regular click
+  // handler run for selection, while `active` commits the preview and
+  // suppresses the synthetic click.
+  const [pieceDrag, setPieceDrag] = useState<{
+    pieceIdx: number
+    pointerId: number
+    startTransform: PieceTransform
+    pointerStartWorld: { x: number; z: number }
+    preview: Piece
+    snap: FreePlacementSnap | null
+    mode: 'pending' | 'active'
+  } | null>(null)
+  // Set by `commitPieceDrag` and read once by the next click event so a
+  // committed drag does not leak into a synthetic click that would
+  // otherwise re-run the cell's tool action.
+  const suppressNextClickRef = useRef(false)
+
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
   const openConnectorIssue =
     validation.issue?.kind === 'openConnector' ? validation.issue : null
   const duplicateIssue =
     validation.issue?.kind === 'duplicateCell' ? validation.issue : null
 
-  // While a rotate-handle drag is in flight, `displayPieces` substitutes
-  // the preview piece for the original at `rotateDrag.pieceIdx` so the
-  // editor renders the rotation live without committing it to history
-  // until pointer up. The committed `pieces` array stays untouched until
-  // commit, which keeps undo / redo and validation idempotent.
+  // While a rotate-handle or free-placement drag is in flight,
+  // `displayPieces` substitutes the preview piece for the original at
+  // the dragging piece's index so the editor renders the live position
+  // / rotation without committing it to history until pointer up. The
+  // committed `pieces` array stays untouched until commit, which keeps
+  // undo / redo and validation idempotent.
   const displayPieces = useMemo(() => {
-    if (rotateDrag === null) return pieces
-    return pieces.map((p, i) => (i === rotateDrag.pieceIdx ? rotateDrag.preview : p))
-  }, [pieces, rotateDrag])
+    if (rotateDrag !== null) {
+      return pieces.map((p, i) =>
+        i === rotateDrag.pieceIdx ? rotateDrag.preview : p,
+      )
+    }
+    if (pieceDrag !== null && pieceDrag.mode === 'active') {
+      return pieces.map((p, i) =>
+        i === pieceDrag.pieceIdx ? pieceDrag.preview : p,
+      )
+    }
+    return pieces
+  }, [pieces, rotateDrag, pieceDrag])
 
   // Bounds drive the SVG viewBox and the world-to-SVG mapping. Source
   // them from `displayPieces` so a rotate-handle drag that swings a long
@@ -660,7 +700,19 @@ export function TrackEditor({
   }, [setPieces])
 
   function cellFromEvent(e: React.MouseEvent<SVGSVGElement>): { row: number; col: number } | null {
-    const target = (e.target as Element).closest('[data-row]') as SVGElement | null
+    return cellFromPointerEvent(e)
+  }
+
+  // Pointer-event variant: works for any React event whose `.target`
+  // is a DOM element (mouse, pointer, touch). Walks up looking for a
+  // `data-row` / `data-col` ancestor (cells, the non-projectable
+  // overlay, the flex-straight road overlay).
+  function cellFromPointerEvent(e: {
+    target: EventTarget | null
+  }): { row: number; col: number } | null {
+    const t = e.target
+    if (!(t instanceof Element)) return null
+    const target = t.closest('[data-row]') as SVGElement | null
     if (!target) return null
     const row = Number(target.getAttribute('data-row'))
     const col = Number(target.getAttribute('data-col'))
@@ -771,20 +823,55 @@ export function TrackEditor({
   }, [renderedHeight, renderedWidth])
 
   const handlePointerDown = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.pointerType !== 'touch') return
-    const pinch = pinchRef.current ?? {
-      pointers: new Map<number, { x: number; y: number }>(),
-      startDistance: 0,
-      startZoom: zoom,
+    // Touch: track for pinch zoom (existing behavior).
+    if (e.pointerType === 'touch') {
+      const pinch = pinchRef.current ?? {
+        pointers: new Map<number, { x: number; y: number }>(),
+        startDistance: 0,
+        startZoom: zoom,
+      }
+      pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (pinch.pointers.size === 2) {
+        const [a, b] = Array.from(pinch.pointers.values())
+        pinch.startDistance = distance(a.x, a.y, b.x, b.y)
+        pinch.startZoom = zoom
+      }
+      pinchRef.current = pinch
+      // A second touch starting on top of an in-flight piece drag
+      // should not advance the drag. The pieceDrag pointerId filter on
+      // pointer-move handles that, so no extra logic needed here.
+      if (pinch.pointers.size > 1) return
     }
-    pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
-    if (pinch.pointers.size === 2) {
-      const [a, b] = Array.from(pinch.pointers.values())
-      pinch.startDistance = distance(a.x, a.y, b.x, b.y)
-      pinch.startZoom = zoom
-    }
-    pinchRef.current = pinch
-  }, [zoom])
+    // Stage 2 Workstream B slice 4: try to start a free-placement
+    // piece drag. Only with the Select tool active and the
+    // continuous-angle editor flag on. Skipped when a rotate drag or
+    // another piece drag is already in flight (single-pointer model).
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
+    if (latestRef.current.tool !== 'select') return
+    if (rotateDrag !== null) return
+    if (pieceDrag !== null) return
+    const cell = cellFromPointerEvent(e)
+    if (cell === null) return
+    const piece = latestRef.current.cellMap.get(cellKey(cell.row, cell.col))
+    if (piece === undefined) return
+    const idx = pieces.findIndex(
+      (p) => p.row === piece.row && p.col === piece.col,
+    )
+    if (idx === -1) return
+    const svgEl = svgRef.current
+    if (svgEl === null) return
+    const cursor = clientToWorld(svgEl, e.clientX, e.clientY, colMin, rowMin)
+    if (cursor === null) return
+    setPieceDrag({
+      pieceIdx: idx,
+      pointerId: e.pointerId,
+      startTransform: { ...transformOf(piece) },
+      pointerStartWorld: cursor,
+      preview: piece,
+      snap: null,
+      mode: 'pending',
+    })
+  }, [zoom, rotateDrag, pieceDrag, pieces, colMin, rowMin])
 
   // Stage 2 Workstream B rotate handle. Pointer-down on a handle ring
   // captures the pointer on the ring element so subsequent move / up
@@ -953,6 +1040,73 @@ export function TrackEditor({
     [rotateDrag, finalizeRotateDrag],
   )
 
+  // Stage 2 Workstream B slice 4: free-placement drag handlers. The
+  // SVG-level pointer-down may have set pieceDrag in `pending` mode;
+  // these advance to `active` mode after a small movement threshold,
+  // soft-pull onto unconnected snap targets within range, and commit
+  // the preview on pointer up. `pending` mode pointer-up clears state
+  // and lets the regular click handler run (selection).
+  const PIECE_DRAG_THRESHOLD = CELL_SIZE / 4
+
+  const advancePieceDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      if (pieceDrag === null) return
+      const svgEl = svgRef.current
+      if (svgEl === null) return
+      const cursor = clientToWorld(svgEl, clientX, clientY, colMin, rowMin)
+      if (cursor === null) return
+      const dx = cursor.x - pieceDrag.pointerStartWorld.x
+      const dz = cursor.z - pieceDrag.pointerStartWorld.z
+      const moveDistance = Math.hypot(dx, dz)
+      if (
+        pieceDrag.mode === 'pending' &&
+        moveDistance < PIECE_DRAG_THRESHOLD
+      ) {
+        return
+      }
+      const sourcePiece = pieces[pieceDrag.pieceIdx]
+      if (sourcePiece === undefined) return
+      const translated: PieceTransform = {
+        x: pieceDrag.startTransform.x + dx,
+        z: pieceDrag.startTransform.z + dz,
+        theta: pieceDrag.startTransform.theta,
+      }
+      const draggedWithTranslate = setPieceTransform(sourcePiece, translated)
+      const targets = unconnectedEndpoints(pieces, pieceDrag.pieceIdx)
+      const snap = findFreePlacementSnap(draggedWithTranslate, targets)
+      const finalTransform = snap !== null ? snap.transform : translated
+      const preview = setPieceTransform(sourcePiece, finalTransform)
+      setPieceDrag({
+        ...pieceDrag,
+        mode: 'active',
+        preview,
+        snap,
+      })
+    },
+    [PIECE_DRAG_THRESHOLD, colMin, rowMin, pieces, pieceDrag],
+  )
+
+  const finalizePieceDrag = useCallback(
+    (commit: boolean) => {
+      if (pieceDrag === null) return
+      const wasActive = pieceDrag.mode === 'active'
+      if (commit && wasActive) {
+        const idx = pieceDrag.pieceIdx
+        const finalPreview = pieceDrag.preview
+        setPieces((prev) =>
+          prev.map((p, i) => (i === idx ? finalPreview : p)),
+        )
+        // Suppress the synthetic click that fires after pointer-up so
+        // the click-to-select handler does not race with the just-
+        // committed move (which would re-select the cell at the OLD
+        // anchor position and feel inconsistent on touch).
+        suppressNextClickRef.current = true
+      }
+      setPieceDrag(null)
+    },
+    [pieceDrag, setPieces],
+  )
+
   const handleRotatePointerCancel = useCallback(
     (e: React.PointerEvent<SVGCircleElement>) => {
       if (rotateDrag === null) return
@@ -977,6 +1131,10 @@ export function TrackEditor({
       advanceRotateDrag(e.clientX, e.clientY)
       return
     }
+    if (pieceDrag !== null && e.pointerId === pieceDrag.pointerId) {
+      advancePieceDrag(e.clientX, e.clientY)
+      return
+    }
     const pinch = pinchRef.current
     if (!pinch || !pinch.pointers.has(e.pointerId)) return
     pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -988,7 +1146,7 @@ export function TrackEditor({
     const midX = (a.x + b.x) / 2
     const midY = (a.y + b.y) / 2
     applyZoom(next, { clientX: midX, clientY: midY })
-  }, [applyZoom, rotateDrag, advanceRotateDrag])
+  }, [applyZoom, rotateDrag, advanceRotateDrag, pieceDrag, advancePieceDrag])
 
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     // SVG-level pointer-up only fires here for the rotate drag when the
@@ -997,6 +1155,10 @@ export function TrackEditor({
     // Filter by pointerId so an unrelated touch release cannot commit.
     if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
       finalizeRotateDrag(e.clientX, e.clientY, true)
+      return
+    }
+    if (pieceDrag !== null && e.pointerId === pieceDrag.pointerId) {
+      finalizePieceDrag(true)
       return
     }
     const pinch = pinchRef.current
@@ -1008,7 +1170,7 @@ export function TrackEditor({
     if (pinch.pointers.size === 0) {
       pinchRef.current = null
     }
-  }, [rotateDrag, finalizeRotateDrag])
+  }, [rotateDrag, finalizeRotateDrag, pieceDrag, finalizePieceDrag])
 
   const handlePointerCancel = useCallback(
     (e: React.PointerEvent<SVGSVGElement>) => {
@@ -1017,6 +1179,10 @@ export function TrackEditor({
       // committing; pinch state still cleans up below.
       if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
         finalizeRotateDrag(e.clientX, e.clientY, false)
+        return
+      }
+      if (pieceDrag !== null && e.pointerId === pieceDrag.pointerId) {
+        finalizePieceDrag(false)
         return
       }
       const pinch = pinchRef.current
@@ -1029,7 +1195,7 @@ export function TrackEditor({
         pinchRef.current = null
       }
     },
-    [rotateDrag, finalizeRotateDrag],
+    [rotateDrag, finalizeRotateDrag, pieceDrag, finalizePieceDrag],
   )
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
@@ -1037,6 +1203,13 @@ export function TrackEditor({
     // releases its last pointer. Without this a two-finger zoom can
     // accidentally place a piece.
     if (pinchRef.current !== null) return
+    // Suppress the synthetic click after a free-placement drag commit
+    // so the piece does not get re-selected at the OLD anchor cell
+    // immediately after the drag moved it elsewhere.
+    if (suppressNextClickRef.current) {
+      suppressNextClickRef.current = false
+      return
+    }
     const cell = cellFromEvent(e)
     if (cell) applyTool(cell.row, cell.col)
   }, [applyTool])
@@ -1698,6 +1871,14 @@ export function TrackEditor({
                 onPointerMove={handleRotatePointerMove}
                 onPointerUp={handleRotatePointerUp}
                 onPointerCancel={handleRotatePointerCancel}
+              />
+            ) : null}
+            {pieceDrag !== null && pieceDrag.snap !== null ? (
+              <SnapTargetIndicator
+                snap={pieceDrag.snap}
+                pieces={displayPieces}
+                colMin={colMin}
+                rowMin={rowMin}
               />
             ) : null}
           </svg>
@@ -2586,8 +2767,16 @@ function FlexStraightRoadOverlay({
   const roadAngleDeg = (Math.atan2(xy - ey, xx - ex) * 180) / Math.PI
   return (
     <g
-      style={{ pointerEvents: 'none' }}
+      // Pointer events on so the user can click / drag the road itself
+      // to grab the flex-straight piece. `data-row` / `data-col`
+      // mirror the anchor cell so cellFromEvent finds the piece on a
+      // road click. Without these, the road would render but be
+      // un-grabbable, and selecting / erasing / dragging would have to
+      // happen on the (now-empty-looking) anchor cell.
       data-flex-straight-road-anchor={`${piece.row},${piece.col}`}
+      data-row={piece.row}
+      data-col={piece.col}
+      style={{ cursor: 'pointer' }}
     >
       {/*
         Selection halo: a fatter translucent line under the road. Drawn
@@ -2839,6 +3028,42 @@ function RotateHandles({
           />
         )
       })}
+    </g>
+  )
+}
+
+// Stage 2 Workstream B slice 4: a green glow at the snap target's
+// endpoint frame while a free-placement drag is in range. Shows the
+// user which target the soft-pull will snap to on release.
+function SnapTargetIndicator({
+  snap,
+  pieces,
+  colMin,
+  rowMin,
+}: {
+  snap: FreePlacementSnap
+  pieces: readonly Piece[]
+  colMin: number
+  rowMin: number
+}) {
+  const target = pieces[snap.targetPieceIdx]
+  if (target === undefined) return null
+  const ends = endpointsOf(target)
+  const frame = ends[snap.targetEndpointIdx]
+  if (frame === undefined) return null
+  const cx = (frame.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const cy = (frame.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+  return (
+    <g style={{ pointerEvents: 'none' }} data-testid="snap-target-indicator">
+      <circle
+        cx={cx}
+        cy={cy}
+        r={14}
+        fill="rgba(110, 231, 135, 0.18)"
+        stroke="#6ee787"
+        strokeWidth={2}
+      />
+      <circle cx={cx} cy={cy} r={5} fill="#6ee787" />
     </g>
   )
 }

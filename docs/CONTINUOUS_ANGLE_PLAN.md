@@ -352,11 +352,27 @@ helper converts pointer client coordinates to world-space points
 through the SVG's screen CTM. Playwright config sets
 `NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR=1` for smoke runs.
 
-##### Slice 4: free-placement drag. NOT STARTED.
+##### Slice 4: free-placement drag. IN FLIGHT.
 
-Drop a piece anywhere; nearest-neighbor query against unconnected
-endpoints in a snap radius (about 15 world units, 30 degrees) with
-soft pull so the dragged endpoint frame matches.
+PR on branch `claude/continuous-angle-stage-2-free-placement`. Merge
+commit recorded here when squashed onto main.
+
+`unconnectedEndpoints` / `findFreePlacementSnap` /
+`snapPieceToTarget` in `src/game/continuousAngleEdit.ts` provide the
+math layer: walk every piece's endpoints, filter to ones not
+connected via `framesConnect`, and soft-pull the dragged piece so a
+chosen endpoint lands antiparallel-aligned to the target. Snap
+radius defaults to 15 world units / 30 degrees, wider than the
+validator's 0.5-unit epsilon so the user sees the snap engage before
+the validator does. UI integration in `TrackEditor.tsx`: with the
+Select tool active and `CONTINUOUS_ANGLE_EDITOR_ENABLED` on,
+pointer-down on a piece records `pieceDrag` state; pointer-move past
+`CELL_SIZE / 4` upgrades to active drag mode and substitutes the
+live preview into `displayPieces`; pointer-up commits via
+`setPieces`. A `SnapTargetIndicator` lights up the target endpoint
+while the drag is in snap range. The flex-straight road overlay now
+accepts pointer events and carries `data-row` / `data-col` so the
+road itself is a grabbable click target.
 
 ##### Slice 5: long-press numeric input. NOT STARTED.
 

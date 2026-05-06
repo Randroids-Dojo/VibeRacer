@@ -478,6 +478,47 @@ test('track editor rotate handle pivots a selected piece around an endpoint', as
   ).toBeVisible()
 })
 
+test('track editor free-places a piece via drag with the select tool', async ({
+  page,
+}) => {
+  // Stage 2 Workstream B slice 4: with the continuous-angle editor
+  // flag on (set in playwright.config.ts so the build inlines it),
+  // dragging a placed piece while the Select tool is active moves the
+  // piece to the new position. The dragged piece's transform sits off
+  // the integer grid mid-drag and (at this small drag distance with
+  // no neighbor to snap to) commits as a non-projectable piece.
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  // Place a single straight at (0, 0).
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+
+  // Switch to the Select tool.
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+
+  const sourceCell = page.locator('g[data-row="0"][data-col="0"]')
+  const sourceBox = await sourceCell.boundingBox()
+  if (!sourceBox) throw new Error('source cell has no bounding box')
+  const sx = sourceBox.x + sourceBox.width / 2
+  const sy = sourceBox.y + sourceBox.height / 2
+
+  await page.mouse.move(sx, sy)
+  await page.mouse.down()
+  // Drag well past the click-vs-drag threshold (CELL_SIZE / 4 in world
+  // units, multiple SVG cells in screen units), to a position far from
+  // any existing piece so no snap engages.
+  await page.mouse.move(sx + 200, sy + 100, { steps: 8 })
+  await page.mouse.up()
+
+  // The drag should have produced a non-projectable piece visible
+  // through the overlay (no other pieces nearby to snap to). The
+  // overlay's data-non-projectable-piece-type attribute is the easy
+  // hit-target.
+  await expect(
+    page.locator('g[data-non-projectable-piece-type="straight"]'),
+  ).toBeVisible()
+})
+
 test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
   page,
 }) => {

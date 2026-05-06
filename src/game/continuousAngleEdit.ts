@@ -105,7 +105,7 @@ export function setPieceTransform(
 // dragged piece's endpoint has to come to a target endpoint before we
 // soft-pull onto it. Wider than `framesConnect`'s default validator
 // epsilon (0.5 world units / 2 degrees) because snap is a UX feedback
-// loop — the user has to see the snap engage from a reasonable
+// loop. The user has to see the snap engage from a reasonable
 // distance, then on commit the piece sits at exact alignment so the
 // validator's tighter epsilon is satisfied.
 export const FREE_PLACEMENT_SNAP_RADIUS = 15
