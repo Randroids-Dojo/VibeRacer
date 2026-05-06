@@ -1480,9 +1480,22 @@ export function TrackEditor({
                 // attrs) by passing an undefined piece to Cell so the
                 // original anchor cell looks empty. cellMap still has
                 // the piece for applyTool occupancy checks.
-                const renderedPiece =
-                  piece !== undefined && isV1Projectable(piece) ? piece : undefined
-                const isStart = key === startKey
+                // Pieces whose transform is non-projectable render their
+                // glyph and follow-the-piece visuals (selection rect,
+                // START label, checkpoint marker) via
+                // NonProjectablePieceOverlay at the rotated transform
+                // position. The cell at their original anchor looks
+                // empty so the indicators don't double-render in the
+                // wrong place.
+                const pieceVisuallyHere =
+                  piece === undefined || isV1Projectable(piece)
+                const renderedPiece = pieceVisuallyHere ? piece : undefined
+                const cellIsStart = pieceVisuallyHere && key === startKey
+                const cellIsSelected =
+                  pieceVisuallyHere &&
+                  selectedCells.has(selectedCellKey(r, c))
+                const cellHasCheckpoint =
+                  pieceVisuallyHere && checkpointKeys.has(key)
                 const badConnectorDir =
                   openConnectorIssue?.connectorRow === r &&
                   openConnectorIssue.connectorCol === c
@@ -1501,11 +1514,11 @@ export function TrackEditor({
                     x={x}
                     y={y}
                     piece={renderedPiece}
-                    isStart={isStart}
-                    hasCheckpoint={checkpointKeys.has(key)}
+                    isStart={cellIsStart}
+                    hasCheckpoint={cellHasCheckpoint}
                     decoration={decorationMap.get(key)}
-                    startExitDir={isStart ? startExitDir : null}
-                    isSelected={selectedCells.has(selectedCellKey(r, c))}
+                    startExitDir={cellIsStart ? startExitDir : null}
+                    isSelected={cellIsSelected}
                     isSelectionAnchor={
                       selectionAnchor?.row === r && selectionAnchor.col === c
                     }
@@ -1516,14 +1529,23 @@ export function TrackEditor({
                 )
               }),
             )}
-            {nonProjectablePieces.map((piece) => (
-              <NonProjectablePieceOverlay
-                key={`overlay-${piece.row}-${piece.col}`}
-                piece={piece}
-                colMin={colMin}
-                rowMin={rowMin}
-              />
-            ))}
+            {nonProjectablePieces.map((piece) => {
+              const overlayKey = cellKey(piece.row, piece.col)
+              const isStart = overlayKey === startKey
+              return (
+                <NonProjectablePieceOverlay
+                  key={`overlay-${piece.row}-${piece.col}`}
+                  piece={piece}
+                  colMin={colMin}
+                  rowMin={rowMin}
+                  isStart={isStart}
+                  isSelected={selectedCells.has(
+                    selectedCellKey(piece.row, piece.col),
+                  )}
+                  hasCheckpoint={checkpointKeys.has(overlayKey)}
+                />
+              )
+            })}
             {rotateHandlePiece !== null ? (
               <RotateHandles
                 piece={rotateHandlePiece}
@@ -2357,28 +2379,31 @@ function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
 // transform sits off the integer cell grid) at its actual world
 // position and continuous angle. `cellMap` keeps every piece (so
 // applyTool / erase / start / checkpoint actions still find off-grid
-// pieces by anchor cell), but the cell-loop hides their glyph by
-// passing `renderedPiece = undefined` to Cell whenever
-// `isV1Projectable(piece)` is false. The overlay is the only place
-// the rotated glyph shows. For grid-aligned pieces the Cell render
+// pieces by anchor cell), but the cell loop hides the glyph and the
+// piece-following indicators (background fill, glyph, selection rect,
+// START label, checkpoint marker) by passing
+// `renderedPiece = undefined` and the masked-off `cellIsStart` /
+// `cellIsSelected` / `cellHasCheckpoint` flags to Cell whenever
+// `isV1Projectable(piece)` is false. The overlay then renders all of
+// those visuals inside its rotated `<g>` so the selection rectangle,
+// START badge, and checkpoint marker follow the rotated piece, not
+// the original anchor cell. For grid-aligned pieces the Cell render
 // path is unchanged, so the existing snapshot wall and template
 // hashes stay pinned.
-//
-// Known limitation (tracked in docs/FOLLOWUPS.md as a Workstream B
-// follow-up): the START label and checkpoint marker still render on
-// the anchor cell via Cell, not on the rotated overlay glyph.
-// Visually that means a rotated start piece shows the START badge on
-// the empty anchor cell with the rotated road glyph nearby.
-// Acceptable for the first slice; mirroring the badges into the
-// overlay is a separate UX pass.
 function NonProjectablePieceOverlay({
   piece,
   colMin,
   rowMin,
+  isStart,
+  isSelected,
+  hasCheckpoint,
 }: {
   piece: Piece
   colMin: number
   rowMin: number
+  isStart: boolean
+  isSelected: boolean
+  hasCheckpoint: boolean
 }) {
   const t = transformOf(piece)
   // World coordinates are in CELL_SIZE units (20); SVG coordinates are
@@ -2405,7 +2430,61 @@ function NonProjectablePieceOverlay({
       data-col={piece.col}
       data-non-projectable-piece-type={piece.type}
     >
+      {/*
+        Cell-sized background rect mirroring Cell's piece-occupied fill.
+        Renders inside the rotated group so the piece-occupied tinted
+        background follows the rotation, giving a clear visual of where
+        the piece footprint actually sits.
+      */}
+      <rect
+        width={CELL}
+        height={CELL}
+        fill={isStart ? '#1f3a2a' : '#222e40'}
+        stroke={isStart ? '#6ee787' : '#2b3a50'}
+        strokeWidth={isStart ? 2 : 1}
+      />
       <PieceGlyph piece={piece} rotationDegOverride={0} />
+      {hasCheckpoint ? (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle
+            cx={CELL / 2}
+            cy={CELL / 2}
+            r={10}
+            fill="rgba(255, 179, 71, 0.18)"
+            stroke="#ffb347"
+            strokeWidth={2}
+          />
+          <path
+            d={`M ${CELL / 2 - 4} ${CELL / 2 + 10} L ${CELL / 2 - 4} ${CELL / 2 - 10} L ${CELL / 2 + 9} ${CELL / 2 - 6} L ${CELL / 2 - 4} ${CELL / 2 - 2}`}
+            fill="#ffb347"
+          />
+        </g>
+      ) : null}
+      {isStart ? (
+        <text
+          x={CELL / 2}
+          y={12}
+          textAnchor="middle"
+          fontSize={9}
+          fontWeight={700}
+          fill="#6ee787"
+          style={{ pointerEvents: 'none', letterSpacing: 1 }}
+        >
+          START
+        </text>
+      ) : null}
+      {isSelected ? (
+        <rect
+          x={3}
+          y={3}
+          width={CELL - 6}
+          height={CELL - 6}
+          fill="rgba(88, 166, 255, 0.16)"
+          stroke="#58a6ff"
+          strokeWidth={2}
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : null}
     </g>
   )
 }
