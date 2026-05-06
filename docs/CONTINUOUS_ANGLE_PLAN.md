@@ -372,10 +372,9 @@ while the drag is in snap range. The flex-straight road overlay now
 accepts pointer events and carries `data-row` / `data-col` so the
 road itself is a grabbable click target.
 
-##### Slice 5: long-press numeric input. IN FLIGHT.
+##### Slice 5: long-press numeric input. SHIPPED.
 
-PR on branch `claude/continuous-angle-stage-2-numeric-input`. Merge
-commit recorded here when squashed onto main.
+PR #107, squash-merged as `7e9419e`.
 
 A floating `NumericTransformPanel` opens whenever
 `numericEdit.pieceIdx` is set. Two paths set it: the selection
@@ -396,11 +395,49 @@ clicks Apply, and asserts the overlay's
 `data-non-projectable-piece-type="straight"` appears (a non-cardinal
 theta forces non-projectable rendering).
 
-##### Slice 6: reconciliation pass. NOT STARTED.
+##### Slice 6: reconciliation pass. IN FLIGHT.
 
-Detect loops whose last endpoint sits within a wider epsilon of the
-first and snap them exactly closed before save, so authors do not
-need to nudge the final piece onto the start frame manually.
+PR on branch `claude/continuous-angle-stage-2-loop-reconciliation`.
+Merge commit recorded here when squashed onto main.
+
+`findLoopReconciliation(pieces, radius?, angleRad?)` and
+`applyLoopReconciliation(pieces, reconciliation)` in
+`src/game/continuousAngleEdit.ts` detect when a chain has exactly
+two dangling endpoints within `LOOP_RECONCILIATION_RADIUS = 6` world
+units and `LOOP_RECONCILIATION_ANGLE_RAD = 8 degrees` of antiparallel,
+and produce a `snapPieceToTarget`-driven plan that aligns one of the
+two pieces' endpoint frames onto the other. The radius is wider than
+the validator's 0.5-unit / 2-degree epsilon so authoring drift is
+detected before the validator gives up; the angle is narrower than
+the free-placement snap's 30 degrees because the reconciled snap moves
+only one piece, so leaning past 8 degrees would rotate the moving
+piece enough to break its still-connected endpoint at the validator.
+
+The same PR fixed a sign bug in `snapPieceToTarget`: the heading-
+invariant inside one cardinal cell is `frame.theta + transform.theta
+= constant` (slope -1), not `frame.theta - transform.theta` (slope
++1). The earlier formulation only happened to work for cardinal
+targets because their residual is zero on both sides; non-cardinal
+targets came out with a `2 * residual` heading error. The free-
+placement drag path that already shipped in slice 4 also benefits.
+
+UI integration in `src/components/TrackEditor.tsx`: when
+`CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and the validator rejects the
+loop, the toolbar surfaces a Close loop button gated on
+`findLoopReconciliation` returning non-null. Clicking dispatches
+`applyLoopReconciliation` through `setPieces` so the move lands as a
+single undo step.
+
+Known limitation: in a closed loop where one piece was perturbed off
+its grid alignment, the reconciliation moves a neighbor to align with
+the dangling endpoint, which then moves that neighbor's other
+endpoint and breaks a downstream connection. The gap shifts around
+the loop rather than closing. The single-piece snap is still useful
+for OPEN chains the user is building piece-by-piece (the spec's
+intended scenario), where the moving piece sits at the chain end and
+its other endpoint is unconnected. The cascading / multi-piece
+distribute-drift case is queued as a follow-up; see
+`docs/FOLLOWUPS.md` for the slice 6 cascade follow-up.
 
 ##### Slice 7: OBB-vs-OBB overlap detection. NOT STARTED.
 
@@ -457,10 +494,12 @@ Shipped to main: Stage 1 (PR #101), Stage 2 Workstream A (PR #103
 merged as `9786404`), Stage 2 Workstream B foundation (PR #104 merged
 as `0b1255a`), Stage 2 Workstream B rendering + rotate handle (PR #105
 merged as `1fb7c61`), Stage 2 Workstream B free-placement drag (PR
-#106 merged as `ba1c54b`). Slice 5 (numeric input) is in flight on
-branch `claude/continuous-angle-stage-2-numeric-input`. The next
-slices are reconciliation pass and OBB-vs-OBB overlap (listed in
-order under "Stage 2 Workstream B" above). Before starting, read
+#106 merged as `ba1c54b`), Stage 2 Workstream B numeric Transform
+panel (PR #107 merged as `7e9419e`). Slice 6 (loop reconciliation) is
+in flight on branch `claude/continuous-angle-stage-2-loop-
+reconciliation`. The next slice is OBB-vs-OBB overlap (listed under
+"Stage 2 Workstream B" above), with a follow-up for cascading
+reconciliation when the user has perturbed a closed loop. Before starting, read
 `AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
 `PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
 the continuous-angle long-chain closure test in

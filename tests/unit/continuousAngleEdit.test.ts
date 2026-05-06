@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest'
 import {
   FREE_PLACEMENT_SNAP_RADIUS,
+  LOOP_RECONCILIATION_RADIUS,
+  applyLoopReconciliation,
   findFreePlacementSnap,
+  findLoopReconciliation,
   rotatePieceAroundEndpoint,
   rotateTransformAroundPoint,
   setPieceTransform,
@@ -400,6 +403,29 @@ describe('snapPieceToTarget', () => {
     expect(framesConnect(snappedEnds[1], targetFrame)).toBe(true)
   })
 
+  it('produces antiparallel headings for non-cardinal targets', () => {
+    // Regression for the slice 6 reconciliation case: when the target
+    // frame's tangent is non-cardinal, the result must still satisfy
+    // framesConnect (heading exactly antiparallel within float). The
+    // earlier formulation produced a `2 * residual` heading error
+    // because it assumed the dragged frame's heading tracks
+    // `transform.theta` with slope +1. `frameOfPortAtTransform` uses
+    // slope -1 within a cardinal cell.
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    const targetFrame = { x: 17, z: 22, theta: 0.4 }
+    const newTransform = snapPieceToTarget(dragged, 1, targetFrame)
+    const snapped = setPieceTransform(dragged, newTransform)
+    const snappedEnds = endpointsOf(snapped)
+    expect(snappedEnds[1].x).toBeCloseTo(targetFrame.x, 6)
+    expect(snappedEnds[1].z).toBeCloseTo(targetFrame.z, 6)
+    expect(framesConnect(snappedEnds[1], targetFrame)).toBe(true)
+  })
+
   it('preserves piece geometry (other endpoint stays a fixed offset away)', () => {
     const dragged = convertV1Piece({
       type: 'straight',
@@ -531,5 +557,108 @@ describe('setPieceTransform', () => {
     expect(placed.col).toBe(3)
     expect(placed.row).toBe(5)
     expect(placed.rotation).toBe(180)
+  })
+})
+
+describe('findLoopReconciliation', () => {
+  // A 3x2 stadium loop is the cleanest fixture: it has two straights
+  // long enough that perturbing one by an angle below the validator's
+  // tangent epsilon (so the kept connection survives) still drifts
+  // the OTHER endpoint past the validator's position epsilon,
+  // producing exactly the "two dangling endpoints near each other"
+  // case reconciliation handles. A 1x1 right90 square would not work
+  // because the corner piece is too short for that constraint.
+  function buildStadiumLoop(): Piece[] {
+    return [
+      convertV1Piece({ type: 'right90', row: 0, col: 0, rotation: 0 }),
+      convertV1Piece({ type: 'straight', row: 0, col: 1, rotation: 90 }),
+      convertV1Piece({ type: 'right90', row: 0, col: 2, rotation: 90 }),
+      convertV1Piece({ type: 'right90', row: 1, col: 2, rotation: 180 }),
+      convertV1Piece({ type: 'straight', row: 1, col: 1, rotation: 90 }),
+      convertV1Piece({ type: 'right90', row: 1, col: 0, rotation: 270 }),
+    ]
+  }
+
+  it('returns null when the chain has no dangling endpoints', () => {
+    expect(findLoopReconciliation(buildStadiumLoop())).toBeNull()
+  })
+
+  it('returns null when more than two endpoints are open', () => {
+    // Drop the last two pieces so several dangling endpoints exist.
+    const pieces = buildStadiumLoop().slice(0, 4)
+    expect(findLoopReconciliation(pieces)).toBeNull()
+  })
+
+  it('returns null when the gap is wider than the reconciliation radius', () => {
+    // Drop the last piece, making a 5-piece chain. The two dangling
+    // endpoints are roughly one cell apart, well outside the
+    // reconciliation radius.
+    const pieces = buildStadiumLoop().slice(0, 5)
+    expect(findLoopReconciliation(pieces)).toBeNull()
+  })
+
+  it('snaps a slightly-perturbed last piece back to close the loop', () => {
+    // Take a closed stadium, then rotate pieces[4] (the bottom
+    // straight) by 1.9 degrees around its endpoint connected to
+    // pieces[3] (the bottom-right right90). The angle stays below
+    // DEFAULT_FRAME_EPSILON_THETA = 2 degrees so the pivot endpoint's
+    // tangent still passes framesConnect against pieces[3]; the
+    // straight's length (CELL_SIZE = 20 between its two endpoints)
+    // means the OTHER endpoint drifts ~0.66 world units, past the
+    // validator's 0.5-unit position epsilon but well within
+    // LOOP_RECONCILIATION_RADIUS = 6. A right90 corner is too short
+    // (~14 units between endpoints) to drift past 0.5 within the 2-
+    // degree tangent budget, which is why the test perturbs the
+    // straight.
+    const pieces = buildStadiumLoop()
+    const angle = (1.9 * Math.PI) / 180
+    const beforeOpen = unconnectedEndpoints(pieces)
+    expect(beforeOpen.length).toBe(0)
+    const perturbedIdx = 4
+    const perturbedEnds = endpointsOf(pieces[perturbedIdx])
+    const neighborEnds = endpointsOf(pieces[perturbedIdx - 1])
+    const pivotIdx =
+      framesConnect(perturbedEnds[0], neighborEnds[0]) ||
+      framesConnect(perturbedEnds[0], neighborEnds[1])
+        ? 0
+        : 1
+    pieces[perturbedIdx] = rotatePieceAroundEndpoint(
+      pieces[perturbedIdx],
+      pivotIdx,
+      angle,
+    )
+    const afterOpen = unconnectedEndpoints(pieces)
+    expect(afterOpen.length).toBe(2)
+    const reconciliation = findLoopReconciliation(pieces)
+    expect(reconciliation).not.toBeNull()
+    expect(reconciliation!.gap).toBeGreaterThan(0.5)
+    expect(reconciliation!.gap).toBeLessThan(LOOP_RECONCILIATION_RADIUS)
+    // Apply and confirm the previously-broken endpoint pair now
+    // satisfies framesConnect.
+    const reconciled = applyLoopReconciliation(pieces, reconciliation!)
+    const reconciledMoverEnds = endpointsOf(reconciled[reconciliation!.pieceIdx])
+    const reconciledTargetEnds = endpointsOf(reconciled[reconciliation!.targetPieceIdx])
+    expect(
+      framesConnect(
+        reconciledMoverEnds[reconciliation!.draggedEndpointIdx],
+        reconciledTargetEnds[reconciliation!.targetEndpointIdx],
+      ),
+    ).toBe(true)
+  })
+
+  it('returns null when dangling endpoints are antiparallel-incompatible', () => {
+    // Build a "V" out of two straights at the origin pointing in
+    // similar directions (parallel, not antiparallel). They have two
+    // dangling endpoints in close proximity but the tangents do not
+    // form a connector.
+    const a = setPieceTransform(
+      convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 }),
+      { x: 0, z: 0, theta: 0 },
+    )
+    const b = setPieceTransform(
+      convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 }),
+      { x: 1, z: 0, theta: 0 },
+    )
+    expect(findLoopReconciliation([a, b])).toBeNull()
   })
 })

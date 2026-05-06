@@ -519,6 +519,45 @@ test('track editor free-places a piece via drag with the select tool', async ({
   ).toBeVisible()
 })
 
+test('track editor surfaces a Close Loop button when two dangling endpoints are within snap range', async ({
+  page,
+}) => {
+  // Stage 2 Workstream B slice 6: with the continuous-angle editor
+  // flag on (set in playwright.config.ts so the build inlines it),
+  // rotating one straight by 1.9 degrees around its west endpoint
+  // (via the numeric Transform panel; col / row / theta below are
+  // the pre-computed values for that pivot) leaves the loop with
+  // exactly two dangling endpoints separated by CELL_SIZE * sin
+  // 1.9deg ~= 0.66 world units, past the validator's 0.5-unit
+  // position epsilon but well inside LOOP_RECONCILIATION_RADIUS = 6.
+  // The "Close loop" button surfaces on the toolbar in that state.
+  // The full loop closure cascade (snapping one pair shut moves the
+  // gap downstream by one connection in a closed loop) is exercised
+  // by the unit tests in tests/unit/continuousAngleEdit.test.ts; the
+  // smoke pins the UI wiring only.
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: /Starter oval/ }).click()
+  await expect(page.getByText('valid closed loop')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="1"]').click()
+  await page.getByRole('button', { name: 'Transform', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit piece transform' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('col').fill('0.99973')
+  await dialog.getByLabel('row').fill('0.0166')
+  await dialog.getByLabel('theta (deg)').fill('91.9')
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByText('valid closed loop')).toHaveCount(0)
+  await expect(
+    page.getByRole('button', { name: 'Close loop', exact: true }),
+  ).toBeVisible()
+})
+
 test('track editor numeric Transform panel rotates a piece by typed degrees', async ({
   page,
 }) => {

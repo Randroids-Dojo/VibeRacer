@@ -23,7 +23,9 @@ import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
 import {
+  applyLoopReconciliation,
   findFreePlacementSnap,
+  findLoopReconciliation,
   rotatePieceAroundEndpoint,
   setPieceTransform,
   unconnectedEndpoints,
@@ -426,6 +428,17 @@ export function TrackEditor({
   const LONG_PRESS_MS = 500
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
+  // Stage 2 Workstream B slice 6: when the loop fails to validate but
+  // the chain has exactly two dangling endpoints close to each other,
+  // surface a Close Loop button that snaps them shut. Recomputed on
+  // every pieces change because the chain shape determines whether
+  // reconciliation is offered. Cheap relative to the validator since
+  // it walks endpoints once.
+  const loopReconciliation = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
+    if (validation.ok) return null
+    return findLoopReconciliation(pieces)
+  }, [pieces, validation.ok])
   const openConnectorIssue =
     validation.issue?.kind === 'openConnector' ? validation.issue : null
   const duplicateIssue =
@@ -2363,6 +2376,19 @@ export function TrackEditor({
               moodActive ? (
                 <span style={advancedDot} />
               ) : null}
+            </button>
+          ) : null}
+          {loopReconciliation !== null ? (
+            <button
+              onClick={() =>
+                setPieces((prev) =>
+                  applyLoopReconciliation(prev, loopReconciliation),
+                )
+              }
+              style={btnGhost}
+              title={`Snap a ${loopReconciliation.gap.toFixed(1)}-unit gap shut`}
+            >
+              Close loop
             </button>
           ) : null}
           <button
