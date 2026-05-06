@@ -32,6 +32,7 @@ import {
   type FreePlacementSnap,
 } from '@/game/continuousAngleEdit'
 import { cardinalTurnsOfTheta } from '@/game/pieceFrames'
+import { findOverlappingPiecePairs } from '@/game/pieceObb'
 import { footprintCellKeys } from '@/game/trackFootprint'
 import { CELL_SIZE } from '@/game/cellSize'
 import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
@@ -442,6 +443,19 @@ export function TrackEditor({
     if (validation.ok) return null
     return findLoopReconciliation(pieces)
   }, [pieces, validation.ok])
+  // Stage 2 Workstream B slice 7: oriented-bounding-box overlap
+  // detection. Surface a warning in the status row when two pieces'
+  // OBBs overlap so authors notice cases the validator's duplicate-
+  // cell check does not catch. Gated by the editor flag because OBB
+  // overlap matters for non-projectable pieces (the cell-equality
+  // check handles grid-aligned pieces); a stricter "block save on
+  // OBB overlap" pass would change behavior for grid-aligned tracks
+  // too via the multi-cell footprints, so this slice ships warnings
+  // only.
+  const obbOverlaps = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return []
+    return findOverlappingPiecePairs(pieces)
+  }, [pieces])
   const openConnectorIssue =
     validation.issue?.kind === 'openConnector' ? validation.issue : null
   const duplicateIssue =
@@ -2318,6 +2332,18 @@ export function TrackEditor({
           {openConnectorIssue ? (
             <span style={invalidStatus}>
               needs matching connector at {openConnectorIssue.targetRow},{openConnectorIssue.targetCol}
+            </span>
+          ) : null}
+          {obbOverlaps.length > 0 ? (
+            <span
+              style={invalidStatus}
+              data-testid="obb-overlap-warning"
+              title={obbOverlaps
+                .map((p) => `pieces ${p.a} and ${p.b}`)
+                .join(', ')}
+            >
+              {obbOverlaps.length} overlapping{' '}
+              {obbOverlaps.length === 1 ? 'piece pair' : 'piece pairs'}
             </span>
           ) : null}
           {checkpointCount !== null ? (
