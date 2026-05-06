@@ -1592,6 +1592,16 @@ export function TrackEditor({
                 )
               }),
             )}
+            {displayPieces
+              .filter((p) => p.type === 'flexStraight')
+              .map((piece) => (
+                <FlexStraightRoadOverlay
+                  key={`flex-road-${piece.row}-${piece.col}`}
+                  piece={piece}
+                  colMin={colMin}
+                  rowMin={rowMin}
+                />
+              ))}
             {nonProjectablePieces.map((piece) => {
               const overlayKey = cellKey(piece.row, piece.col)
               const isStart = overlayKey === startKey
@@ -2454,6 +2464,67 @@ function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
 // the original anchor cell. For grid-aligned pieces the Cell render
 // path is unchanged, so the existing snapshot wall and template
 // hashes stay pinned.
+// Stage 2 Workstream B: paint the full flex-straight road from entry to
+// exit. PieceGlyph only renders a tilted line inside the anchor cell,
+// so a flex straight with a multi-cell offset (default `dr = -3, dc = 1`)
+// would otherwise look like a single-cell piece in the editor while its
+// connector endpoints (and the rotate-handle rings) actually live
+// several cells away. This overlay reads the world-space endpoint
+// frames from `endpointsOf(piece)` (the same source the rotate handles
+// use), so the visible road and the rings always agree on where the
+// piece sits.
+//
+// Renders for both v1-projectable (rotation 0/90/180/270) and
+// non-projectable flex straights. The line is straight from entry to
+// exit, matching the in-game road geometry built by
+// `sampleFlexStraightLocal`.
+function FlexStraightRoadOverlay({
+  piece,
+  colMin,
+  rowMin,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+}) {
+  const endpoints = endpointsOf(piece)
+  const entry = endpoints[0]
+  const exit = endpoints[1]
+  if (entry === undefined || exit === undefined) return null
+  const ex = (entry.x / CELL_SIZE - colMin) * CELL
+  const ey = (entry.z / CELL_SIZE - rowMin) * CELL
+  const xx = (exit.x / CELL_SIZE - colMin) * CELL
+  const xy = (exit.z / CELL_SIZE - rowMin) * CELL
+  const road = '#4a5a70'
+  const stroke = '#ffd36b'
+  const roadWidth = CELL * 0.4
+  return (
+    <g
+      style={{ pointerEvents: 'none' }}
+      data-flex-straight-road-anchor={`${piece.row},${piece.col}`}
+    >
+      <line
+        x1={ex}
+        y1={ey}
+        x2={xx}
+        y2={xy}
+        stroke={road}
+        strokeWidth={roadWidth}
+        strokeLinecap="butt"
+      />
+      <line
+        x1={ex}
+        y1={ey}
+        x2={xx}
+        y2={xy}
+        stroke={stroke}
+        strokeWidth={2}
+        strokeDasharray="4 4"
+      />
+    </g>
+  )
+}
+
 function NonProjectablePieceOverlay({
   piece,
   colMin,
