@@ -7,6 +7,7 @@ import {
 } from '@/game/continuousAngleEdit'
 import { convertV1Piece } from '@/lib/trackVersion'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
+import { footprintCells } from '@/game/trackFootprint'
 import { CELL_SIZE } from '@/game/cellSize'
 import type { Piece } from '@/lib/schemas'
 
@@ -151,6 +152,106 @@ describe('translatePiece', () => {
     expect(moved.col).toBe(1)
     expect(moved.row).toBe(0)
     expect(moved.transform).toEqual({ x: CELL_SIZE, z: 0, theta: 0 })
+  })
+})
+
+describe('custom footprint rotation', () => {
+  // Stage 2 Workstream B regression (PR #104 review): when the editor's
+  // continuous-angle helpers change a piece's transform, any custom
+  // `piece.footprint` array must rotate alongside the transform so
+  // `footprintCells()`, duplicate-cell validation, hit-testing, and
+  // canonical hashing all see the piece occupying the right world
+  // cells. Without this a 90-degree rotate-around-endpoint would mutate
+  // the transform while leaving footprint offsets keyed off the prior
+  // orientation, silently corrupting validation.
+  it('rotates a custom footprint by the cardinal turn delta', () => {
+    // A two-cell horizontal footprint at rotation 0. After rotating to
+    // theta = PI/2 (one cardinal turn CW) the footprint should also
+    // rotate: (0, 0) stays put, (0, 1) maps to (1, 0).
+    const piece: Piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      footprint: [
+        { dr: 0, dc: 0 },
+        { dr: 0, dc: 1 },
+      ],
+    })
+    const before = footprintCells(piece)
+    expect(before).toEqual([
+      { row: 0, col: 0 },
+      { row: 0, col: 1 },
+    ])
+    const rotated = setPieceTransform(piece, {
+      x: 0,
+      z: 0,
+      theta: Math.PI / 2,
+    })
+    const after = footprintCells(rotated)
+    expect(after).toEqual([
+      { row: 0, col: 0 },
+      { row: 1, col: 0 },
+    ])
+  })
+
+  it('leaves the footprint untouched when the cardinal turn does not change', () => {
+    // A non-cardinal rotation (residual 0.05 rad on top of the same
+    // cardinal multiple) should keep the cardinal-snapped footprint
+    // bit-identical, since the snapped turn count is unchanged.
+    const piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      footprint: [
+        { dr: 0, dc: 0 },
+        { dr: 0, dc: 1 },
+      ],
+    })
+    const rotated = setPieceTransform(piece, { x: 0, z: 0, theta: 0.05 })
+    expect(rotated.footprint).toEqual(piece.footprint)
+  })
+
+  it('rotates by the full cardinal delta for a 270-degree turn', () => {
+    // PI * 3 / 2 is three CW turns from rotation 0. (0, 1) should land
+    // at (-1, 0) after three rotations: (0,1) -> (1,0) -> (0,-1) ->
+    // (-1, 0).
+    const piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      footprint: [
+        { dr: 0, dc: 0 },
+        { dr: 0, dc: 1 },
+      ],
+    })
+    const rotated = setPieceTransform(piece, {
+      x: 0,
+      z: 0,
+      theta: (3 * Math.PI) / 2,
+    })
+    expect(footprintCells(rotated)).toEqual([
+      { row: -1, col: 0 },
+      { row: 0, col: 0 },
+    ])
+  })
+
+  it('leaves a default (undefined) footprint untouched', () => {
+    const piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    expect(piece.footprint).toBeUndefined()
+    const rotated = setPieceTransform(piece, {
+      x: 0,
+      z: 0,
+      theta: Math.PI / 2,
+    })
+    expect(rotated.footprint).toBeUndefined()
   })
 })
 

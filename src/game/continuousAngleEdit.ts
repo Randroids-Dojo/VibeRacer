@@ -20,6 +20,9 @@
 import type { Piece, PieceTransform } from '@/lib/schemas'
 import { convertV1Piece } from '@/lib/trackVersion'
 import { endpointsOf, transformOf } from './pieceGeometry'
+import { cardinalTurnsOfTheta } from './pieceFrames'
+import { thetaOfPiece } from './track'
+import { rotateFootprintClockwise } from './trackFootprint'
 
 export interface WorldPoint {
   x: number
@@ -95,8 +98,25 @@ export function setPieceTransform(
 
 // Internal: replace the piece's transform and run the converter so
 // legacy fields are re-derived for v1-projectable results and left
-// untouched otherwise. The result satisfies the runtime invariant
-// "transform is authoritative".
+// untouched otherwise. Custom multi-cell footprints (`piece.footprint`)
+// are rotated by the cardinal turn delta between the old and new
+// transform so `footprintCells()`, duplicate-cell validation, hit
+// testing, and canonical hashing all see the piece occupying the right
+// world cells. Without this step a rotation would mutate the transform
+// while leaving footprint offsets keyed off the prior orientation,
+// silently corrupting validation. Pieces with default footprints
+// (`piece.footprint === undefined`) skip the loop because
+// `defaultFootprintForPiece` already snaps to the new
+// `transform.theta` via `snappedRotationFromPiece` (PR #103).
 function applyTransform(piece: Piece, transform: PieceTransform): Piece {
-  return convertV1Piece({ ...piece, transform })
+  const oldTurns = cardinalTurnsOfTheta(thetaOfPiece(piece))
+  const newTurns = cardinalTurnsOfTheta(transform.theta)
+  const turnDelta = (((newTurns - oldTurns) % 4) + 4) % 4
+  let footprint = piece.footprint
+  if (footprint !== undefined && footprint.length > 0 && turnDelta !== 0) {
+    for (let i = 0; i < turnDelta; i++) {
+      footprint = rotateFootprintClockwise(footprint)
+    }
+  }
+  return convertV1Piece({ ...piece, transform, footprint })
 }
