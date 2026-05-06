@@ -17,26 +17,34 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 ## Continuous-angle migration
 
 Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
-shipped. See `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative
-status, file map, and the contract that pinned Stage 1 (Rule 1 and Rule
-2 are reproduced inside the plan). The remaining work lives ahead in
-Stage 2 Workstream B and Stage 3.
+shipped. Stage 2 Workstream B's foundation slice (feature flag plus
+piece-level transform mutations) is in flight on PR #104. See
+`docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
+slicing plan for Workstream B, the file map, and the contracts that
+pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
+reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX
+### Stage 2 Workstream B: editor UX (slices 2 through 7)
 
-- Rotate handle on the editor selection: drag rotates the entire piece
-  around an endpoint, preserving connection at the other end.
-- Free-placement mode behind a feature flag: nearest-neighbor query
+- Slice 2: rendering refactor in `TrackEditor.tsx` so non-projectable
+  pieces draw at their actual `transform.x / z / theta` rather than
+  the cell-snapped position. Prerequisite for every UI slice that
+  follows.
+- Slice 3: rotate handle on the editor selection: drag rotates the
+  entire piece around an endpoint, preserving the chosen endpoint
+  frame and updating `transform.theta` continuously.
+- Slice 4: free-placement drag behind the flag: nearest-neighbor query
   against unconnected endpoints in a snap radius (about 15 world units,
   30 degrees) with soft pull so the dragged endpoint frame matches.
-- Optional numeric input on long-press for `x, z, theta` for power
-  users.
-- Reconciliation pass for nearly-closed continuous-angle loops: detect
-  "loop closes within wider epsilon" and snap the last endpoint exactly
-  to the first before save.
-- OBB-vs-OBB overlap detection: spatial hash plus AABB pre-check before
-  full OBB. The footprint contract stays a list of cells; arbitrary-angle
-  pieces enumerate cells via the existing supercover.
+- Slice 5: optional numeric input on long-press for `x, z, theta` for
+  power users.
+- Slice 6: reconciliation pass for nearly-closed continuous-angle loops:
+  detect "loop closes within wider epsilon" and snap the last endpoint
+  exactly to the first before save.
+- Slice 7: OBB-vs-OBB overlap detection: spatial hash plus AABB
+  pre-check before full OBB. The footprint contract stays a list of
+  cells; arbitrary-angle pieces enumerate cells via the existing
+  supercover.
 
 ### Stage 3
 

@@ -294,25 +294,70 @@ What landed:
   bit-equal between `theta = PI/2` and `theta = 5*PI/2`. The original
   v1-projectable closure test still reports zero drift exactly.
 
-#### Stage 2 Workstream B: editor UX. NOT STARTED.
+#### Stage 2 Workstream B: editor UX. IN PROGRESS.
 
-- Translate handle (already exists for selection drag).
-- Rotate handle: a small ring around an endpoint. Drag rotates the
-  entire piece around that endpoint, preserving connection at the other
-  end. This is the key affordance for "I want this straight at exactly
-  this angle".
-- Free-placement mode: drop a piece anywhere; nearest-neighbor query
-  against unconnected endpoints in a snap radius (~15 world units, 30
-  degrees); soft pull rotates and translates so the dragged endpoint
-  frame matches exactly.
-- Optional numeric input on long-press for `x, z, theta`. Power users.
-- Feature-flag gated. Internal testing without exposing it.
-- Reconciliation pass for nearly-closed continuous-angle loops: detect
-  "loop closes within wider epsilon" and snap the last endpoint exactly
-  to the first before save.
-- OBB-vs-OBB overlap detection: spatial hash + AABB pre-check before
-  full OBB. Footprint contract stays a list of cells; arbitrary-angle
-  pieces enumerate cells via the existing supercover.
+Workstream B is large enough that it ships as a series of follow-up
+PRs, each independently reviewable. The first slice (the math
+foundation) is open as PR #104; the remaining slices are listed below
+in the order they will land.
+
+##### Slice 1: foundation. PR #104.
+
+`src/lib/editorFeatureFlags.ts` exports
+`CONTINUOUS_ANGLE_EDITOR_ENABLED`, read from
+`NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR` with a truthy-string parse so
+missing values default to off. The `NEXT_PUBLIC_*` value is baked into
+the client bundle at build time, so flipping it on requires a redeploy
+(acceptable for the staged rollout).
+
+`src/game/continuousAngleEdit.ts` exports the four piece-level
+mutations the rotate handle and free-placement drag will dispatch:
+`rotateTransformAroundPoint`, `rotatePieceAroundEndpoint`,
+`translatePiece`, `setPieceTransform`. Each runs the v1 to v2 converter
+on its result so legacy `(row, col, rotation)` stay consistent for
+v1-projectable outputs.
+
+##### Slice 2: rendering refactor. NOT STARTED.
+
+Today's `TrackEditor.tsx` renders pieces inside a per-cell `<g>` keyed
+on integer `(row, col)`, so a non-projectable piece that has been
+rotated to a non-cardinal `transform.theta` would still render at the
+cell-snapped position and rotation. Slice 2 introduces a piece-overlay
+group that draws each piece at `(transform.x, transform.z,
+transform.theta)` with the correct world-to-SVG mapping, so the rotate
+handle in slice 3 has something visually correct to act on.
+
+##### Slice 3: rotate handle. NOT STARTED.
+
+Small SVG ring at each endpoint of the selected piece when the flag is
+on. Pointer-down on the ring captures the pointer, pointer-move
+computes the angular delta of the cursor relative to the endpoint, and
+the displayed piece rotates live via `rotatePieceAroundEndpoint`.
+Pointer-up commits the new transform.
+
+##### Slice 4: free-placement drag. NOT STARTED.
+
+Drop a piece anywhere; nearest-neighbor query against unconnected
+endpoints in a snap radius (about 15 world units, 30 degrees) with
+soft pull so the dragged endpoint frame matches.
+
+##### Slice 5: long-press numeric input. NOT STARTED.
+
+Power-user affordance: long-press a piece to open a small panel that
+edits `transform.x`, `transform.z`, and `transform.theta` directly.
+
+##### Slice 6: reconciliation pass. NOT STARTED.
+
+Detect loops whose last endpoint sits within a wider epsilon of the
+first and snap them exactly closed before save, so authors do not
+need to nudge the final piece onto the start frame manually.
+
+##### Slice 7: OBB-vs-OBB overlap detection. NOT STARTED.
+
+Spatial hash plus AABB pre-check before full OBB. The footprint
+contract stays a list of cells; arbitrary-angle pieces enumerate cells
+via the existing supercover, and OBB-vs-OBB catches the geometry the
+cell projection misses.
 
 ### Stage 3: flip the flag. NOT STARTED.
 
@@ -358,16 +403,16 @@ What landed:
 
 ## Picking up where this left off
 
-Stage 1 (PR #101) and Stage 2 Workstream A (the runtime migration on
-branch `claude/continuous-angle-stage-2-runtime`) have shipped. The
-next slice is Stage 2 Workstream B: the editor UX behind a feature
-flag (rotate handle, free placement, snap-radius nearest-neighbor
-matching, optional numeric input, reconciliation pass for nearly-closed
-loops, OBB-vs-OBB overlap). Before starting, read `AGENTS.md`, this
-plan, `FOLLOWUPS.md`, and the most recent `PROGRESS_LOG` entry; the
-templates and Stage 0.5 snapshot wall plus the new continuous-angle
-long-chain closure test in `tests/unit/track.test.ts` remain the
-load-bearing tests.
+Stage 1 (PR #101) and Stage 2 Workstream A (PR #103, merged as
+`9786404`) have shipped. Stage 2 Workstream B's foundation slice is
+in flight on PR #104. The next slices are listed under "Stage 2
+Workstream B" above; pick them up in order (rendering refactor first,
+then rotate handle, then free-placement drag, then numeric input,
+reconciliation, and OBB-vs-OBB overlap). Before starting, read
+`AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
+`PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
+the continuous-angle long-chain closure test in
+`tests/unit/track.test.ts` remain the load-bearing tests.
 
 The historical Stage 1 ten-step plan below is preserved for reference.
 A fresh session should not re-implement it; the work shipped in PR

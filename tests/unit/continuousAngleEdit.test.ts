@@ -46,7 +46,10 @@ describe('rotatePieceAroundEndpoint', () => {
       rotation: 0,
     })
     const before = endpointsOf(piece)
-    const pivotIndex: number = 1
+    // Rotate around endpoint 1 (the north exit). Endpoint 0 is the
+    // south entry that should swing under the rotation.
+    const pivotIndex = 1
+    const otherIdx = 0
     const pivot = before[pivotIndex]
     const delta = (14 * Math.PI) / 180
     const rotated = rotatePieceAroundEndpoint(piece, pivotIndex, delta)
@@ -55,7 +58,6 @@ describe('rotatePieceAroundEndpoint', () => {
     expect(after[pivotIndex].z).toBeCloseTo(pivot.z, 9)
     // The OTHER endpoint must rotate. Distance from pivot must be
     // preserved (rigid rotation), but position must differ from before.
-    const otherIdx = pivotIndex === 0 ? 1 : 0
     const distBefore = Math.hypot(
       before[otherIdx].x - pivot.x,
       before[otherIdx].z - pivot.z,
