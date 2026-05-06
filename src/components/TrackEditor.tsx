@@ -21,8 +21,10 @@ import {
 } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
-import { isV1Projectable, transformOf } from '@/game/pieceGeometry'
+import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
+import { rotatePieceAroundEndpoint } from '@/game/continuousAngleEdit'
 import { CELL_SIZE } from '@/game/cellSize'
+import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
 import {
   TIME_OF_DAY_LABELS,
   TIME_OF_DAY_NAMES,
@@ -215,6 +217,31 @@ function shortHash(hash: string): string {
   return hash.slice(0, 8)
 }
 
+// Convert a client (mouse / touch) coordinate to a world-space point in
+// CELL_SIZE units. Returns null when the SVG has no current screen CTM
+// (jsdom or before-first-render cases). Used by the rotate-handle drag
+// handlers to map pointer positions to the same world frame the piece
+// transforms live in.
+function clientToWorld(
+  svgEl: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  colMin: number,
+  rowMin: number,
+): { x: number; z: number } | null {
+  const ctm = svgEl.getScreenCTM()
+  if (ctm === null) return null
+  const inv = ctm.inverse()
+  const pt = svgEl.createSVGPoint()
+  pt.x = clientX
+  pt.y = clientY
+  const svgPt = pt.matrixTransform(inv)
+  return {
+    x: (svgPt.x / CELL + colMin) * CELL_SIZE,
+    z: (svgPt.y / CELL + rowMin) * CELL_SIZE,
+  }
+}
+
 export function TrackEditor({
   slug,
   initialPieces,
@@ -306,11 +333,25 @@ export function TrackEditor({
   const [templatePanelOpen, setTemplatePanelOpen] = useState(false)
   const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
   // Tracks an active two-finger pinch gesture. Null when no pinch is active.
   const pinchRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     startDistance: number
     startZoom: number
+  } | null>(null)
+  // Stage 2 Workstream B rotate handle: state for an active rotate drag.
+  // When non-null, the editor swaps `pieces[pieceIdx]` with `preview` for
+  // rendering so the user sees the rotation live. On pointer up the
+  // preview is committed via `setPieces`. Hidden behind
+  // `CONTINUOUS_ANGLE_EDITOR_ENABLED`.
+  const [rotateDrag, setRotateDrag] = useState<{
+    pieceIdx: number
+    pivotIndex: number
+    pivotWorld: { x: number; z: number }
+    startCursorAngle: number
+    startPiece: Piece
+    preview: Piece
   } | null>(null)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
@@ -332,6 +373,16 @@ export function TrackEditor({
   const renderedWidth = baseWidth * zoom
   const renderedHeight = baseHeight * zoom
 
+  // While a rotate-handle drag is in flight, `displayPieces` substitutes
+  // the preview piece for the original at `rotateDrag.pieceIdx` so the
+  // editor renders the rotation live without committing it to history
+  // until pointer up. The committed `pieces` array stays untouched until
+  // commit, which keeps undo / redo and validation idempotent.
+  const displayPieces = useMemo(() => {
+    if (rotateDrag === null) return pieces
+    return pieces.map((p, i) => (i === rotateDrag.pieceIdx ? rotateDrag.preview : p))
+  }, [pieces, rotateDrag])
+
   // Cell-keyed map: only v1-projectable pieces (those whose transform
   // snaps exactly to the integer grid) live here. Non-projectable pieces
   // (rotated to a non-cardinal angle by the Stage 2 rotate handle, or
@@ -339,14 +390,14 @@ export function TrackEditor({
   // world transform rather than the stale cell snapshot.
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
-    for (const p of pieces) {
+    for (const p of displayPieces) {
       if (isV1Projectable(p)) m.set(cellKey(p.row, p.col), p)
     }
     return m
-  }, [pieces])
+  }, [displayPieces])
   const nonProjectablePieces = useMemo(
-    () => pieces.filter((p) => !isV1Projectable(p)),
-    [pieces],
+    () => displayPieces.filter((p) => !isV1Projectable(p)),
+    [displayPieces],
   )
 
   const startKey =
@@ -356,6 +407,19 @@ export function TrackEditor({
     () => countSelectedPieces(pieces, selectedCells),
     [pieces, selectedCells],
   )
+
+  // Stage 2 Workstream B: when the continuous-angle editor flag is on
+  // and exactly one piece is selected, surface rotate-handle rings at
+  // its endpoints. We use `displayPieces` so the live preview during a
+  // drag drives the ring positions, not the committed pieces.
+  const rotateHandlePiece = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
+    if (selectedPieceCount !== 1) return null
+    for (const p of displayPieces) {
+      if (selectedCells.has(selectedCellKey(p.row, p.col))) return p
+    }
+    return null
+  }, [displayPieces, selectedCells, selectedPieceCount])
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
@@ -662,6 +726,101 @@ export function TrackEditor({
       pinchRef.current = null
     }
   }, [])
+
+  // Stage 2 Workstream B rotate handle. Pointer-down on a handle ring
+  // captures the pointer on the ring element so subsequent move / up
+  // events fire on it even if the cursor leaves the small circle. The
+  // editor stores the rotate-drag state and re-renders with the live
+  // preview swapped in for `rotateDrag.pieceIdx` until pointer up.
+  const handleRotatePointerDown = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>, pivotIndex: number) => {
+      if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
+      const svgEl = svgRef.current
+      if (svgEl === null) return
+      const cellKeyForRotate = Array.from(selectedCells)[0]
+      if (cellKeyForRotate === undefined) return
+      const idx = pieces.findIndex(
+        (p) => selectedCellKey(p.row, p.col) === cellKeyForRotate,
+      )
+      if (idx === -1) return
+      const piece = pieces[idx]
+      const endpoints = endpointsOf(piece)
+      const pivot = endpoints[pivotIndex]
+      if (pivot === undefined) return
+      const cursor = clientToWorld(
+        svgEl,
+        e.clientX,
+        e.clientY,
+        colMin,
+        rowMin,
+      )
+      if (cursor === null) return
+      e.stopPropagation()
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        // setPointerCapture can throw in jsdom or in browsers when the
+        // pointer is already captured elsewhere. Fall back to no capture;
+        // pointer-move and pointer-up still fire on the SVG so the drag
+        // remains usable.
+      }
+      setRotateDrag({
+        pieceIdx: idx,
+        pivotIndex,
+        pivotWorld: { x: pivot.x, z: pivot.z },
+        startCursorAngle: Math.atan2(cursor.z - pivot.z, cursor.x - pivot.x),
+        startPiece: piece,
+        preview: piece,
+      })
+    },
+    [pieces, selectedCells, colMin, rowMin],
+  )
+
+  const handleRotatePointerMove = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (rotateDrag === null) return
+      const svgEl = svgRef.current
+      if (svgEl === null) return
+      const cursor = clientToWorld(
+        svgEl,
+        e.clientX,
+        e.clientY,
+        colMin,
+        rowMin,
+      )
+      if (cursor === null) return
+      const currentAngle = Math.atan2(
+        cursor.z - rotateDrag.pivotWorld.z,
+        cursor.x - rotateDrag.pivotWorld.x,
+      )
+      const delta = currentAngle - rotateDrag.startCursorAngle
+      const preview = rotatePieceAroundEndpoint(
+        rotateDrag.startPiece,
+        rotateDrag.pivotIndex,
+        delta,
+      )
+      setRotateDrag({ ...rotateDrag, preview })
+    },
+    [rotateDrag, colMin, rowMin],
+  )
+
+  const handleRotatePointerUp = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (rotateDrag === null) return
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // No-op; capture may already have ended.
+      }
+      const finalPreview = rotateDrag.preview
+      const idx = rotateDrag.pieceIdx
+      setPieces((prev) =>
+        prev.map((p, i) => (i === idx ? finalPreview : p)),
+      )
+      setRotateDrag(null)
+    },
+    [rotateDrag, setPieces],
+  )
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     // Suppress the click that would otherwise fire after a pinch gesture
@@ -1155,6 +1314,7 @@ export function TrackEditor({
       <div style={gridOuter}>
         <div style={gridWrap} ref={gridContainerRef}>
           <svg
+            ref={svgRef}
             width={renderedWidth}
             height={renderedHeight}
             viewBox={`0 0 ${baseWidth} ${baseHeight}`}
@@ -1221,6 +1381,16 @@ export function TrackEditor({
                 rowMin={rowMin}
               />
             ))}
+            {rotateHandlePiece !== null ? (
+              <RotateHandles
+                piece={rotateHandlePiece}
+                colMin={colMin}
+                rowMin={rowMin}
+                onPointerDown={handleRotatePointerDown}
+                onPointerMove={handleRotatePointerMove}
+                onPointerUp={handleRotatePointerUp}
+              />
+            ) : null}
           </svg>
         </div>
         <div style={editHistoryToolbar} role="toolbar" aria-label="Edit history">
@@ -2072,6 +2242,58 @@ function NonProjectablePieceOverlay({
       data-non-projectable-piece-type={piece.type}
     >
       <PieceGlyph piece={piece} rotationDegOverride={0} />
+    </g>
+  )
+}
+
+// Stage 2 Workstream B: SVG rings at the selected piece's endpoints. The
+// editor renders these only when CONTINUOUS_ANGLE_EDITOR_ENABLED is on
+// and exactly one piece is selected. Pointer-down on a ring captures
+// the pointer (so subsequent move / up events fire on the ring even if
+// the cursor leaves the small circle), and the parent dispatches into
+// rotatePieceAroundEndpoint via the editor's rotate-drag state.
+function RotateHandles({
+  piece,
+  colMin,
+  rowMin,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+  onPointerDown: (
+    e: React.PointerEvent<SVGCircleElement>,
+    pivotIndex: number,
+  ) => void
+  onPointerMove: (e: React.PointerEvent<SVGCircleElement>) => void
+  onPointerUp: (e: React.PointerEvent<SVGCircleElement>) => void
+}) {
+  const endpoints = endpointsOf(piece)
+  return (
+    <g data-testid="rotate-handles" style={{ pointerEvents: 'auto' }}>
+      {endpoints.map((frame, i) => {
+        const svgX = (frame.x / CELL_SIZE - colMin) * CELL
+        const svgY = (frame.z / CELL_SIZE - rowMin) * CELL
+        return (
+          <circle
+            key={i}
+            cx={svgX}
+            cy={svgY}
+            r={9}
+            fill="rgba(110, 231, 135, 0.18)"
+            stroke="#6ee787"
+            strokeWidth={2}
+            data-rotate-handle-pivot-index={i}
+            style={{ cursor: 'grab', touchAction: 'none' }}
+            onPointerDown={(e) => onPointerDown(e, i)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerUp}
+          />
+        )
+      })}
     </g>
   )
 }
