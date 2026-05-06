@@ -409,6 +409,21 @@ export function TrackEditor({
   // committed drag does not leak into a synthetic click that would
   // otherwise re-run the cell's tool action.
   const suppressNextClickRef = useRef(false)
+  // Stage 2 Workstream B slice 5: numeric-input editor for power users.
+  // Opens via the toolbar's Transform button or via long-press on a
+  // piece (touch). When non-null the editor renders a floating panel
+  // bound to the piece at `pieceIdx`; on apply, the piece's transform
+  // updates via setPieceTransform.
+  const [numericEdit, setNumericEdit] = useState<{
+    pieceIdx: number
+  } | null>(null)
+  // Long-press timer for slice 5: pointer-down on a piece in `pending`
+  // pieceDrag mode arms a timer; if the user does not move past the
+  // drag threshold before it fires, the numeric editor opens. The
+  // timer clears whenever the drag advances to `active`, commits, or
+  // cancels.
+  const longPressTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const LONG_PRESS_MS = 500
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
   const openConnectorIssue =
@@ -871,6 +886,23 @@ export function TrackEditor({
       snap: null,
       mode: 'pending',
     })
+    // Arm the long-press timer. If the pointer stays within the drag
+    // threshold for LONG_PRESS_MS, the numeric editor opens. The
+    // advance / finalize handlers below clear this timer when they
+    // run; the timer also clears itself when the editor opens.
+    if (longPressTimerRef.current !== null) {
+      clearTimeout(longPressTimerRef.current)
+    }
+    longPressTimerRef.current = setTimeout(() => {
+      longPressTimerRef.current = null
+      setPieceDrag((prev) => {
+        if (prev === null) return prev
+        if (prev.mode !== 'pending') return prev
+        if (prev.pointerId !== e.pointerId) return prev
+        setNumericEdit({ pieceIdx: prev.pieceIdx })
+        return null
+      })
+    }, LONG_PRESS_MS)
   }, [zoom, rotateDrag, pieceDrag, pieces, colMin, rowMin])
 
   // Stage 2 Workstream B rotate handle. Pointer-down on a handle ring
@@ -1064,6 +1096,14 @@ export function TrackEditor({
       ) {
         return
       }
+      // Movement past the threshold cancels the long-press: the user
+      // is dragging, not holding. Without this, a drag long enough to
+      // exceed LONG_PRESS_MS would still pop the numeric editor open
+      // mid-drag.
+      if (longPressTimerRef.current !== null) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
       const sourcePiece = pieces[pieceDrag.pieceIdx]
       if (sourcePiece === undefined) return
       const translated: PieceTransform = {
@@ -1089,6 +1129,11 @@ export function TrackEditor({
   const finalizePieceDrag = useCallback(
     (commit: boolean) => {
       if (pieceDrag === null) return
+      // A finalized drag (commit or cancel) ends the long-press window.
+      if (longPressTimerRef.current !== null) {
+        clearTimeout(longPressTimerRef.current)
+        longPressTimerRef.current = null
+      }
       const wasActive = pieceDrag.mode === 'active'
       if (commit && wasActive) {
         const idx = pieceDrag.pieceIdx
@@ -1978,7 +2023,38 @@ export function TrackEditor({
             >
               Flip V
             </button>
+            {CONTINUOUS_ANGLE_EDITOR_ENABLED &&
+            rotateHandlePieceWithIndex !== null ? (
+              <button
+                type="button"
+                onClick={() =>
+                  setNumericEdit({
+                    pieceIdx: rotateHandlePieceWithIndex.idx,
+                  })
+                }
+                style={transformBtnWide}
+                title="Edit transform x / z / theta"
+              >
+                Transform
+              </button>
+            ) : null}
           </div>
+        ) : null}
+        {numericEdit !== null &&
+        pieces[numericEdit.pieceIdx] !== undefined ? (
+          <NumericTransformPanel
+            piece={pieces[numericEdit.pieceIdx]}
+            onApply={(t) => {
+              const idx = numericEdit.pieceIdx
+              setPieces((prev) =>
+                prev.map((p, i) =>
+                  i === idx ? setPieceTransform(p, t) : p,
+                ),
+              )
+              setNumericEdit(null)
+            }}
+            onCancel={() => setNumericEdit(null)}
+          />
         ) : null}
         <div style={zoomToolbar} role="toolbar" aria-label="Zoom controls">
           <button
@@ -3032,6 +3108,93 @@ function RotateHandles({
   )
 }
 
+// Stage 2 Workstream B slice 5: floating numeric editor for power
+// users. Opens via the toolbar's Transform button or a long-press on
+// a piece (touch). Shows the piece's current transform in cell-space
+// units (x and z divided by CELL_SIZE so authors enter cell
+// coordinates) and degrees (theta * 180 / PI), and applies the parsed
+// values back through `setPieceTransform` on Apply. Cancel restores
+// nothing (the piece was never modified during editing) and just
+// closes the panel.
+function NumericTransformPanel({
+  piece,
+  onApply,
+  onCancel,
+}: {
+  piece: Piece
+  onApply: (transform: PieceTransform) => void
+  onCancel: () => void
+}) {
+  const t = transformOf(piece)
+  const [colInput, setColInput] = useState(
+    () => (t.x / CELL_SIZE).toFixed(3),
+  )
+  const [rowInput, setRowInput] = useState(
+    () => (t.z / CELL_SIZE).toFixed(3),
+  )
+  const [thetaInput, setThetaInput] = useState(
+    () => ((t.theta * 180) / Math.PI).toFixed(2),
+  )
+  const apply = () => {
+    const col = Number.parseFloat(colInput)
+    const row = Number.parseFloat(rowInput)
+    const thetaDeg = Number.parseFloat(thetaInput)
+    if (!Number.isFinite(col) || !Number.isFinite(row) || !Number.isFinite(thetaDeg)) {
+      return
+    }
+    onApply({
+      x: col * CELL_SIZE,
+      z: row * CELL_SIZE,
+      theta: (thetaDeg * Math.PI) / 180,
+    })
+  }
+  return (
+    <div style={numericTransformPanel} role="dialog" aria-label="Edit piece transform">
+      <div style={numericTransformLabel}>Transform</div>
+      <div style={numericTransformRow}>
+        <label style={numericTransformFieldLabel}>
+          col
+          <input
+            type="number"
+            step="0.01"
+            value={colInput}
+            onChange={(e) => setColInput(e.target.value)}
+            style={numericTransformInput}
+          />
+        </label>
+        <label style={numericTransformFieldLabel}>
+          row
+          <input
+            type="number"
+            step="0.01"
+            value={rowInput}
+            onChange={(e) => setRowInput(e.target.value)}
+            style={numericTransformInput}
+          />
+        </label>
+        <label style={numericTransformFieldLabel}>
+          theta (deg)
+          <input
+            type="number"
+            step="0.1"
+            value={thetaInput}
+            onChange={(e) => setThetaInput(e.target.value)}
+            style={numericTransformInput}
+          />
+        </label>
+      </div>
+      <div style={numericTransformActions}>
+        <button type="button" onClick={onCancel} style={transformBtnWide}>
+          Cancel
+        </button>
+        <button type="button" onClick={apply} style={transformBtnWide}>
+          Apply
+        </button>
+      </div>
+    </div>
+  )
+}
+
 // Stage 2 Workstream B slice 4: a green glow at the snap target's
 // endpoint frame while a free-placement drag is in range. Shows the
 // user which target the soft-pull will snap to on release.
@@ -3828,6 +3991,54 @@ const transformBtnWide: React.CSSProperties = {
   ...zoomBtn,
   width: 72,
   fontSize: 12,
+}
+const numericTransformPanel: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  right: 12,
+  zIndex: 30,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 10,
+  padding: '12px 14px',
+  borderRadius: 10,
+  background: '#0f1826',
+  border: '1px solid #2b3a50',
+  boxShadow: '0 8px 24px rgba(0, 0, 0, 0.45)',
+  pointerEvents: 'auto',
+}
+const numericTransformLabel: React.CSSProperties = {
+  fontSize: 12,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+  opacity: 0.72,
+}
+const numericTransformRow: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  alignItems: 'flex-end',
+}
+const numericTransformFieldLabel: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 4,
+  fontSize: 11,
+  opacity: 0.78,
+}
+const numericTransformInput: React.CSSProperties = {
+  width: 76,
+  padding: '6px 8px',
+  borderRadius: 6,
+  border: '1px solid #2b3a50',
+  background: '#0a1220',
+  color: '#dde7f5',
+  fontVariantNumeric: 'tabular-nums',
+  fontSize: 13,
+}
+const numericTransformActions: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'flex-end',
+  gap: 8,
 }
 const zoomReadout: React.CSSProperties = {
   fontSize: 11,

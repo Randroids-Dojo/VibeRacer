@@ -17,21 +17,20 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 ## Continuous-angle migration
 
 Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
-shipped. Stage 2 Workstream B's foundation slice merged as PR #104
-(`0b1255a`); slices 2 (rendering refactor) and 3 (rotate handle) are in
-flight on branch `claude/continuous-angle-stage-2-rendering`. See
+shipped. Stage 2 Workstream B's foundation, rendering / rotate handle,
+and free-placement drag have shipped as PRs #104 / #105 / #106. Slice
+5 (numeric input) is in flight on branch
+`claude/continuous-angle-stage-2-numeric-input`. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
 slicing plan for Workstream B, the file map, and the contracts that
 pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
 reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX (slices 5 through 7)
+### Stage 2 Workstream B: editor UX (slices 6 and 7)
 
-Slices 0.5, 1, 2, 3, and now 4 (free-placement drag) have shipped.
-The remaining slices are queued.
+Slices 0.5, 1, 2, 3, 4, and now 5 (numeric input) are shipped or in
+flight. The remaining slices are queued.
 
-- Slice 5: optional numeric input on long-press for `x, z, theta` for
-  power users.
 - Slice 6: reconciliation pass for nearly-closed continuous-angle loops:
   detect "loop closes within wider epsilon" and snap the last endpoint
   exactly to the first before save.
