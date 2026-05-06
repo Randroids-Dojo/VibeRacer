@@ -42,6 +42,8 @@ import {
 } from '@/lib/decorations'
 import { sanitizeTrackMood } from '@/game/trackMood'
 import { recordMyTrack } from '@/lib/myTracks'
+import type { CarParams } from '@/game/physics'
+import { readLastLoaded } from '@/lib/tuningSettings'
 import {
   getBounds,
   getStartExitDir,
@@ -888,6 +890,7 @@ export function TrackEditor({
         biome?: TrackBiome
         decorations?: TrackDecoration[]
         mood?: TrackMood
+        creatorTuning?: CarParams
       } = { pieces }
       if (customCheckpointsActive) {
         reqBody.checkpoints = checkpoints
@@ -906,6 +909,14 @@ export function TrackEditor({
       }
       if (decorations.length > 0) {
         reqBody.decorations = decorations
+      }
+      // Snapshot the author's most recent setup so racers can later choose
+      // "Track creator's setup" in the pre-race picker. Skipped when the
+      // author has never tuned, so the field stays absent rather than
+      // shipping a synthetic stock copy.
+      const creatorTuning = readLastLoaded()
+      if (creatorTuning) {
+        reqBody.creatorTuning = creatorTuning
       }
       const res = await fetch(`/api/track/${encodeURIComponent(slug)}`, {
         method: 'PUT',

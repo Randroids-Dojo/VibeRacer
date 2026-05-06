@@ -167,8 +167,9 @@ import { computeLapConsistency } from '@/game/lapConsistency'
 import type { CarParams } from '@/game/physics'
 import {
   cloneDefaultParams,
-  markTrackDecided,
+  isTrackPinned,
   pinTrack,
+  readPerTrack,
   unpinTrack,
   type InputMode,
 } from '@/lib/tuningSettings'
@@ -247,6 +248,15 @@ export interface OverallRecord {
 
 const EMPTY_TRACK_DECORATIONS: readonly TrackDecoration[] = []
 
+// True when the pre-race setup picker should be bypassed entirely on mount.
+// A track is "decided" the moment the player has pinned a setup for it, so
+// the second visit drops straight into the countdown. Reachable again from
+// the pause menu's "Change car setup" action so the choice is never trapped.
+function shouldSkipPreRace(slug: string): boolean {
+  if (typeof window === 'undefined') return false
+  return isTrackPinned(slug) && readPerTrack(slug) !== null
+}
+
 interface GameProps {
   slug: string
   versionHash: string
@@ -261,6 +271,10 @@ interface GameProps {
   // resolver overrides the player's own picks for whichever fields the
   // author set. Pure cosmetic; does not affect physics or hashing.
   trackMood?: TrackMood | null
+  // Snapshot of the track author's car setup at save time. Surfaces in the
+  // pre-race setup picker as a "Track creator's setup" option. Null for
+  // tracks saved before this field shipped.
+  creatorTuning?: CarParams | null
   initialMusic?: TrackMusic | null
   initialRecord: OverallRecord | null
   // Friend-challenge payload parsed from the URL (?challenge=...&from=...&time=...).
@@ -434,6 +448,7 @@ function GameSession({
   trackBiome = null,
   trackDecorations = EMPTY_TRACK_DECORATIONS,
   trackMood = null,
+  creatorTuning = null,
   initialMusic = null,
   initials,
   initialRecord,
@@ -980,7 +995,13 @@ function GameSession({
     }
   }, [])
 
-  const [phase, setPhase] = useState<Phase>('preRace')
+  // Pinning a setup means "always race this track with this setup, no
+  // questions asked". When the player has previously pinned, skip the picker
+  // entirely and drop straight into the countdown. The picker is still
+  // reachable from the pause menu's "Change car setup" action.
+  const [phase, setPhase] = useState<Phase>(() =>
+    shouldSkipPreRace(slug) ? 'countdown' : 'preRace',
+  )
   const [paused, setPaused] = useState(false)
   const [pauseView, setPauseView] = useState<PauseView>('menu')
   // Confetti celebration trigger. `kind` flips on a PB / RECORD lap and stays
@@ -1279,8 +1300,11 @@ function GameSession({
       // post-GO HUD tick.
       paceNote: null,
     }))
-    setPhase('preRace')
-  }, [])
+    // Restart respects the pin: a track the player has already chosen a
+    // setup for and pinned drops straight back into the countdown. The
+    // pause menu's Change car setup action is the explicit override.
+    setPhase(shouldSkipPreRace(slug) ? 'countdown' : 'preRace')
+  }, [slug])
 
   // Internal lap-reset pulse. Drops the in-flight replay buffer and the
   // pending live-split tile, then arms the canvas-side ref so the next rAF
@@ -2554,15 +2578,25 @@ function GameSession({
 
   // Confirm handler for the pre-race setup modal. Applies the picked params
   // (writes through to lastLoaded + per-track), records the pin choice, and
-  // hands control to the standard countdown. The track is marked decided so
-  // legacy per-track saves stop being highlighted on subsequent races.
+  // hands control to the standard countdown. Pinning is the only knob that
+  // suppresses the picker on the next visit; reachable again via the pause
+  // menu's "Change car setup" action.
   function handlePreRaceConfirm({ params, pin }: PreRaceSetupResult) {
     applyTuning(params, 'Pre-race pick')
-    markTrackDecided(slug)
     if (pin) pinTrack(slug)
     else unpinTrack(slug)
     setPhase('countdown')
   }
+
+  // Pause-menu shortcut: re-open the pre-race picker so the player can swap
+  // their setup mid-session. Unpinning ensures the picker is forced even on
+  // a previously pinned track. The full restart() path zeroes in-flight
+  // session state (lap history, session PB) so the new setup is raced from
+  // a clean countdown, matching the standard Restart action.
+  const reopenPreRace = useCallback(() => {
+    unpinTrack(slug)
+    restart()
+  }, [restart, slug])
 
   function beginRace() {
     void startRaceServerSide()
@@ -2747,7 +2781,12 @@ function GameSession({
         </div>
       ) : null}
       {phase === 'preRace' ? (
-        <PreRaceSetup slug={slug} onConfirm={handlePreRaceConfirm} />
+        <PreRaceSetup
+          slug={slug}
+          versionHash={versionHash}
+          creatorTuning={creatorTuning}
+          onConfirm={handlePreRaceConfirm}
+        />
       ) : null}
       {phase === 'countdown' ? <Countdown onDone={beginRace} /> : null}
       <TouchControls
@@ -2788,6 +2827,7 @@ function GameSession({
               onRace={() => setPauseView('race')}
               onSettings={() => setPauseView('settings')}
               onTuningLab={openTuningLabFromPause}
+              onChangeSetup={reopenPreRace}
               trackMoodLabel={trackMoodLabel}
               pieces={pieces}
               onExit={handleExitClick}

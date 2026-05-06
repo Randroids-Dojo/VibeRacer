@@ -60,6 +60,7 @@ export default async function SlugPage(ctx: {
     biome,
     decorations,
     mood,
+    creatorTuning,
   } = loaded
   const overallRecord = await loadOverallRecord(slug, versionHash)
   const musicLoaded = await loadTrackMusic(slug)
@@ -88,6 +89,7 @@ export default async function SlugPage(ctx: {
       trackBiome={biome ?? null}
       trackDecorations={decorations ?? []}
       trackMood={mood ?? null}
+      creatorTuning={creatorTuning ?? null}
       initialMusic={musicLoaded.kind === 'ok' ? musicLoaded.music : null}
       initialRecord={overallRecord}
       challenge={challenge}

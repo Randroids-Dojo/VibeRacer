@@ -362,4 +362,35 @@ describe('GET /api/track/[slug]', () => {
     })
     expect(res.status).toBe(400)
   })
+
+  it('round-trips a creatorTuning snapshot through PUT and GET', async () => {
+    const { PUT, GET } = await import('@/app/api/track/[slug]/route')
+    const slug = 'creator-tuning-slug'
+    const creatorTuning = {
+      maxSpeed: 30,
+      maxReverseSpeed: 8,
+      accel: 22,
+      brake: 36,
+      reverseAccel: 12,
+      rollingFriction: 4,
+      steerRateLow: 2.2,
+      steerRateHigh: 2.2,
+      minSpeedForSteering: 0.8,
+      offTrackMaxSpeed: 10,
+      offTrackDrag: 16,
+    }
+    const putReq = new NextRequest(`http://test/api/track/${slug}`, {
+      method: 'PUT',
+      headers: { cookie: cookieHeader(), 'content-type': 'application/json' },
+      body: JSON.stringify({ pieces: squarePieces, creatorTuning }),
+    })
+    const putRes = await PUT(putReq, { params: Promise.resolve({ slug }) })
+    expect(putRes.status).toBe(200)
+    const getReq = new NextRequest(`http://test/api/track/${slug}`)
+    const getRes = await GET(getReq, { params: Promise.resolve({ slug }) })
+    const getBody = (await getRes.json()) as {
+      track: { creatorTuning?: typeof creatorTuning }
+    }
+    expect(getBody.track.creatorTuning).toEqual(creatorTuning)
+  })
 })

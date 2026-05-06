@@ -6,6 +6,7 @@ import {
   type TrackDecoration,
   type TrackMood,
 } from '@/lib/schemas'
+import type { CarParams } from '@/game/physics'
 import { DEFAULT_TRACK_PIECES } from '@/lib/defaultTrack'
 import { hashTrack } from '@/lib/hashTrack'
 import { hasKvConfigured } from '@/lib/kv'
@@ -30,6 +31,7 @@ export type LoadTrackResult =
       biome?: TrackBiome
       decorations?: TrackDecoration[]
       mood?: TrackMood
+      creatorTuning?: CarParams
     }
   | { kind: 'fresh' }
   | { kind: 'notFound' }
@@ -83,6 +85,7 @@ export async function loadTrack(
           biome: parsed.data.biome,
           decorations: parsed.data.decorations,
           mood: parsed.data.mood,
+          creatorTuning: parsed.data.creatorTuning,
         }
       }
       // A specific-version miss must not fall through to latest.
