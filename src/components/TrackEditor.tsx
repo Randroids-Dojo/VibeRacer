@@ -1605,6 +1605,23 @@ export function TrackEditor({
             {nonProjectablePieces.map((piece) => {
               const overlayKey = cellKey(piece.row, piece.col)
               const isStart = overlayKey === startKey
+              // Flags must be footprint-aware (not anchor-only) because
+              // the cell renderer suppresses selection / checkpoint
+              // visuals for every cell in `nonProjectableCoveredCells`.
+              // If the user selected a non-anchor footprint cell via
+              // rectangle selection, the cell rect is hidden AND the
+              // anchor-only check would also miss it, leaving the piece
+              // with no selection feedback. `pieceTouchesSelection`
+              // mirrors `pieceTouchesSelection` in editor.ts (already
+              // used by `selectedPieceCount` and the rotate handle
+              // lookup) so all three agree on what "this piece is
+              // selected" means. Same logic for checkpoints living on
+              // non-anchor footprint cells.
+              const piecesFootprintKeys = footprintCellKeys(piece)
+              const isSelected = pieceTouchesSelection(piece, selectedCells)
+              const hasCheckpoint = piecesFootprintKeys.some((k) =>
+                checkpointKeys.has(k),
+              )
               return (
                 <NonProjectablePieceOverlay
                   key={`overlay-${piece.row}-${piece.col}`}
@@ -1612,10 +1629,8 @@ export function TrackEditor({
                   colMin={colMin}
                   rowMin={rowMin}
                   isStart={isStart}
-                  isSelected={selectedCells.has(
-                    selectedCellKey(piece.row, piece.col),
-                  )}
-                  hasCheckpoint={checkpointKeys.has(overlayKey)}
+                  isSelected={isSelected}
+                  hasCheckpoint={hasCheckpoint}
                   startExitDir={isStart ? startExitDir : null}
                 />
               )
