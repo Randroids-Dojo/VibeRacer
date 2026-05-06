@@ -1,10 +1,15 @@
 import { describe, expect, it } from 'vitest'
 import {
+  FREE_PLACEMENT_SNAP_RADIUS,
+  findFreePlacementSnap,
   rotatePieceAroundEndpoint,
   rotateTransformAroundPoint,
   setPieceTransform,
+  snapPieceToTarget,
   translatePiece,
+  unconnectedEndpoints,
 } from '@/game/continuousAngleEdit'
+import { framesConnect } from '@/game/pieceFrames'
 import { convertV1Piece } from '@/lib/trackVersion'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
 import { footprintCells } from '@/game/trackFootprint'
@@ -334,6 +339,173 @@ describe('custom footprint rotation', () => {
       theta: Math.PI / 2,
     })
     expect(rotated.footprint).toBeUndefined()
+  })
+})
+
+describe('unconnectedEndpoints', () => {
+  it('returns nothing when every piece is mutually connected', () => {
+    // Two straight pieces stacked vertically share a frame at the
+    // boundary, so each has one connected endpoint and one open
+    // endpoint at the far end.
+    const a = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const b = convertV1Piece({ type: 'straight', row: -1, col: 0, rotation: 0 })
+    const open = unconnectedEndpoints([a, b])
+    expect(open).toHaveLength(2)
+    // Both open endpoints are at the chain's outer ends.
+    const openZ = open.map((u) => u.frame.z).sort((x, y) => x - y)
+    expect(openZ[0]).toBeLessThan(openZ[1])
+  })
+
+  it('reports every endpoint of a single isolated piece as unconnected', () => {
+    const a = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const open = unconnectedEndpoints([a])
+    expect(open).toHaveLength(2)
+  })
+
+  it('honors excludePieceIdx so the dragged piece is not its own snap target', () => {
+    const a = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const b = convertV1Piece({ type: 'straight', row: -3, col: 0, rotation: 0 })
+    const open = unconnectedEndpoints([a, b], 0)
+    expect(open.every((u) => u.pieceIdx !== 0)).toBe(true)
+    // Only piece b's two endpoints survive.
+    expect(open).toHaveLength(2)
+    expect(open.every((u) => u.pieceIdx === 1)).toBe(true)
+  })
+})
+
+describe('snapPieceToTarget', () => {
+  it('places the dragged endpoint exactly on the target frame', () => {
+    // A dragged straight piece roughly near the snap point. Snap onto
+    // the south edge of cell (0, 0) (target frame at world (0, 10)
+    // with heading -PI/2 = south). The dragged piece's chosen
+    // endpoint should end up at exactly (0, 10) with antiparallel
+    // heading (PI/2 = north).
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: 1,
+      col: 0,
+      rotation: 0,
+      transform: { x: 2, z: 22, theta: 0 },
+    })
+    const targetFrame = { x: 0, z: 10, theta: -Math.PI / 2 }
+    const newTransform = snapPieceToTarget(dragged, 1, targetFrame)
+    // Update the piece with the snap transform and check the chosen
+    // endpoint actually lands on the target.
+    const snapped = setPieceTransform(dragged, newTransform)
+    const snappedEnds = endpointsOf(snapped)
+    expect(snappedEnds[1].x).toBeCloseTo(0, 6)
+    expect(snappedEnds[1].z).toBeCloseTo(10, 6)
+    // framesConnect requires antiparallel tangents within epsilon and
+    // the same world position; both should hold after snap.
+    expect(framesConnect(snappedEnds[1], targetFrame)).toBe(true)
+  })
+
+  it('preserves piece geometry (other endpoint stays a fixed offset away)', () => {
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: 1,
+      col: 0,
+      rotation: 0,
+    })
+    const beforeEnds = endpointsOf(dragged)
+    const dist = Math.hypot(
+      beforeEnds[0].x - beforeEnds[1].x,
+      beforeEnds[0].z - beforeEnds[1].z,
+    )
+    const targetFrame = { x: 0, z: 10, theta: -Math.PI / 2 }
+    const newTransform = snapPieceToTarget(dragged, 1, targetFrame)
+    const snapped = setPieceTransform(dragged, newTransform)
+    const afterEnds = endpointsOf(snapped)
+    const distAfter = Math.hypot(
+      afterEnds[0].x - afterEnds[1].x,
+      afterEnds[0].z - afterEnds[1].z,
+    )
+    expect(distAfter).toBeCloseTo(dist, 9)
+  })
+})
+
+describe('findFreePlacementSnap', () => {
+  it('returns null when no targets are within snap range', () => {
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 100, z: 100, theta: 0 },
+    })
+    const target = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 5,
+      rotation: 0,
+    })
+    const snap = findFreePlacementSnap(
+      dragged,
+      unconnectedEndpoints([dragged, target], 0),
+    )
+    expect(snap).toBeNull()
+  })
+
+  it('snaps to the nearest unconnected endpoint within radius', () => {
+    // A target piece anchors a free-end at world (0, -10) heading
+    // north (PI/2). A dragged piece sits a few units away with
+    // matching antiparallel orientation. The snap should pull it onto
+    // the target.
+    const target = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: -1,
+      col: 0,
+      rotation: 0,
+      transform: { x: 3, z: -22, theta: 0 },
+    })
+    const targets = unconnectedEndpoints([dragged, target], 0)
+    expect(targets.length).toBeGreaterThan(0)
+    const snap = findFreePlacementSnap(dragged, targets)
+    expect(snap).not.toBeNull()
+    if (snap === null) throw new Error('expected snap')
+    // After snap, the dragged piece's chosen endpoint must
+    // framesConnect with the target's matching endpoint.
+    const after = setPieceTransform(dragged, snap.transform)
+    const draggedEnds = endpointsOf(after)
+    const targetEnds = endpointsOf(target)
+    expect(
+      framesConnect(
+        draggedEnds[snap.draggedEndpointIdx],
+        targetEnds[snap.targetEndpointIdx],
+      ),
+    ).toBe(true)
+  })
+
+  it('honors the snap-radius cutoff', () => {
+    const target = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    // Place the dragged piece far enough that BOTH of its endpoints
+    // are outside snap radius from BOTH target endpoints. Target
+    // endpoints at (0, +/-10); dragged piece center at (200, 200) with
+    // endpoints at (200, 210) and (200, 190). Both >= 215 world units
+    // from any target endpoint, well past FREE_PLACEMENT_SNAP_RADIUS.
+    const dragged = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+      transform: { x: 200, z: 200, theta: 0 },
+    })
+    const snap = findFreePlacementSnap(
+      dragged,
+      unconnectedEndpoints([dragged, target], 0),
+    )
+    expect(snap).toBeNull()
   })
 })
 

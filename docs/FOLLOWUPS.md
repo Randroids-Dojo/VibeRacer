@@ -25,11 +25,11 @@ slicing plan for Workstream B, the file map, and the contracts that
 pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
 reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX (slices 4 through 7)
+### Stage 2 Workstream B: editor UX (slices 5 through 7)
 
-- Slice 4: free-placement drag behind the flag: nearest-neighbor query
-  against unconnected endpoints in a snap radius (about 15 world units,
-  30 degrees) with soft pull so the dragged endpoint frame matches.
+Slices 0.5, 1, 2, 3, and now 4 (free-placement drag) have shipped.
+The remaining slices are queued.
+
 - Slice 5: optional numeric input on long-press for `x, z, theta` for
   power users.
 - Slice 6: reconciliation pass for nearly-closed continuous-angle loops:

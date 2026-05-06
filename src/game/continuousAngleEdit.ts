@@ -20,7 +20,12 @@
 import type { Piece, PieceTransform } from '@/lib/schemas'
 import { convertV1Piece } from '@/lib/trackVersion'
 import { endpointsOf, transformOf } from './pieceGeometry'
-import { cardinalTurnsOfTheta } from './pieceFrames'
+import {
+  cardinalTurnsOfTheta,
+  framesConnect,
+  tangentsAreAntiparallel,
+  type Frame,
+} from './pieceFrames'
 import { thetaOfPiece } from './track'
 import { rotateFootprintClockwise } from './trackFootprint'
 
@@ -94,6 +99,155 @@ export function setPieceTransform(
   transform: PieceTransform,
 ): Piece {
   return applyTransform(piece, transform)
+}
+
+// Stage 2 Workstream B slice 4 (free-placement drag): how close a
+// dragged piece's endpoint has to come to a target endpoint before we
+// soft-pull onto it. Wider than `framesConnect`'s default validator
+// epsilon (0.5 world units / 2 degrees) because snap is a UX feedback
+// loop. The user has to see the snap engage from a reasonable
+// distance, then on commit the piece sits at exact alignment so the
+// validator's tighter epsilon is satisfied.
+export const FREE_PLACEMENT_SNAP_RADIUS = 15
+export const FREE_PLACEMENT_SNAP_ANGLE_RAD = (30 * Math.PI) / 180
+
+export interface UnconnectedEndpoint {
+  pieceIdx: number
+  endpointIdx: number
+  frame: Frame
+}
+
+export interface FreePlacementSnap {
+  targetPieceIdx: number
+  targetEndpointIdx: number
+  draggedEndpointIdx: number
+  // The transform the dragged piece should adopt so its
+  // `draggedEndpointIdx` endpoint frame is antiparallel-aligned with
+  // the target frame at the same world position.
+  transform: PieceTransform
+}
+
+// Endpoints that no other piece is currently connected to. Computed by
+// iterating every piece's endpoints and asking the validator-style
+// `framesConnect` check whether anything else matches them. The
+// dragged piece itself is excluded by `excludePieceIdx` so a drag in
+// flight does not consider its own endpoints as snap targets (the
+// dragged piece's endpoints are the FROM side of the snap).
+export function unconnectedEndpoints(
+  pieces: readonly Piece[],
+  excludePieceIdx?: number,
+): UnconnectedEndpoint[] {
+  const allFrames: { pieceIdx: number; endpointIdx: number; frame: Frame }[] = []
+  for (let i = 0; i < pieces.length; i++) {
+    if (i === excludePieceIdx) continue
+    const ends = endpointsOf(pieces[i])
+    for (let j = 0; j < ends.length; j++) {
+      allFrames.push({ pieceIdx: i, endpointIdx: j, frame: ends[j] })
+    }
+  }
+  return allFrames.filter(({ pieceIdx, frame }) => {
+    for (const other of allFrames) {
+      if (other.pieceIdx === pieceIdx) continue
+      if (framesConnect(frame, other.frame)) return false
+    }
+    return true
+  })
+}
+
+// Best snap target for a dragged piece, or null when nothing is in
+// range. `draggedPiece` should reflect the piece's CURRENT transform
+// (cursor-following position before snap is applied). `targets` is the
+// unconnected-endpoint list to consider, typically `unconnectedEndpoints
+// (pieces, excludePieceIdx=draggedIdx)`. Compares every dragged endpoint
+// against every target; picks the lowest-distance pair that also passes
+// the angle threshold. The returned `transform` is what the editor
+// should apply to soft-pull the piece onto the target.
+export function findFreePlacementSnap(
+  draggedPiece: Piece,
+  targets: readonly UnconnectedEndpoint[],
+  snapRadius = FREE_PLACEMENT_SNAP_RADIUS,
+  snapAngleRad = FREE_PLACEMENT_SNAP_ANGLE_RAD,
+): FreePlacementSnap | null {
+  const draggedEnds = endpointsOf(draggedPiece)
+  let best: { dist: number; snap: FreePlacementSnap } | null = null
+  for (let di = 0; di < draggedEnds.length; di++) {
+    const draggedFrame = draggedEnds[di]
+    for (const t of targets) {
+      const dx = draggedFrame.x - t.frame.x
+      const dz = draggedFrame.z - t.frame.z
+      const dist = Math.hypot(dx, dz)
+      if (dist > snapRadius) continue
+      if (!tangentsAreAntiparallel(draggedFrame.theta, t.frame.theta, snapAngleRad)) continue
+      const snapped = snapPieceToTarget(draggedPiece, di, t.frame)
+      if (best === null || dist < best.dist) {
+        best = {
+          dist,
+          snap: {
+            targetPieceIdx: t.pieceIdx,
+            targetEndpointIdx: t.endpointIdx,
+            draggedEndpointIdx: di,
+            transform: snapped,
+          },
+        }
+      }
+    }
+  }
+  return best?.snap ?? null
+}
+
+// Compute the transform the dragged piece needs so its
+// `draggedEndpointIdx` endpoint frame ends up at the target frame's
+// world position with antiparallel tangents. The piece's other
+// endpoint follows rigidly via the existing piece geometry. Used by
+// `findFreePlacementSnap` as the soft-pull target; callers can also
+// invoke it directly when they already know which endpoints to align.
+//
+// Math: in the dragged piece's CURRENT pose, the local-frame offset
+// from the piece's transform.(x, z) to the dragged endpoint is
+// (`draggedFrame.x - currentTransform.x`, `draggedFrame.z -
+// currentTransform.z`). After snap, the piece's theta rotates so the
+// dragged endpoint's outward heading is antiparallel to the target's
+// (`targetFrame.theta + PI`), i.e. `draggedFrame.theta - currentPieceTheta`
+// stays constant relative to the piece. The piece's position is then
+// chosen so the rotated offset lands on the target.
+export function snapPieceToTarget(
+  piece: Piece,
+  draggedEndpointIdx: number,
+  targetFrame: Frame,
+): PieceTransform {
+  const currentTransform = transformOf(piece)
+  const draggedEnds = endpointsOf(piece)
+  const draggedFrame = draggedEnds[draggedEndpointIdx]
+  if (draggedFrame === undefined) return currentTransform
+  // Piece-local heading offset for this endpoint, measured relative to
+  // the piece's own theta. Stays constant under rotation.
+  const localHeadingOffset = draggedFrame.theta - currentTransform.theta
+  // Target world heading the dragged endpoint must adopt to be
+  // antiparallel to the target frame.
+  const desiredEndpointTheta = targetFrame.theta + Math.PI
+  // New piece theta places the endpoint's heading at desiredEndpointTheta.
+  const newPieceTheta = desiredEndpointTheta - localHeadingOffset
+  // Piece-local offset from piece center to the dragged endpoint at
+  // theta = 0 (un-rotated). Rotate the current world offset back by
+  // -currentTransform.theta to recover the local offset.
+  const dxCurrent = draggedFrame.x - currentTransform.x
+  const dzCurrent = draggedFrame.z - currentTransform.z
+  const csBack = Math.cos(-currentTransform.theta)
+  const snBack = Math.sin(-currentTransform.theta)
+  const localOffsetX = dxCurrent * csBack - dzCurrent * snBack
+  const localOffsetZ = dxCurrent * snBack + dzCurrent * csBack
+  // Rotate the local offset forward by the new piece theta to get the
+  // world offset under the new pose.
+  const csFwd = Math.cos(newPieceTheta)
+  const snFwd = Math.sin(newPieceTheta)
+  const newOffsetX = localOffsetX * csFwd - localOffsetZ * snFwd
+  const newOffsetZ = localOffsetX * snFwd + localOffsetZ * csFwd
+  // Place the piece so the rotated offset lands at the target.
+  return {
+    x: targetFrame.x - newOffsetX,
+    z: targetFrame.z - newOffsetZ,
+    theta: newPieceTheta,
+  }
 }
 
 // Internal: replace the piece's transform and run the converter so
