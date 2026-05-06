@@ -219,14 +219,25 @@ export function snapPieceToTarget(
   const draggedEnds = endpointsOf(piece)
   const draggedFrame = draggedEnds[draggedEndpointIdx]
   if (draggedFrame === undefined) return currentTransform
-  // Piece-local heading offset for this endpoint, measured relative to
-  // the piece's own theta. Stays constant under rotation.
-  const localHeadingOffset = draggedFrame.theta - currentTransform.theta
-  // Target world heading the dragged endpoint must adopt to be
-  // antiparallel to the target frame.
+  // `frameOfPortAtTransform` decomposes `transform.theta` into a
+  // cardinal-snapped portion (integer multiple of PI/2 used to rotate
+  // the port's `dir` and `(dr, dc)` via `connectorPortsOf`) plus a
+  // continuous residual that rotates the resulting offset by `cos /
+  // sin(residual)` and shifts the heading by `-residual`. Within one
+  // cardinal cell (i.e., when the new transform.theta keeps the same
+  // cardinalTurns mod 4 as the current one), `frame.theta + transform
+  // .theta` is therefore a CONSTANT: changing transform.theta by
+  // `dTheta` changes the residual by `dTheta` and the heading by
+  // `-dTheta`. Use that invariant to choose `newPieceTheta` so the
+  // dragged endpoint's heading lands antiparallel to the target.
+  // The earlier formulation `(target.theta + PI) - (frame.theta -
+  // transform.theta)` assumed slope `+1` instead of `-1`, which agreed
+  // with cardinal targets only because their residual is zero on both
+  // sides; it produced a `2 * residual` heading error for non-cardinal
+  // targets (the slice 6 reconciliation case).
+  const cardinalInvariant = draggedFrame.theta + currentTransform.theta
   const desiredEndpointTheta = targetFrame.theta + Math.PI
-  // New piece theta places the endpoint's heading at desiredEndpointTheta.
-  const newPieceTheta = desiredEndpointTheta - localHeadingOffset
+  const newPieceTheta = cardinalInvariant - desiredEndpointTheta
   // Piece-local offset from piece center to the dragged endpoint at
   // theta = 0 (un-rotated). Rotate the current world offset back by
   // -currentTransform.theta to recover the local offset.
@@ -248,6 +259,99 @@ export function snapPieceToTarget(
     z: targetFrame.z - newOffsetZ,
     theta: newPieceTheta,
   }
+}
+
+// Stage 2 Workstream B slice 6 (loop reconciliation): how close the
+// two dangling endpoints of a nearly-closed chain have to be before
+// the editor offers to snap them shut. Wider than `framesConnect`'s
+// validator default (0.5 world units / 2 degrees) but narrower than
+// the free-placement snap radius (15 / 30 degrees) so reconciliation
+// only kicks in for chains the user has already brought into close
+// alignment manually. The angle threshold is small because the
+// reconciled snap moves only one piece; if the residual angular
+// misalignment between the two dangling tangents is larger than this,
+// snapping one piece to the other would rotate the moving piece
+// enough that its OTHER endpoint (the connection back to its
+// predecessor in the chain) would drift past `framesConnect`'s 0.5-
+// unit validator threshold.
+export const LOOP_RECONCILIATION_RADIUS = 6
+export const LOOP_RECONCILIATION_ANGLE_RAD = (8 * Math.PI) / 180
+
+export interface LoopReconciliation {
+  // Index of the piece whose transform will change.
+  pieceIdx: number
+  // The piece's new transform after snapping its dangling endpoint to
+  // the target frame.
+  transform: PieceTransform
+  // Which endpoint of the moving piece is being snapped, and which
+  // endpoint of which other piece is the snap target.
+  draggedEndpointIdx: number
+  targetPieceIdx: number
+  targetEndpointIdx: number
+  // Distance (world units) the dangling endpoint has to travel to
+  // reach the target frame. Surfaced so the UI can tell the user how
+  // big the gap was, and so the test wall can pin the chosen pair.
+  gap: number
+}
+
+// Detect whether the chain has exactly two dangling endpoints that
+// are within reconciliation epsilon of each other and antiparallel-
+// compatible. When so, return a `snapPieceToTarget`-driven plan that
+// moves the second piece's endpoint exactly onto the first's frame.
+// Returns null otherwise (no chain to reconcile, more than two open
+// endpoints, or the gap is wider than the reconciliation radius).
+//
+// Convention: the moving piece is the one with the higher piece
+// index. This keeps the choice deterministic across undo / redo and
+// matches the typical authoring flow where the user appended a chain
+// piece-by-piece and the last piece (highest index) is the one
+// dangling near the start.
+export function findLoopReconciliation(
+  pieces: readonly Piece[],
+  radius = LOOP_RECONCILIATION_RADIUS,
+  angleRad = LOOP_RECONCILIATION_ANGLE_RAD,
+): LoopReconciliation | null {
+  const open = unconnectedEndpoints(pieces)
+  if (open.length !== 2) return null
+  const [first, second] = open
+  const dx = first.frame.x - second.frame.x
+  const dz = first.frame.z - second.frame.z
+  const gap = Math.hypot(dx, dz)
+  if (gap > radius) return null
+  if (!tangentsAreAntiparallel(first.frame.theta, second.frame.theta, angleRad)) {
+    return null
+  }
+  const movingIsSecond = second.pieceIdx > first.pieceIdx
+  const movingEnd = movingIsSecond ? second : first
+  const targetEnd = movingIsSecond ? first : second
+  const movingPiece = pieces[movingEnd.pieceIdx]
+  const transform = snapPieceToTarget(
+    movingPiece,
+    movingEnd.endpointIdx,
+    targetEnd.frame,
+  )
+  return {
+    pieceIdx: movingEnd.pieceIdx,
+    transform,
+    draggedEndpointIdx: movingEnd.endpointIdx,
+    targetPieceIdx: targetEnd.pieceIdx,
+    targetEndpointIdx: targetEnd.endpointIdx,
+    gap,
+  }
+}
+
+// Apply a reconciliation plan to the pieces array, returning a new
+// array with the moving piece's transform replaced. Pure / immutable;
+// callers wire this into their history stack.
+export function applyLoopReconciliation(
+  pieces: readonly Piece[],
+  reconciliation: LoopReconciliation,
+): Piece[] {
+  return pieces.map((p, i) =>
+    i === reconciliation.pieceIdx
+      ? setPieceTransform(p, reconciliation.transform)
+      : p,
+  )
 }
 
 // Internal: replace the piece's transform and run the converter so

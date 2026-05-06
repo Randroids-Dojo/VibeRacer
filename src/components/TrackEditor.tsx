@@ -23,7 +23,9 @@ import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
 import {
+  applyLoopReconciliation,
   findFreePlacementSnap,
+  findLoopReconciliation,
   rotatePieceAroundEndpoint,
   setPieceTransform,
   unconnectedEndpoints,
@@ -426,6 +428,20 @@ export function TrackEditor({
   const LONG_PRESS_MS = 500
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
+  // Stage 2 Workstream B slice 6: when the loop fails to validate but
+  // the chain has exactly two dangling endpoints close to each other,
+  // surface a Close Loop button that snaps them shut. Recomputed on
+  // every pieces change because the chain shape determines whether
+  // reconciliation is offered. Cost is O(E^2) in endpoints because
+  // `unconnectedEndpoints` runs `framesConnect` between every pair
+  // of endpoints to identify dangling ones, but track sizes are
+  // bounded (~64 pieces, ~128 endpoints) so the absolute cost is
+  // small relative to the validator's full-loop traversal.
+  const loopReconciliation = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
+    if (validation.ok) return null
+    return findLoopReconciliation(pieces)
+  }, [pieces, validation.ok])
   const openConnectorIssue =
     validation.issue?.kind === 'openConnector' ? validation.issue : null
   const duplicateIssue =
@@ -2363,6 +2379,30 @@ export function TrackEditor({
               moodActive ? (
                 <span style={advancedDot} />
               ) : null}
+            </button>
+          ) : null}
+          {loopReconciliation !== null ? (
+            <button
+              onClick={() =>
+                setPieces((prev) => {
+                  // Recompute against `prev` rather than reusing the
+                  // render-time plan: a batched setPieces between
+                  // render and click could shift the chain's
+                  // dangling endpoints out from under the cached
+                  // plan, and applying a stale plan would move the
+                  // wrong piece. If the chain has changed enough to
+                  // no longer be reconcilable, leave the pieces
+                  // alone (returning the same array skips a history
+                  // entry via setPieces' equality check).
+                  const fresh = findLoopReconciliation(prev)
+                  if (fresh === null) return prev
+                  return applyLoopReconciliation(prev, fresh)
+                })
+              }
+              style={btnGhost}
+              title={`Snap a ${loopReconciliation.gap.toFixed(1)}-unit gap shut`}
+            >
+              Close loop
             </button>
           ) : null}
           <button

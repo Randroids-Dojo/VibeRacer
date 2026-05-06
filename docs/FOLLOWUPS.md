@@ -18,26 +18,36 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
 shipped. Stage 2 Workstream B's foundation, rendering / rotate handle,
-and free-placement drag have shipped as PRs #104 / #105 / #106. Slice
-5 (numeric input) is in flight on branch
-`claude/continuous-angle-stage-2-numeric-input`. See
+free-placement drag, and numeric Transform panel have shipped as PRs
+#104 / #105 / #106 / #107. Slice 6 (loop reconciliation) is in flight
+on branch `claude/continuous-angle-stage-2-loop-reconciliation`. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
 slicing plan for Workstream B, the file map, and the contracts that
 pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
 reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX (slices 6 and 7)
+### Stage 2 Workstream B: editor UX (slice 7)
 
-Slices 0.5, 1, 2, 3, 4, and now 5 (numeric input) are shipped or in
-flight. The remaining slices are queued.
+Slices 0.5 through 6 are shipped or in flight. The remaining slice is
+queued.
 
-- Slice 6: reconciliation pass for nearly-closed continuous-angle loops:
-  detect "loop closes within wider epsilon" and snap the last endpoint
-  exactly to the first before save.
 - Slice 7: OBB-vs-OBB overlap detection: spatial hash plus AABB
   pre-check before full OBB. The footprint contract stays a list of
   cells; arbitrary-angle pieces enumerate cells via the existing
   supercover.
+
+### Stage 2 Workstream B slice 6 cascading reconciliation (follow-up)
+
+Single-piece reconciliation in a CLOSED loop with one perturbation
+moves the gap from the perturbed connection to the next downstream
+connection rather than closing it (each snap moves the chosen piece
+rigidly, so its still-connected other endpoint drifts onto the next
+broken connection). The shipped reconciliation works for OPEN chains
+where the moving piece sits at the chain end (its other endpoint is
+unconnected); the closed-loop case needs either a multi-piece
+distribute-drift adjustment or a "rotate around connected endpoint"
+move that leaves the OTHER endpoint position fixed. Capture this
+when a user reports the closed-loop case in real authoring.
 
 ### Stage 3
 
