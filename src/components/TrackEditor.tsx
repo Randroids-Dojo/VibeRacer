@@ -21,6 +21,8 @@ import {
 } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
+import { isV1Projectable, transformOf } from '@/game/pieceGeometry'
+import { CELL_SIZE } from '@/game/cellSize'
 import {
   TIME_OF_DAY_LABELS,
   TIME_OF_DAY_NAMES,
@@ -330,11 +332,22 @@ export function TrackEditor({
   const renderedWidth = baseWidth * zoom
   const renderedHeight = baseHeight * zoom
 
+  // Cell-keyed map: only v1-projectable pieces (those whose transform
+  // snaps exactly to the integer grid) live here. Non-projectable pieces
+  // (rotated to a non-cardinal angle by the Stage 2 rotate handle, or
+  // free-placed) render via the overlay group below at their actual
+  // world transform rather than the stale cell snapshot.
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
-    for (const p of pieces) m.set(cellKey(p.row, p.col), p)
+    for (const p of pieces) {
+      if (isV1Projectable(p)) m.set(cellKey(p.row, p.col), p)
+    }
     return m
   }, [pieces])
+  const nonProjectablePieces = useMemo(
+    () => pieces.filter((p) => !isV1Projectable(p)),
+    [pieces],
+  )
 
   const startKey =
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
@@ -1200,6 +1213,14 @@ export function TrackEditor({
                 )
               }),
             )}
+            {nonProjectablePieces.map((piece) => (
+              <NonProjectablePieceOverlay
+                key={`overlay-${piece.row}-${piece.col}`}
+                piece={piece}
+                colMin={colMin}
+                rowMin={rowMin}
+              />
+            ))}
           </svg>
         </div>
         <div style={editHistoryToolbar} role="toolbar" aria-label="Edit history">
@@ -2018,14 +2039,63 @@ function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
   )
 }
 
-function PieceGlyph({ piece }: { piece: Piece }) {
+// Stage 2 Workstream B: render a non-projectable piece (one whose
+// transform sits off the integer cell grid) at its actual world
+// position and continuous angle. The cell-based Cell renderer skips
+// the glyph for these pieces (cellMap excludes them), so the overlay
+// is the only place they show. For grid-aligned pieces the standard
+// Cell render path is unchanged, so the existing snapshot wall and
+// template hashes stay pinned.
+function NonProjectablePieceOverlay({
+  piece,
+  colMin,
+  rowMin,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+}) {
+  const t = transformOf(piece)
+  // World coordinates are in CELL_SIZE units (20); SVG coordinates are
+  // in CELL units (56). The piece's world center maps to:
+  //   svgCx = (transform.x / CELL_SIZE - colMin) * CELL
+  //   svgCy = (transform.z / CELL_SIZE - rowMin) * CELL
+  // We then translate so the inner glyph's local center (CELL/2, CELL/2)
+  // lands at (svgCx, svgCy), and rotate around that local center by the
+  // continuous `transform.theta`.
+  const svgCx = (t.x / CELL_SIZE - colMin) * CELL
+  const svgCy = (t.z / CELL_SIZE - rowMin) * CELL
+  const thetaDeg = (t.theta * 180) / Math.PI
+  return (
+    <g
+      transform={`translate(${svgCx - CELL / 2} ${svgCy - CELL / 2}) rotate(${thetaDeg} ${CELL / 2} ${CELL / 2})`}
+      data-non-projectable-piece-type={piece.type}
+    >
+      <PieceGlyph piece={piece} rotationDegOverride={0} />
+    </g>
+  )
+}
+
+function PieceGlyph({
+  piece,
+  rotationDegOverride,
+}: {
+  piece: Piece
+  // When set, replaces `piece.rotation` for the visual rotation of the
+  // glyph. The overlay renderer for non-projectable pieces passes 0 here
+  // so the inner glyph stays in its rotation-0 frame and the OUTER
+  // wrapping `<g>` applies the continuous `transform.theta` rotation.
+  // Default is `piece.rotation` so cell-based rendering is unchanged.
+  rotationDegOverride?: number
+}) {
   const cx = CELL / 2
   const cy = CELL / 2
   const stroke = '#ffd36b'
   const road = '#4a5a70'
   const roadWidth = CELL * 0.4
+  const rotationDeg = rotationDegOverride ?? piece.rotation
   return (
-    <g transform={`rotate(${piece.rotation} ${cx} ${cy})`}>
+    <g transform={`rotate(${rotationDeg} ${cx} ${cy})`}>
       {piece.type === 'straight' ? (
         <>
           <rect
