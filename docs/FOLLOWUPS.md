@@ -17,22 +17,16 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 ## Continuous-angle migration
 
 Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
-shipped. Stage 2 Workstream B's foundation slice (feature flag plus
-piece-level transform mutations) is in flight on PR #104. See
+shipped. Stage 2 Workstream B's foundation slice merged as PR #104
+(`0b1255a`); slices 2 (rendering refactor) and 3 (rotate handle) are in
+flight on branch `claude/continuous-angle-stage-2-rendering`. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
 slicing plan for Workstream B, the file map, and the contracts that
 pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
 reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX (slices 2 through 7)
+### Stage 2 Workstream B: editor UX (slices 4 through 7)
 
-- Slice 2: rendering refactor in `TrackEditor.tsx` so non-projectable
-  pieces draw at their actual `transform.x / z / theta` rather than
-  the cell-snapped position. Prerequisite for every UI slice that
-  follows.
-- Slice 3: rotate handle on the editor selection: drag rotates the
-  entire piece around an endpoint, preserving the chosen endpoint
-  frame and updating `transform.theta` continuously.
 - Slice 4: free-placement drag behind the flag: nearest-neighbor query
   against unconnected endpoints in a snap radius (about 15 world units,
   30 degrees) with soft pull so the dragged endpoint frame matches.
