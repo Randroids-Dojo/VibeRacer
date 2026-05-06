@@ -317,10 +317,9 @@ mutations the rotate handle and free-placement drag will dispatch:
 on its result so legacy `(row, col, rotation)` stay consistent for
 v1-projectable outputs.
 
-##### Slice 2: rendering refactor. IN FLIGHT.
+##### Slice 2: rendering refactor. SHIPPED.
 
-PR #105 on branch `claude/continuous-angle-stage-2-rendering`. Merge
-commit recorded here when squashed onto main.
+PR #105, squash-merged as `1fb7c61`.
 
 `cellMap` keeps every piece so applyTool / erase / start / checkpoint
 still find off-grid pieces by anchor cell. The cell loop sets
@@ -337,9 +336,9 @@ applies the continuous theta rotation. World-to-SVG mapping is
 pieces still render through the Cell path, so the Stage 0.5 snapshot
 wall and template hashes stay pinned bit-for-bit.
 
-##### Slice 3: rotate handle. IN FLIGHT.
+##### Slice 3: rotate handle. SHIPPED.
 
-Same PR as slice 2 (PR #105). When `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and
+Same PR as slice 2 (PR #105, squash-merged as `1fb7c61`). When `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and
 exactly one piece is selected, an SVG ring renders at each connector
 endpoint via `RotateHandles`. Pointer-down on a ring captures the
 pointer and starts a rotate drag; pointer-move computes the angular
@@ -436,13 +435,13 @@ cell projection misses.
 
 ## Picking up where this left off
 
-Stage 1 (PR #101) and Stage 2 Workstream A (PR #103, merged as
-`9786404`) have shipped. Stage 2 Workstream B's foundation slice
-shipped as PR #104 (merged as `0b1255a`); slices 2 (rendering
-refactor) and 3 (rotate handle) are in flight on branch
-`claude/continuous-angle-stage-2-rendering`. The next slices are
-free-placement drag, long-press numeric input, reconciliation pass,
-and OBB-vs-OBB overlap (listed in order under "Stage 2 Workstream B"
+Shipped to main: Stage 1 (PR #101), Stage 2 Workstream A (PR #103
+merged as `9786404`), Stage 2 Workstream B foundation (PR #104 merged
+as `0b1255a`), Stage 2 Workstream B rendering + rotate handle (PR #105
+merged as `1fb7c61`). Slice 4 (free-placement drag) is in flight on
+branch `claude/continuous-angle-stage-2-free-placement`. The next
+slices are long-press numeric input, reconciliation pass, and
+OBB-vs-OBB overlap (listed in order under "Stage 2 Workstream B"
 above). Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
 and the most recent `PROGRESS_LOG` entry; the templates and Stage 0.5
 snapshot wall plus the continuous-angle long-chain closure test in
