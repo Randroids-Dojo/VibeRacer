@@ -784,6 +784,13 @@ export function TrackEditor({
   const handleRotatePointerDown = useCallback(
     (e: React.PointerEvent<SVGCircleElement>, pivotIndex: number) => {
       if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
+      // Only one pointer can drive a rotate drag at a time. A second
+      // finger landing on a ring while a drag is in flight would
+      // otherwise overwrite `rotateDrag.pointerId` and hijack the
+      // gesture from the original pointer (whose move/up events would
+      // then be filtered out as foreign). Bounce the new pointer until
+      // the active drag finalizes or cancels.
+      if (rotateDrag !== null) return
       if (rotateHandlePieceWithIndex === null) return
       const svgEl = svgRef.current
       if (svgEl === null) return
@@ -821,7 +828,7 @@ export function TrackEditor({
         preview: piece,
       })
     },
-    [colMin, rowMin, rotateHandlePieceWithIndex],
+    [colMin, rowMin, rotateHandlePieceWithIndex, rotateDrag],
   )
 
   // Compute and (optionally) commit the rotate-drag's final preview in a
@@ -1538,27 +1545,47 @@ export function TrackEditor({
                 // attrs) by passing an undefined piece to Cell so the
                 // original anchor cell looks empty. cellMap still has
                 // the piece for applyTool occupancy checks.
-                // Pieces whose visuals live on an overlay (every
-                // non-projectable piece, plus every flex straight)
-                // suppress their cell visuals so the overlay is the
-                // only place the piece, the selection rect, the START
-                // label, and the checkpoint marker show. The mask
-                // covers every footprint cell, not just the anchor,
-                // so a multi-cell piece selected through one of its
-                // non-anchor cells does not leave a leftover stub on
-                // the grid after rotation moves the footprint
-                // elsewhere.
+                // Two separate suppressions:
+                //
+                //   `pieceRendersAtCell` controls whether THIS cell's
+                //   anchored piece paints its own cell glyph + the
+                //   piece-occupied background. False for non-projectable
+                //   pieces (their NonProjectablePieceOverlay handles the
+                //   visuals at the rotated transform) and false for flex
+                //   straights (FlexStraightRoadOverlay handles the
+                //   multi-cell road). For every other piece anchored at
+                //   this cell, the cell renders normally even when
+                //   the cell happens to also fall inside another
+                //   overlay piece's footprint. Without this split, an
+                //   overlap state would silently hide the second
+                //   piece's glyph, making it impossible to see and
+                //   resolve duplicates / overlaps.
+                //
+                //   `indicatorsHere` controls whether the cell-level
+                //   selection rect / START label / checkpoint marker
+                //   render at this cell. Empty cells covered by an
+                //   overlay piece's footprint hide indicators so the
+                //   overlay's own indicators are the only ones showing
+                //   for that piece. Cells with their own anchored
+                //   projectable non-flex piece render their indicators
+                //   normally regardless of overlay coverage; the
+                //   overlay piece's indicators live elsewhere on the
+                //   overlay.
                 const coveredByOverlay = overlayPieceCoveredCells.has(key)
-                const pieceVisuallyHere =
-                  (piece === undefined || isV1Projectable(piece)) &&
-                  !coveredByOverlay
-                const renderedPiece = pieceVisuallyHere ? piece : undefined
-                const cellIsStart = pieceVisuallyHere && key === startKey
+                const pieceRendersAtCell =
+                  piece !== undefined &&
+                  isV1Projectable(piece) &&
+                  piece.type !== 'flexStraight'
+                const renderedPiece = pieceRendersAtCell ? piece : undefined
+                const indicatorsHere =
+                  pieceRendersAtCell ||
+                  (piece === undefined && !coveredByOverlay)
+                const cellIsStart = indicatorsHere && key === startKey
                 const cellIsSelected =
-                  pieceVisuallyHere &&
+                  indicatorsHere &&
                   selectedCells.has(selectedCellKey(r, c))
                 const cellHasCheckpoint =
-                  pieceVisuallyHere && checkpointKeys.has(key)
+                  indicatorsHere && checkpointKeys.has(key)
                 const badConnectorDir =
                   openConnectorIssue?.connectorRow === r &&
                   openConnectorIssue.connectorCol === c
