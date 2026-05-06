@@ -12,7 +12,11 @@ import {
   translatePiece,
   unconnectedEndpoints,
 } from '@/game/continuousAngleEdit'
-import { framesConnect } from '@/game/pieceFrames'
+import {
+  DEFAULT_FRAME_EPSILON_POS,
+  DEFAULT_FRAME_EPSILON_THETA,
+  framesConnect,
+} from '@/game/pieceFrames'
 import { convertV1Piece } from '@/lib/trackVersion'
 import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
 import { footprintCells } from '@/game/trackFootprint'
@@ -599,19 +603,22 @@ describe('findLoopReconciliation', () => {
 
   it('snaps a slightly-perturbed last piece back to close the loop', () => {
     // Take a closed stadium, then rotate pieces[4] (the bottom
-    // straight) by 1.9 degrees around its endpoint connected to
-    // pieces[3] (the bottom-right right90). The angle stays below
-    // DEFAULT_FRAME_EPSILON_THETA = 2 degrees so the pivot endpoint's
-    // tangent still passes framesConnect against pieces[3]; the
-    // straight's length (CELL_SIZE = 20 between its two endpoints)
-    // means the OTHER endpoint drifts ~0.66 world units, past the
-    // validator's 0.5-unit position epsilon but well within
-    // LOOP_RECONCILIATION_RADIUS = 6. A right90 corner is too short
-    // (~14 units between endpoints) to drift past 0.5 within the 2-
-    // degree tangent budget, which is why the test perturbs the
+    // straight) around its endpoint connected to pieces[3] (the
+    // bottom-right right90) by an angle just under
+    // DEFAULT_FRAME_EPSILON_THETA so the pivot endpoint's tangent
+    // still passes framesConnect against pieces[3]. The straight's
+    // length (CELL_SIZE between its two endpoints) then means the
+    // OTHER endpoint drifts CELL_SIZE * sin(angle) world units; with
+    // angle = 0.95 * EPSILON_THETA that drift is comfortably above
+    // DEFAULT_FRAME_EPSILON_POS = 0.5 (so exactly that connection
+    // breaks) and well inside LOOP_RECONCILIATION_RADIUS = 6 (so
+    // reconciliation engages). A right90 corner is too short for
+    // that constraint pair, which is why the test perturbs the
     // straight.
     const pieces = buildStadiumLoop()
-    const angle = (1.9 * Math.PI) / 180
+    const angle = 0.95 * DEFAULT_FRAME_EPSILON_THETA
+    expect(CELL_SIZE * Math.sin(angle)).toBeGreaterThan(DEFAULT_FRAME_EPSILON_POS)
+    expect(CELL_SIZE * Math.sin(angle)).toBeLessThan(LOOP_RECONCILIATION_RADIUS)
     const beforeOpen = unconnectedEndpoints(pieces)
     expect(beforeOpen.length).toBe(0)
     const perturbedIdx = 4
@@ -631,7 +638,7 @@ describe('findLoopReconciliation', () => {
     expect(afterOpen.length).toBe(2)
     const reconciliation = findLoopReconciliation(pieces)
     expect(reconciliation).not.toBeNull()
-    expect(reconciliation!.gap).toBeGreaterThan(0.5)
+    expect(reconciliation!.gap).toBeGreaterThan(DEFAULT_FRAME_EPSILON_POS)
     expect(reconciliation!.gap).toBeLessThan(LOOP_RECONCILIATION_RADIUS)
     // Apply and confirm the previously-broken endpoint pair now
     // satisfies framesConnect.
