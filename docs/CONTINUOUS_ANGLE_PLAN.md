@@ -321,15 +321,21 @@ v1-projectable outputs.
 
 PR #105 on branch `claude/continuous-angle-stage-2-rendering`. Merge
 commit recorded here when squashed onto main.
-`cellMap` now excludes non-projectable pieces and a
-`NonProjectablePieceOverlay` component draws each off-grid piece at
-`(transform.x, transform.z, transform.theta)` via the
-world-to-SVG mapping `svgX = (transform.x / CELL_SIZE - colMin) *
-CELL`. `PieceGlyph` gained an optional `rotationDegOverride` prop the
-overlay passes 0 for so the inner glyph stays in its rotation-0 frame
-and the outer wrapping `<g>` applies the continuous theta rotation.
-Grid-aligned pieces still render through the Cell path, so the Stage
-0.5 snapshot wall and template hashes stay pinned bit-for-bit.
+
+`cellMap` keeps every piece so applyTool / erase / start / checkpoint
+still find off-grid pieces by anchor cell. The cell loop sets
+`renderedPiece = undefined` whenever `isV1Projectable(piece)` is false
+so Cell hides the cell-aligned glyph; the overlay component
+`NonProjectablePieceOverlay` is the only place rotated pieces show.
+The overlay carries `data-row` / `data-col` mirroring the anchor cell
+so `cellFromEvent` routes clicks on the rotated glyph back to the
+same piece tools find via cell click. `PieceGlyph` gained an optional
+`rotationDegOverride` prop the overlay passes 0 for so the inner
+glyph stays in its rotation-0 frame and the outer wrapping `<g>`
+applies the continuous theta rotation. World-to-SVG mapping is
+`svgX = (transform.x / CELL_SIZE - colMin) * CELL`. Grid-aligned
+pieces still render through the Cell path, so the Stage 0.5 snapshot
+wall and template hashes stay pinned bit-for-bit.
 
 ##### Slice 3: rotate handle. IN FLIGHT.
 

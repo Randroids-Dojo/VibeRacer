@@ -347,6 +347,11 @@ export function TrackEditor({
   // preview is committed via `setPieces`. Hidden behind
   // `CONTINUOUS_ANGLE_EDITOR_ENABLED`.
   //
+  // `pointerId` is the pointer that started the drag. Subsequent
+  // pointermove / pointerup / pointercancel events are filtered by this
+  // ID so a second finger landing on a touch device cannot hijack the
+  // active rotation or commit it prematurely.
+  //
   // `cumulativeDelta` tracks the unwrapped angular sum across the drag,
   // so a single sweep past the +/-PI atan2 branch cut does not jump by
   // 2*PI. `lastCursorAngle` stores the previous frame's atan2 result so
@@ -356,6 +361,7 @@ export function TrackEditor({
     pieceIdx: number
     pivotIndex: number
     pivotWorld: { x: number; z: number }
+    pointerId: number
     lastCursorAngle: number
     cumulativeDelta: number
     startPiece: Piece
@@ -775,6 +781,7 @@ export function TrackEditor({
         pieceIdx: idx,
         pivotIndex,
         pivotWorld: { x: pivot.x, z: pivot.z },
+        pointerId: e.pointerId,
         lastCursorAngle: Math.atan2(cursor.z - pivot.z, cursor.x - pivot.x),
         cumulativeDelta: 0,
         startPiece: piece,
@@ -821,6 +828,7 @@ export function TrackEditor({
   const handleRotatePointerMove = useCallback(
     (e: React.PointerEvent<SVGCircleElement>) => {
       if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
       advanceRotateDrag(e.clientX, e.clientY)
     },
     [rotateDrag, advanceRotateDrag],
@@ -853,19 +861,26 @@ export function TrackEditor({
   const handleRotatePointerUp = useCallback(
     (e: React.PointerEvent<SVGCircleElement>) => {
       if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
       try {
         e.currentTarget.releasePointerCapture(e.pointerId)
       } catch {
         // No-op; capture may already have ended.
       }
+      // Feed the release coordinates through advanceRotateDrag so the
+      // committed rotation reflects exactly where the pointer ended up,
+      // not the most recent pointermove (which can lag behind a fast
+      // release).
+      advanceRotateDrag(e.clientX, e.clientY)
       commitRotateDrag()
     },
-    [rotateDrag, commitRotateDrag],
+    [rotateDrag, advanceRotateDrag, commitRotateDrag],
   )
 
   const handleRotatePointerCancel = useCallback(
     (e: React.PointerEvent<SVGCircleElement>) => {
       if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
       try {
         e.currentTarget.releasePointerCapture(e.pointerId)
       } catch {
@@ -879,9 +894,9 @@ export function TrackEditor({
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
     // Rotate-handle fallback for environments where setPointerCapture
     // failed: the captured ring did not get the events, so they bubble
-    // to the SVG. advanceRotateDrag re-uses the same world-coord
-    // pipeline as the ring's onPointerMove.
-    if (rotateDrag !== null) {
+    // to the SVG. Filter by pointerId so a second finger landing on
+    // the SVG cannot hijack an in-flight rotation.
+    if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
       advanceRotateDrag(e.clientX, e.clientY)
       return
     }
@@ -899,11 +914,13 @@ export function TrackEditor({
   }, [applyZoom, rotateDrag, advanceRotateDrag])
 
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
-    if (rotateDrag !== null) {
-      // SVG-level pointer-up only fires here when the ring's
-      // setPointerCapture failed (jsdom or some browsers). Treat as
-      // commit because a successful drag still ended; the captured
-      // path's pointer-cancel handler is the only one that aborts.
+    // SVG-level pointer-up only fires here for the rotate drag when the
+    // ring's setPointerCapture failed (jsdom or some browsers). Filter
+    // by pointerId so an unrelated touch release cannot commit. Feed
+    // the release coordinates through advanceRotateDrag first so the
+    // committed angle matches where the pointer actually ended.
+    if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
+      advanceRotateDrag(e.clientX, e.clientY)
       commitRotateDrag()
       return
     }
@@ -916,7 +933,29 @@ export function TrackEditor({
     if (pinch.pointers.size === 0) {
       pinchRef.current = null
     }
-  }, [rotateDrag, commitRotateDrag])
+  }, [rotateDrag, advanceRotateDrag, commitRotateDrag])
+
+  const handlePointerCancel = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      // Pointer cancel on the SVG (capture-failure fallback path) means
+      // the gesture aborted. Drop the in-flight preview without
+      // committing; pinch state still cleans up below.
+      if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
+        cancelRotateDrag()
+        return
+      }
+      const pinch = pinchRef.current
+      if (!pinch) return
+      pinch.pointers.delete(e.pointerId)
+      if (pinch.pointers.size < 2) {
+        pinch.startDistance = 0
+      }
+      if (pinch.pointers.size === 0) {
+        pinchRef.current = null
+      }
+    },
+    [rotateDrag, cancelRotateDrag],
+  )
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     // Suppress the click that would otherwise fire after a pinch gesture
@@ -1427,7 +1466,7 @@ export function TrackEditor({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
           >
             {rows.map((r) =>
               cols.map((c) => {
@@ -2316,11 +2355,22 @@ function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
 
 // Stage 2 Workstream B: render a non-projectable piece (one whose
 // transform sits off the integer cell grid) at its actual world
-// position and continuous angle. The cell-based Cell renderer skips
-// the glyph for these pieces (cellMap excludes them), so the overlay
-// is the only place they show. For grid-aligned pieces the standard
-// Cell render path is unchanged, so the existing snapshot wall and
-// template hashes stay pinned.
+// position and continuous angle. `cellMap` keeps every piece (so
+// applyTool / erase / start / checkpoint actions still find off-grid
+// pieces by anchor cell), but the cell-loop hides their glyph by
+// passing `renderedPiece = undefined` to Cell whenever
+// `isV1Projectable(piece)` is false. The overlay is the only place
+// the rotated glyph shows. For grid-aligned pieces the Cell render
+// path is unchanged, so the existing snapshot wall and template
+// hashes stay pinned.
+//
+// Known limitation (tracked in docs/FOLLOWUPS.md as a Workstream B
+// follow-up): the START label and checkpoint marker still render on
+// the anchor cell via Cell, not on the rotated overlay glyph.
+// Visually that means a rotated start piece shows the START badge on
+// the empty anchor cell with the rotated road glyph nearby.
+// Acceptable for the first slice; mirroring the badges into the
+// overlay is a separate UX pass.
 function NonProjectablePieceOverlay({
   piece,
   colMin,
