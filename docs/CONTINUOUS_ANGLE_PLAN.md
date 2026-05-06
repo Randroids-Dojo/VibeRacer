@@ -317,9 +317,10 @@ mutations the rotate handle and free-placement drag will dispatch:
 on its result so legacy `(row, col, rotation)` stay consistent for
 v1-projectable outputs.
 
-##### Slice 2: rendering refactor. SHIPPED.
+##### Slice 2: rendering refactor. IN FLIGHT.
 
-PR (pending): branch `claude/continuous-angle-stage-2-rendering`.
+PR #105 on branch `claude/continuous-angle-stage-2-rendering`. Merge
+commit recorded here when squashed onto main.
 `cellMap` now excludes non-projectable pieces and a
 `NonProjectablePieceOverlay` component draws each off-grid piece at
 `(transform.x, transform.z, transform.theta)` via the
@@ -330,9 +331,9 @@ and the outer wrapping `<g>` applies the continuous theta rotation.
 Grid-aligned pieces still render through the Cell path, so the Stage
 0.5 snapshot wall and template hashes stay pinned bit-for-bit.
 
-##### Slice 3: rotate handle. SHIPPED.
+##### Slice 3: rotate handle. IN FLIGHT.
 
-Same PR as slice 2. When `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and
+Same PR as slice 2 (PR #105). When `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and
 exactly one piece is selected, an SVG ring renders at each connector
 endpoint via `RotateHandles`. Pointer-down on a ring captures the
 pointer and starts a rotate drag; pointer-move computes the angular

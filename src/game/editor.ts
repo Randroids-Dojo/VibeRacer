@@ -356,7 +356,7 @@ function getSelectionBounds(selectedKeys: ReadonlySet<string>): {
   return { rowMin, rowMax, colMin, colMax }
 }
 
-function pieceTouchesSelection(
+export function pieceTouchesSelection(
   piece: Piece,
   selectedKeys: ReadonlySet<string>,
 ): boolean {
