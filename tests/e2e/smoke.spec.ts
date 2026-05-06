@@ -436,6 +436,48 @@ test('track editor places a flex straight via the dedicated palette tool', async
   await expect(page.getByText('1 / 64 pieces')).toBeVisible()
 })
 
+test('track editor rotate handle pivots a selected piece around an endpoint', async ({
+  page,
+}) => {
+  // Stage 2 Workstream B slice 3: when the continuous-angle editor flag
+  // is on (set in playwright.config.ts so the build inlines it), the
+  // editor surfaces SVG ring handles at the selected piece's endpoints.
+  // Dragging a handle rotates the piece by the angular delta of the
+  // cursor relative to the pivot endpoint, producing a non-projectable
+  // transform. The piece then renders via NonProjectablePieceOverlay
+  // (data-non-projectable-piece-type attribute).
+  await page.goto('/start/edit')
+
+  // The straight tool is the default after page load, so place a single
+  // straight at (0, 0) without switching tools.
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+
+  const handles = page.getByTestId('rotate-handles').locator('circle')
+  await expect(handles).toHaveCount(2)
+
+  const handle0 = page.locator('circle[data-rotate-handle-pivot-index="0"]')
+  const box = await handle0.boundingBox()
+  if (!box) throw new Error('rotate handle has no bounding box')
+  const cx = box.x + box.width / 2
+  const cy = box.y + box.height / 2
+  await page.mouse.move(cx, cy)
+  await page.mouse.down()
+  // Drag to a position offset from the pivot. Since the pivot endpoint
+  // sits at the handle, the cursor angle starts at 0 (atan2(0, 0)) and
+  // becomes atan2(30, 50) ~= 0.54 rad, rotating the piece by that
+  // amount CW into a non-projectable transform.
+  await page.mouse.move(cx + 50, cy + 30, { steps: 5 })
+  await page.mouse.up()
+
+  await expect(
+    page.locator('g[data-non-projectable-piece-type="straight"]'),
+  ).toBeVisible()
+})
+
 test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
   page,
 }) => {

@@ -21,6 +21,12 @@ import {
 } from '@/lib/schemas'
 import type { Dir } from '@/game/track'
 import { cellKey, validateClosedLoop } from '@/game/track'
+import { endpointsOf, isV1Projectable, transformOf } from '@/game/pieceGeometry'
+import { rotatePieceAroundEndpoint } from '@/game/continuousAngleEdit'
+import { cardinalTurnsOfTheta } from '@/game/pieceFrames'
+import { footprintCellKeys } from '@/game/trackFootprint'
+import { CELL_SIZE } from '@/game/cellSize'
+import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
 import {
   TIME_OF_DAY_LABELS,
   TIME_OF_DAY_NAMES,
@@ -54,6 +60,7 @@ import {
   moveSelectedPieces,
   nextRotation,
   countSelectedPieces,
+  pieceTouchesSelection,
   rectangleSelectionKeys,
   reverseStartDirection,
   rotateSelectedPieces,
@@ -213,6 +220,41 @@ function shortHash(hash: string): string {
   return hash.slice(0, 8)
 }
 
+// Convert a client (mouse / touch) coordinate to a world-space point in
+// CELL_SIZE units. Returns null when the SVG has no current screen CTM
+// (jsdom or before-first-render cases). Used by the rotate-handle drag
+// handlers to map pointer positions to the same world frame the piece
+// transforms live in.
+//
+// World cell `(col, row)` is centered at world `(col * CELL_SIZE,
+// row * CELL_SIZE)`. The Cell `<g>` translates to the cell's top-left
+// in SVG, and PieceGlyph centers its content at `(CELL/2, CELL/2)`
+// inside the cell, so world cell center maps to SVG
+// `((col - colMin) * CELL + CELL/2, (row - rowMin) * CELL + CELL/2)`.
+// Without the half-cell subtract here, the inverse mapping would treat
+// SVG `(0, 0)` as the world center of cell `(colMin, rowMin)` rather
+// than its top-left, putting drag pivots / cursor angles half a cell
+// off relative to the cell-rendered piece glyphs.
+function clientToWorld(
+  svgEl: SVGSVGElement,
+  clientX: number,
+  clientY: number,
+  colMin: number,
+  rowMin: number,
+): { x: number; z: number } | null {
+  const ctm = svgEl.getScreenCTM()
+  if (ctm === null) return null
+  const inv = ctm.inverse()
+  const pt = svgEl.createSVGPoint()
+  pt.x = clientX
+  pt.y = clientY
+  const svgPt = pt.matrixTransform(inv)
+  return {
+    x: ((svgPt.x - CELL / 2) / CELL + colMin) * CELL_SIZE,
+    z: ((svgPt.y - CELL / 2) / CELL + rowMin) * CELL_SIZE,
+  }
+}
+
 export function TrackEditor({
   slug,
   initialPieces,
@@ -304,11 +346,38 @@ export function TrackEditor({
   const [templatePanelOpen, setTemplatePanelOpen] = useState(false)
   const [zoom, setZoom] = useState<number>(ZOOM_DEFAULT)
   const gridContainerRef = useRef<HTMLDivElement | null>(null)
+  const svgRef = useRef<SVGSVGElement | null>(null)
   // Tracks an active two-finger pinch gesture. Null when no pinch is active.
   const pinchRef = useRef<{
     pointers: Map<number, { x: number; y: number }>
     startDistance: number
     startZoom: number
+  } | null>(null)
+  // Stage 2 Workstream B rotate handle: state for an active rotate drag.
+  // When non-null, the editor swaps `pieces[pieceIdx]` with `preview` for
+  // rendering so the user sees the rotation live. On pointer up the
+  // preview is committed via `setPieces`. Hidden behind
+  // `CONTINUOUS_ANGLE_EDITOR_ENABLED`.
+  //
+  // `pointerId` is the pointer that started the drag. Subsequent
+  // pointermove / pointerup / pointercancel events are filtered by this
+  // ID so a second finger landing on a touch device cannot hijack the
+  // active rotation or commit it prematurely.
+  //
+  // `cumulativeDelta` tracks the unwrapped angular sum across the drag,
+  // so a single sweep past the +/-PI atan2 branch cut does not jump by
+  // 2*PI. `lastCursorAngle` stores the previous frame's atan2 result so
+  // the next frame's increment can be normalised into [-PI, PI] before
+  // accumulating.
+  const [rotateDrag, setRotateDrag] = useState<{
+    pieceIdx: number
+    pivotIndex: number
+    pivotWorld: { x: number; z: number }
+    pointerId: number
+    lastCursorAngle: number
+    cumulativeDelta: number
+    startPiece: Piece
+    preview: Piece
   } | null>(null)
 
   const validation = useMemo(() => validateClosedLoop(pieces), [pieces])
@@ -317,7 +386,40 @@ export function TrackEditor({
   const duplicateIssue =
     validation.issue?.kind === 'duplicateCell' ? validation.issue : null
 
-  const bounds = useMemo(() => getBounds(pieces), [pieces])
+  // While a rotate-handle drag is in flight, `displayPieces` substitutes
+  // the preview piece for the original at `rotateDrag.pieceIdx` so the
+  // editor renders the rotation live without committing it to history
+  // until pointer up. The committed `pieces` array stays untouched until
+  // commit, which keeps undo / redo and validation idempotent.
+  const displayPieces = useMemo(() => {
+    if (rotateDrag === null) return pieces
+    return pieces.map((p, i) => (i === rotateDrag.pieceIdx ? rotateDrag.preview : p))
+  }, [pieces, rotateDrag])
+
+  // Bounds drive the SVG viewBox and the world-to-SVG mapping. Source
+  // them from `displayPieces` so a rotate-handle drag that swings a long
+  // piece outside the committed footprint still keeps the live preview
+  // and handle rings inside the rendered area; without this the drag
+  // visuals would clip until pointer-up recomputed bounds. `getBounds`
+  // is cell-keyed and non-projectable pieces leave `(row, col)`
+  // unchanged, so we additionally expand bounds to include each
+  // non-projectable piece's transform position (rounded to the nearest
+  // cell, plus a 1-cell margin to cover the piece's rotated footprint).
+  const bounds = useMemo(() => {
+    const base = getBounds(displayPieces)
+    let { rowMin, rowMax, colMin, colMax } = base
+    for (const p of displayPieces) {
+      if (p.transform === undefined) continue
+      if (isV1Projectable(p)) continue
+      const r = Math.round(p.transform.z / CELL_SIZE)
+      const c = Math.round(p.transform.x / CELL_SIZE)
+      if (r - 1 < rowMin) rowMin = r - 1
+      if (r + 1 > rowMax) rowMax = r + 1
+      if (c - 1 < colMin) colMin = c - 1
+      if (c + 1 > colMax) colMax = c + 1
+    }
+    return { rowMin, rowMax, colMin, colMax }
+  }, [displayPieces])
   const rowMin = bounds.rowMin - PAD_CELLS
   const rowMax = bounds.rowMax + PAD_CELLS
   const colMin = bounds.colMin - PAD_CELLS
@@ -330,11 +432,40 @@ export function TrackEditor({
   const renderedWidth = baseWidth * zoom
   const renderedHeight = baseHeight * zoom
 
+  // Cell-keyed map: includes every piece so tool actions
+  // (erase / set start / checkpoint / click-to-rotate) keep finding
+  // pieces by their anchor cell even after a continuous-angle rotation.
+  // The piece's visual representation is split between the Cell render
+  // path (grid-aligned only) and `NonProjectablePieceOverlay` (off-grid),
+  // but occupancy and applyTool stay one-source-of-truth on this map.
   const cellMap = useMemo(() => {
     const m = new Map<string, Piece>()
-    for (const p of pieces) m.set(cellKey(p.row, p.col), p)
+    for (const p of displayPieces) m.set(cellKey(p.row, p.col), p)
     return m
-  }, [pieces])
+  }, [displayPieces])
+  const nonProjectablePieces = useMemo(
+    () => displayPieces.filter((p) => !isV1Projectable(p)),
+    [displayPieces],
+  )
+  // Set of cellKeys covered by any piece whose visuals live on an
+  // overlay rather than on the cell itself: every non-projectable
+  // piece (rotated off-grid → NonProjectablePieceOverlay) plus every
+  // flex straight (FlexStraightRoadOverlay paints the full road
+  // across the multi-cell footprint instead of the small in-cell
+  // tilt-line glyph PieceGlyph would otherwise draw). The Cell render
+  // path masks `cellIsSelected` / `cellIsStart` / `cellHasCheckpoint`
+  // (and the piece-occupied background) off for cells in this set so
+  // the indicators travel with the overlay rather than leaving a
+  // single-cell stub behind on the grid.
+  const overlayPieceCoveredCells = useMemo(() => {
+    const set = new Set<string>()
+    for (const p of displayPieces) {
+      if (!isV1Projectable(p) || p.type === 'flexStraight') {
+        for (const k of footprintCellKeys(p)) set.add(k)
+      }
+    }
+    return set
+  }, [displayPieces])
 
   const startKey =
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
@@ -343,6 +474,37 @@ export function TrackEditor({
     () => countSelectedPieces(pieces, selectedCells),
     [pieces, selectedCells],
   )
+
+  // Stage 2 Workstream B: when the continuous-angle editor flag is on
+  // and exactly one piece is selected, surface rotate-handle rings at
+  // its endpoints. `pieceTouchesSelection` is footprint-aware (matches
+  // any cell of the piece's footprint, not just the anchor), so a
+  // multi-cell piece selected via a non-anchor cell still surfaces
+  // its handles. `displayPieces` drives the lookup so the live preview
+  // during a drag is the source the rings track.
+  //
+  // While a rotate drag is active, the dragging piece's index is
+  // pinned so the handles never disappear mid-drag. Without this, a
+  // multi-cell piece selected through a non-anchor footprint cell can
+  // see its footprint shift after the cardinal-snap crosses a quarter
+  // turn (the rotated footprint no longer covers the originally
+  // selected cell), `pieceTouchesSelection` goes false, and the rings
+  // vanish even though the user is still holding the same gesture.
+  const rotateHandlePieceWithIndex = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
+    if (rotateDrag !== null) {
+      const piece = displayPieces[rotateDrag.pieceIdx]
+      if (piece !== undefined) return { piece, idx: rotateDrag.pieceIdx }
+    }
+    if (selectedPieceCount !== 1) return null
+    for (let i = 0; i < displayPieces.length; i++) {
+      if (pieceTouchesSelection(displayPieces[i], selectedCells)) {
+        return { piece: displayPieces[i], idx: i }
+      }
+    }
+    return null
+  }, [displayPieces, selectedCells, selectedPieceCount, rotateDrag])
+  const rotateHandlePiece = rotateHandlePieceWithIndex?.piece ?? null
 
   // Keep callbacks stable so the memoized <Cell> children are not invalidated
   // by every render. Latest state is read through refs.
@@ -624,7 +786,197 @@ export function TrackEditor({
     pinchRef.current = pinch
   }, [zoom])
 
+  // Stage 2 Workstream B rotate handle. Pointer-down on a handle ring
+  // captures the pointer on the ring element so subsequent move / up
+  // events fire on it even if the cursor leaves the small circle. The
+  // editor stores the rotate-drag state and re-renders with the live
+  // preview swapped in for `rotateDrag.pieceIdx` until pointer up.
+  const handleRotatePointerDown = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>, pivotIndex: number) => {
+      if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
+      // Only one pointer can drive a rotate drag at a time. A second
+      // finger landing on a ring while a drag is in flight would
+      // otherwise overwrite `rotateDrag.pointerId` and hijack the
+      // gesture from the original pointer (whose move/up events would
+      // then be filtered out as foreign). Bounce the new pointer until
+      // the active drag finalizes or cancels.
+      if (rotateDrag !== null) return
+      if (rotateHandlePieceWithIndex === null) return
+      const svgEl = svgRef.current
+      if (svgEl === null) return
+      const { piece, idx } = rotateHandlePieceWithIndex
+      const endpoints = endpointsOf(piece)
+      const pivot = endpoints[pivotIndex]
+      if (pivot === undefined) return
+      const cursor = clientToWorld(
+        svgEl,
+        e.clientX,
+        e.clientY,
+        colMin,
+        rowMin,
+      )
+      if (cursor === null) return
+      e.stopPropagation()
+      try {
+        e.currentTarget.setPointerCapture(e.pointerId)
+      } catch {
+        // setPointerCapture can throw in jsdom or in browsers that have
+        // already routed the pointer elsewhere. The SVG-level
+        // handlePointerMove / handlePointerUp below check rotateDrag
+        // and forward to the rotate handlers, so the drag still works
+        // even when capture fails: events arrive at the SVG once the
+        // cursor leaves the small circle.
+      }
+      setRotateDrag({
+        pieceIdx: idx,
+        pivotIndex,
+        pivotWorld: { x: pivot.x, z: pivot.z },
+        pointerId: e.pointerId,
+        lastCursorAngle: Math.atan2(cursor.z - pivot.z, cursor.x - pivot.x),
+        cumulativeDelta: 0,
+        startPiece: piece,
+        preview: piece,
+      })
+    },
+    [colMin, rowMin, rotateHandlePieceWithIndex, rotateDrag],
+  )
+
+  // Compute and (optionally) commit the rotate-drag's final preview in a
+  // single tick. `advanceRotateDrag` is for live pointermove updates and
+  // queues a setState for the preview; pointer-up / cancel must NOT
+  // chain advance + commit because React batches setState and the
+  // commit closure would still read the pre-advance `rotateDrag` (so
+  // the commit would land the previous pointermove preview, not the
+  // release position). `finalizeRotateDrag` instead computes the
+  // release-position preview directly from the current `rotateDrag`
+  // and writes the final piece into history in one setPieces call,
+  // then clears `rotateDrag`.
+  const finalizeRotateDrag = useCallback(
+    (clientX: number, clientY: number, commit: boolean) => {
+      if (rotateDrag === null) return
+      const svgEl = svgRef.current
+      let cumulativeDelta = rotateDrag.cumulativeDelta
+      if (svgEl !== null) {
+        const cursor = clientToWorld(svgEl, clientX, clientY, colMin, rowMin)
+        if (cursor !== null) {
+          const currentAngle = Math.atan2(
+            cursor.z - rotateDrag.pivotWorld.z,
+            cursor.x - rotateDrag.pivotWorld.x,
+          )
+          let increment = currentAngle - rotateDrag.lastCursorAngle
+          while (increment > Math.PI) increment -= 2 * Math.PI
+          while (increment < -Math.PI) increment += 2 * Math.PI
+          cumulativeDelta += increment
+        }
+      }
+      // No-op rotations (click-and-release without movement, within a
+      // tiny epsilon to absorb sub-pixel cursor jitter) skip setPieces
+      // so they do not pollute undo / redo with a phantom step.
+      if (commit && Math.abs(cumulativeDelta) > 1e-9) {
+        const finalPreview = rotatePieceAroundEndpoint(
+          rotateDrag.startPiece,
+          rotateDrag.pivotIndex,
+          cumulativeDelta,
+        )
+        const idx = rotateDrag.pieceIdx
+        setPieces((prev) =>
+          prev.map((p, i) => (i === idx ? finalPreview : p)),
+        )
+      }
+      setRotateDrag(null)
+    },
+    [rotateDrag, colMin, rowMin, setPieces],
+  )
+
+  const advanceRotateDrag = useCallback(
+    (clientX: number, clientY: number) => {
+      if (rotateDrag === null) return
+      const svgEl = svgRef.current
+      if (svgEl === null) return
+      const cursor = clientToWorld(svgEl, clientX, clientY, colMin, rowMin)
+      if (cursor === null) return
+      const currentAngle = Math.atan2(
+        cursor.z - rotateDrag.pivotWorld.z,
+        cursor.x - rotateDrag.pivotWorld.x,
+      )
+      // Normalise the per-frame increment into [-PI, PI] so a sweep
+      // across the +/-PI atan2 branch cut does not pop by 2*PI. Then
+      // accumulate so the cumulative delta can pass through one or
+      // more full revolutions smoothly.
+      let increment = currentAngle - rotateDrag.lastCursorAngle
+      while (increment > Math.PI) increment -= 2 * Math.PI
+      while (increment < -Math.PI) increment += 2 * Math.PI
+      const cumulativeDelta = rotateDrag.cumulativeDelta + increment
+      const preview = rotatePieceAroundEndpoint(
+        rotateDrag.startPiece,
+        rotateDrag.pivotIndex,
+        cumulativeDelta,
+      )
+      setRotateDrag({
+        ...rotateDrag,
+        lastCursorAngle: currentAngle,
+        cumulativeDelta,
+        preview,
+      })
+    },
+    [colMin, rowMin, rotateDrag],
+  )
+
+  const handleRotatePointerMove = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
+      // Stop propagation so the SVG-level handlePointerMove fallback
+      // does not also advance the drag (would double-update and
+      // double-render). Fallback only fires when the captured ring
+      // missed the event entirely.
+      e.stopPropagation()
+      advanceRotateDrag(e.clientX, e.clientY)
+    },
+    [rotateDrag, advanceRotateDrag],
+  )
+
+  const handleRotatePointerUp = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // No-op; capture may already have ended.
+      }
+      // Stop propagation so the SVG-level handlePointerUp fallback does
+      // not also commit (would push a duplicate undo step).
+      e.stopPropagation()
+      finalizeRotateDrag(e.clientX, e.clientY, true)
+    },
+    [rotateDrag, finalizeRotateDrag],
+  )
+
+  const handleRotatePointerCancel = useCallback(
+    (e: React.PointerEvent<SVGCircleElement>) => {
+      if (rotateDrag === null) return
+      if (e.pointerId !== rotateDrag.pointerId) return
+      try {
+        e.currentTarget.releasePointerCapture(e.pointerId)
+      } catch {
+        // No-op.
+      }
+      e.stopPropagation()
+      finalizeRotateDrag(e.clientX, e.clientY, false)
+    },
+    [rotateDrag, finalizeRotateDrag],
+  )
+
   const handlePointerMove = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    // Rotate-handle fallback for environments where setPointerCapture
+    // failed: the captured ring did not get the events, so they bubble
+    // to the SVG. Filter by pointerId so a second finger landing on
+    // the SVG cannot hijack an in-flight rotation.
+    if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
+      advanceRotateDrag(e.clientX, e.clientY)
+      return
+    }
     const pinch = pinchRef.current
     if (!pinch || !pinch.pointers.has(e.pointerId)) return
     pinch.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY })
@@ -636,9 +988,17 @@ export function TrackEditor({
     const midX = (a.x + b.x) / 2
     const midY = (a.y + b.y) / 2
     applyZoom(next, { clientX: midX, clientY: midY })
-  }, [applyZoom])
+  }, [applyZoom, rotateDrag, advanceRotateDrag])
 
   const handlePointerUp = useCallback((e: React.PointerEvent<SVGSVGElement>) => {
+    // SVG-level pointer-up only fires here for the rotate drag when the
+    // ring's setPointerCapture failed (jsdom or some browsers) AND the
+    // ring's handler did not run (which would have stopPropagation'd).
+    // Filter by pointerId so an unrelated touch release cannot commit.
+    if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
+      finalizeRotateDrag(e.clientX, e.clientY, true)
+      return
+    }
     const pinch = pinchRef.current
     if (!pinch) return
     pinch.pointers.delete(e.pointerId)
@@ -648,7 +1008,29 @@ export function TrackEditor({
     if (pinch.pointers.size === 0) {
       pinchRef.current = null
     }
-  }, [])
+  }, [rotateDrag, finalizeRotateDrag])
+
+  const handlePointerCancel = useCallback(
+    (e: React.PointerEvent<SVGSVGElement>) => {
+      // Pointer cancel on the SVG (capture-failure fallback path) means
+      // the gesture aborted. Drop the in-flight preview without
+      // committing; pinch state still cleans up below.
+      if (rotateDrag !== null && e.pointerId === rotateDrag.pointerId) {
+        finalizeRotateDrag(e.clientX, e.clientY, false)
+        return
+      }
+      const pinch = pinchRef.current
+      if (!pinch) return
+      pinch.pointers.delete(e.pointerId)
+      if (pinch.pointers.size < 2) {
+        pinch.startDistance = 0
+      }
+      if (pinch.pointers.size === 0) {
+        pinchRef.current = null
+      }
+    },
+    [rotateDrag, finalizeRotateDrag],
+  )
 
   const handleSvgClick = useCallback((e: React.MouseEvent<SVGSVGElement>) => {
     // Suppress the click that would otherwise fire after a pinch gesture
@@ -1142,6 +1524,7 @@ export function TrackEditor({
       <div style={gridOuter}>
         <div style={gridWrap} ref={gridContainerRef}>
           <svg
+            ref={svgRef}
             width={renderedWidth}
             height={renderedHeight}
             viewBox={`0 0 ${baseWidth} ${baseHeight}`}
@@ -1158,7 +1541,7 @@ export function TrackEditor({
             onPointerDown={handlePointerDown}
             onPointerMove={handlePointerMove}
             onPointerUp={handlePointerUp}
-            onPointerCancel={handlePointerUp}
+            onPointerCancel={handlePointerCancel}
           >
             {rows.map((r) =>
               cols.map((c) => {
@@ -1166,7 +1549,53 @@ export function TrackEditor({
                 const y = (r - rowMin) * CELL
                 const key = cellKey(r, c)
                 const piece = cellMap.get(key)
-                const isStart = key === startKey
+                // Non-projectable pieces render via the overlay group at
+                // their actual world transform, not at this cell. Hide
+                // their cell visuals (background fill, glyph, data-piece
+                // attrs) by passing an undefined piece to Cell so the
+                // original anchor cell looks empty. cellMap still has
+                // the piece for applyTool occupancy checks.
+                // Two separate suppressions:
+                //
+                //   `pieceRendersAtCell` controls whether THIS cell's
+                //   anchored piece paints its own cell glyph + the
+                //   piece-occupied background. False for non-projectable
+                //   pieces (their NonProjectablePieceOverlay handles the
+                //   visuals at the rotated transform) and false for flex
+                //   straights (FlexStraightRoadOverlay handles the
+                //   multi-cell road). For every other piece anchored at
+                //   this cell, the cell renders normally even when
+                //   the cell happens to also fall inside another
+                //   overlay piece's footprint. Without this split, an
+                //   overlap state would silently hide the second
+                //   piece's glyph, making it impossible to see and
+                //   resolve duplicates / overlaps.
+                //
+                //   `indicatorsHere` controls whether the cell-level
+                //   selection rect / START label / checkpoint marker
+                //   render at this cell. Empty cells covered by an
+                //   overlay piece's footprint hide indicators so the
+                //   overlay's own indicators are the only ones showing
+                //   for that piece. Cells with their own anchored
+                //   projectable non-flex piece render their indicators
+                //   normally regardless of overlay coverage; the
+                //   overlay piece's indicators live elsewhere on the
+                //   overlay.
+                const coveredByOverlay = overlayPieceCoveredCells.has(key)
+                const pieceRendersAtCell =
+                  piece !== undefined &&
+                  isV1Projectable(piece) &&
+                  piece.type !== 'flexStraight'
+                const renderedPiece = pieceRendersAtCell ? piece : undefined
+                const indicatorsHere =
+                  pieceRendersAtCell ||
+                  (piece === undefined && !coveredByOverlay)
+                const cellIsStart = indicatorsHere && key === startKey
+                const cellIsSelected =
+                  indicatorsHere &&
+                  selectedCells.has(selectedCellKey(r, c))
+                const cellHasCheckpoint =
+                  indicatorsHere && checkpointKeys.has(key)
                 const badConnectorDir =
                   openConnectorIssue?.connectorRow === r &&
                   openConnectorIssue.connectorCol === c
@@ -1184,12 +1613,12 @@ export function TrackEditor({
                     col={c}
                     x={x}
                     y={y}
-                    piece={piece}
-                    isStart={isStart}
-                    hasCheckpoint={checkpointKeys.has(key)}
+                    piece={renderedPiece}
+                    isStart={cellIsStart}
+                    hasCheckpoint={cellHasCheckpoint}
                     decoration={decorationMap.get(key)}
-                    startExitDir={isStart ? startExitDir : null}
-                    isSelected={selectedCells.has(selectedCellKey(r, c))}
+                    startExitDir={cellIsStart ? startExitDir : null}
+                    isSelected={cellIsSelected}
                     isSelectionAnchor={
                       selectionAnchor?.row === r && selectionAnchor.col === c
                     }
@@ -1200,6 +1629,77 @@ export function TrackEditor({
                 )
               }),
             )}
+            {displayPieces
+              .filter((p) => p.type === 'flexStraight')
+              .map((piece) => {
+                const overlayKey = cellKey(piece.row, piece.col)
+                const isStart = overlayKey === startKey
+                const piecesFootprintKeys = footprintCellKeys(piece)
+                const isSelected = pieceTouchesSelection(
+                  piece,
+                  selectedCells,
+                )
+                const hasCheckpoint = piecesFootprintKeys.some((k) =>
+                  checkpointKeys.has(k),
+                )
+                return (
+                  <FlexStraightRoadOverlay
+                    key={`flex-road-${piece.row}-${piece.col}`}
+                    piece={piece}
+                    colMin={colMin}
+                    rowMin={rowMin}
+                    isStart={isStart}
+                    isSelected={isSelected}
+                    hasCheckpoint={hasCheckpoint}
+                  />
+                )
+              })}
+            {nonProjectablePieces
+              .filter((piece) => piece.type !== 'flexStraight')
+              .map((piece) => {
+              const overlayKey = cellKey(piece.row, piece.col)
+              const isStart = overlayKey === startKey
+              // Flags must be footprint-aware (not anchor-only) because
+              // the cell renderer suppresses selection / checkpoint
+              // visuals for every cell in `overlayPieceCoveredCells`.
+              // If the user selected a non-anchor footprint cell via
+              // rectangle selection, the cell rect is hidden AND the
+              // anchor-only check would also miss it, leaving the piece
+              // with no selection feedback. `pieceTouchesSelection`
+              // mirrors `pieceTouchesSelection` in editor.ts (already
+              // used by `selectedPieceCount` and the rotate handle
+              // lookup) so all three agree on what "this piece is
+              // selected" means. Same logic for checkpoints living on
+              // non-anchor footprint cells.
+              const piecesFootprintKeys = footprintCellKeys(piece)
+              const isSelected = pieceTouchesSelection(piece, selectedCells)
+              const hasCheckpoint = piecesFootprintKeys.some((k) =>
+                checkpointKeys.has(k),
+              )
+              return (
+                <NonProjectablePieceOverlay
+                  key={`overlay-${piece.row}-${piece.col}`}
+                  piece={piece}
+                  colMin={colMin}
+                  rowMin={rowMin}
+                  isStart={isStart}
+                  isSelected={isSelected}
+                  hasCheckpoint={hasCheckpoint}
+                  startExitDir={isStart ? startExitDir : null}
+                />
+              )
+            })}
+            {rotateHandlePiece !== null ? (
+              <RotateHandles
+                piece={rotateHandlePiece}
+                colMin={colMin}
+                rowMin={rowMin}
+                onPointerDown={handleRotatePointerDown}
+                onPointerMove={handleRotatePointerMove}
+                onPointerUp={handleRotatePointerUp}
+                onPointerCancel={handleRotatePointerCancel}
+              />
+            ) : null}
           </svg>
         </div>
         <div style={editHistoryToolbar} role="toolbar" aria-label="Edit history">
@@ -2018,14 +2518,351 @@ function DecorationGlyph({ kind }: { kind: TrackDecorationKind }) {
   )
 }
 
-function PieceGlyph({ piece }: { piece: Piece }) {
+// Stage 2 Workstream B: render a non-projectable piece (one whose
+// transform sits off the integer cell grid) at its actual world
+// position and continuous angle. `cellMap` keeps every piece (so
+// applyTool / erase / start / checkpoint actions still find off-grid
+// pieces by anchor cell), but the cell loop hides the glyph and the
+// piece-following indicators (background fill, glyph, selection rect,
+// START label, checkpoint marker) by passing
+// `renderedPiece = undefined` and the masked-off `cellIsStart` /
+// `cellIsSelected` / `cellHasCheckpoint` flags to Cell whenever
+// `isV1Projectable(piece)` is false. The overlay then renders all of
+// those visuals inside its rotated `<g>` so the selection rectangle,
+// START badge, and checkpoint marker follow the rotated piece, not
+// the original anchor cell. For grid-aligned pieces the Cell render
+// path is unchanged, so the existing snapshot wall and template
+// hashes stay pinned.
+// Stage 2 Workstream B: paint the full flex-straight road from entry to
+// exit. PieceGlyph only renders a tilted line inside the anchor cell,
+// so a flex straight with a multi-cell offset (default `dr = -3, dc = 1`)
+// would otherwise look like a single-cell piece in the editor while its
+// connector endpoints (and the rotate-handle rings) actually live
+// several cells away. This overlay reads the world-space endpoint
+// frames from `endpointsOf(piece)` (the same source the rotate handles
+// use), so the visible road and the rings always agree on where the
+// piece sits.
+//
+// Renders for both v1-projectable (rotation 0/90/180/270) and
+// non-projectable flex straights. The line is straight from entry to
+// exit, matching the in-game road geometry built by
+// `sampleFlexStraightLocal`.
+function FlexStraightRoadOverlay({
+  piece,
+  colMin,
+  rowMin,
+  isStart,
+  isSelected,
+  hasCheckpoint,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+  isStart: boolean
+  isSelected: boolean
+  hasCheckpoint: boolean
+}) {
+  const endpoints = endpointsOf(piece)
+  const entry = endpoints[0]
+  const exit = endpoints[1]
+  if (entry === undefined || exit === undefined) return null
+  // World cell center `(col * CELL_SIZE, row * CELL_SIZE)` maps to SVG
+  // `((col - colMin) * CELL + CELL/2)`; the +CELL/2 puts the road on
+  // the cell-center axis instead of half a cell northwest of the
+  // grid-rendered pieces.
+  const ex = (entry.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const ey = (entry.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+  const xx = (exit.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const xy = (exit.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+  const midX = (ex + xx) / 2
+  const midY = (ey + xy) / 2
+  const road = '#4a5a70'
+  const stroke = '#ffd36b'
+  const startStroke = '#6ee787'
+  const roadWidth = CELL * 0.4
+  // Road direction in SVG coords (CW from +x because SVG y grows down).
+  // The START arrow's apex defaults to -y (up = -90 deg), so to make it
+  // point along the road we rotate by `roadAngleDeg + 90`.
+  const roadAngleDeg = (Math.atan2(xy - ey, xx - ex) * 180) / Math.PI
+  return (
+    <g
+      style={{ pointerEvents: 'none' }}
+      data-flex-straight-road-anchor={`${piece.row},${piece.col}`}
+    >
+      {/*
+        Selection halo: a fatter translucent line under the road. Drawn
+        first so it appears beneath the road body.
+      */}
+      {isSelected ? (
+        <line
+          x1={ex}
+          y1={ey}
+          x2={xx}
+          y2={xy}
+          stroke="#58a6ff"
+          strokeWidth={roadWidth + 8}
+          strokeOpacity={0.32}
+          strokeLinecap="round"
+        />
+      ) : null}
+      <line
+        x1={ex}
+        y1={ey}
+        x2={xx}
+        y2={xy}
+        stroke={road}
+        strokeWidth={roadWidth}
+        strokeLinecap="butt"
+      />
+      <line
+        x1={ex}
+        y1={ey}
+        x2={xx}
+        y2={xy}
+        stroke={isStart ? startStroke : stroke}
+        strokeWidth={2}
+        strokeDasharray="4 4"
+      />
+      {isStart ? (
+        <>
+          <text
+            x={midX}
+            y={midY - 4}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight={700}
+            fill={startStroke}
+            transform={`rotate(${roadAngleDeg} ${midX} ${midY})`}
+            style={{ letterSpacing: 1 }}
+          >
+            START
+          </text>
+          <polygon
+            points={`${ex - 5},${ey + 3} ${ex + 5},${ey + 3} ${ex},${ey - 5}`}
+            transform={`rotate(${roadAngleDeg + 90} ${ex} ${ey})`}
+            fill={startStroke}
+          />
+        </>
+      ) : null}
+      {hasCheckpoint ? (
+        <g>
+          <circle
+            cx={midX}
+            cy={midY}
+            r={10}
+            fill="rgba(255, 179, 71, 0.18)"
+            stroke="#ffb347"
+            strokeWidth={2}
+          />
+          <path
+            d={`M ${midX - 4} ${midY + 10} L ${midX - 4} ${midY - 10} L ${midX + 9} ${midY - 6} L ${midX - 4} ${midY - 2}`}
+            fill="#ffb347"
+          />
+        </g>
+      ) : null}
+    </g>
+  )
+}
+
+function NonProjectablePieceOverlay({
+  piece,
+  colMin,
+  rowMin,
+  isStart,
+  isSelected,
+  hasCheckpoint,
+  startExitDir,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+  isStart: boolean
+  isSelected: boolean
+  hasCheckpoint: boolean
+  startExitDir: Dir | null
+}) {
+  const t = transformOf(piece)
+  // World coordinates are in CELL_SIZE units (20); SVG coordinates are
+  // in CELL units (56). World cell `(col, row)` center is at world
+  // `(col * CELL_SIZE, row * CELL_SIZE)`, which maps to SVG cell
+  // center at `((col - colMin) * CELL + CELL / 2, ...)`. The `+ CELL /
+  // 2` keeps the rotated overlay aligned with the grid-rendered cell
+  // glyphs; without it the overlay would render half a cell northwest
+  // of where a v1-projectable Cell paints the same piece, and a piece
+  // toggling between Cell and overlay rendering paths would visually
+  // jump.
+  const svgCx = (t.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const svgCy = (t.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+  const thetaDeg = (t.theta * 180) / Math.PI
+  // The outer group rotates the inner glyph by thetaDeg. `startExitDir`
+  // already encodes the cardinal-snapped portion of theta (computed via
+  // `cardinalTurnsOfTheta` in connectorPortsOf), so an inner rotation of
+  // `startExitDir * 45` would double-count the cardinal turn. Subtract
+  // the cardinal snap so the inner-frame rotation plus the outer
+  // rotation lands at `startExitDir * 45 + residualDeg` in world,
+  // matching the actual piece exit direction even off-cardinal.
+  const cardinalSnapDeg = cardinalTurnsOfTheta(t.theta) * 90
+  return (
+    <g
+      transform={`translate(${svgCx - CELL / 2} ${svgCy - CELL / 2}) rotate(${thetaDeg} ${CELL / 2} ${CELL / 2})`}
+      // `data-row` / `data-col` mirror the piece's anchor cell so
+      // `cellFromEvent` walks up to find them on a click against the
+      // rotated glyph. Without these attrs, applyTool would treat the
+      // visible piece as unclickable. The anchor row / col stays the
+      // original integer cell because `convertV1Piece` leaves the cell
+      // fields untouched for non-projectable transforms; clicks at the
+      // original cell route to the same piece.
+      data-row={piece.row}
+      data-col={piece.col}
+      data-non-projectable-piece-type={piece.type}
+    >
+      {/*
+        Cell-sized background rect mirroring Cell's piece-occupied fill.
+        Renders inside the rotated group so the piece-occupied tinted
+        background follows the rotation, giving a clear visual of where
+        the piece footprint actually sits.
+      */}
+      <rect
+        width={CELL}
+        height={CELL}
+        fill={isStart ? '#1f3a2a' : '#222e40'}
+        stroke={isStart ? '#6ee787' : '#2b3a50'}
+        strokeWidth={isStart ? 2 : 1}
+      />
+      <PieceGlyph piece={piece} rotationDegOverride={0} />
+      {hasCheckpoint ? (
+        <g style={{ pointerEvents: 'none' }}>
+          <circle
+            cx={CELL / 2}
+            cy={CELL / 2}
+            r={10}
+            fill="rgba(255, 179, 71, 0.18)"
+            stroke="#ffb347"
+            strokeWidth={2}
+          />
+          <path
+            d={`M ${CELL / 2 - 4} ${CELL / 2 + 10} L ${CELL / 2 - 4} ${CELL / 2 - 10} L ${CELL / 2 + 9} ${CELL / 2 - 6} L ${CELL / 2 - 4} ${CELL / 2 - 2}`}
+            fill="#ffb347"
+          />
+        </g>
+      ) : null}
+      {isStart ? (
+        <>
+          <text
+            x={CELL / 2}
+            y={12}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight={700}
+            fill="#6ee787"
+            style={{ pointerEvents: 'none', letterSpacing: 1 }}
+          >
+            START
+          </text>
+          {startExitDir !== null ? (
+            <polygon
+              points={`${CELL / 2 - 5},${CELL / 2 + 3} ${CELL / 2 + 5},${CELL / 2 + 3} ${CELL / 2},${CELL / 2 - 5}`}
+              transform={`rotate(${startExitDir * 45 - cardinalSnapDeg} ${CELL / 2} ${CELL / 2})`}
+              fill="#6ee787"
+              style={{ pointerEvents: 'none' }}
+            />
+          ) : null}
+        </>
+      ) : null}
+      {isSelected ? (
+        <rect
+          x={3}
+          y={3}
+          width={CELL - 6}
+          height={CELL - 6}
+          fill="rgba(88, 166, 255, 0.16)"
+          stroke="#58a6ff"
+          strokeWidth={2}
+          style={{ pointerEvents: 'none' }}
+        />
+      ) : null}
+    </g>
+  )
+}
+
+// Stage 2 Workstream B: SVG rings at the selected piece's endpoints. The
+// editor renders these only when CONTINUOUS_ANGLE_EDITOR_ENABLED is on
+// and exactly one piece is selected. Pointer-down on a ring captures
+// the pointer (so subsequent move / up events fire on the ring even if
+// the cursor leaves the small circle), and the parent dispatches into
+// rotatePieceAroundEndpoint via the editor's rotate-drag state.
+function RotateHandles({
+  piece,
+  colMin,
+  rowMin,
+  onPointerDown,
+  onPointerMove,
+  onPointerUp,
+  onPointerCancel,
+}: {
+  piece: Piece
+  colMin: number
+  rowMin: number
+  onPointerDown: (
+    e: React.PointerEvent<SVGCircleElement>,
+    pivotIndex: number,
+  ) => void
+  onPointerMove: (e: React.PointerEvent<SVGCircleElement>) => void
+  onPointerUp: (e: React.PointerEvent<SVGCircleElement>) => void
+  onPointerCancel: (e: React.PointerEvent<SVGCircleElement>) => void
+}) {
+  const endpoints = endpointsOf(piece)
+  return (
+    <g data-testid="rotate-handles" style={{ pointerEvents: 'auto' }}>
+      {endpoints.map((frame, i) => {
+        // +CELL/2 puts the rings on the cell-center axis, matching where
+        // the cell-rendered piece glyphs sit. Without the offset the
+        // ring would sit half a cell northwest of the visible endpoint
+        // for v1-projectable pieces.
+        const svgX = (frame.x / CELL_SIZE - colMin) * CELL + CELL / 2
+        const svgY = (frame.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+        return (
+          <circle
+            key={i}
+            cx={svgX}
+            cy={svgY}
+            r={9}
+            fill="rgba(110, 231, 135, 0.18)"
+            stroke="#6ee787"
+            strokeWidth={2}
+            data-rotate-handle-pivot-index={i}
+            style={{ cursor: 'grab', touchAction: 'none' }}
+            onPointerDown={(e) => onPointerDown(e, i)}
+            onPointerMove={onPointerMove}
+            onPointerUp={onPointerUp}
+            onPointerCancel={onPointerCancel}
+          />
+        )
+      })}
+    </g>
+  )
+}
+
+function PieceGlyph({
+  piece,
+  rotationDegOverride,
+}: {
+  piece: Piece
+  // When set, replaces `piece.rotation` for the visual rotation of the
+  // glyph. The overlay renderer for non-projectable pieces passes 0 here
+  // so the inner glyph stays in its rotation-0 frame and the OUTER
+  // wrapping `<g>` applies the continuous `transform.theta` rotation.
+  // Default is `piece.rotation` so cell-based rendering is unchanged.
+  rotationDegOverride?: number
+}) {
   const cx = CELL / 2
   const cy = CELL / 2
   const stroke = '#ffd36b'
   const road = '#4a5a70'
   const roadWidth = CELL * 0.4
+  const rotationDeg = rotationDegOverride ?? piece.rotation
   return (
-    <g transform={`rotate(${piece.rotation} ${cx} ${cy})`}>
+    <g transform={`rotate(${rotationDeg} ${cx} ${cy})`}>
       {piece.type === 'straight' ? (
         <>
           <rect

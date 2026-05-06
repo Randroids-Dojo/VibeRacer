@@ -317,23 +317,40 @@ mutations the rotate handle and free-placement drag will dispatch:
 on its result so legacy `(row, col, rotation)` stay consistent for
 v1-projectable outputs.
 
-##### Slice 2: rendering refactor. NOT STARTED.
+##### Slice 2: rendering refactor. IN FLIGHT.
 
-Today's `TrackEditor.tsx` renders pieces inside a per-cell `<g>` keyed
-on integer `(row, col)`, so a non-projectable piece that has been
-rotated to a non-cardinal `transform.theta` would still render at the
-cell-snapped position and rotation. Slice 2 introduces a piece-overlay
-group that draws each piece at `(transform.x, transform.z,
-transform.theta)` with the correct world-to-SVG mapping, so the rotate
-handle in slice 3 has something visually correct to act on.
+PR #105 on branch `claude/continuous-angle-stage-2-rendering`. Merge
+commit recorded here when squashed onto main.
 
-##### Slice 3: rotate handle. NOT STARTED.
+`cellMap` keeps every piece so applyTool / erase / start / checkpoint
+still find off-grid pieces by anchor cell. The cell loop sets
+`renderedPiece = undefined` whenever `isV1Projectable(piece)` is false
+so Cell hides the cell-aligned glyph; the overlay component
+`NonProjectablePieceOverlay` is the only place rotated pieces show.
+The overlay carries `data-row` / `data-col` mirroring the anchor cell
+so `cellFromEvent` routes clicks on the rotated glyph back to the
+same piece tools find via cell click. `PieceGlyph` gained an optional
+`rotationDegOverride` prop the overlay passes 0 for so the inner
+glyph stays in its rotation-0 frame and the outer wrapping `<g>`
+applies the continuous theta rotation. World-to-SVG mapping is
+`svgX = (transform.x / CELL_SIZE - colMin) * CELL`. Grid-aligned
+pieces still render through the Cell path, so the Stage 0.5 snapshot
+wall and template hashes stay pinned bit-for-bit.
 
-Small SVG ring at each endpoint of the selected piece when the flag is
-on. Pointer-down on the ring captures the pointer, pointer-move
-computes the angular delta of the cursor relative to the endpoint, and
-the displayed piece rotates live via `rotatePieceAroundEndpoint`.
-Pointer-up commits the new transform.
+##### Slice 3: rotate handle. IN FLIGHT.
+
+Same PR as slice 2 (PR #105). When `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on and
+exactly one piece is selected, an SVG ring renders at each connector
+endpoint via `RotateHandles`. Pointer-down on a ring captures the
+pointer and starts a rotate drag; pointer-move computes the angular
+delta of the cursor relative to the ring's pivot endpoint and feeds
+it into `rotatePieceAroundEndpoint`, producing a live preview that
+swaps into `displayPieces[rotateDrag.pieceIdx]`. The cellMap and the
+overlay both source from `displayPieces` so the rotation renders live
+without committing to history until pointer up. A new `clientToWorld`
+helper converts pointer client coordinates to world-space points
+through the SVG's screen CTM. Playwright config sets
+`NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR=1` for smoke runs.
 
 ##### Slice 4: free-placement drag. NOT STARTED.
 
@@ -404,14 +421,15 @@ cell projection misses.
 ## Picking up where this left off
 
 Stage 1 (PR #101) and Stage 2 Workstream A (PR #103, merged as
-`9786404`) have shipped. Stage 2 Workstream B's foundation slice is
-in flight on PR #104. The next slices are listed under "Stage 2
-Workstream B" above; pick them up in order (rendering refactor first,
-then rotate handle, then free-placement drag, then numeric input,
-reconciliation, and OBB-vs-OBB overlap). Before starting, read
-`AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
-`PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
-the continuous-angle long-chain closure test in
+`9786404`) have shipped. Stage 2 Workstream B's foundation slice
+shipped as PR #104 (merged as `0b1255a`); slices 2 (rendering
+refactor) and 3 (rotate handle) are in flight on branch
+`claude/continuous-angle-stage-2-rendering`. The next slices are
+free-placement drag, long-press numeric input, reconciliation pass,
+and OBB-vs-OBB overlap (listed in order under "Stage 2 Workstream B"
+above). Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
+and the most recent `PROGRESS_LOG` entry; the templates and Stage 0.5
+snapshot wall plus the continuous-angle long-chain closure test in
 `tests/unit/track.test.ts` remain the load-bearing tests.
 
 The historical Stage 1 ten-step plan below is preserved for reference.

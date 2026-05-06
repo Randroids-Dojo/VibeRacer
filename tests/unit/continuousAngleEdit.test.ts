@@ -113,6 +113,88 @@ describe('rotatePieceAroundEndpoint', () => {
   })
 })
 
+describe('endpoints stay one cell apart across many rotations', () => {
+  // PR #105 follow-up: the user reported rotate-handle rings rendering
+  // several cells apart for a single-cell straight whose endpoints
+  // should be exactly CELL_SIZE apart in world space. This test
+  // simulates many sequential rotate-around-endpoint calls (each
+  // alternating which endpoint is the pivot, the way the editor
+  // dispatches them) and asserts the world distance between the two
+  // endpoints stays at CELL_SIZE within float tolerance. If this
+  // diverges, the rotation math has a bug; if it passes, the bug
+  // lives in the renderer.
+  it('preserves endpoint distance across alternating rotations', () => {
+    let piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    for (let i = 0; i < 50; i++) {
+      const pivotIndex = i % 2 === 0 ? 0 : 1
+      const delta = (i + 1) * 0.137 // arbitrary non-cardinal increments
+      piece = rotatePieceAroundEndpoint(piece, pivotIndex, delta)
+      const [a, b] = endpointsOf(piece)
+      const dist = Math.hypot(a.x - b.x, a.z - b.z)
+      expect(dist).toBeCloseTo(CELL_SIZE, 6)
+    }
+  })
+
+  it('preserves endpoint distance at multi-revolution thetas', () => {
+    const piece = convertV1Piece({
+      type: 'straight',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    // Apply a single huge rotation (multiple revolutions) around
+    // endpoint 0. Endpoints must still be CELL_SIZE apart.
+    const rotated = rotatePieceAroundEndpoint(piece, 0, 7.5)
+    const [a, b] = endpointsOf(rotated)
+    expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(CELL_SIZE, 6)
+  })
+
+  it('preserves endpoint distance for the editor drag flow on a non-cardinal piece', () => {
+    // Reproduce the editor's exact drag flow: each pointer-move computes
+    // a cumulative delta (relative to drag start), then calls
+    // rotatePieceAroundEndpoint(startPiece, pivotIndex, cumulativeDelta).
+    // Pointer-up commits the final preview, which becomes the new
+    // committed piece. The next drag starts from that committed piece.
+    let piece = convertV1Piece({
+      type: 'straight',
+      row: 5,
+      col: 5,
+      rotation: 0,
+    })
+    // Three sequential drags, each with a sweep ending at a non-cardinal
+    // delta and alternating which endpoint is the pivot.
+    const drags: Array<{ pivot: number; finalDelta: number }> = [
+      { pivot: 0, finalDelta: 0.95 },
+      { pivot: 1, finalDelta: -1.7 },
+      { pivot: 0, finalDelta: 2.3 },
+    ]
+    for (const drag of drags) {
+      const startPiece = piece
+      // Simulate intermediate pointer-move events building toward finalDelta.
+      const steps = 6
+      for (let s = 1; s <= steps; s++) {
+        const cumulative = (drag.finalDelta * s) / steps
+        const preview = rotatePieceAroundEndpoint(
+          startPiece,
+          drag.pivot,
+          cumulative,
+        )
+        const [a, b] = endpointsOf(preview)
+        expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(CELL_SIZE, 6)
+      }
+      // Pointer-up commits the final preview.
+      piece = rotatePieceAroundEndpoint(startPiece, drag.pivot, drag.finalDelta)
+      const [a, b] = endpointsOf(piece)
+      expect(Math.hypot(a.x - b.x, a.z - b.z)).toBeCloseTo(CELL_SIZE, 6)
+    }
+  })
+})
+
 describe('translatePiece', () => {
   it('returns the input piece identity when both deltas are zero', () => {
     const piece = convertV1Piece({
