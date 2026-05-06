@@ -225,6 +225,16 @@ function shortHash(hash: string): string {
 // (jsdom or before-first-render cases). Used by the rotate-handle drag
 // handlers to map pointer positions to the same world frame the piece
 // transforms live in.
+//
+// World cell `(col, row)` is centered at world `(col * CELL_SIZE,
+// row * CELL_SIZE)`. The Cell `<g>` translates to the cell's top-left
+// in SVG, and PieceGlyph centers its content at `(CELL/2, CELL/2)`
+// inside the cell, so world cell center maps to SVG
+// `((col - colMin) * CELL + CELL/2, (row - rowMin) * CELL + CELL/2)`.
+// Without the half-cell subtract here, the inverse mapping would treat
+// SVG `(0, 0)` as the world center of cell `(colMin, rowMin)` rather
+// than its top-left, putting drag pivots / cursor angles half a cell
+// off relative to the cell-rendered piece glyphs.
 function clientToWorld(
   svgEl: SVGSVGElement,
   clientX: number,
@@ -240,8 +250,8 @@ function clientToWorld(
   pt.y = clientY
   const svgPt = pt.matrixTransform(inv)
   return {
-    x: (svgPt.x / CELL + colMin) * CELL_SIZE,
-    z: (svgPt.y / CELL + rowMin) * CELL_SIZE,
+    x: ((svgPt.x - CELL / 2) / CELL + colMin) * CELL_SIZE,
+    z: ((svgPt.y - CELL / 2) / CELL + rowMin) * CELL_SIZE,
   }
 }
 
@@ -2556,10 +2566,14 @@ function FlexStraightRoadOverlay({
   const entry = endpoints[0]
   const exit = endpoints[1]
   if (entry === undefined || exit === undefined) return null
-  const ex = (entry.x / CELL_SIZE - colMin) * CELL
-  const ey = (entry.z / CELL_SIZE - rowMin) * CELL
-  const xx = (exit.x / CELL_SIZE - colMin) * CELL
-  const xy = (exit.z / CELL_SIZE - rowMin) * CELL
+  // World cell center `(col * CELL_SIZE, row * CELL_SIZE)` maps to SVG
+  // `((col - colMin) * CELL + CELL/2)`; the +CELL/2 puts the road on
+  // the cell-center axis instead of half a cell northwest of the
+  // grid-rendered pieces.
+  const ex = (entry.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const ey = (entry.z / CELL_SIZE - rowMin) * CELL + CELL / 2
+  const xx = (exit.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const xy = (exit.z / CELL_SIZE - rowMin) * CELL + CELL / 2
   const midX = (ex + xx) / 2
   const midY = (ey + xy) / 2
   const road = '#4a5a70'
@@ -2669,14 +2683,16 @@ function NonProjectablePieceOverlay({
 }) {
   const t = transformOf(piece)
   // World coordinates are in CELL_SIZE units (20); SVG coordinates are
-  // in CELL units (56). The piece's world center maps to:
-  //   svgCx = (transform.x / CELL_SIZE - colMin) * CELL
-  //   svgCy = (transform.z / CELL_SIZE - rowMin) * CELL
-  // We then translate so the inner glyph's local center (CELL/2, CELL/2)
-  // lands at (svgCx, svgCy), and rotate around that local center by the
-  // continuous `transform.theta`.
-  const svgCx = (t.x / CELL_SIZE - colMin) * CELL
-  const svgCy = (t.z / CELL_SIZE - rowMin) * CELL
+  // in CELL units (56). World cell `(col, row)` center is at world
+  // `(col * CELL_SIZE, row * CELL_SIZE)`, which maps to SVG cell
+  // center at `((col - colMin) * CELL + CELL / 2, ...)`. The `+ CELL /
+  // 2` keeps the rotated overlay aligned with the grid-rendered cell
+  // glyphs; without it the overlay would render half a cell northwest
+  // of where a v1-projectable Cell paints the same piece, and a piece
+  // toggling between Cell and overlay rendering paths would visually
+  // jump.
+  const svgCx = (t.x / CELL_SIZE - colMin) * CELL + CELL / 2
+  const svgCy = (t.z / CELL_SIZE - rowMin) * CELL + CELL / 2
   const thetaDeg = (t.theta * 180) / Math.PI
   // The outer group rotates the inner glyph by thetaDeg. `startExitDir`
   // already encodes the cardinal-snapped portion of theta (computed via
@@ -2799,8 +2815,12 @@ function RotateHandles({
   return (
     <g data-testid="rotate-handles" style={{ pointerEvents: 'auto' }}>
       {endpoints.map((frame, i) => {
-        const svgX = (frame.x / CELL_SIZE - colMin) * CELL
-        const svgY = (frame.z / CELL_SIZE - rowMin) * CELL
+        // +CELL/2 puts the rings on the cell-center axis, matching where
+        // the cell-rendered piece glyphs sit. Without the offset the
+        // ring would sit half a cell northwest of the visible endpoint
+        // for v1-projectable pieces.
+        const svgX = (frame.x / CELL_SIZE - colMin) * CELL + CELL / 2
+        const svgY = (frame.z / CELL_SIZE - rowMin) * CELL + CELL / 2
         return (
           <circle
             key={i}
