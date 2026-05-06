@@ -437,22 +437,25 @@ export function TrackEditor({
     () => displayPieces.filter((p) => !isV1Projectable(p)),
     [displayPieces],
   )
-  // Set of cellKeys covered by any non-projectable piece's footprint.
-  // The Cell render path masks off `cellIsSelected` / `cellIsStart` /
-  // `cellHasCheckpoint` for cells in this set, so the indicators
-  // travel with the rotated overlay rather than leaking onto a
-  // non-anchor footprint cell of a multi-cell piece. (When a wide
-  // piece is selected through one of its non-anchor footprint cells
-  // and then rotated, the rotated footprint no longer covers the
-  // originally-selected cell; the selection rect at that stale cell
-  // would otherwise stay behind on the grid.)
-  const nonProjectableCoveredCells = useMemo(() => {
+  // Set of cellKeys covered by any piece whose visuals live on an
+  // overlay rather than on the cell itself: every non-projectable
+  // piece (rotated off-grid → NonProjectablePieceOverlay) plus every
+  // flex straight (FlexStraightRoadOverlay paints the full road
+  // across the multi-cell footprint instead of the small in-cell
+  // tilt-line glyph PieceGlyph would otherwise draw). The Cell render
+  // path masks `cellIsSelected` / `cellIsStart` / `cellHasCheckpoint`
+  // (and the piece-occupied background) off for cells in this set so
+  // the indicators travel with the overlay rather than leaving a
+  // single-cell stub behind on the grid.
+  const overlayPieceCoveredCells = useMemo(() => {
     const set = new Set<string>()
-    for (const p of nonProjectablePieces) {
-      for (const k of footprintCellKeys(p)) set.add(k)
+    for (const p of displayPieces) {
+      if (!isV1Projectable(p) || p.type === 'flexStraight') {
+        for (const k of footprintCellKeys(p)) set.add(k)
+      }
     }
     return set
-  }, [nonProjectablePieces])
+  }, [displayPieces])
 
   const startKey =
     pieces.length > 0 ? cellKey(pieces[0].row, pieces[0].col) : null
@@ -1535,23 +1538,20 @@ export function TrackEditor({
                 // attrs) by passing an undefined piece to Cell so the
                 // original anchor cell looks empty. cellMap still has
                 // the piece for applyTool occupancy checks.
-                // Pieces whose transform is non-projectable render their
-                // glyph and follow-the-piece visuals (selection rect,
-                // START label, checkpoint marker) via
-                // NonProjectablePieceOverlay at the rotated transform
-                // position. The cell at their original anchor looks
-                // empty so the indicators don't double-render in the
-                // wrong place. `coveredByNonProjectable` extends the
-                // suppression to ALL footprint cells of a non-projectable
-                // piece (not just the anchor) so a multi-cell piece
-                // selected through one of its non-anchor cells does not
-                // leave a leftover blue selection rect on that cell
-                // after rotation moves the piece's footprint elsewhere.
-                const coveredByNonProjectable =
-                  nonProjectableCoveredCells.has(key)
+                // Pieces whose visuals live on an overlay (every
+                // non-projectable piece, plus every flex straight)
+                // suppress their cell visuals so the overlay is the
+                // only place the piece, the selection rect, the START
+                // label, and the checkpoint marker show. The mask
+                // covers every footprint cell, not just the anchor,
+                // so a multi-cell piece selected through one of its
+                // non-anchor cells does not leave a leftover stub on
+                // the grid after rotation moves the footprint
+                // elsewhere.
+                const coveredByOverlay = overlayPieceCoveredCells.has(key)
                 const pieceVisuallyHere =
                   (piece === undefined || isV1Projectable(piece)) &&
-                  !coveredByNonProjectable
+                  !coveredByOverlay
                 const renderedPiece = pieceVisuallyHere ? piece : undefined
                 const cellIsStart = pieceVisuallyHere && key === startKey
                 const cellIsSelected =
@@ -1594,20 +1594,37 @@ export function TrackEditor({
             )}
             {displayPieces
               .filter((p) => p.type === 'flexStraight')
-              .map((piece) => (
-                <FlexStraightRoadOverlay
-                  key={`flex-road-${piece.row}-${piece.col}`}
-                  piece={piece}
-                  colMin={colMin}
-                  rowMin={rowMin}
-                />
-              ))}
-            {nonProjectablePieces.map((piece) => {
+              .map((piece) => {
+                const overlayKey = cellKey(piece.row, piece.col)
+                const isStart = overlayKey === startKey
+                const piecesFootprintKeys = footprintCellKeys(piece)
+                const isSelected = pieceTouchesSelection(
+                  piece,
+                  selectedCells,
+                )
+                const hasCheckpoint = piecesFootprintKeys.some((k) =>
+                  checkpointKeys.has(k),
+                )
+                return (
+                  <FlexStraightRoadOverlay
+                    key={`flex-road-${piece.row}-${piece.col}`}
+                    piece={piece}
+                    colMin={colMin}
+                    rowMin={rowMin}
+                    isStart={isStart}
+                    isSelected={isSelected}
+                    hasCheckpoint={hasCheckpoint}
+                  />
+                )
+              })}
+            {nonProjectablePieces
+              .filter((piece) => piece.type !== 'flexStraight')
+              .map((piece) => {
               const overlayKey = cellKey(piece.row, piece.col)
               const isStart = overlayKey === startKey
               // Flags must be footprint-aware (not anchor-only) because
               // the cell renderer suppresses selection / checkpoint
-              // visuals for every cell in `nonProjectableCoveredCells`.
+              // visuals for every cell in `overlayPieceCoveredCells`.
               // If the user selected a non-anchor footprint cell via
               // rectangle selection, the cell rect is hidden AND the
               // anchor-only check would also miss it, leaving the piece
@@ -2497,10 +2514,16 @@ function FlexStraightRoadOverlay({
   piece,
   colMin,
   rowMin,
+  isStart,
+  isSelected,
+  hasCheckpoint,
 }: {
   piece: Piece
   colMin: number
   rowMin: number
+  isStart: boolean
+  isSelected: boolean
+  hasCheckpoint: boolean
 }) {
   const endpoints = endpointsOf(piece)
   const entry = endpoints[0]
@@ -2510,14 +2533,37 @@ function FlexStraightRoadOverlay({
   const ey = (entry.z / CELL_SIZE - rowMin) * CELL
   const xx = (exit.x / CELL_SIZE - colMin) * CELL
   const xy = (exit.z / CELL_SIZE - rowMin) * CELL
+  const midX = (ex + xx) / 2
+  const midY = (ey + xy) / 2
   const road = '#4a5a70'
   const stroke = '#ffd36b'
+  const startStroke = '#6ee787'
   const roadWidth = CELL * 0.4
+  // Road direction in SVG coords (CW from +x because SVG y grows down).
+  // The START arrow's apex defaults to -y (up = -90 deg), so to make it
+  // point along the road we rotate by `roadAngleDeg + 90`.
+  const roadAngleDeg = (Math.atan2(xy - ey, xx - ex) * 180) / Math.PI
   return (
     <g
       style={{ pointerEvents: 'none' }}
       data-flex-straight-road-anchor={`${piece.row},${piece.col}`}
     >
+      {/*
+        Selection halo: a fatter translucent line under the road. Drawn
+        first so it appears beneath the road body.
+      */}
+      {isSelected ? (
+        <line
+          x1={ex}
+          y1={ey}
+          x2={xx}
+          y2={xy}
+          stroke="#58a6ff"
+          strokeWidth={roadWidth + 8}
+          strokeOpacity={0.32}
+          strokeLinecap="round"
+        />
+      ) : null}
       <line
         x1={ex}
         y1={ey}
@@ -2532,10 +2578,47 @@ function FlexStraightRoadOverlay({
         y1={ey}
         x2={xx}
         y2={xy}
-        stroke={stroke}
+        stroke={isStart ? startStroke : stroke}
         strokeWidth={2}
         strokeDasharray="4 4"
       />
+      {isStart ? (
+        <>
+          <text
+            x={midX}
+            y={midY - 4}
+            textAnchor="middle"
+            fontSize={9}
+            fontWeight={700}
+            fill={startStroke}
+            transform={`rotate(${roadAngleDeg} ${midX} ${midY})`}
+            style={{ letterSpacing: 1 }}
+          >
+            START
+          </text>
+          <polygon
+            points={`${ex - 5},${ey + 3} ${ex + 5},${ey + 3} ${ex},${ey - 5}`}
+            transform={`rotate(${roadAngleDeg + 90} ${ex} ${ey})`}
+            fill={startStroke}
+          />
+        </>
+      ) : null}
+      {hasCheckpoint ? (
+        <g>
+          <circle
+            cx={midX}
+            cy={midY}
+            r={10}
+            fill="rgba(255, 179, 71, 0.18)"
+            stroke="#ffb347"
+            strokeWidth={2}
+          />
+          <path
+            d={`M ${midX - 4} ${midY + 10} L ${midX - 4} ${midY - 10} L ${midX + 9} ${midY - 6} L ${midX - 4} ${midY - 2}`}
+            fill="#ffb347"
+          />
+        </g>
+      ) : null}
     </g>
   )
 }
