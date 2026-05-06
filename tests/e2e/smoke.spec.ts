@@ -519,6 +519,40 @@ test('track editor free-places a piece via drag with the select tool', async ({
   ).toBeVisible()
 })
 
+test('track editor numeric Transform panel rotates a piece by typed degrees', async ({
+  page,
+}) => {
+  // Stage 2 Workstream B slice 5: with the continuous-angle editor
+  // flag on (set in playwright.config.ts so the build inlines it),
+  // the selection toolbar exposes a Transform button that opens a
+  // floating panel with col / row / theta inputs. Apply rewrites the
+  // piece's transform directly. A non-cardinal theta forces a
+  // non-projectable render so the dialog's effect is observable
+  // through the overlay's data attribute.
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Clear', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="0"]').click()
+
+  await page.getByRole('button', { name: 'Transform', exact: true }).click()
+
+  const dialog = page.getByRole('dialog', { name: 'Edit piece transform' })
+  await expect(dialog).toBeVisible()
+
+  const thetaInput = dialog.getByLabel('theta (deg)')
+  await thetaInput.fill('25')
+
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await expect(
+    page.locator('g[data-non-projectable-piece-type="straight"]'),
+  ).toBeVisible()
+})
+
 test('track editor diagnoses wrong diagonal pieces in long-turn targets', async ({
   page,
 }) => {

@@ -351,10 +351,9 @@ helper converts pointer client coordinates to world-space points
 through the SVG's screen CTM. Playwright config sets
 `NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR=1` for smoke runs.
 
-##### Slice 4: free-placement drag. IN FLIGHT.
+##### Slice 4: free-placement drag. SHIPPED.
 
-PR on branch `claude/continuous-angle-stage-2-free-placement`. Merge
-commit recorded here when squashed onto main.
+PR #106, squash-merged as `ba1c54b`.
 
 `unconnectedEndpoints` / `findFreePlacementSnap` /
 `snapPieceToTarget` in `src/game/continuousAngleEdit.ts` provide the
@@ -373,10 +372,29 @@ while the drag is in snap range. The flex-straight road overlay now
 accepts pointer events and carries `data-row` / `data-col` so the
 road itself is a grabbable click target.
 
-##### Slice 5: long-press numeric input. NOT STARTED.
+##### Slice 5: long-press numeric input. IN FLIGHT.
 
-Power-user affordance: long-press a piece to open a small panel that
-edits `transform.x`, `transform.z`, and `transform.theta` directly.
+PR on branch `claude/continuous-angle-stage-2-numeric-input`. Merge
+commit recorded here when squashed onto main.
+
+A floating `NumericTransformPanel` opens whenever
+`numericEdit.pieceIdx` is set. Two paths set it: the selection
+toolbar's `Transform` button (gated by
+`CONTINUOUS_ANGLE_EDITOR_ENABLED && rotateHandlePieceWithIndex !==
+null`), and a `LONG_PRESS_MS = 500` timer armed by `handlePointerDown`
+on a piece. The long-press timer is cleared by `advancePieceDrag` and
+`finalizePieceDrag` so a drag, a quick tap, or a numeric-edit transition
+each cancel any pending counterpart. The panel renders inputs in
+authoring units: `col` and `row` are `transform.{x,z} / CELL_SIZE`,
+`theta (deg)` is `transform.theta * 180 / PI`. Apply parses the
+inputs, multiplies back into world units / radians, and dispatches
+`setPieceTransform`. Cancel just closes; no preview is committed
+during editing so there is nothing to revert. The Playwright smoke
+"track editor numeric Transform panel rotates a piece by typed
+degrees" places a straight, opens the panel, types `25` into theta,
+clicks Apply, and asserts the overlay's
+`data-non-projectable-piece-type="straight"` appears (a non-cardinal
+theta forces non-projectable rendering).
 
 ##### Slice 6: reconciliation pass. NOT STARTED.
 
@@ -438,13 +456,14 @@ cell projection misses.
 Shipped to main: Stage 1 (PR #101), Stage 2 Workstream A (PR #103
 merged as `9786404`), Stage 2 Workstream B foundation (PR #104 merged
 as `0b1255a`), Stage 2 Workstream B rendering + rotate handle (PR #105
-merged as `1fb7c61`). Slice 4 (free-placement drag) is in flight on
-branch `claude/continuous-angle-stage-2-free-placement`. The next
-slices are long-press numeric input, reconciliation pass, and
-OBB-vs-OBB overlap (listed in order under "Stage 2 Workstream B"
-above). Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
-and the most recent `PROGRESS_LOG` entry; the templates and Stage 0.5
-snapshot wall plus the continuous-angle long-chain closure test in
+merged as `1fb7c61`), Stage 2 Workstream B free-placement drag (PR
+#106 merged as `ba1c54b`). Slice 5 (numeric input) is in flight on
+branch `claude/continuous-angle-stage-2-numeric-input`. The next
+slices are reconciliation pass and OBB-vs-OBB overlap (listed in
+order under "Stage 2 Workstream B" above). Before starting, read
+`AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
+`PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
+the continuous-angle long-chain closure test in
 `tests/unit/track.test.ts` remain the load-bearing tests.
 
 The historical Stage 1 ten-step plan below is preserved for reference.

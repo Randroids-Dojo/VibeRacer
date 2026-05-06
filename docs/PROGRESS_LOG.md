@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-06, Continuous-Angle Numeric Transform Editor (Stage 2 Workstream B, slice 5)
+
+- Branch: `claude/continuous-angle-stage-2-numeric-input`
+- Changed: shipped slice 5 of Stage 2 Workstream B (numeric input for `transform.x`, `transform.z`, `transform.theta`). A new `NumericTransformPanel` component in `src/components/TrackEditor.tsx` renders a floating dialog with three inputs in authoring units (`col` and `row` are `transform.{x,z} / CELL_SIZE`, `theta (deg)` is `transform.theta * 180 / PI`) plus Apply / Cancel buttons; Apply parses the values, multiplies back into world units / radians, and dispatches `setPieceTransform` from `src/game/continuousAngleEdit.ts`. The dialog opens via two paths, both gated by `CONTINUOUS_ANGLE_EDITOR_ENABLED`: the selection toolbar exposes a `Transform` button when exactly one piece is selected (driven off the existing `rotateHandlePieceWithIndex`), and a `LONG_PRESS_MS = 500` timer armed by `handlePointerDown` opens the same dialog on touch. The long-press timer is cleared by `advancePieceDrag` and `finalizePieceDrag` so a drag, tap, or long-press transition each cancel any pending counterpart. The panel uses `position: absolute; top: 12; right: 12` inside `gridOuter` (which is already `position: relative`) so it pins to the top-right of the canvas without occluding the toolbar. New Playwright smoke `track editor numeric Transform panel rotates a piece by typed degrees` places a straight, opens the dialog, types `25` into theta, clicks Apply, and asserts `data-non-projectable-piece-type="straight"` appears (a non-cardinal theta forces non-projectable rendering).
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3318 tests, `pnpm exec playwright test tests/e2e/smoke.spec.ts --grep "track editor"` passed with 12 tests (one new numeric-transform smoke), and `pnpm lint` showed only pre-existing warnings.
+- Assumptions: Apply silently no-ops when any input parses as `NaN` (empty string, garbage). Cancel just closes; no preview is committed during editing so there is nothing to revert. The dialog re-mounts whenever the selected piece index changes, so its initial input values track the live transform on open. The long-press fires the dialog from a `pieceDrag.mode === 'pending'` state, so a quick tap that releases before 500 ms never triggers it; once the drag escalates to active mode (movement past `CELL_SIZE / 4`) the timer is cleared and the drag proceeds normally.
+- GDD coverage: no GDD section change; this is internal scaffolding under Section 6 Track system functionality.
+- Followups: reconciliation pass for nearly-closed loops (slice 6), OBB-vs-OBB overlap detection (slice 7).
+
 ## 2026-05-06, Continuous-Angle Free-Placement Drag (Stage 2 Workstream B, slice 4)
 
 - Branch: `claude/continuous-angle-stage-2-free-placement`
