@@ -395,10 +395,9 @@ clicks Apply, and asserts the overlay's
 `data-non-projectable-piece-type="straight"` appears (a non-cardinal
 theta forces non-projectable rendering).
 
-##### Slice 6: reconciliation pass. IN FLIGHT.
+##### Slice 6: reconciliation pass. SHIPPED.
 
-PR on branch `claude/continuous-angle-stage-2-loop-reconciliation`.
-Merge commit recorded here when squashed onto main.
+PR #108, squash-merged as `399e93a`.
 
 `findLoopReconciliation(pieces, radius?, angleRad?)` and
 `applyLoopReconciliation(pieces, reconciliation)` in
@@ -439,12 +438,35 @@ its other endpoint is unconnected. The cascading / multi-piece
 distribute-drift case is queued as a follow-up; see
 `docs/FOLLOWUPS.md` for the slice 6 cascade follow-up.
 
-##### Slice 7: OBB-vs-OBB overlap detection. NOT STARTED.
+##### Slice 7: OBB-vs-OBB overlap detection. IN FLIGHT.
 
-Spatial hash plus AABB pre-check before full OBB. The footprint
-contract stays a list of cells; arbitrary-angle pieces enumerate cells
-via the existing supercover, and OBB-vs-OBB catches the geometry the
-cell projection misses.
+PR on branch `claude/continuous-angle-stage-2-overlap-detection`.
+Merge commit recorded here when squashed onto main.
+
+`src/game/pieceObb.ts` exports `OBB`, `obbOfPiece`, `aabbOfObb`,
+`aabbsOverlap`, `obbsOverlap`, and `findOverlappingPiecePairs`. The
+OBB anchors on `transform.{x,z}` (not the legacy
+`piece.row` / `piece.col`) and folds the cardinal-rotated footprint
+offsets into half-extents along the piece's local axes; the
+residual rotation `transform.theta - cardinalSnap(transform.theta)`
+becomes the OBB's world orientation, matching
+`frameOfPortAtTransform`'s decomposition. Strict-inequality
+comparisons in both AABB and SAT mean adjacent grid-aligned cells
+that share an edge are not flagged (the typical valid-track case).
+The pipeline is spatial-hash on the OBB's world AABB cells, then
+AABB pre-check, then full SAT, with each stage a strict superset
+of the next so the cost is bounded for the typical authoring track
+size (~64 pieces).
+
+UI integration in `src/components/TrackEditor.tsx`: a memo on the
+pieces array surfaces the overlapping pair count in the editor's
+status row when `CONTINUOUS_ANGLE_EDITOR_ENABLED` is on. The badge
+uses the same warning style as the open-connector hint, with a
+`title` attribute listing the offending piece-index pairs for
+debugging. Save is NOT blocked on OBB overlap because that would
+change behavior for grid-aligned tracks too (multi-cell footprints
+can produce SAT-detected overlaps the validator's duplicate-cell
+check would also catch); blocking-on-overlap is a Stage 3 decision.
 
 ### Stage 3: flip the flag. NOT STARTED.
 
@@ -469,6 +491,7 @@ cell projection misses.
 |---|---|
 | `src/game/cellSize.ts` | Stage 1 leaf module. Owns `CELL_SIZE` so pieceGeometry / trackVersion / trackPath import it without forming a runtime cycle. |
 | `src/game/pieceFrames.ts` | Stage 0 substrate. `Frame`, `frameOfPort`, `framesConnect`, antiparallel matcher. Stage 1 added `frameOfPortAtTransform`. |
+| `src/game/pieceObb.ts` | Stage 2 Workstream B slice 7. `OBB`, `obbOfPiece`, `obbsOverlap`, `findOverlappingPiecePairs`. Catches geometric overlaps the cell-based duplicate detection misses. |
 | `src/game/pieceGeometry.ts` | Stage 0.5 shim, Stage 1 implementation. `geometryOf`, `transformOf`, `endpointsOf`, `isV1Projectable`, `projectToV1Cells`, plus the `V1_PROJECTABLE_*` epsilons with the asymmetry rationale comment. |
 | `src/game/track.ts` | Validator. `validateClosedLoop` normalizes raw input through the converter; `portsConnect` and `findConnectedNeighbor` consume `endpointsOf`. |
 | `src/game/trackPath.ts` | Path builder. `buildTrackPath` normalizes raw input through the converter. Re-exports `CELL_SIZE` from the leaf module. |
@@ -495,11 +518,12 @@ merged as `9786404`), Stage 2 Workstream B foundation (PR #104 merged
 as `0b1255a`), Stage 2 Workstream B rendering + rotate handle (PR #105
 merged as `1fb7c61`), Stage 2 Workstream B free-placement drag (PR
 #106 merged as `ba1c54b`), Stage 2 Workstream B numeric Transform
-panel (PR #107 merged as `7e9419e`). Slice 6 (loop reconciliation) is
-in flight on branch `claude/continuous-angle-stage-2-loop-
-reconciliation`. The next slice is OBB-vs-OBB overlap (listed under
-"Stage 2 Workstream B" above), with a follow-up for cascading
-reconciliation when the user has perturbed a closed loop. Before starting, read
+panel (PR #107 merged as `7e9419e`), Stage 2 Workstream B loop
+reconciliation (PR #108 merged as `399e93a`). Slice 7 (OBB-vs-OBB
+overlap detection) is in flight on branch
+`claude/continuous-angle-stage-2-overlap-detection`. After slice 7
+ships, Stage 2 Workstream B is complete and Stage 3 takes over (flip
+the flag, decide on Flex angle deprecation). Before starting, read
 `AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
 `PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
 the continuous-angle long-chain closure test in

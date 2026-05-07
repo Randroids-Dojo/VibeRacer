@@ -18,23 +18,19 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
 shipped. Stage 2 Workstream B's foundation, rendering / rotate handle,
-free-placement drag, and numeric Transform panel have shipped as PRs
-#104 / #105 / #106 / #107. Slice 6 (loop reconciliation) is in flight
-on branch `claude/continuous-angle-stage-2-loop-reconciliation`. See
+free-placement drag, numeric Transform panel, and loop reconciliation
+have shipped as PRs #104 / #105 / #106 / #107 / #108. Slice 7 (OBB-vs-
+OBB overlap detection) is in flight on branch
+`claude/continuous-angle-stage-2-overlap-detection`. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
 slicing plan for Workstream B, the file map, and the contracts that
 pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
 reproduced inside the plan).
 
-### Stage 2 Workstream B: editor UX (slice 7)
+### Stage 2 Workstream B: editor UX (complete pending slice 7)
 
-Slices 0.5 through 6 are shipped or in flight. The remaining slice is
-queued.
-
-- Slice 7: OBB-vs-OBB overlap detection: spatial hash plus AABB
-  pre-check before full OBB. The footprint contract stays a list of
-  cells; arbitrary-angle pieces enumerate cells via the existing
-  supercover.
+Slices 0.5 through 7 are shipped or in flight. After slice 7 lands,
+Workstream B is done and Stage 3 takes over.
 
 ### Stage 2 Workstream B slice 6 cascading reconciliation (follow-up)
 

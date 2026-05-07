@@ -519,6 +519,38 @@ test('track editor free-places a piece via drag with the select tool', async ({
   ).toBeVisible()
 })
 
+test('track editor surfaces an overlap warning when two pieces overlap geometrically', async ({
+  page,
+}) => {
+  // Stage 2 Workstream B slice 7: with the continuous-angle editor
+  // flag on (set in playwright.config.ts so the build inlines it),
+  // sliding the top straight (row 0, col 1) halfway toward its west
+  // neighbor (col = 0.5) keeps its legacy `piece.col` rounding to
+  // the same anchor cell (so the validator's duplicate-cell check
+  // does not fire) but moves its OBB into the neighbor right90's
+  // OBB. The status row should report "1 overlapping piece pair".
+  await page.goto('/start/edit')
+
+  await page.getByRole('button', { name: 'Templates' }).click()
+  await page.getByRole('button', { name: /Starter oval/ }).click()
+  await expect(page.getByText('valid closed loop')).toBeVisible()
+  await expect(page.getByTestId('obb-overlap-warning')).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Select', exact: true }).click()
+  await page.locator('g[data-row="0"][data-col="1"]').click()
+  await page.getByRole('button', { name: 'Transform', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: 'Edit piece transform' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByLabel('col').fill('0.5')
+  await dialog.getByRole('button', { name: 'Apply', exact: true }).click()
+  await expect(dialog).toHaveCount(0)
+
+  await expect(page.getByTestId('obb-overlap-warning')).toBeVisible()
+  await expect(page.getByTestId('obb-overlap-warning')).toContainText(
+    'overlapping piece',
+  )
+})
+
 test('track editor surfaces a Close Loop button when two dangling endpoints are within snap range', async ({
   page,
 }) => {

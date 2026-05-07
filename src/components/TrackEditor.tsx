@@ -32,6 +32,7 @@ import {
   type FreePlacementSnap,
 } from '@/game/continuousAngleEdit'
 import { cardinalTurnsOfTheta } from '@/game/pieceFrames'
+import { findOverlappingPiecePairs } from '@/game/pieceObb'
 import { footprintCellKeys } from '@/game/trackFootprint'
 import { CELL_SIZE } from '@/game/cellSize'
 import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
@@ -442,6 +443,20 @@ export function TrackEditor({
     if (validation.ok) return null
     return findLoopReconciliation(pieces)
   }, [pieces, validation.ok])
+  // Stage 2 Workstream B slice 7: oriented-bounding-box overlap
+  // detection. Surface a warning in the status row when two pieces'
+  // OBBs overlap so authors notice cases the validator's duplicate-
+  // cell check does not catch. The OBB is built from the AABB of
+  // the piece-type's footprint offsets, so non-rectangular
+  // footprints (wideArc45, hairpin, flexStraight) over-approximate
+  // and the warning can fire on grid-aligned tracks even without
+  // duplicate cells; that's why this stays a warning rather than a
+  // save-blocking validator. Gated by the editor flag while the
+  // continuous-angle UX is rolling out.
+  const obbOverlaps = useMemo(() => {
+    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return []
+    return findOverlappingPiecePairs(pieces)
+  }, [pieces])
   const openConnectorIssue =
     validation.issue?.kind === 'openConnector' ? validation.issue : null
   const duplicateIssue =
@@ -2318,6 +2333,18 @@ export function TrackEditor({
           {openConnectorIssue ? (
             <span style={invalidStatus}>
               needs matching connector at {openConnectorIssue.targetRow},{openConnectorIssue.targetCol}
+            </span>
+          ) : null}
+          {obbOverlaps.length > 0 ? (
+            <span
+              style={invalidStatus}
+              data-testid="obb-overlap-warning"
+              title={obbOverlaps
+                .map((p) => `pieces ${p.a} and ${p.b}`)
+                .join(', ')}
+            >
+              {obbOverlaps.length} overlapping{' '}
+              {obbOverlaps.length === 1 ? 'piece pair' : 'piece pairs'}
             </span>
           ) : null}
           {checkpointCount !== null ? (
