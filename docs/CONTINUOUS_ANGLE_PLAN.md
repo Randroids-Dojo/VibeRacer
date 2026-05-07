@@ -213,10 +213,11 @@ to compute (non-deterministic transform), the converter falls back to
 "every piece in a saved v2 track emits transform". With the property
 derived, this fallback is dead code; should never trigger.
 
-### Stage 2: editor UX, behind a feature flag. PARTIAL.
+### Stage 2: editor UX, behind a feature flag. SHIPPED.
 
-Two workstreams. Workstream A (runtime migration) has shipped; Workstream
-B (editor UX) is still pending.
+Two workstreams. Workstream A (runtime migration) shipped first;
+Workstream B (editor UX) shipped over seven slices behind a feature
+flag, then the flag itself was removed in Stage 3.
 
 #### Stage 2 Workstream A: runtime migration. SHIPPED.
 
@@ -294,12 +295,12 @@ What landed:
   bit-equal between `theta = PI/2` and `theta = 5*PI/2`. The original
   v1-projectable closure test still reports zero drift exactly.
 
-#### Stage 2 Workstream B: editor UX. IN PROGRESS.
+#### Stage 2 Workstream B: editor UX. SHIPPED.
 
-Workstream B is large enough that it ships as a series of follow-up
-PRs, each independently reviewable. The first slice (the math
-foundation) is open as PR #104; the remaining slices are listed below
-in the order they will land.
+Workstream B was large enough that it shipped as a series of seven
+follow-up PRs, each independently reviewable. The slices below are
+listed in the order they landed; Stage 3 then removed the gating
+feature flag and made the new UX the default.
 
 ##### Slice 1: foundation. PR #104.
 
@@ -438,10 +439,9 @@ its other endpoint is unconnected. The cascading / multi-piece
 distribute-drift case is queued as a follow-up; see
 `docs/FOLLOWUPS.md` for the slice 6 cascade follow-up.
 
-##### Slice 7: OBB-vs-OBB overlap detection. IN FLIGHT.
+##### Slice 7: OBB-vs-OBB overlap detection. SHIPPED.
 
-PR on branch `claude/continuous-angle-stage-2-overlap-detection`.
-Merge commit recorded here when squashed onto main.
+PR #109, squash-merged as `3bed7a9`.
 
 `src/game/pieceObb.ts` exports `OBB`, `obbOfPiece`, `aabbOfObb`,
 `aabbsOverlap`, `obbsOverlap`, and `findOverlappingPiecePairs`. The
@@ -468,12 +468,29 @@ change behavior for grid-aligned tracks too (multi-cell footprints
 can produce SAT-detected overlaps the validator's duplicate-cell
 check would also catch); blocking-on-overlap is a Stage 3 decision.
 
-### Stage 3: flip the flag. NOT STARTED.
+### Stage 3: flip the flag. IN FLIGHT.
 
-- Update tutorials.
-- Decide whether Flex angle becomes a discrete-snap shortcut (rational
-  `atan(p/q)` angles) or gets deprecated. Probably keep it: some
-  authors prefer the constraint.
+PR on branch `claude/continuous-angle-stage-3-flip-flag`. Merge
+commit recorded here when squashed onto main.
+
+The feature flag `CONTINUOUS_ANGLE_EDITOR_ENABLED` is removed
+entirely along with `src/lib/editorFeatureFlags.ts` and its tests.
+Every gating site (`if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return`,
+JSX conditionals, the `NEXT_PUBLIC_*` Playwright env injection)
+is dropped. The continuous-angle UX (rotate handle, free
+placement, numeric Transform panel, Close loop button, OBB
+overlap warning) is now the default editor for everyone, no
+redeploy required to flip on.
+
+Flex Straight stays. The discrete-snap shortcut for rational
+`atan(p/q)` angles is a useful constraint for authors who want
+an angle that's reproducible without typing decimals into the
+Transform panel; it complements the free-rotation handle rather
+than competing with it. No deprecation planned.
+
+Tutorial / hint text on the editor entry banner gets a sentence
+about Select-piece affordances (rotate handle, drag-to-reposition,
+Transform button) so first-time users discover the new behaviors.
 
 ## Risks captured
 
@@ -519,15 +536,18 @@ as `0b1255a`), Stage 2 Workstream B rendering + rotate handle (PR #105
 merged as `1fb7c61`), Stage 2 Workstream B free-placement drag (PR
 #106 merged as `ba1c54b`), Stage 2 Workstream B numeric Transform
 panel (PR #107 merged as `7e9419e`), Stage 2 Workstream B loop
-reconciliation (PR #108 merged as `399e93a`). Slice 7 (OBB-vs-OBB
-overlap detection) is in flight on branch
-`claude/continuous-angle-stage-2-overlap-detection`. After slice 7
-ships, Stage 2 Workstream B is complete and Stage 3 takes over (flip
-the flag, decide on Flex angle deprecation). Before starting, read
-`AGENTS.md`, this plan, `FOLLOWUPS.md`, and the most recent
-`PROGRESS_LOG` entry; the templates and Stage 0.5 snapshot wall plus
-the continuous-angle long-chain closure test in
-`tests/unit/track.test.ts` remain the load-bearing tests.
+reconciliation (PR #108 merged as `399e93a`), Stage 2 Workstream B
+OBB overlap (PR #109 merged as `3bed7a9`). Stage 3 (flip the flag)
+is in flight on branch `claude/continuous-angle-stage-3-flip-flag`.
+After Stage 3 ships, the continuous-angle migration is complete:
+the editor exposes free rotation, drag-to-reposition, numeric
+Transform editing, loop reconciliation, and OBB overlap warnings
+to everyone, the persisted schema is v2, and the Flex Straight
+remains as a discrete-snap shortcut for rational `atan(p/q)`
+angles. Before starting, read `AGENTS.md`, this plan, `FOLLOWUPS.md`,
+and the most recent `PROGRESS_LOG` entry; the templates and Stage
+0.5 snapshot wall plus the continuous-angle long-chain closure test
+in `tests/unit/track.test.ts` remain the load-bearing tests.
 
 The historical Stage 1 ten-step plan below is preserved for reference.
 A fresh session should not re-implement it; the work shipped in PR

@@ -35,7 +35,6 @@ import { cardinalTurnsOfTheta } from '@/game/pieceFrames'
 import { findOverlappingPiecePairs } from '@/game/pieceObb'
 import { footprintCellKeys } from '@/game/trackFootprint'
 import { CELL_SIZE } from '@/game/cellSize'
-import { CONTINUOUS_ANGLE_EDITOR_ENABLED } from '@/lib/editorFeatureFlags'
 import type { PieceTransform } from '@/lib/schemas'
 import {
   TIME_OF_DAY_LABELS,
@@ -366,8 +365,7 @@ export function TrackEditor({
   // Stage 2 Workstream B rotate handle: state for an active rotate drag.
   // When non-null, the editor swaps `pieces[pieceIdx]` with `preview` for
   // rendering so the user sees the rotation live. On pointer up the
-  // preview is committed via `setPieces`. Hidden behind
-  // `CONTINUOUS_ANGLE_EDITOR_ENABLED`.
+  // preview is committed via `setPieces`.
   //
   // `pointerId` is the pointer that started the drag. Subsequent
   // pointermove / pointerup / pointercancel events are filtered by this
@@ -439,7 +437,6 @@ export function TrackEditor({
   // bounded (~64 pieces, ~128 endpoints) so the absolute cost is
   // small relative to the validator's full-loop traversal.
   const loopReconciliation = useMemo(() => {
-    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
     if (validation.ok) return null
     return findLoopReconciliation(pieces)
   }, [pieces, validation.ok])
@@ -451,10 +448,8 @@ export function TrackEditor({
   // footprints (wideArc45, hairpin, flexStraight) over-approximate
   // and the warning can fire on grid-aligned tracks even without
   // duplicate cells; that's why this stays a warning rather than a
-  // save-blocking validator. Gated by the editor flag while the
-  // continuous-angle UX is rolling out.
+  // save-blocking validator.
   const obbOverlaps = useMemo(() => {
-    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return []
     return findOverlappingPiecePairs(pieces)
   }, [pieces])
   const openConnectorIssue =
@@ -577,7 +572,6 @@ export function TrackEditor({
   // selected cell), `pieceTouchesSelection` goes false, and the rings
   // vanish even though the user is still holding the same gesture.
   const rotateHandlePieceWithIndex = useMemo(() => {
-    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return null
     if (rotateDrag !== null) {
       const piece = displayPieces[rotateDrag.pieceIdx]
       if (piece !== undefined) return { piece, idx: rotateDrag.pieceIdx }
@@ -889,10 +883,9 @@ export function TrackEditor({
       if (pinch.pointers.size > 1) return
     }
     // Stage 2 Workstream B slice 4: try to start a free-placement
-    // piece drag. Only with the Select tool active and the
-    // continuous-angle editor flag on. Skipped when a rotate drag or
-    // another piece drag is already in flight (single-pointer model).
-    if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
+    // piece drag. Only with the Select tool active. Skipped when a
+    // rotate drag or another piece drag is already in flight
+    // (single-pointer model).
     if (latestRef.current.tool !== 'select') return
     if (rotateDrag !== null) return
     if (pieceDrag !== null) return
@@ -943,7 +936,6 @@ export function TrackEditor({
   // preview swapped in for `rotateDrag.pieceIdx` until pointer up.
   const handleRotatePointerDown = useCallback(
     (e: React.PointerEvent<SVGCircleElement>, pivotIndex: number) => {
-      if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return
       // Only one pointer can drive a rotate drag at a time. A second
       // finger landing on a ring while a drag is in flight would
       // otherwise overwrite `rotateDrag.pointerId` and hijack the
@@ -1592,8 +1584,9 @@ export function TrackEditor({
         <div style={hint}>
           Pick a tool below, then tap a cell to place it. Tap the selected
           tool again to rotate. Tap a placed piece to rotate it in place.
-          Right-click (or long-press on touch) is a shortcut for the Set
-          start tool.
+          Select a piece for free-rotation handles, drag-to-reposition,
+          or the Transform button (numeric x / z / theta). Right-click
+          (or long-press on touch) is a shortcut for the Set start tool.
         </div>
         {forkingFromHash ? (
           <div style={forkBanner}>
@@ -2054,8 +2047,7 @@ export function TrackEditor({
             >
               Flip V
             </button>
-            {CONTINUOUS_ANGLE_EDITOR_ENABLED &&
-            rotateHandlePieceWithIndex !== null ? (
+            {rotateHandlePieceWithIndex !== null ? (
               <button
                 type="button"
                 onClick={() =>
@@ -3118,11 +3110,11 @@ function NonProjectablePieceOverlay({
 }
 
 // Stage 2 Workstream B: SVG rings at the selected piece's endpoints. The
-// editor renders these only when CONTINUOUS_ANGLE_EDITOR_ENABLED is on
-// and exactly one piece is selected. Pointer-down on a ring captures
-// the pointer (so subsequent move / up events fire on the ring even if
-// the cursor leaves the small circle), and the parent dispatches into
-// rotatePieceAroundEndpoint via the editor's rotate-drag state.
+// editor renders these whenever exactly one piece is selected. Pointer-
+// down on a ring captures the pointer (so subsequent move / up events
+// fire on the ring even if the cursor leaves the small circle), and the
+// parent dispatches into rotatePieceAroundEndpoint via the editor's
+// rotate-drag state.
 function RotateHandles({
   piece,
   colMin,

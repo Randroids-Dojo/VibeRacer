@@ -16,23 +16,16 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Continuous-angle migration
 
-Stages 0, 0.5, 1, and Stage 2 Workstream A (the runtime migration) have
-shipped. Stage 2 Workstream B's foundation, rendering / rotate handle,
-free-placement drag, numeric Transform panel, and loop reconciliation
-have shipped as PRs #104 / #105 / #106 / #107 / #108. Slice 7 (OBB-vs-
-OBB overlap detection) is in flight on branch
-`claude/continuous-angle-stage-2-overlap-detection`. See
-`docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status, the
-slicing plan for Workstream B, the file map, and the contracts that
-pinned Stage 1 and Stage 2 Workstream A (Rule 1 and Rule 2 are
-reproduced inside the plan).
+The migration is complete: Stages 0, 0.5, 1, 2 (Workstream A and the
+seven Workstream B slices), and 3 (flag flip) all shipped. The
+editor exposes free rotation, drag-to-reposition, numeric Transform
+editing, loop reconciliation, and OBB overlap warnings to everyone;
+the persisted schema is v2; Flex Straight stays as a discrete-snap
+shortcut for rational `atan(p/q)` angles. See
+`docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status and
+the contracts that pinned each stage.
 
-### Stage 2 Workstream B: editor UX (complete pending slice 7)
-
-Slices 0.5 through 7 are shipped or in flight. After slice 7 lands,
-Workstream B is done and Stage 3 takes over.
-
-### Stage 2 Workstream B slice 6 cascading reconciliation (follow-up)
+### Slice 6 cascading reconciliation (follow-up)
 
 Single-piece reconciliation in a CLOSED loop with one perturbation
 moves the gap from the perturbed connection to the next downstream
@@ -45,9 +38,14 @@ distribute-drift adjustment or a "rotate around connected endpoint"
 move that leaves the OTHER endpoint position fixed. Capture this
 when a user reports the closed-loop case in real authoring.
 
-### Stage 3
+### Slice 7 OBB false-positives on non-rectangular footprints (follow-up)
 
-- Flip the feature flag, update tutorials, and decide whether the Flex
-  Straight stays as a discrete-snap shortcut for rational `atan(p/q)`
-  angles or gets deprecated.
+The OBB is built from the AABB of each piece-type's footprint
+offsets, so non-rectangular footprints (wideArc45, hairpin,
+flexStraight) over-approximate. Two such pieces can produce an OBB
+overlap warning even when there is no duplicate-cell collision. The
+warning is informational only (save is not blocked), so this is
+acceptable for now; if authoring noise becomes a problem, replace
+the AABB-of-footprint approximation with a per-piece-type road
+polygon table.
 
