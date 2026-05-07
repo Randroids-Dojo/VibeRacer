@@ -556,8 +556,7 @@ export function TrackEditor({
     [pieces, selectedCells],
   )
 
-  // Stage 2 Workstream B: when the continuous-angle editor flag is on
-  // and exactly one piece is selected, surface rotate-handle rings at
+  // When exactly one piece is selected, surface rotate-handle rings at
   // its endpoints. `pieceTouchesSelection` is footprint-aware (matches
   // any cell of the piece's footprint, not just the anchor), so a
   // multi-cell piece selected via a non-anchor cell still surfaces
