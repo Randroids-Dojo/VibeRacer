@@ -5,6 +5,7 @@ import {
   applyLoopReconciliation,
   findFreePlacementSnap,
   findLoopReconciliation,
+  rotateAroundConnectedToTarget,
   rotatePieceAroundEndpoint,
   rotateTransformAroundPoint,
   setPieceTransform,
@@ -641,16 +642,15 @@ describe('findLoopReconciliation', () => {
     expect(reconciliation!.gap).toBeGreaterThan(DEFAULT_FRAME_EPSILON_POS)
     expect(reconciliation!.gap).toBeLessThan(LOOP_RECONCILIATION_RADIUS)
     // Apply and confirm the previously-broken endpoint pair now
-    // satisfies framesConnect.
+    // satisfies framesConnect AND no other connection breaks. The
+    // closed-loop case is what the rotate-around-connected fix
+    // addresses: snapPieceToTarget would have torn pieces[3] loose
+    // by translating pieces[4], pushing the gap one connection
+    // downstream. Rotating pieces[4] around its still-connected
+    // endpoint (the one near pieces[3]) closes the gap without
+    // moving that endpoint, so every connection survives.
     const reconciled = applyLoopReconciliation(pieces, reconciliation!)
-    const reconciledMoverEnds = endpointsOf(reconciled[reconciliation!.pieceIdx])
-    const reconciledTargetEnds = endpointsOf(reconciled[reconciliation!.targetPieceIdx])
-    expect(
-      framesConnect(
-        reconciledMoverEnds[reconciliation!.draggedEndpointIdx],
-        reconciledTargetEnds[reconciliation!.targetEndpointIdx],
-      ),
-    ).toBe(true)
+    expect(unconnectedEndpoints(reconciled).length).toBe(0)
   })
 
   it('returns null when dangling endpoints are antiparallel-incompatible', () => {
@@ -667,5 +667,67 @@ describe('findLoopReconciliation', () => {
       { x: 1, z: 0, theta: 0 },
     )
     expect(findLoopReconciliation([a, b])).toBeNull()
+  })
+
+})
+
+describe('rotateAroundConnectedToTarget', () => {
+  // The pure rotate-around-connected helper: given a piece with two
+  // endpoints, rotate around `connectedEndpointIdx` so the OTHER
+  // endpoint's tangent lands antiparallel to the target frame and
+  // its position lands within posEpsilon of the target.
+
+  it('returns the inverse rotation when the perturbation was a rotation around the same endpoint', () => {
+    // Take a straight, rotate it by a small angle around endpoint 0,
+    // then ask for the rotate-around-connected so its endpoint 1
+    // lands antiparallel-aligned at the position endpoint 1 occupied
+    // BEFORE the perturbation. That ghost target is the frame an
+    // imaginary neighbor with the original mating connector would
+    // present. The rotation that closes the loop is the inverse of
+    // the perturbation: pivots stays, and endpoint 1 goes back to its
+    // original world position with antiparallel tangent.
+    const original = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const originalEnds = endpointsOf(original)
+    const target = {
+      x: originalEnds[1].x,
+      z: originalEnds[1].z,
+      theta: originalEnds[1].theta + Math.PI,
+    }
+    const angle = 0.95 * DEFAULT_FRAME_EPSILON_THETA
+    const perturbed = rotatePieceAroundEndpoint(original, 0, angle)
+    const result = rotateAroundConnectedToTarget(perturbed, 0, target)
+    expect(result).not.toBeNull()
+    const restored = setPieceTransform(perturbed, result!)
+    const restoredEnds = endpointsOf(restored)
+    // Endpoint 1 of the restored piece should match endpoint 1 of
+    // original within validator epsilon.
+    const dist = Math.hypot(
+      restoredEnds[1].x - originalEnds[1].x,
+      restoredEnds[1].z - originalEnds[1].z,
+    )
+    expect(dist).toBeLessThan(DEFAULT_FRAME_EPSILON_POS)
+    // Endpoint 0 (the connected pivot) should not move.
+    const pivotDrift = Math.hypot(
+      restoredEnds[0].x - originalEnds[0].x,
+      restoredEnds[0].z - originalEnds[0].z,
+    )
+    expect(pivotDrift).toBeLessThan(1e-9)
+  })
+
+  it('returns null when no rotation around the connected endpoint can close the position gap', () => {
+    // A straight and a target frame placed off the dragged
+    // endpoint's circle around the connected endpoint. No rotation
+    // around the connected endpoint can land the dragged endpoint
+    // exactly on this target.
+    const piece = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const ends = endpointsOf(piece)
+    // Target frame antiparallel to ends[1].theta but placed far off
+    // the circle of radius |ends[1] - ends[0]| around ends[0].
+    const target = {
+      x: ends[0].x + 100,
+      z: ends[0].z + 100,
+      theta: ends[1].theta + Math.PI,
+    }
+    expect(rotateAroundConnectedToTarget(piece, 0, target)).toBeNull()
   })
 })

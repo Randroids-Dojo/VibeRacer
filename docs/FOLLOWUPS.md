@@ -22,19 +22,6 @@ slices) have shipped. Stage 3 (flag flip) is in flight on branch
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status and
 the contracts that pinned each stage.
 
-### Slice 6 cascading reconciliation (follow-up)
-
-Single-piece reconciliation in a CLOSED loop with one perturbation
-moves the gap from the perturbed connection to the next downstream
-connection rather than closing it (each snap moves the chosen piece
-rigidly, so its still-connected other endpoint drifts onto the next
-broken connection). The shipped reconciliation works for OPEN chains
-where the moving piece sits at the chain end (its other endpoint is
-unconnected); the closed-loop case needs either a multi-piece
-distribute-drift adjustment or a "rotate around connected endpoint"
-move that leaves the OTHER endpoint position fixed. Capture this
-when a user reports the closed-loop case in real authoring.
-
 ### Slice 7 OBB false-positives on non-rectangular footprints (follow-up)
 
 The OBB is built from the AABB of each piece-type's footprint

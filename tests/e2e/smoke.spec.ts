@@ -555,11 +555,10 @@ test('track editor surfaces a Close Loop button when two dangling endpoints are 
   // exactly two dangling endpoints separated by CELL_SIZE * sin
   // 1.9deg ~= 0.66 world units, past the validator's 0.5-unit
   // position epsilon but well inside LOOP_RECONCILIATION_RADIUS = 6.
-  // The "Close loop" button surfaces on the toolbar in that state.
-  // The full loop closure cascade (snapping one pair shut moves the
-  // gap downstream by one connection in a closed loop) is exercised
-  // by the unit tests in tests/unit/continuousAngleEdit.test.ts; the
-  // smoke pins the UI wiring only.
+  // The "Close loop" button surfaces on the toolbar in that state,
+  // and clicking it inverts the perturbation (rotate-around-
+  // connected-endpoint) so the loop is valid again with no cascading
+  // break to a downstream connection.
   await page.goto('/start/edit')
 
   await page.getByRole('button', { name: 'Templates' }).click()
@@ -578,9 +577,14 @@ test('track editor surfaces a Close Loop button when two dangling endpoints are 
   await expect(dialog).toHaveCount(0)
 
   await expect(page.getByText('valid closed loop')).toHaveCount(0)
-  await expect(
-    page.getByRole('button', { name: 'Close loop', exact: true }),
-  ).toBeVisible()
+  const closeLoopButton = page.getByRole('button', {
+    name: 'Close loop',
+    exact: true,
+  })
+  await expect(closeLoopButton).toBeVisible()
+  await closeLoopButton.click()
+  await expect(page.getByText('valid closed loop')).toBeVisible()
+  await expect(closeLoopButton).toHaveCount(0)
 })
 
 test('track editor numeric Transform panel rotates a piece by typed degrees', async ({
