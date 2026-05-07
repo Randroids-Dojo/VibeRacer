@@ -277,6 +277,59 @@ export function snapPieceToTarget(
 export const LOOP_RECONCILIATION_RADIUS = 6
 export const LOOP_RECONCILIATION_ANGLE_RAD = (8 * Math.PI) / 180
 
+// Validator epsilon for the rotate-around-connected close. Must be
+// no looser than `framesConnect`'s default position epsilon, otherwise
+// applying the reconciliation can leave the dragged endpoint outside
+// validator range and the loop stays open.
+const ROTATE_AROUND_CONNECTED_POS_EPSILON = 0.5
+
+// Rotate a piece around its `connectedEndpointIdx` endpoint so the
+// OTHER endpoint's frame ends up at `targetFrame` (antiparallel
+// tangent and within `posEpsilon` world units of the target position).
+// Returns null when no rotation around the connected endpoint can
+// satisfy both the angular and positional constraints simultaneously.
+//
+// In a closed loop where one piece was perturbed by rotating around
+// an endpoint, the inverse rotation closes the gap exactly without
+// moving the connected endpoint. `snapPieceToTarget` would translate
+// AND rotate the piece, which lands the dragged endpoint on the
+// target but tears the still-connected endpoint loose, pushing the
+// gap one connection downstream around the loop.
+export function rotateAroundConnectedToTarget(
+  piece: Piece,
+  connectedEndpointIdx: number,
+  targetFrame: Frame,
+  posEpsilon = ROTATE_AROUND_CONNECTED_POS_EPSILON,
+): PieceTransform | null {
+  const ends = endpointsOf(piece)
+  if (ends.length !== 2) return null
+  const connected = ends[connectedEndpointIdx]
+  const draggedIdx = 1 - connectedEndpointIdx
+  const dragged = ends[draggedIdx]
+  if (connected === undefined || dragged === undefined) return null
+  // Within one cardinal cell, `frame.theta + transform.theta` is
+  // invariant: incrementing transform.theta by alpha decreases every
+  // endpoint tangent by alpha (the same -1 slope `snapPieceToTarget`
+  // exploits). Pick alpha so the dragged endpoint's tangent ends
+  // antiparallel to the target tangent. Normalize to (-PI, PI].
+  let alpha = dragged.theta - (targetFrame.theta + Math.PI)
+  alpha = Math.atan2(Math.sin(alpha), Math.cos(alpha))
+  // Apply that rotation around the connected endpoint and check
+  // whether the dragged endpoint lands on target within posEpsilon.
+  const dx = dragged.x - connected.x
+  const dz = dragged.z - connected.z
+  const cs = Math.cos(alpha)
+  const sn = Math.sin(alpha)
+  const newDraggedX = connected.x + dx * cs - dz * sn
+  const newDraggedZ = connected.z + dx * sn + dz * cs
+  const positionMiss = Math.hypot(
+    newDraggedX - targetFrame.x,
+    newDraggedZ - targetFrame.z,
+  )
+  if (positionMiss > posEpsilon) return null
+  return rotateTransformAroundPoint(transformOf(piece), connected, alpha)
+}
+
 export interface LoopReconciliation {
   // Index of the piece whose transform will change.
   pieceIdx: number
@@ -296,16 +349,34 @@ export interface LoopReconciliation {
 
 // Detect whether the chain has exactly two dangling endpoints that
 // are within reconciliation epsilon of each other and antiparallel-
-// compatible. When so, return a `snapPieceToTarget`-driven plan that
-// moves the second piece's endpoint exactly onto the first's frame.
-// Returns null otherwise (no chain to reconcile, more than two open
-// endpoints, or the gap is wider than the reconciliation radius).
+// compatible. When so, return a plan that moves one piece so its
+// dangling endpoint lands on the target frame. Returns null otherwise
+// (no chain to reconcile, more than two open endpoints, the gap is
+// wider than the reconciliation radius, or the chain is a closed loop
+// with one perturbation that cannot be closed without cascading).
 //
 // Convention: the moving piece is the one with the higher piece
 // index. This keeps the choice deterministic across undo / redo and
 // matches the typical authoring flow where the user appended a chain
 // piece-by-piece and the last piece (highest index) is the one
 // dangling near the start.
+//
+// Two strategies, picked by whether the moving piece's OTHER endpoint
+// is also connected back into the chain:
+//
+// 1. Open chain: the moving piece's other endpoint is unconnected.
+//    `snapPieceToTarget` translates and rotates the moving piece into
+//    place. The other endpoint moves freely; nothing breaks.
+// 2. Closed loop: the moving piece's other endpoint is connected to
+//    a neighbor. Translating the piece would tear that neighbor
+//    connection, pushing the gap downstream. Instead, rotate the
+//    piece around its connected endpoint so only the dangling
+//    endpoint moves. This closes the gap exactly when the
+//    perturbation came from rotating around the connected endpoint
+//    (the typical authoring case). When no rotation around the
+//    connected endpoint satisfies both position and tangent within
+//    validator epsilon, return null rather than offer a plan that
+//    would cascade.
 export function findLoopReconciliation(
   pieces: readonly Piece[],
   radius = LOOP_RECONCILIATION_RADIUS,
@@ -321,23 +392,76 @@ export function findLoopReconciliation(
   if (!tangentsAreAntiparallel(first.frame.theta, second.frame.theta, angleRad)) {
     return null
   }
-  const movingIsSecond = second.pieceIdx > first.pieceIdx
-  const movingEnd = movingIsSecond ? second : first
-  const targetEnd = movingIsSecond ? first : second
-  const movingPiece = pieces[movingEnd.pieceIdx]
-  const transform = snapPieceToTarget(
-    movingPiece,
-    movingEnd.endpointIdx,
-    targetEnd.frame,
-  )
-  return {
-    pieceIdx: movingEnd.pieceIdx,
-    transform,
-    draggedEndpointIdx: movingEnd.endpointIdx,
-    targetPieceIdx: targetEnd.pieceIdx,
-    targetEndpointIdx: targetEnd.endpointIdx,
-    gap,
+  // Try rotate-around-connected for each candidate (which piece is
+  // the perturbed one). The rotation that inverts the original
+  // perturbation lives on whichever candidate has a still-connected
+  // other endpoint and whose dragged endpoint sits at the right
+  // radius from that pivot. Pick the first candidate where
+  // rotateAroundConnectedToTarget returns non-null.
+  for (const candidate of [first, second]) {
+    const target = candidate === first ? second : first
+    const cPiece = pieces[candidate.pieceIdx]
+    const cEnds = endpointsOf(cPiece)
+    if (cEnds.length !== 2) continue
+    const otherEndpointIdx = 1 - candidate.endpointIdx
+    const otherEnd = cEnds[otherEndpointIdx]
+    if (otherEnd === undefined) continue
+    const isOtherConnected = pieces.some((p, i) => {
+      if (i === candidate.pieceIdx) return false
+      return endpointsOf(p).some((oe) => framesConnect(otherEnd, oe))
+    })
+    if (!isOtherConnected) continue
+    const rotated = rotateAroundConnectedToTarget(
+      cPiece,
+      otherEndpointIdx,
+      target.frame,
+    )
+    if (rotated !== null) {
+      return {
+        pieceIdx: candidate.pieceIdx,
+        transform: rotated,
+        draggedEndpointIdx: candidate.endpointIdx,
+        targetPieceIdx: target.pieceIdx,
+        targetEndpointIdx: target.endpointIdx,
+        gap,
+      }
+    }
   }
+  // Neither candidate's rotate-around-connected closes both
+  // constraints. If at least one candidate's other endpoint is NOT
+  // connected to anything (open chain end), fall back to
+  // snapPieceToTarget on that candidate: nothing breaks because
+  // there is no second connection to lose. Otherwise the chain is
+  // a closed loop or both ends are tightly bound, and offering a
+  // snap would cascade the gap downstream; return null so the
+  // editor does not surface a close-loop button that would push
+  // the problem rather than fix it.
+  for (const candidate of [first, second]) {
+    const target = candidate === first ? second : first
+    const cEnds = endpointsOf(pieces[candidate.pieceIdx])
+    if (cEnds.length !== 2) continue
+    const otherEnd = cEnds[1 - candidate.endpointIdx]
+    if (otherEnd === undefined) continue
+    const isOtherConnected = pieces.some((p, i) => {
+      if (i === candidate.pieceIdx) return false
+      return endpointsOf(p).some((oe) => framesConnect(otherEnd, oe))
+    })
+    if (isOtherConnected) continue
+    const transform = snapPieceToTarget(
+      pieces[candidate.pieceIdx],
+      candidate.endpointIdx,
+      target.frame,
+    )
+    return {
+      pieceIdx: candidate.pieceIdx,
+      transform,
+      draggedEndpointIdx: candidate.endpointIdx,
+      targetPieceIdx: target.pieceIdx,
+      targetEndpointIdx: target.endpointIdx,
+      gap,
+    }
+  }
+  return null
 }
 
 // Apply a reconciliation plan to the pieces array, returning a new

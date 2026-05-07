@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-07, Loop Reconciliation Rotate-Around-Connected (slice 6 follow-up)
+
+- Branch: `claude/slice-6-rotate-around-connected`
+- Changed: closed the slice 6 cascading-reconciliation follow-up. New helper `rotateAroundConnectedToTarget(piece, connectedEndpointIdx, targetFrame, posEpsilon = 0.5)` in `src/game/continuousAngleEdit.ts` rotates a piece around its still-connected endpoint by the angle that aligns the OTHER endpoint's tangent antiparallel to the target, then verifies the dragged endpoint position lands within validator epsilon (0.5 world units). Returns null when both constraints cannot be satisfied by a single rotation around the connected endpoint. `findLoopReconciliation` now tries rotate-around-connected on each candidate first; only when neither candidate's rotation works does it fall back to the prior `snapPieceToTarget` translate+rotate, and even then only when at least one candidate's other endpoint is unconnected (open chain end). Closed loops where rotate-around-connected fails return null instead of offering a button that would cascade. Sign of the rotation matches the codebase invariant `frame.theta + transform.theta = constant within one cardinal cell` (incrementing transform.theta by alpha decreases each tangent by alpha), the same -1 slope `snapPieceToTarget` already exploits. The strengthened unit test asserts every connection survives reconciliation (previously the test only checked the targeted pair, which is what masked the cascade). The Playwright smoke now clicks the Close Loop button and asserts `valid closed loop` returns and the button disappears, so the end-to-end close path is exercised.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3327 tests (2 new in `continuousAngleEdit.test.ts`), and the targeted Playwright smoke `track editor surfaces a Close Loop button when two dangling endpoints are within snap range` now asserts the button closes the loop end-to-end.
+- Assumptions: the rotation that aligns tangents and the rotation that lands the dragged position on target are the same alpha within a 0.5-unit position tolerance for the typical perturbation case (user rotated a piece around an endpoint by a small angle). Cases where the gap came from a non-rotation cause (translation, multi-piece drift) often fail the 0.5-unit position check and the button stops surfacing; that is preferred over offering a button that cascades the gap. The closed-form is exact for the inverse-rotation case the docs called out as the typical authoring scenario.
+- GDD coverage: no GDD section change; this is a refinement of the existing slice 6 reconciliation behavior.
+- Followups: slice 7 OBB false-positives on non-rectangular footprints remains open. See `docs/FOLLOWUPS.md`.
+
 ## 2026-05-07, Continuous-Angle Flag Flip (Stage 3)
 
 - Branch: `claude/continuous-angle-stage-3-flip-flag`
