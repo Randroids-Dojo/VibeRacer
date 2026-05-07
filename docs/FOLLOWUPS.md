@@ -16,14 +16,15 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Continuous-angle migration
 
-The migration is complete: Stages 0, 0.5, 1, 2 (Workstream A and the
-seven Workstream B slices), and 3 (flag flip) all shipped. The
-editor exposes free rotation, drag-to-reposition, numeric Transform
-editing, loop reconciliation, and OBB overlap warnings to everyone;
-the persisted schema is v2; Flex Straight stays as a discrete-snap
-shortcut for rational `atan(p/q)` angles. See
-`docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status and
-the contracts that pinned each stage.
+Stages 0, 0.5, 1, and 2 (Workstream A and the seven Workstream B
+slices) have shipped. Stage 3 (flag flip) is in flight on branch
+`claude/continuous-angle-stage-3-flip-flag`; once it merges, the
+editor's free rotation, drag-to-reposition, numeric Transform
+editing, loop reconciliation, and OBB overlap warnings are exposed
+to everyone with no flag, the persisted schema is v2, and Flex
+Straight stays as a discrete-snap shortcut for rational `atan(p/q)`
+angles. See `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative
+status and the contracts that pinned each stage.
 
 ### Slice 6 cascading reconciliation (follow-up)
 
