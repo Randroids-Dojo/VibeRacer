@@ -439,13 +439,12 @@ test('track editor places a flex straight via the dedicated palette tool', async
 test('track editor rotate handle pivots a selected piece around an endpoint', async ({
   page,
 }) => {
-  // Stage 2 Workstream B slice 3: when the continuous-angle editor flag
-  // is on (set in playwright.config.ts so the build inlines it), the
-  // editor surfaces SVG ring handles at the selected piece's endpoints.
-  // Dragging a handle rotates the piece by the angular delta of the
-  // cursor relative to the pivot endpoint, producing a non-projectable
-  // transform. The piece then renders via NonProjectablePieceOverlay
-  // (data-non-projectable-piece-type attribute).
+  // The editor surfaces SVG ring handles at the selected piece's
+  // endpoints. Dragging a handle rotates the piece by the angular
+  // delta of the cursor relative to the pivot endpoint, producing a
+  // non-projectable transform. The piece then renders via
+  // NonProjectablePieceOverlay (data-non-projectable-piece-type
+  // attribute).
   await page.goto('/start/edit')
 
   // The straight tool is the default after page load, so place a single
@@ -481,9 +480,7 @@ test('track editor rotate handle pivots a selected piece around an endpoint', as
 test('track editor free-places a piece via drag with the select tool', async ({
   page,
 }) => {
-  // Stage 2 Workstream B slice 4: with the continuous-angle editor
-  // flag on (set in playwright.config.ts so the build inlines it),
-  // dragging a placed piece while the Select tool is active moves the
+  // Dragging a placed piece while the Select tool is active moves the
   // piece to the new position. The dragged piece's transform sits off
   // the integer grid mid-drag and (at this small drag distance with
   // no neighbor to snap to) commits as a non-projectable piece.
@@ -522,13 +519,11 @@ test('track editor free-places a piece via drag with the select tool', async ({
 test('track editor surfaces an overlap warning when two pieces overlap geometrically', async ({
   page,
 }) => {
-  // Stage 2 Workstream B slice 7: with the continuous-angle editor
-  // flag on (set in playwright.config.ts so the build inlines it),
-  // sliding the top straight (row 0, col 1) halfway toward its west
-  // neighbor (col = 0.5) keeps its legacy `piece.col` rounding to
-  // the same anchor cell (so the validator's duplicate-cell check
-  // does not fire) but moves its OBB into the neighbor right90's
-  // OBB. The status row should report "1 overlapping piece pair".
+  // Sliding the top straight (row 0, col 1) halfway toward its west
+  // neighbor (col = 0.5) keeps its legacy `piece.col` rounding to the
+  // same anchor cell (so the validator's duplicate-cell check does
+  // not fire) but moves its OBB into the neighbor right90's OBB. The
+  // status row should report "1 overlapping piece pair".
   await page.goto('/start/edit')
 
   await page.getByRole('button', { name: 'Templates' }).click()
@@ -554,9 +549,7 @@ test('track editor surfaces an overlap warning when two pieces overlap geometric
 test('track editor surfaces a Close Loop button when two dangling endpoints are within snap range', async ({
   page,
 }) => {
-  // Stage 2 Workstream B slice 6: with the continuous-angle editor
-  // flag on (set in playwright.config.ts so the build inlines it),
-  // rotating one straight by 1.9 degrees around its west endpoint
+  // Rotating one straight by 1.9 degrees around its west endpoint
   // (via the numeric Transform panel; col / row / theta below are
   // the pre-computed values for that pivot) leaves the loop with
   // exactly two dangling endpoints separated by CELL_SIZE * sin
@@ -593,9 +586,7 @@ test('track editor surfaces a Close Loop button when two dangling endpoints are 
 test('track editor numeric Transform panel rotates a piece by typed degrees', async ({
   page,
 }) => {
-  // Stage 2 Workstream B slice 5: with the continuous-angle editor
-  // flag on (set in playwright.config.ts so the build inlines it),
-  // the selection toolbar exposes a Transform button that opens a
+  // The selection toolbar exposes a Transform button that opens a
   // floating panel with col / row / theta inputs. Apply rewrites the
   // piece's transform directly. A non-cardinal theta forces a
   // non-projectable render so the dialog's effect is observable

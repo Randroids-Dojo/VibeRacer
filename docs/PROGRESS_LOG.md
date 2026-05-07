@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-07, Continuous-Angle Flag Flip (Stage 3)
+
+- Branch: `claude/continuous-angle-stage-3-flip-flag`
+- Changed: shipped Stage 3 of the continuous-angle migration. Removed `src/lib/editorFeatureFlags.ts` and `tests/unit/editorFeatureFlags.test.ts` entirely; every `if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return` early return, every `{CONTINUOUS_ANGLE_EDITOR_ENABLED && ...}` JSX gate, and the `NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR=1` injection in `playwright.config.ts` are gone. The continuous-angle UX (rotate handle on selected pieces, free-placement drag with snap, numeric Transform panel via toolbar button or 500ms long-press, Close loop reconciliation button, OBB overlap warning badge) is now the default editor for everyone, no redeploy or env var required to flip on. Tutorial / hint text on the editor entry banner gets a sentence about Select-piece affordances (rotate handle, drag-to-reposition, Transform button) so first-time users discover the new behaviors. Flex Straight stays as a discrete-snap shortcut for rational `atan(p/q)` angles; no deprecation planned.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3325 tests (16 fewer than slice 7 because the editorFeatureFlags suite is gone), `pnpm exec playwright test tests/e2e/smoke.spec.ts --grep "track editor"` passed with all 14 tests, and `pnpm build` passed. Smokes that previously depended on the `NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR=1` injection now exercise the feature against an unconditional editor build.
+- Assumptions: removing the flag is a one-way door. The Vercel Preview environment variables `NEXT_PUBLIC_CONTINUOUS_ANGLE_EDITOR` set on prior branches are now unused; they can be cleaned up via `vercel env rm` whenever, but they have no effect on the build now that the constant is gone. The editor's existing Stage 1 / Stage 2 Workstream A runtime migration handles non-projectable pieces end-to-end, so flipping the editor UX on does not change persistence or rendering for grid-aligned tracks.
+- GDD coverage: no GDD section change; this finalizes the continuous-angle migration scaffolding under Section 6 Track system functionality.
+- Followups: see `docs/FOLLOWUPS.md` for the slice 6 cascading-reconciliation follow-up and the slice 7 OBB false-positives-on-non-rectangular-footprints follow-up; both are quality-of-life improvements that the shipped behavior accommodates without requiring authors to work around them.
+
 ## 2026-05-06, Continuous-Angle OBB Overlap Detection (Stage 2 Workstream B, slice 7)
 
 - Branch: `claude/continuous-angle-stage-2-overlap-detection`

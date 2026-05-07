@@ -86,11 +86,11 @@ For every implementation slice:
 6. Update `docs/PROGRESS_LOG.md`, `docs/GDD_COVERAGE.json`, `docs/OPEN_QUESTIONS.md`, `docs/FOLLOWUPS.md`, and the GDD when the work changes them.
 7. Run the required local verification suite. At minimum run dash checks, `git diff --check`, relevant unit tests, and broader checks when the touched surface warrants them.
 8. Open a PR.
-9. Inspect all PR review comments, including inline and threaded comments from Copilot or other review bots.
+9. Inspect all PR review comments, including inline and threaded comments from CodeRabbit or other review bots.
 10. Fix actionable review comments, reply in-thread when the platform supports it, and resolve threads when resolved.
-11. After every push to the PR branch, wait for Copilot or any configured bot reviewer to finish its review pass before merging. The wait is settled only when all required checks are green and at least 60 seconds have passed since the latest PR branch push or latest bot review activity, whichever is later. Re-inspect reviews and review threads after the settled wait. If no fresh bot review appears, record that the bot did not post new feedback after the push.
+11. After every push to the PR branch, wait for CodeRabbit or any configured bot reviewer to finish its review pass before merging. The wait is settled only when all required checks are green and at least 60 seconds have passed since the latest PR branch push or latest bot review activity, whichever is later. Re-inspect reviews and review threads after the settled wait. If no fresh bot review appears, record that the bot did not post new feedback after the push.
 12. Wait for CI and the preview deploy to pass.
-13. Merge only when green, review feedback is handled, Copilot or bot review has settled after the latest push, and the preview deploy is healthy.
+13. Merge only when green, review feedback is handled, CodeRabbit or bot review has settled after the latest push, and the preview deploy is healthy.
 14. Pull `main`, verify main CI and production deploy, and smoke test production.
 15. Close the completed backlog item with the PR number and verification.
 16. Immediately start the next slice.
