@@ -10,7 +10,6 @@ import {
 import { CELL_SIZE } from '@/game/cellSize'
 import { rotatePieceAroundEndpoint, setPieceTransform } from '@/game/continuousAngleEdit'
 import { convertV1Piece } from '@/lib/trackVersion'
-import { endpointsOf } from '@/game/pieceGeometry'
 
 describe('obbOfPiece', () => {
   it('produces a CELL_SIZE square at the piece transform for a single-cell straight at origin', () => {
@@ -136,26 +135,32 @@ describe('obbsOverlap', () => {
     expect(obbsOverlap(a, bRotated)).toBe(true)
   })
 
-  it('returns false for boxes overlapping in AABB but separated by SAT (oriented)', () => {
-    // Two thin rectangles (4x0.5) crossing at non-orthogonal angles
-    // can have overlapping world AABBs while being SAT-separated.
-    // Place box A axis-aligned at the origin: 8 wide, 1 tall.
-    const a: OBB = { centerX: 0, centerZ: 0, halfX: 4, halfZ: 0.5, theta: 0 }
-    // Box B same dimensions, rotated 90 degrees, offset so its
-    // narrow extent does not reach A's narrow extent: B is centered
-    // at (5, 0). B's world AABB: minX = 5 - 0.5 = 4.5, maxX = 5.5.
-    // A's world AABB: maxX = 4. Disjoint AABB. Use a closer position
-    // to stress SAT specifically: center B at (3, 5). World AABB of
-    // B: x in [2.5, 3.5], z in [1, 9]. A's AABB: x in [-4, 4], z in
-    // [-0.5, 0.5]. Disjoint on z. Move B to (3, 0.4) so AABBs do
-    // overlap but SAT separates...
-    // Actually engineering a SAT-but-not-AABB separation is tricky
-    // with this shape, so just test a clean SAT separation: B at
-    // 90 degrees, far above A.
-    const b: OBB = { centerX: 0, centerZ: 5, halfX: 4, halfZ: 0.5, theta: Math.PI / 2 }
-    // B rotated 90 degrees has world extent x in [-0.5, 0.5], z in
-    // [1, 9]. A's z extent is [-0.5, 0.5]. Disjoint on z. SAT
-    // separates.
+  it('returns false for boxes whose world AABBs overlap but SAT finds a separating axis', () => {
+    // Two parallel thin rectangles oriented at 30 degrees, offset
+    // perpendicular to their length. Their world AABBs are large
+    // (the rotation projects the long dimension onto both axes) so
+    // the AABBs overlap heavily, but SAT projecting onto either
+    // box's narrow local axis sees a clean separation.
+    const a: OBB = {
+      centerX: 0,
+      centerZ: 0,
+      halfX: 10,
+      halfZ: 0.5,
+      theta: Math.PI / 6,
+    }
+    const b: OBB = {
+      centerX: 1,
+      centerZ: 5,
+      halfX: 10,
+      halfZ: 0.5,
+      theta: Math.PI / 6,
+    }
+    // Sanity: world AABBs do overlap (both span x ~[-9, 10], z ~[-5,
+    // 10]).
+    expect(aabbsOverlap(aabbOfObb(a), aabbOfObb(b))).toBe(true)
+    // SAT: projecting onto a's narrow local z axis (-sin30, cos30)
+    // separates them because the perpendicular offset (1, 5)
+    // projects to ~3.83, outside the sum of half-z extents (1.0).
     expect(obbsOverlap(a, b)).toBe(false)
   })
 })
@@ -187,31 +192,25 @@ describe('findOverlappingPiecePairs', () => {
     expect(findOverlappingPiecePairs(pieces)).toEqual([])
   })
 
-  it('detects a non-cardinal piece that intrudes into a neighbor cell', () => {
-    // Place a straight at (0, 0) and another at (1, 0). They share
-    // a cell-bucket boundary but no actual cell. Now perturb the
-    // first by rotating around its (0, 0) west endpoint by 45
-    // degrees: its east endpoint sweeps into the area covered by
-    // the second piece. The OBB of the rotated piece should overlap
-    // the second piece's OBB even though their footprint cells stay
-    // distinct (rotation around an endpoint cardinal-snaps to its
-    // own cardinal cell as the residual grows past PI/4).
-    const a = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
-    const b = convertV1Piece({ type: 'straight', row: 0, col: 1, rotation: 0 })
-    const aEnds = endpointsOf(a)
-    // Endpoint at (0, 0) sits at world (0, 10) (south) or (0, -10)
-    // (north). Rotate a around the endpoint farthest from b so the
-    // free endpoint sweeps toward b's cell.
-    const aRotated = rotatePieceAroundEndpoint(a, 0, Math.PI / 4)
-    const overlaps = findOverlappingPiecePairs([aRotated, b])
-    // Whether the spatial-hash bucket overlap fires depends on
-    // where the rotated a's footprint cells land; the OBB check is
-    // a strict superset that runs only when both boxes are in the
-    // same bucket. The test asserts only that the data flow works
-    // for the non-overlap case, since the rotated piece may not
-    // share a cell bucket with b if its footprint stays at row 0,
-    // col 0 (cardinal snap of 45 degrees).
-    expect(Array.isArray(overlaps)).toBe(true)
+  it('flags a translation-only perturbation that puts an OBB into a neighbor cell', () => {
+    // Two straights one cell apart in cardinal coords. Their OBBs
+    // touch at the cell boundary, which the strict-inequality SAT
+    // does not flag.
+    const aBase = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const bBase = convertV1Piece({ type: 'straight', row: 0, col: 1, rotation: 0 })
+    expect(findOverlappingPiecePairs([aBase, bBase])).toEqual([])
+    // Now translate piece a halfway into b's cell. The OBB anchors
+    // on transform.x, so this works even though piece.col stays
+    // at 0; the spatial hash buckets by world AABB cells (covering
+    // both col 0 and col 1 once a's center is at world (10, 0)),
+    // and SAT confirms the overlap.
+    const aShifted = setPieceTransform(aBase, { x: CELL_SIZE / 2, z: 0, theta: 0 })
+    expect(findOverlappingPiecePairs([aShifted, bBase])).toEqual([{ a: 0, b: 1 }])
+    // A residual rotation that swings a's far endpoint toward b's
+    // cell also produces overlap (no translation needed).
+    const aRotated = rotatePieceAroundEndpoint(aBase, 0, Math.PI / 6)
+    const overlaps = findOverlappingPiecePairs([aRotated, bBase])
+    expect(overlaps).toEqual([{ a: 0, b: 1 }])
   })
 
   it('reports each pair only once even when they share multiple cells', () => {

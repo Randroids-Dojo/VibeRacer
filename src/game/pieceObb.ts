@@ -5,18 +5,33 @@
 // OBB catches the geometry the cell projection misses, namely two
 // non-projectable pieces whose actual rotated rectangles overlap
 // even when their cardinal-snapped supercover footprints do not.
-// For grid-aligned (residual = 0) pieces the OBB collapses to the
-// cell-AABB, so OBB overlap is equivalent to footprint-cell
-// duplication for those pieces and the existing duplicate-cell
-// detection covers the same ground.
 //
-// Pipeline: spatial-hash pieces by their footprint cells (cheap,
-// reuses the same cells the validator and editor already enumerate),
-// pull each cell's piece list into pairwise candidates, AABB-prune
-// (cheap world-axis bounding box, cuts most far-apart pairs without
-// the trig of full SAT), then full OBB Separating Axis Theorem.
-// Each stage is a strict superset of the next, so a SAT pass implies
-// the AABB and cell-bucket pre-checks are also true.
+// Conservative bound: the OBB is built from the AABB of the
+// piece-type's footprint offsets `(dr, dc)`, so for non-rectangular
+// footprints (e.g. `wideArc45*`'s 3-cell L, `hairpin`'s 6-cell
+// rectangle, `flexStraight`'s supercover line) the OBB strictly
+// CONTAINS the cells the piece actually occupies. Two pieces with
+// non-rectangular footprints can therefore have OBB overlap without
+// any duplicate-cell collision (the validator stays silent while
+// this check warns), and grid-aligned tracks are NOT exempt from
+// false positives. The over-approximation is intentional: for
+// non-projectable rotations the supercover footprint is also a
+// conservative proxy, so an OBB drawn from it inherits the same
+// safety margin without an extra geometry table per piece type.
+// The editor surfaces the overlap count as a warning, not a save
+// blocker, because of this.
+//
+// Pipeline: spatial-hash pieces by the integer cell columns / rows
+// their world-AABB covers (computed from the OBB rather than the
+// piece's cardinal `footprintCells`, so a translation-only
+// perturbation that leaves the legacy `piece.row` / `piece.col`
+// rounded to the original anchor still buckets together with the
+// neighbor it has actually moved into), pull each bucket's piece
+// list into pairwise candidates, world-AABB-prune (cheap axis-
+// aligned bounding box around the OBB, cuts most far-apart pairs
+// without the trig of full SAT), then full OBB Separating Axis
+// Theorem. Each stage is a strict superset of the next, so a SAT
+// pass implies the AABB and bucket pre-checks are also true.
 
 import type { Piece } from '@/lib/schemas'
 import { CELL_SIZE } from './cellSize'

@@ -446,12 +446,13 @@ export function TrackEditor({
   // Stage 2 Workstream B slice 7: oriented-bounding-box overlap
   // detection. Surface a warning in the status row when two pieces'
   // OBBs overlap so authors notice cases the validator's duplicate-
-  // cell check does not catch. Gated by the editor flag because OBB
-  // overlap matters for non-projectable pieces (the cell-equality
-  // check handles grid-aligned pieces); a stricter "block save on
-  // OBB overlap" pass would change behavior for grid-aligned tracks
-  // too via the multi-cell footprints, so this slice ships warnings
-  // only.
+  // cell check does not catch. The OBB is built from the AABB of
+  // the piece-type's footprint offsets, so non-rectangular
+  // footprints (wideArc45, hairpin, flexStraight) over-approximate
+  // and the warning can fire on grid-aligned tracks even without
+  // duplicate cells; that's why this stays a warning rather than a
+  // save-blocking validator. Gated by the editor flag while the
+  // continuous-angle UX is rolling out.
   const obbOverlaps = useMemo(() => {
     if (!CONTINUOUS_ANGLE_EDITOR_ENABLED) return []
     return findOverlappingPiecePairs(pieces)
