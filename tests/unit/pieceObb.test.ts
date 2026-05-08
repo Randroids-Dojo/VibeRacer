@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import {
   aabbOfObb,
   aabbsOverlap,
+  cellObbsOfPiece,
   findOverlappingPiecePairs,
   obbOfPiece,
   obbsOverlap,
@@ -222,5 +223,107 @@ describe('findOverlappingPiecePairs', () => {
     ]
     const result = findOverlappingPiecePairs(pieces)
     expect(result).toEqual([{ a: 0, b: 1 }])
+  })
+
+  it('does not flag a wideArc45 next to a piece that only intersects the L-shape’s missing corner', () => {
+    // wideArc45Right's footprint is an L. The single-OBB approach
+    // bounded the L with a 2x2 AABB rectangle, which would pick up
+    // a neighbor placed in the L's missing corner cell as an
+    // overlap even though the actual road cells of the two pieces
+    // do not collide. Per-cell OBBs ignore that corner.
+    const arc = convertV1Piece({
+      type: 'wideArc45Right',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    const arcCells = cellObbsOfPiece(arc)
+    expect(arcCells.length).toBeGreaterThan(1)
+    // Place a single-cell straight at the L's missing corner. The
+    // exact missing offset depends on wideArc45Right's footprint;
+    // we identify it by enumerating offsets in the 2x2 AABB and
+    // picking whichever isn't covered by any of arc's cell-OBB
+    // centers.
+    const offsets: Array<[number, number]> = []
+    for (let r = -2; r <= 2; r++) {
+      for (let c = -2; c <= 2; c++) offsets.push([r, c])
+    }
+    const arcCenters = arcCells.map((o) => ({
+      r: Math.round(o.centerZ / CELL_SIZE),
+      c: Math.round(o.centerX / CELL_SIZE),
+    }))
+    const missing = offsets.find(
+      ([r, c]) =>
+        r >= Math.min(...arcCenters.map((a) => a.r)) &&
+        r <= Math.max(...arcCenters.map((a) => a.r)) &&
+        c >= Math.min(...arcCenters.map((a) => a.c)) &&
+        c <= Math.max(...arcCenters.map((a) => a.c)) &&
+        !arcCenters.some((a) => a.r === r && a.c === c),
+    )
+    expect(missing).toBeDefined()
+    const [r, c] = missing!
+    const neighbor = convertV1Piece({
+      type: 'straight',
+      row: r,
+      col: c,
+      rotation: 0,
+    })
+    // No actual cell collision: piece grids are disjoint. The
+    // pre-fix OBB-of-footprint approach would have flagged this;
+    // per-cell OBBs do not.
+    expect(findOverlappingPiecePairs([arc, neighbor])).toEqual([])
+  })
+
+  it('still flags overlap when a residually-rotated piece pushes a cell into a neighbor', () => {
+    // After residual rotation, a multi-cell piece's cells are
+    // rotated unit squares; a cell that swings into a neighbor's
+    // cell still flags. This pins that switching to per-cell OBBs
+    // did not regress the slice 7 positive case.
+    const aBase = convertV1Piece({ type: 'straight', row: 0, col: 0, rotation: 0 })
+    const bBase = convertV1Piece({ type: 'straight', row: 0, col: 1, rotation: 0 })
+    const aRotated = rotatePieceAroundEndpoint(aBase, 0, Math.PI / 6)
+    expect(findOverlappingPiecePairs([aRotated, bBase])).toEqual([{ a: 0, b: 1 }])
+  })
+})
+
+describe('cellObbsOfPiece', () => {
+  it('returns one CELL_SIZE square per footprint cell for a multi-cell piece', () => {
+    const piece = convertV1Piece({
+      type: 'hairpin',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    const obbs = cellObbsOfPiece(piece)
+    // hairpin has 6 cells.
+    expect(obbs.length).toBe(6)
+    for (const obb of obbs) {
+      expect(obb.halfX).toBeCloseTo(CELL_SIZE / 2, 9)
+      expect(obb.halfZ).toBeCloseTo(CELL_SIZE / 2, 9)
+      expect(obb.theta).toBe(0)
+    }
+  })
+
+  it('rotates per-cell centers by the residual angle around the piece transform', () => {
+    const piece = convertV1Piece({
+      type: 'hairpin',
+      row: 0,
+      col: 0,
+      rotation: 0,
+    })
+    const residual = (15 * Math.PI) / 180
+    const rotated = setPieceTransform(piece, { x: 0, z: 0, theta: residual })
+    const obbs = cellObbsOfPiece(rotated)
+    for (const obb of obbs) {
+      expect(obb.theta).toBeCloseTo(residual, 9)
+    }
+    // For a cell at piece-local (dr=0, dc=1), expect world center
+    // at (CELL_SIZE * cos(residual), CELL_SIZE * sin(residual)).
+    const expected = obbs.find(
+      (o) =>
+        Math.abs(o.centerX - CELL_SIZE * Math.cos(residual)) < 1e-9 &&
+        Math.abs(o.centerZ - CELL_SIZE * Math.sin(residual)) < 1e-9,
+    )
+    expect(expected).toBeDefined()
   })
 })

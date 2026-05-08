@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-07, Per-Cell OBBs for Overlap Detection (slice 7 follow-up)
+
+- Branch: `claude/slice-7-piece-polygons`
+- Changed: closed the slice 7 OBB false-positives follow-up. New helper `cellObbsOfPiece(piece): OBB[]` in `src/game/pieceObb.ts` returns one CELL_SIZE-on-a-side rotated square per footprint cell instead of one bounding rectangle per piece. Each cell-OBB anchors at `transform.{x,z} + (residual-rotated cell offset)` with the residual angle as its world orientation, so the L-shape of `wideArc45*` no longer claims its missing fourth corner cell and the supercover line of `flexStraight` no longer claims the cells off its road. `findOverlappingPiecePairs` now buckets per cell-OBB rather than per piece, walks cross-piece cell pairs in each shared bucket, and runs strict-inequality SAT on each pair; same-piece cell pairs are never compared so multi-cell pieces never self-flag. The single-OBB `obbOfPiece` stays as a coarse bound for callers that need one rectangle per piece. New unit tests pin: a wideArc45 next to a piece in the L's missing corner cell does NOT flag (was the slice 7 false-positive case), residually-rotated overlap still flags, and `cellObbsOfPiece` produces the right number of cells with the right per-cell rotation. The Playwright OBB-overlap smoke (top straight slid halfway into the west neighbor) still flags as a regression check.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3331 tests (4 new in `pieceObb.test.ts`), `pnpm exec playwright test tests/e2e/smoke.spec.ts --grep "overlap warning|Close Loop button"` passed (2/2), and `pnpm build` passed.
+- Assumptions: per-cell SAT is bounded by the largest footprint (9 cells for `hairpinWide`); cost stays O(N) per piece for bucket insertion and O(M*N) per overlapping bucket pair, both acceptable for the typical authoring track size (~64 pieces). Strict-inequality SAT preserves the contract that adjacent cell-aligned pieces sharing an edge do not flag, which was the slice 7 invariant the editor relied on.
+- GDD coverage: no GDD section change; this is a refinement of the existing slice 7 overlap detection.
+- Followups: continuous-angle migration is fully closed. See `docs/FOLLOWUPS.md`.
+
 ## 2026-05-07, Loop Reconciliation Rotate-Around-Connected (slice 6 follow-up)
 
 - Branch: `claude/slice-6-rotate-around-connected`

@@ -16,20 +16,10 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Continuous-angle migration
 
-Stages 0, 0.5, 1, and 2 (Workstream A and the seven Workstream B
-slices) have shipped. Stage 3 (flag flip) is in flight on branch
-`claude/continuous-angle-stage-3-flip-flag`. See
+The migration is complete: Stages 0, 0.5, 1, 2 (Workstream A and
+the seven Workstream B slices), and 3 (flag flip) have all shipped,
+and the slice 6 cascading-reconciliation and slice 7 OBB
+false-positives followups have closed. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status and
 the contracts that pinned each stage.
-
-### Slice 7 OBB false-positives on non-rectangular footprints (follow-up)
-
-The OBB is built from the AABB of each piece-type's footprint
-offsets, so non-rectangular footprints (wideArc45, hairpin,
-flexStraight) over-approximate. Two such pieces can produce an OBB
-overlap warning even when there is no duplicate-cell collision. The
-warning is informational only (save is not blocked), so this is
-acceptable for now; if authoring noise becomes a problem, replace
-the AABB-of-footprint approximation with a per-piece-type road
-polygon table.
 

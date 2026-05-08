@@ -6,32 +6,34 @@
 // non-projectable pieces whose actual rotated rectangles overlap
 // even when their cardinal-snapped supercover footprints do not.
 //
-// Conservative bound: the OBB is built from the AABB of the
-// piece-type's footprint offsets `(dr, dc)`, so for non-rectangular
-// footprints (e.g. `wideArc45*`'s 3-cell L, `hairpin`'s 6-cell
-// rectangle, `flexStraight`'s supercover line) the OBB strictly
-// CONTAINS the cells the piece actually occupies. Two pieces with
-// non-rectangular footprints can therefore have OBB overlap without
-// any duplicate-cell collision (the validator stays silent while
-// this check warns), and grid-aligned tracks are NOT exempt from
-// false positives. The over-approximation is intentional: for
-// non-projectable rotations the supercover footprint is also a
-// conservative proxy, so an OBB drawn from it inherits the same
-// safety margin without an extra geometry table per piece type.
-// The editor surfaces the overlap count as a warning, not a save
-// blocker, because of this.
+// `obbOfPiece` returns ONE OBB built from the AABB of the piece's
+// footprint offsets and serves as a coarse-but-cheap bound (still
+// useful as a pre-check or for callers that need a single rotated
+// rectangle per piece). `cellObbsOfPiece` returns one OBB per
+// footprint cell so non-rectangular footprints (`wideArc45*`'s
+// 3-cell L, `hairpin*`'s 6-cell rectangle, `flexStraight`'s
+// supercover line) are not over-approximated: the L doesn't claim
+// the missing corner cell, the U doesn't claim the inside-of-U
+// region, and `findOverlappingPiecePairs` only flags cell-against-
+// cell collisions. The editor's overlap warning therefore stops
+// firing on grid-aligned tracks where two pieces' AABB envelopes
+// overlap but their actual road cells don't.
 //
-// Pipeline: spatial-hash pieces by the integer cell columns / rows
-// their world-AABB covers (computed from the OBB rather than the
-// piece's cardinal `footprintCells`, so a translation-only
-// perturbation that leaves the legacy `piece.row` / `piece.col`
-// rounded to the original anchor still buckets together with the
-// neighbor it has actually moved into), pull each bucket's piece
-// list into pairwise candidates, world-AABB-prune (cheap axis-
-// aligned bounding box around the OBB, cuts most far-apart pairs
-// without the trig of full SAT), then full OBB Separating Axis
-// Theorem. Each stage is a strict superset of the next, so a SAT
-// pass implies the AABB and bucket pre-checks are also true.
+// Each cell-OBB is a unit cell square (CELL_SIZE on a side) at the
+// world position of its anchor + cell offset, rotated by the
+// piece's residual angle around the piece's transform position.
+// SAT runs strict-inequality so cells that merely share an edge
+// (the typical grid-aligned neighbor case) do not flag.
+//
+// Pipeline: spatial-hash each cell-OBB's world-AABB into integer
+// cell columns / rows, group the per-piece cell-OBB lists by piece
+// index, walk pieces sharing any bucket, and run cell-vs-cell SAT
+// for every cross-piece pair until one overlap is found. Bucket
+// keys come from the per-cell world AABB rather than the piece's
+// cardinal `footprintCells`, so a translation-only perturbation
+// that leaves the legacy `piece.row` / `piece.col` rounded to the
+// original anchor still buckets together with the neighbor it has
+// actually moved into.
 
 import type { Piece } from '@/lib/schemas'
 import { CELL_SIZE } from './cellSize'
@@ -55,7 +57,7 @@ export interface OBB {
   theta: number
 }
 
-// Build the OBB enclosing a piece's footprint. The footprint's
+// Build the bounding OBB for a piece's footprint. The footprint's
 // `(dr, dc)` offsets are relative to the piece's anchor in the
 // cardinal-rotated piece-local frame; the anchor lives at
 // `(transform.x, transform.z)` in world. We compute the AABB of
@@ -67,6 +69,10 @@ export interface OBB {
 // numeric Transform panel keeps its legacy `piece.col` rounded to
 // the original anchor, and only the transform reflects the actual
 // world position.
+//
+// Over-approximating: for non-rectangular footprints this OBB
+// claims more area than the piece's actual road cells. Use
+// `cellObbsOfPiece` for the per-cell shape and overlap detection.
 export function obbOfPiece(piece: Piece): OBB {
   const t = transformOf(piece)
   const offsets = normalizedFootprint(
@@ -117,6 +123,49 @@ export function obbOfPiece(piece: Piece): OBB {
     halfZ,
     theta: residual,
   }
+}
+
+// Per-cell OBBs for a piece. Each footprint cell becomes its own
+// CELL_SIZE-on-a-side rotated square anchored at the piece's
+// transform with the residual angle applied. Two pieces overlap
+// (for the editor's warning) when any cell-OBB of one overlaps
+// any cell-OBB of the other, which is strictly tighter than the
+// AABB-of-footprint bound `obbOfPiece` provides: an L-shaped
+// 3-cell footprint no longer claims the missing 4th corner cell.
+export function cellObbsOfPiece(piece: Piece): OBB[] {
+  const t = transformOf(piece)
+  const offsets = normalizedFootprint(
+    piece.footprint && piece.footprint.length > 0
+      ? piece.footprint
+      : defaultFootprintForPiece(piece),
+  )
+  if (offsets.length === 0) {
+    return [{ centerX: t.x, centerZ: t.z, halfX: 0, halfZ: 0, theta: 0 }]
+  }
+  const half = CELL_SIZE / 2
+  const residual = residualThetaAfterCardinalSnap(t.theta)
+  if (residual === 0) {
+    return offsets.map((off) => ({
+      centerX: t.x + off.dc * CELL_SIZE,
+      centerZ: t.z + off.dr * CELL_SIZE,
+      halfX: half,
+      halfZ: half,
+      theta: 0,
+    }))
+  }
+  const cs = Math.cos(residual)
+  const sn = Math.sin(residual)
+  return offsets.map((off) => {
+    const localX = off.dc * CELL_SIZE
+    const localZ = off.dr * CELL_SIZE
+    return {
+      centerX: t.x + localX * cs - localZ * sn,
+      centerZ: t.z + localX * sn + localZ * cs,
+      halfX: half,
+      halfZ: half,
+      theta: residual,
+    }
+  })
 }
 
 // World-axis-aligned bounding box of an OBB. Used as a cheap pre-
@@ -200,64 +249,74 @@ export interface PieceOverlap {
   b: number
 }
 
-// Pairs of pieces whose OBBs overlap. Uses the OBB's world-AABB to
-// bucket pieces into integer cell columns / rows (cheaper than full
-// SAT for far-apart pairs); then full SAT on the candidates. We
-// bucket by the WORLD AABB rather than the piece's cardinal-rotated
-// `footprintCells`, because for non-projectable pieces the legacy
-// `piece.row` / `piece.col` anchor does not always move with the
-// transform: a slider that translates a piece into a neighbor's
-// space without changing its v1-projectable cell would have its
-// AABB intersect the neighbor's bucket while the legacy footprint
-// would not, and the cell-bucket pre-check would miss the overlap.
-// Bucketing by the AABB closes that hole and reduces to the same
-// behavior as `footprintCells` when the cells happen to coincide
-// (the typical grid-aligned case).
+// Pairs of pieces whose road cells overlap. Each piece is expanded
+// into its per-cell OBB list; cell-OBBs are bucketed into integer
+// cell columns / rows by their world-AABB. Two pieces are flagged
+// only when at least one cross-piece cell-OBB pair passes both AABB
+// pre-check and full SAT. Same-piece cell pairs are never compared
+// (a piece's footprint is internally consistent by construction;
+// flagging it as self-overlap would be a permanent warning on every
+// multi-cell piece). Bucketing per cell rather than per piece is
+// what eliminates the slice 7 false positives: an L-shaped wideArc45
+// piece next to its neighbor used to bucket-overlap on the missing
+// corner cell of the L envelope and trigger SAT, but with per-cell
+// buckets the missing corner cell never enters the bucket map.
 export function findOverlappingPiecePairs(
   pieces: readonly Piece[],
 ): PieceOverlap[] {
   if (pieces.length < 2) return []
-  const obbs: OBB[] = pieces.map(obbOfPiece)
-  const aabbs: AABB[] = obbs.map(aabbOfObb)
-  const cellBuckets = new Map<string, number[]>()
-  for (let i = 0; i < pieces.length; i++) {
-    const aabb = aabbs[i]
-    const colMin = Math.floor(aabb.minX / CELL_SIZE)
-    const colMax = Math.floor(aabb.maxX / CELL_SIZE)
-    const rowMin = Math.floor(aabb.minZ / CELL_SIZE)
-    const rowMax = Math.floor(aabb.maxZ / CELL_SIZE)
-    for (let r = rowMin; r <= rowMax; r++) {
-      for (let c = colMin; c <= colMax; c++) {
-        const key = `${r},${c}`
-        const arr = cellBuckets.get(key)
-        if (arr === undefined) {
-          cellBuckets.set(key, [i])
-        } else if (arr[arr.length - 1] !== i) {
-          arr.push(i)
+  // Per-piece cell-OBB lists with their world AABBs.
+  const cellObbsByPiece: OBB[][] = pieces.map(cellObbsOfPiece)
+  const cellAabbsByPiece: AABB[][] = cellObbsByPiece.map((obbs) =>
+    obbs.map(aabbOfObb),
+  )
+  // Spatial hash: each (row, col) bucket lists `(pieceIdx, cellIdx)`
+  // entries for cell-OBBs whose world-AABB touches that cell.
+  const cellBuckets = new Map<string, Array<[number, number]>>()
+  for (let p = 0; p < pieces.length; p++) {
+    const aabbs = cellAabbsByPiece[p]
+    for (let c = 0; c < aabbs.length; c++) {
+      const aabb = aabbs[c]
+      const colMin = Math.floor(aabb.minX / CELL_SIZE)
+      const colMax = Math.floor(aabb.maxX / CELL_SIZE)
+      const rowMin = Math.floor(aabb.minZ / CELL_SIZE)
+      const rowMax = Math.floor(aabb.maxZ / CELL_SIZE)
+      for (let r = rowMin; r <= rowMax; r++) {
+        for (let cc = colMin; cc <= colMax; cc++) {
+          const key = `${r},${cc}`
+          const arr = cellBuckets.get(key)
+          if (arr === undefined) cellBuckets.set(key, [[p, c]])
+          else arr.push([p, c])
         }
       }
     }
   }
-  const seenPairs = new Set<string>()
-  const candidates: Array<[number, number]> = []
+  // For each bucket, walk every cross-piece cell pair and check
+  // AABB then SAT. Track flagged piece pairs so we report each
+  // unordered pair once even if multiple cell pairs overlap.
+  const flagged = new Set<string>()
+  const out: PieceOverlap[] = []
   for (const arr of cellBuckets.values()) {
     if (arr.length < 2) continue
     for (let i = 0; i < arr.length; i++) {
       for (let j = i + 1; j < arr.length; j++) {
-        const lo = arr[i] < arr[j] ? arr[i] : arr[j]
-        const hi = arr[i] < arr[j] ? arr[j] : arr[i]
-        const k = `${lo}|${hi}`
-        if (seenPairs.has(k)) continue
-        seenPairs.add(k)
-        candidates.push([lo, hi])
+        const [pi, ci] = arr[i]
+        const [pj, cj] = arr[j]
+        if (pi === pj) continue
+        const lo = pi < pj ? pi : pj
+        const hi = pi < pj ? pj : pi
+        const key = `${lo}|${hi}`
+        if (flagged.has(key)) continue
+        const aAabb = cellAabbsByPiece[pi][ci]
+        const bAabb = cellAabbsByPiece[pj][cj]
+        if (!aabbsOverlap(aAabb, bAabb)) continue
+        const aObb = cellObbsByPiece[pi][ci]
+        const bObb = cellObbsByPiece[pj][cj]
+        if (!obbsOverlap(aObb, bObb)) continue
+        flagged.add(key)
+        out.push({ a: lo, b: hi })
       }
     }
-  }
-  const out: PieceOverlap[] = []
-  for (const [a, b] of candidates) {
-    if (!aabbsOverlap(aabbs[a], aabbs[b])) continue
-    if (!obbsOverlap(obbs[a], obbs[b])) continue
-    out.push({ a, b })
   }
   return out
 }
