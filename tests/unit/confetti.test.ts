@@ -12,7 +12,7 @@ import {
   makeRng,
   spawnConfettiBatch,
   stepConfetti,
-} from '@/game/confetti'
+} from '@/lib/portable/confetti'
 
 describe('makeRng', () => {
   it('is deterministic for a given seed', () => {

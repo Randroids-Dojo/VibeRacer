@@ -9,7 +9,7 @@ import {
   replacePresent,
   resetHistory,
   undoHistory,
-} from '@/game/editorHistory'
+} from '@/lib/portable/editorHistory'
 
 describe('createHistory', () => {
   it('seeds with the initial value as present and empty stacks', () => {

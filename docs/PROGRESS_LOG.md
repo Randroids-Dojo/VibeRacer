@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-08, Portable Game Modules
+
+- Branch: `claude/portable-game-modules`
+- Changed: extracted three already-portable modules out of `src/game/` into `src/lib/portable/` so they can be copy-pasted into other game projects without VibeRacer-specific edits. The three picks (`virtual-joystick.ts`, `editorHistory.ts`, `confetti.ts`) each had zero `@/` imports, no React, no Next.js coupling, and no game-specific types in their public APIs; the move is a pure relocation. Updated 7 import sites (4 source, 3 test) to the new paths. New `src/lib/portable/README.md` documents the portability contract (zero project imports, no framework coupling, pure TypeScript, documented public API) and lists the modules with their public surface. Future candidates that need light decoupling before they qualify (`audioEngine.ts` needs an `AudioSettings` provider interface, `gamepadInput.ts` needs `GamepadBindings` lifted out) are intentionally out of this slice.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3331 tests, and `pnpm build` passed. No behavior change is expected (pure relocation), so no new tests; the existing 3 test files for these modules picked up the new import paths and continue to pin behavior.
+- Assumptions: `src/lib/portable/` is the right boundary for "drop these files into another TS project and they work". Future tightening (lifting tests next to source, or moving each module into its own subfolder) is a separate concern.
+- GDD coverage: no GDD section change; this is internal code organization.
+- Followups: `audioEngine.ts` and `gamepadInput.ts` are the next-best candidates and would benefit from a small decoupling refactor before relocation.
+
 ## 2026-05-07, Per-Cell OBBs for Overlap Detection (slice 7 follow-up)
 
 - Branch: `claude/slice-7-piece-polygons`
