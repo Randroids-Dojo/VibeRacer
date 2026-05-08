@@ -87,7 +87,7 @@ import {
   redoHistory,
   undoHistory,
   type EditorHistory,
-} from '@/game/editorHistory'
+} from '@/lib/portable/editorHistory'
 import {
   ZOOM_DEFAULT,
   ZOOM_MAX,
