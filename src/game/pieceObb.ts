@@ -139,9 +139,7 @@ export function cellObbsOfPiece(piece: Piece): OBB[] {
       ? piece.footprint
       : defaultFootprintForPiece(piece),
   )
-  if (offsets.length === 0) {
-    return [{ centerX: t.x, centerZ: t.z, halfX: 0, halfZ: 0, theta: 0 }]
-  }
+  if (offsets.length === 0) return []
   const half = CELL_SIZE / 2
   const residual = residualThetaAfterCardinalSnap(t.theta)
   if (residual === 0) {
