@@ -76,6 +76,8 @@ export async function POST(req: NextRequest) {
       checkpoints: submission.data.checkpoints,
       lapTimeMs: submission.data.lapTimeMs,
       initials: submission.data.initials,
+      mode: submission.data.mode,
+      topSpeed: submission.data.topSpeed,
     },
     racerId,
     Date.now(),
@@ -125,9 +127,17 @@ export async function POST(req: NextRequest) {
   // Per-lap metadata is tracked in a side-key keyed by nonce so the leaderboard
   // can show what setup the time was set with, and which input device was used.
   // Optional in the payload to keep old clients submitting (we backfill below).
+  // Drag submissions also persist their loadout (and the run's reaction time
+  // / top speed / foul flag) so the leaderboard pane can render the run's
+  // parts and the drag-summary chips later.
   const lapMeta = {
     tuning: submission.data.tuning ?? null,
     inputMode: submission.data.inputMode ?? 'keyboard',
+    mode: submission.data.mode ?? 'loop',
+    loadout: submission.data.loadout ?? null,
+    topSpeed: submission.data.topSpeed ?? null,
+    fouled: submission.data.fouled ?? null,
+    reactionTimeMs: submission.data.reactionTimeMs ?? null,
   }
   await kv.set(kvKeys.lapMeta(payload.nonce), JSON.stringify(lapMeta))
 

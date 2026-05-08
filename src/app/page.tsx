@@ -55,6 +55,10 @@ export default async function HomePage() {
             Play
           </Link>
 
+          <Link href="/drag" style={primaryBtnStyle}>
+            Drag Racing
+          </Link>
+
           <DailyChallenge />
 
           <DailyStreak />

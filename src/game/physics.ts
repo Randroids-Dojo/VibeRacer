@@ -81,6 +81,7 @@ export function stepPhysics(
   params: CarParams = DEFAULT_CAR_PARAMS,
   accelFactor = 1,
   maxSpeedFactor = 1,
+  externalLongitudinalAccel = 0,
 ): PhysicsState {
   let speed = s.speed
   const throttle = clamp(input.throttle, -1, 1)
@@ -107,6 +108,15 @@ export function stepPhysics(
     const handbrakeDrag = params.brake * 1.5 * dtSec
     if (Math.abs(speed) <= handbrakeDrag) speed = 0
     else speed -= sign(speed) * handbrakeDrag
+  }
+
+  // World-frame longitudinal acceleration. Used by drag mode to add the
+  // gravity-along-slope term computed by dragTick. Defaults to 0 so closed
+  // loop callers see byte-identical behavior. Applied after engine and brake
+  // integration but before the speed clamp so a long downhill still respects
+  // params.maxSpeed.
+  if (externalLongitudinalAccel !== 0) {
+    speed += externalLongitudinalAccel * dtSec
   }
 
   if (!onTrack) {

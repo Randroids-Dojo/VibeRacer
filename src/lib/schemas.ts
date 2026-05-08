@@ -4,6 +4,7 @@ import { ReplaySchema } from './replay'
 import { TimeOfDaySchema } from './lighting'
 import { WeatherSchema } from './weather'
 import { TrackBiomeSchema } from './biomes'
+import { DragLoadoutSchema } from './dragParts'
 export { TrackBiomeSchema } from './biomes'
 import {
   MAX_DECORATIONS_PER_TRACK,
@@ -356,6 +357,9 @@ export const CheckpointHitSchema = z.object({
 })
 export type CheckpointHit = z.infer<typeof CheckpointHitSchema>
 
+export const RaceModeSchema = z.enum(['loop', 'drag'])
+export type RaceMode = z.infer<typeof RaceModeSchema>
+
 export const SubmissionSchema = z.object({
   token: z.string().min(1),
   checkpoints: z.array(CheckpointHitSchema).min(1),
@@ -369,5 +373,20 @@ export const SubmissionSchema = z.object({
   // server stores it when present so future races can show this lap as a
   // ghost.
   replay: ReplaySchema.optional(),
+  // Drag mode submission extensions. Both optional so closed-loop clients
+  // continue to submit unchanged. The server defaults `mode` to 'loop' when
+  // missing and validates the loadout shape only when present.
+  mode: RaceModeSchema.optional(),
+  loadout: DragLoadoutSchema.optional(),
+  // Trap speed at the finish line, in world units per second. Optional and
+  // only meaningful for drag submissions; the server uses it for an upper
+  // bound sanity check before accepting the lap.
+  topSpeed: z.number().nonnegative().optional(),
+  // True when the racer triggered the jump-start dampening on this run.
+  // Surfaces in the leaderboard meta so a fouled time can be flagged.
+  fouled: z.boolean().optional(),
+  // Reaction time, ms from green light to first throttle press. Optional;
+  // only meaningful for drag submissions.
+  reactionTimeMs: z.number().int().nonnegative().optional(),
 })
 export type Submission = z.infer<typeof SubmissionSchema>

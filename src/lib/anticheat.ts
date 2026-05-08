@@ -1,11 +1,20 @@
 import { verifyRaceToken } from './signToken'
-import type { CheckpointHit, RaceTokenPayload } from './schemas'
+import type { CheckpointHit, RaceMode, RaceTokenPayload } from './schemas'
 
 export const ANTICHEAT_DEFAULTS = {
   tokenMaxAgeMs: 15 * 60 * 1000,
   minSegmentMs: 200,
   lapTimeToleranceMs: 50,
   minCheckpoints: 1,
+  // Drag-specific. Anticheat enforces an exact checkpoint count for drag
+  // submissions because every drag strip ships with a fixed three-checkpoint
+  // layout (60 ft, midpoint, finish). A drag run that submits a different
+  // count is either misconfigured or tampered.
+  dragCheckpoints: 3,
+  // World-unit-per-second ceiling for any single drag submission. Picked as
+  // 2.5x the closed-loop default top speed; even the fastest drag loadout
+  // tops out well below this. Anything above is bug or tamper.
+  dragTopSpeedCeiling: 26 * 2.5,
 }
 
 const PROFANITY = new Set([
@@ -34,6 +43,11 @@ export interface LapInput {
   checkpoints: CheckpointHit[]
   lapTimeMs: number
   initials: string
+  // When 'drag', validateLap enforces drag-specific bounds (exact checkpoint
+  // count, top-speed ceiling). Defaults to 'loop' when omitted so existing
+  // closed-loop callers see byte-identical behavior.
+  mode?: RaceMode
+  topSpeed?: number
 }
 
 export interface LapValidation {
@@ -49,6 +63,7 @@ export function validateLap(
   opts: Partial<typeof ANTICHEAT_DEFAULTS> = {},
 ): LapValidation {
   const cfg = { ...ANTICHEAT_DEFAULTS, ...opts }
+  const mode: RaceMode = input.mode ?? 'loop'
 
   const payload = verifyRaceToken(input.token)
   if (!payload) return { ok: false, reason: 'bad_signature' }
@@ -65,7 +80,17 @@ export function validateLap(
     return { ok: false, reason: 'target_mismatch', payload }
   }
 
-  if (input.checkpoints.length < cfg.minCheckpoints) {
+  if (mode === 'drag') {
+    if (input.checkpoints.length !== cfg.dragCheckpoints) {
+      return { ok: false, reason: 'drag_checkpoint_count', payload }
+    }
+    if (
+      typeof input.topSpeed === 'number' &&
+      input.topSpeed > cfg.dragTopSpeedCeiling
+    ) {
+      return { ok: false, reason: 'drag_top_speed_ceiling', payload }
+    }
+  } else if (input.checkpoints.length < cfg.minCheckpoints) {
     return { ok: false, reason: 'too_few_checkpoints', payload }
   }
 

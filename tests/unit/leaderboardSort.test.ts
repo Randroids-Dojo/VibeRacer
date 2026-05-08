@@ -20,6 +20,11 @@ function entry(
     tuning: null,
     inputMode: null,
     nonce: 'a'.repeat(32),
+    mode: null,
+    loadout: null,
+    topSpeed: null,
+    fouled: null,
+    reactionTimeMs: null,
   }
 }
 

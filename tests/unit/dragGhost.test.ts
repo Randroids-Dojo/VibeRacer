@@ -17,6 +17,11 @@ function entry(
     tuning: null,
     inputMode: null,
     nonce,
+    mode: null,
+    loadout: null,
+    topSpeed: null,
+    fouled: null,
+    reactionTimeMs: null,
   }
 }
 

@@ -1,12 +1,13 @@
 import type { Redis } from '@upstash/redis'
 import { kvKeys } from './kv'
-import type { Slug, VersionHash } from './schemas'
+import type { RaceMode, Slug, VersionHash } from './schemas'
 import type { CarParams } from '@/game/physics'
 import {
   CarParamsSchema,
   InputModeSchema,
   type InputMode,
 } from './tuningSettings'
+import { DragLoadoutSchema, type DragLoadout } from './dragParts'
 
 export const LEADERBOARD_DEFAULT_LIMIT = 25
 export const LEADERBOARD_MAX_LIMIT = 100
@@ -28,6 +29,17 @@ export interface LeaderboardEntry {
   // the renderer. Nullable so a future migration that drops the field on a
   // single-row corruption does not require a full data wipe.
   nonce: string | null
+  // Drag-mode extensions. mode reflects the kind of run; loadout is the
+  // parts the racer ran with. Both null on closed-loop entries, and on
+  // legacy drag rows that predate this field.
+  mode: RaceMode | null
+  loadout: DragLoadout | null
+  // Drag-only summary fields surfaced from lap meta. Closed-loop rows
+  // and pre-feature drag rows leave these null. The leaderboard pane
+  // can opt in to displaying them when present.
+  topSpeed: number | null
+  fouled: boolean | null
+  reactionTimeMs: number | null
 }
 
 // Sort keys exposed in the leaderboard column headers. The server always
@@ -130,10 +142,25 @@ export function parseLeaderboardMember(
 interface RawLapMeta {
   tuning: CarParams | null
   inputMode: InputMode | null
+  mode: RaceMode | null
+  loadout: DragLoadout | null
+  topSpeed: number | null
+  fouled: boolean | null
+  reactionTimeMs: number | null
+}
+
+const EMPTY_LAP_META: RawLapMeta = {
+  tuning: null,
+  inputMode: null,
+  mode: null,
+  loadout: null,
+  topSpeed: null,
+  fouled: null,
+  reactionTimeMs: null,
 }
 
 function parseLapMeta(raw: unknown): RawLapMeta {
-  if (raw === null || raw === undefined) return { tuning: null, inputMode: null }
+  if (raw === null || raw === undefined) return EMPTY_LAP_META
   // Upstash mget returns parsed JSON when the value was JSON; can also return a
   // string if the row was set as a non-JSON string. Be lenient.
   let obj: unknown = raw
@@ -141,18 +168,42 @@ function parseLapMeta(raw: unknown): RawLapMeta {
     try {
       obj = JSON.parse(raw)
     } catch {
-      return { tuning: null, inputMode: null }
+      return EMPTY_LAP_META
     }
   }
   if (!obj || typeof obj !== 'object') {
-    return { tuning: null, inputMode: null }
+    return EMPTY_LAP_META
   }
   const record = obj as Record<string, unknown>
   const tuningParsed = CarParamsSchema.safeParse(record.tuning)
   const inputModeParsed = InputModeSchema.safeParse(record.inputMode)
+  const loadoutParsed =
+    record.loadout === null || record.loadout === undefined
+      ? null
+      : DragLoadoutSchema.safeParse(record.loadout)
+  const mode =
+    record.mode === 'drag' || record.mode === 'loop'
+      ? (record.mode as RaceMode)
+      : null
+  const topSpeed =
+    typeof record.topSpeed === 'number' && Number.isFinite(record.topSpeed)
+      ? record.topSpeed
+      : null
+  const fouled = typeof record.fouled === 'boolean' ? record.fouled : null
+  const reactionTimeMs =
+    typeof record.reactionTimeMs === 'number' &&
+    Number.isFinite(record.reactionTimeMs)
+      ? Math.max(0, Math.round(record.reactionTimeMs))
+      : null
   return {
     tuning: tuningParsed.success ? tuningParsed.data : null,
     inputMode: inputModeParsed.success ? inputModeParsed.data : null,
+    mode,
+    loadout:
+      loadoutParsed && loadoutParsed.success ? loadoutParsed.data : null,
+    topSpeed,
+    fouled,
+    reactionTimeMs,
   }
 }
 
@@ -232,6 +283,11 @@ export async function readLeaderboard(
       tuning: meta.tuning,
       inputMode: meta.inputMode,
       nonce: parsed.nonce,
+      mode: meta.mode,
+      loadout: meta.loadout,
+      topSpeed: meta.topSpeed,
+      fouled: meta.fouled,
+      reactionTimeMs: meta.reactionTimeMs,
     })
   }
 

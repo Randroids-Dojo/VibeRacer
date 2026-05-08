@@ -59,14 +59,33 @@ interface Entry {
   tuning: CarParams | null
   inputMode: InputMode | null
   nonce: string | null
+  // Drag mode extensions. All null on closed-loop rows and on legacy drag
+  // rows that predate the field; the existing leaderboard UI keeps its
+  // closed-loop columns and ignores these unless explicitly rendered.
+  mode: 'loop' | 'drag' | null
+  loadout: import('@/lib/dragParts').DragLoadout | null
+  topSpeed: number | null
+  fouled: boolean | null
+  reactionTimeMs: number | null
 }
 
 // Raw shape coming back from `/api/leaderboard`. Nonce is optional so a
 // response from a previous deploy (no nonce field on entries yet) parses
 // cleanly; the loader normalizes the value to `string | null` before storing
 // in board state.
-interface RawLeaderboardEntry extends Omit<Entry, 'nonce'> {
+interface RawLeaderboardEntry
+  extends Omit<
+    Entry,
+    'nonce' | 'mode' | 'loadout' | 'topSpeed' | 'fouled' | 'reactionTimeMs'
+  > {
   nonce?: string | null
+  // Drag-mode meta fields, all optional so a server response from a deploy
+  // that predates them parses cleanly. Normalized to null in the loader.
+  mode?: 'loop' | 'drag' | null
+  loadout?: import('@/lib/dragParts').DragLoadout | null
+  topSpeed?: number | null
+  fouled?: boolean | null
+  reactionTimeMs?: number | null
 }
 interface LeaderboardApiResponse {
   entries: RawLeaderboardEntry[]
@@ -203,6 +222,19 @@ export function Leaderboard({
         const entries: Entry[] = body.entries.map((raw) => ({
           ...raw,
           nonce: typeof raw.nonce === 'string' ? raw.nonce : null,
+          mode:
+            raw.mode === 'loop' || raw.mode === 'drag' ? raw.mode : null,
+          loadout: raw.loadout ?? null,
+          topSpeed:
+            typeof raw.topSpeed === 'number' && Number.isFinite(raw.topSpeed)
+              ? raw.topSpeed
+              : null,
+          fouled: typeof raw.fouled === 'boolean' ? raw.fouled : null,
+          reactionTimeMs:
+            typeof raw.reactionTimeMs === 'number' &&
+            Number.isFinite(raw.reactionTimeMs)
+              ? raw.reactionTimeMs
+              : null,
         }))
         setBoard({
           kind: 'ready',
