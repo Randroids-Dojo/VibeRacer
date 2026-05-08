@@ -13,7 +13,7 @@ Tests live in `tests/unit/` because they pin behavior with Vitest, but each modu
 
 ### `virtual-joystick.ts`
 
-Float-where-you-tap virtual joystick state. `createJoystick` / `beginJoystick` / `moveJoystick` / `endJoystick` plus `joystickVector` to read a `[-1, 1]` deflection vector with deadzone applied. Two instances drive VibeRacer's mobile steering and throttle. Pointer events feed the begin / move / end calls; the consumer reads `joystickVector` each frame.
+Float-where-you-tap virtual joystick state. `createJoystick` / `beginJoystick` / `moveJoystick` / `endJoystick` mutate state from pointer events; `readJoystick` returns a `[-1, 1]` deflection vector clamped at `JOYSTICK_RADIUS`. The module also exports `JOYSTICK_RADIUS` and `JOYSTICK_DEADZONE` as constants; the consumer applies the deadzone (treating any vector with `Math.hypot(x, y) < JOYSTICK_DEADZONE` as zero) so different consumers can pick different thresholds without mutating state. Two instances drive VibeRacer's mobile steering and throttle.
 
 ### `editorHistory.ts`
 
