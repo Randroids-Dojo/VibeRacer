@@ -90,6 +90,36 @@ export function slopeAt(profile: VerticalProfile, s: number): number {
   return Math.atan(dHeightDs)
 }
 
+// Project a planar (x, z) position onto the spawn-direction axis to recover
+// arc length along a straight strip. All four shipping drag strips lay
+// out cells along a single column so the spawn-direction projection is
+// monotonic and lossless. The convention matches the rest of the game
+// engine: heading 0 points along +x and increases CCW, so the unit
+// tangent is (cos(heading), -sin(heading)).
+//
+// Used by the physics tick (to look up slope under the car), the scene
+// builder (to bake y into the road and skirt vertices), and the rAF
+// loop (to place the player and ghost meshes at the right height).
+// Centralizing the projection keeps the three paths from drifting in
+// sign or basis.
+export interface SpawnAxis {
+  position: { x: number; z: number }
+  heading: number
+}
+
+export function projectArcLengthOnSpawnAxis(
+  point: { x: number; z: number },
+  spawn: SpawnAxis,
+): number {
+  const dx = point.x - spawn.position.x
+  const dz = point.z - spawn.position.z
+  const tx = Math.cos(spawn.heading)
+  const tz = -Math.sin(spawn.heading)
+  const projection = dx * tx + dz * tz
+  if (!Number.isFinite(projection)) return 0
+  return Math.max(0, projection)
+}
+
 export interface PathLikePoint {
   x: number
   z: number
