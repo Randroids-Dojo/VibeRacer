@@ -107,74 +107,100 @@ export function DragGarage({
         <div style={blurbStyle}>{strip.blurb}</div>
 
         <MenuSection title="Tires">
-          <div style={partListStyle}>
-            {DRAG_TIRES.map((tire) => (
-              <button
-                type="button"
-                key={tire.id}
-                style={partRowStyle(loadout.tire === tire.id)}
-                onClick={() => onChange({ ...loadout, tire: tire.id })}
-              >
-                <span>{tire.label}</span>
-                <span style={subTextStyle}>
-                  weight {tire.weight}, grip {tire.baseGrip}
-                </span>
-              </button>
-            ))}
+          <div style={partListStyle} role="radiogroup" aria-label="Tires">
+            {DRAG_TIRES.map((tire) => {
+              const active = loadout.tire === tire.id
+              return (
+                <button
+                  type="button"
+                  key={tire.id}
+                  role="radio"
+                  aria-checked={active}
+                  style={partRowStyle(active)}
+                  onClick={() => onChange({ ...loadout, tire: tire.id })}
+                >
+                  <span>{tire.label}</span>
+                  <span style={subTextStyle}>
+                    weight {tire.weight}, grip {tire.baseGrip}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </MenuSection>
 
         <MenuSection title="Body">
-          <div style={partListStyle}>
-            {DRAG_BODIES.map((body) => (
-              <button
-                type="button"
-                key={body.id}
-                style={partRowStyle(loadout.body === body.id)}
-                onClick={() => onChange({ ...loadout, body: body.id })}
-              >
-                <span>{body.label}</span>
-                <span style={subTextStyle}>
-                  weight {body.weight}, drag {body.dragCoefficient}
-                </span>
-              </button>
-            ))}
+          <div style={partListStyle} role="radiogroup" aria-label="Body">
+            {DRAG_BODIES.map((body) => {
+              const active = loadout.body === body.id
+              return (
+                <button
+                  type="button"
+                  key={body.id}
+                  role="radio"
+                  aria-checked={active}
+                  style={partRowStyle(active)}
+                  onClick={() => onChange({ ...loadout, body: body.id })}
+                >
+                  <span>{body.label}</span>
+                  <span style={subTextStyle}>
+                    weight {body.weight}, drag {body.dragCoefficient}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </MenuSection>
 
         <MenuSection title="Engine">
-          <div style={partListStyle}>
-            {DRAG_ENGINES.map((engine) => (
-              <button
-                type="button"
-                key={engine.id}
-                style={partRowStyle(loadout.engine === engine.id)}
-                onClick={() => onChange({ ...loadout, engine: engine.id })}
-              >
-                <span>{engine.label}</span>
-                <span style={subTextStyle}>
-                  weight {engine.weight}, RPM {engine.launchRpm}
-                </span>
-              </button>
-            ))}
+          <div style={partListStyle} role="radiogroup" aria-label="Engine">
+            {DRAG_ENGINES.map((engine) => {
+              const active = loadout.engine === engine.id
+              return (
+                <button
+                  type="button"
+                  key={engine.id}
+                  role="radio"
+                  aria-checked={active}
+                  style={partRowStyle(active)}
+                  onClick={() => onChange({ ...loadout, engine: engine.id })}
+                >
+                  <span>{engine.label}</span>
+                  <span style={subTextStyle}>
+                    weight {engine.weight}, RPM {engine.launchRpm}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </MenuSection>
 
         <MenuSection title="Transmission">
-          <div style={partListStyle}>
-            {DRAG_TRANSMISSIONS.map((tr) => (
-              <button
-                type="button"
-                key={tr.id}
-                style={partRowStyle(loadout.transmission === tr.id)}
-                onClick={() => onChange({ ...loadout, transmission: tr.id })}
-              >
-                <span>{tr.label}</span>
-                <span style={subTextStyle}>
-                  1st {tr.firstGearRatio}, top {tr.topGearRatio}
-                </span>
-              </button>
-            ))}
+          <div
+            style={partListStyle}
+            role="radiogroup"
+            aria-label="Transmission"
+          >
+            {DRAG_TRANSMISSIONS.map((tr) => {
+              const active = loadout.transmission === tr.id
+              return (
+                <button
+                  type="button"
+                  key={tr.id}
+                  role="radio"
+                  aria-checked={active}
+                  style={partRowStyle(active)}
+                  onClick={() =>
+                    onChange({ ...loadout, transmission: tr.id })
+                  }
+                >
+                  <span>{tr.label}</span>
+                  <span style={subTextStyle}>
+                    1st {tr.firstGearRatio}, top {tr.topGearRatio}
+                  </span>
+                </button>
+              )
+            })}
           </div>
         </MenuSection>
 

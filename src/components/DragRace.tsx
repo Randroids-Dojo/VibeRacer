@@ -190,9 +190,10 @@ export function DragRace({ slug }: DragRaceProps) {
     }
   }, [slug, versionHash])
 
-  // Fetch leaderboard for the strip on mount and after every finish.
-  // The post-submit handler below calls refreshLeaderboard directly so
-  // the rank chip appears the moment the new time is stored.
+  // Initial leaderboard load on mount and whenever the strip changes.
+  // Post-finish refresh is owned by the submit handler below, which calls
+  // refreshLeaderboard directly the moment the lap is stored. Keeping
+  // finishEvent out of this dep array avoids a duplicate fetch.
   useEffect(() => {
     let cancelled = false
     void refreshLeaderboard().then((entries) => {
@@ -201,7 +202,7 @@ export function DragRace({ slug }: DragRaceProps) {
     return () => {
       cancelled = true
     }
-  }, [refreshLeaderboard, finishEvent])
+  }, [refreshLeaderboard])
 
   // Derived params recomputed when the loadout changes; the rAF loop reads
   // from a ref so we never restart the renderer on a part swap.
