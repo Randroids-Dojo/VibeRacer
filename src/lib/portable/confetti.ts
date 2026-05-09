@@ -1,23 +1,28 @@
 /**
- * Pure helpers for the PB / record celebration confetti.
+ * Pure particle simulation for celebration confetti bursts. The
+ * renderer (typically a full-viewport 2D canvas overlay) owns the
+ * DOM, the animation frame loop, and the actual draw calls. This
+ * module is responsible for:
  *
- * The renderer (a 2D canvas overlay in `ConfettiOverlay.tsx`) owns the DOM,
- * the animation frame loop, and the actual draw calls. This module is
- * responsible for:
- *
- *  1. Spawning a fresh batch of particles given a seeded RNG, count, palette,
- *     and burst origin (`spawnConfettiBatch`),
- *  2. Stepping each particle forward one physics frame (`stepConfetti`),
+ *  1. Spawning a fresh batch of particles given a seeded RNG, count,
+ *     palette, and burst origin (`spawnConfettiBatch`),
+ *  2. Stepping each particle forward one physics frame
+ *     (`stepConfetti`),
  *  3. Computing per-particle alpha as it ages (`confettiAlpha`),
  *  4. Reporting whether a batch is fully expired (`isBatchExpired`).
  *
- * Coordinates are in normalized 0..1 viewport space (x: left, y: top). The
- * renderer multiplies by the current canvas pixel size at draw time so a
- * resize never breaks the simulation in flight.
+ * Coordinates are in normalized 0..1 viewport space (x: left, y:
+ * top). The renderer multiplies by the current canvas pixel size at
+ * draw time so a window resize never breaks the simulation in flight.
  *
- * Determinism: every spawn takes a `seed` (a numeric RNG seed). Two spawns
- * with the same seed and inputs produce the same particle array, which keeps
- * the simulation testable without snapshotting random output.
+ * Determinism: every spawn takes a `seed` (a numeric RNG seed). Two
+ * spawns with the same seed and inputs produce the same particle
+ * array, which keeps the simulation testable without snapshotting
+ * random output.
+ *
+ * VibeRacer drives this from PB / record celebration moments via
+ * `ConfettiOverlay.tsx`; any game with celebration moments can drive
+ * the same loop.
  */
 
 // Number of particles in a 'pb' (personal best) burst. Big enough to feel

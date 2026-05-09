@@ -1,5 +1,11 @@
-// Virtual joystick: float-where-you-tap controller state. Two instances of
-// this drive mobile steering (left half of screen) and throttle (right half).
+// Virtual joystick: float-where-you-tap controller state for touch
+// input. Pointer events feed `beginJoystick` / `moveJoystick` /
+// `endJoystick`; the consumer reads `readJoystick` each frame for a
+// `[-1, 1]` deflection vector clamped at `JOYSTICK_RADIUS`.
+// `JOYSTICK_DEADZONE` is exported as a constant so the consumer can
+// pick its own threshold (the helpers do not apply it). VibeRacer
+// drives a steer + throttle pair from this on mobile; any other 2D
+// touch game can do the same with one or more instances.
 
 export interface JoystickState {
   active: boolean

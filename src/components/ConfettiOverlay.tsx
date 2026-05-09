@@ -27,7 +27,7 @@ import {
   isBatchExpired,
   spawnConfettiBatch,
   stepConfetti,
-} from '@/game/confetti'
+} from '@/lib/portable/confetti'
 
 export type ConfettiKind = 'pb' | 'record'
 

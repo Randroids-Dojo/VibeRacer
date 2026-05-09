@@ -6,7 +6,7 @@ import {
   JOYSTICK_RADIUS,
   moveJoystick,
   readJoystick,
-} from '@/game/virtual-joystick'
+} from '@/lib/portable/virtual-joystick'
 
 describe('virtual joystick', () => {
   it('is inactive on creation and reads zero', () => {

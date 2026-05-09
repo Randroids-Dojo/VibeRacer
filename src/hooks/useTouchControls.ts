@@ -8,7 +8,7 @@ import {
   moveJoystick,
   readJoystick,
   type JoystickState,
-} from '@/game/virtual-joystick'
+} from '@/lib/portable/virtual-joystick'
 import type { KeyInput } from './useKeyboard'
 import type { TouchMode } from '@/lib/controlSettings'
 

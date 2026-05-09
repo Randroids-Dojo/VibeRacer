@@ -11,6 +11,24 @@ Newest entries first. Every implementation slice adds an entry.
 - GDD coverage: new short section in `docs/GDD.md` describing the four reserved slugs and the parts driven physics. Closed loop pillar gains a brief callout that drag mode is a finite exception.
 - Followups: visible road ribbon following the profile (rather than a flat road plus an offset car), a richer christmas tree with staggered ambers, and a weather override toggle inside the strip are all on `docs/FOLLOWUPS.md` for a future slice. The current ghost rotation reuses the closed loop replay infrastructure; surfacing the ghost car's loadout next to the nameplate is also a followup.
 
+## 2026-05-08, Portable Game Modules
+
+- Branch: `claude/portable-game-modules`
+- Changed: extracted three already-portable modules out of `src/game/` into `src/lib/portable/` so they can be copy-pasted into other game projects without VibeRacer-specific edits. The three picks (`virtual-joystick.ts`, `editorHistory.ts`, `confetti.ts`) each had zero `@/` imports, no React, no Next.js coupling, and no game-specific types in their public APIs; the move is a pure relocation. Updated 7 import sites (4 source, 3 test) to the new paths. New `src/lib/portable/README.md` documents the portability contract (zero project imports, no framework coupling, pure TypeScript, documented public API) and lists the modules with their public surface. Future candidates that need light decoupling before they qualify (`audioEngine.ts` needs an `AudioSettings` provider interface, `gamepadInput.ts` needs `GamepadBindings` lifted out) are intentionally out of this slice.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3331 tests, and `pnpm build` passed. No behavior change is expected (pure relocation), so no new tests; the existing 3 test files for these modules picked up the new import paths and continue to pin behavior.
+- Assumptions: `src/lib/portable/` is the right boundary for "drop these files into another TS project and they work". Future tightening (lifting tests next to source, or moving each module into its own subfolder) is a separate concern.
+- GDD coverage: no GDD section change; this is internal code organization.
+- Followups: `audioEngine.ts` and `gamepadInput.ts` are the next-best candidates and would benefit from a small decoupling refactor before relocation.
+
+## 2026-05-07, Per-Cell OBBs for Overlap Detection (slice 7 follow-up)
+
+- Branch: `claude/slice-7-piece-polygons`
+- Changed: closed the slice 7 OBB false-positives follow-up. New helper `cellObbsOfPiece(piece): OBB[]` in `src/game/pieceObb.ts` returns one CELL_SIZE-on-a-side rotated square per footprint cell instead of one bounding rectangle per piece. Each cell-OBB anchors at `transform.{x,z} + (residual-rotated cell offset)` with the residual angle as its world orientation, so the L-shape of `wideArc45*` no longer claims its missing fourth corner cell and the supercover line of `flexStraight` no longer claims the cells off its road. `findOverlappingPiecePairs` now buckets per cell-OBB rather than per piece, walks cross-piece cell pairs in each shared bucket, and runs strict-inequality SAT on each pair; same-piece cell pairs are never compared so multi-cell pieces never self-flag. The single-OBB `obbOfPiece` stays as a coarse bound for callers that need one rectangle per piece. New unit tests pin: a wideArc45 next to a piece in the L's missing corner cell does NOT flag (was the slice 7 false-positive case), residually-rotated overlap still flags, and `cellObbsOfPiece` produces the right number of cells with the right per-cell rotation. The Playwright OBB-overlap smoke (top straight slid halfway into the west neighbor) still flags as a regression check.
+- Verification: dash checks, `git diff --check`, `pnpm type-check`, `pnpm test --run` passed with 3331 tests (4 new in `pieceObb.test.ts`), `pnpm exec playwright test tests/e2e/smoke.spec.ts --grep "overlap warning|Close Loop button"` passed (2/2), and `pnpm build` passed.
+- Assumptions: per-cell SAT is bounded by the largest footprint (9 cells for `hairpinWide`); cost stays O(N) per piece for bucket insertion and O(M*N) per overlapping bucket pair, both acceptable for the typical authoring track size (~64 pieces). Strict-inequality SAT preserves the contract that adjacent cell-aligned pieces sharing an edge do not flag, which was the slice 7 invariant the editor relied on.
+- GDD coverage: no GDD section change; this is a refinement of the existing slice 7 overlap detection.
+- Followups: continuous-angle migration is fully closed. See `docs/FOLLOWUPS.md`.
+
 ## 2026-05-07, Loop Reconciliation Rotate-Around-Connected (slice 6 follow-up)
 
 - Branch: `claude/slice-6-rotate-around-connected`
