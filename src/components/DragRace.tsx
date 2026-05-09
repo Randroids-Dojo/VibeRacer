@@ -20,10 +20,16 @@ import {
 } from 'three'
 import { interpolateGhostPose, type Replay } from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useControlSettings } from '@/hooks/useControlSettings'
 import {
+  applyCameraRig,
   buildScene,
+  DEFAULT_CAMERA_RIG,
+  initCameraRig,
   profiledTerrainSkirtGeometry,
   profiledTrackSurfaceGeometry,
+  updateCameraRig,
+  type CameraRigState,
   type SceneBundle,
 } from '@/game/sceneBuilder'
 import { buildTrackPath } from '@/game/trackPath'
@@ -68,6 +74,7 @@ import {
   DRAG_COUNTDOWN_TOTAL_MS,
   DragChristmasTree,
 } from './DragChristmasTree'
+import { TouchControls } from './TouchControls'
 import { getTrackBiomePreset } from '@/lib/biomes'
 
 type Phase = 'garage' | 'staging' | 'countdown' | 'racing' | 'finished'
@@ -90,14 +97,39 @@ const GHOST_BOX_HEIGHT = 1.2
 const GHOST_BOX_LENGTH = 4.2
 const GHOST_BOX_PIVOT_OFFSET_Y = GHOST_BOX_HEIGHT / 2
 
-// Chase-camera follow parameters. Keep them grouped so the rAF loop
-// reads one named constant per axis instead of three loose magic
-// numbers. Distances are world units, matching the rest of the engine.
-const CAMERA_FOLLOW_DISTANCE = 12
-const CAMERA_FOLLOW_HEIGHT = 5
-const CAMERA_LOOK_AHEAD_DISTANCE = 8
-const CAMERA_LOOK_AHEAD_HEIGHT = 1
+// Drag mode reuses the closed-loop camera rig from sceneBuilder so the
+// framing matches the rest of the game. The rig handles position /
+// quaternion lerp internally; we only feed the car's pose each frame.
 
+const raceHeaderStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  padding: '6px 12px',
+  background: '#161616cc',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
+  fontSize: 13,
+  pointerEvents: 'auto',
+  display: 'flex',
+  gap: 12,
+  alignItems: 'center',
+  fontFamily: 'system-ui, sans-serif',
+  color: '#fff',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+}
+const raceHeaderBackStyle: React.CSSProperties = {
+  color: '#ff6b35',
+  textDecoration: 'none',
+  fontWeight: 700,
+  letterSpacing: 0.5,
+}
+const raceHeaderTagsStyle: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.7,
+  textTransform: 'capitalize',
+  letterSpacing: 0.5,
+}
 
 export function DragRace({ slug }: DragRaceProps) {
   const strip: DragStripConfig = DRAG_STRIPS[slug]
@@ -217,6 +249,11 @@ export function DragRace({ slug }: DragRaceProps) {
   }, [derived, strip])
 
   const keys = useKeyboard()
+  // Touch / control settings drive the optional virtual joystick overlay
+  // for mobile play. Drag mode mirrors the closed-loop game's behavior
+  // so a player on touch sees the same joystick they use everywhere
+  // else, just without manual shift since drag has no gear UI.
+  const { settings: controlSettings } = useControlSettings()
 
   // Renderer / scene refs
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -225,6 +262,11 @@ export function DragRace({ slug }: DragRaceProps) {
   const cameraRef = useRef<PerspectiveCamera | null>(null)
   const carGroupRef = useRef<Group | null>(null)
   const sceneRef = useRef<Scene | null>(null)
+  // Camera rig state. Persists between frames so the position / quaternion
+  // lerp inside updateCameraRig has somewhere to write smoothed values.
+  // Initialized in the same effect that builds the scene so the first
+  // frame already has a valid pose and the camera does not snap on start.
+  const cameraRigRef = useRef<CameraRigState | null>(null)
   // Ghost replay state. The active replay drives a small marker mesh that
   // follows the leaderboard's chosen rival (top, next-faster, or own PB,
   // selected by `selectDragGhost`). Read on every frame; null hides the
@@ -323,6 +365,16 @@ export function DragRace({ slug }: DragRaceProps) {
     bundle.car.position.set(spawn.position.x, 0, spawn.position.z)
     bundle.car.rotation.y = spawn.heading
 
+    // Seed the camera rig at the spawn so the first frame is already
+    // composed instead of snapping into place on tick 1.
+    cameraRigRef.current = initCameraRig(
+      spawn.position.x,
+      spawn.position.z,
+      spawn.heading,
+      DEFAULT_CAMERA_RIG,
+    )
+    applyCameraRig(bundle.camera, cameraRigRef.current)
+
     let raf = 0
     let lastNow = performance.now()
     const tickLoop = (now: number) => {
@@ -415,21 +467,20 @@ export function DragRace({ slug }: DragRaceProps) {
         }
       }
 
-      // Camera follow: simple chase. Behind the car along its heading,
-      // raised, looking ahead.
-      if (cameraRef.current && car) {
-        const hx = Math.cos(state.heading)
-        const hz = -Math.sin(state.heading)
-        cameraRef.current.position.set(
-          car.position.x - hx * CAMERA_FOLLOW_DISTANCE,
-          car.position.y + CAMERA_FOLLOW_HEIGHT,
-          car.position.z - hz * CAMERA_FOLLOW_DISTANCE,
+      // Camera follow uses the closed-loop rig from sceneBuilder so the
+      // framing matches the rest of the game (height 6, distance 14,
+      // lookAhead 6, fov 70 by default). The rig lerps position and
+      // orientation internally so the camera eases to the target rather
+      // than snapping every frame.
+      if (cameraRef.current && car && cameraRigRef.current) {
+        updateCameraRig(
+          cameraRigRef.current,
+          car.position.x,
+          car.position.z,
+          state.heading,
+          DEFAULT_CAMERA_RIG,
         )
-        cameraRef.current.lookAt(
-          car.position.x + hx * CAMERA_LOOK_AHEAD_DISTANCE,
-          car.position.y + CAMERA_LOOK_AHEAD_HEIGHT,
-          car.position.z + hz * CAMERA_LOOK_AHEAD_DISTANCE,
-        )
+        applyCameraRig(cameraRef.current, cameraRigRef.current)
       }
 
       // HUD update at frame rate.
@@ -611,27 +662,16 @@ export function DragRace({ slug }: DragRaceProps) {
     <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff' }}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Strip name + back link */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          padding: '6px 10px',
-          background: 'rgba(0,0,0,0.55)',
-          borderRadius: 6,
-          fontSize: 14,
-          pointerEvents: 'auto',
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-        }}
-      >
-        <Link href="/drag" style={{ color: '#9ad8ff', textDecoration: 'none' }}>
-          back
+      {/* Strip name + back chip. Matches the project's HUD chip look:
+          panel background, rounded, subtle border, accent-color back link. */}
+      <div style={raceHeaderStyle}>
+        <Link href="/drag" style={raceHeaderBackStyle}>
+          ‹ back
         </Link>
-        <strong>{strip.displayName}</strong>
-        <span style={{ opacity: 0.6 }}>{strip.biome} {strip.weather}</span>
+        <strong style={{ letterSpacing: 0.5 }}>{strip.displayName}</strong>
+        <span style={raceHeaderTagsStyle}>
+          {strip.biome} · {strip.weather}
+        </span>
       </div>
 
       {phase === 'garage' && hydratedLoadout && (
@@ -677,6 +717,12 @@ export function DragRace({ slug }: DragRaceProps) {
           onChangeParts={onChangeParts}
         />
       )}
+
+      <TouchControls
+        keys={keys}
+        enabled={phase === 'racing' || phase === 'countdown'}
+        mode={controlSettings.touchMode}
+      />
     </div>
   )
 }

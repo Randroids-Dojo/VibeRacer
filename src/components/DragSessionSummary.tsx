@@ -4,6 +4,14 @@ import type { DragLapCompleteEvent } from '@/game/dragTick'
 import type { DragStripConfig } from '@/lib/dragStrips'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import type { DragGhostSource } from '@/lib/dragGhost'
+import {
+  MenuButton,
+  MenuOverlay,
+  MenuPanel,
+  MenuSection,
+  MenuTitle,
+  menuTheme,
+} from './MenuUI'
 
 interface DragSessionSummaryProps {
   strip: DragStripConfig
@@ -23,6 +31,85 @@ function formatTime(ms: number): string {
   return (ms / 1000).toFixed(2)
 }
 
+const heroBigTimeStyle: React.CSSProperties = {
+  fontSize: 56,
+  fontWeight: 800,
+  letterSpacing: 1,
+  lineHeight: 1,
+  textAlign: 'center',
+}
+
+const heroLabelStyle: React.CSSProperties = {
+  fontSize: 11,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  color: menuTheme.textMuted,
+  textAlign: 'center',
+}
+
+const fouledBannerStyle: React.CSSProperties = {
+  marginTop: 4,
+  background: 'rgba(220,38,38,0.16)',
+  color: '#fda4a4',
+  border: '1px solid rgba(220,38,38,0.45)',
+  fontSize: 11,
+  fontWeight: 700,
+  padding: '6px 10px',
+  borderRadius: 6,
+  textAlign: 'center',
+  letterSpacing: 1,
+}
+
+const statsGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(auto-fit, minmax(120px, 1fr))',
+  gap: 10,
+}
+
+const statLabelStyle: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  color: menuTheme.textMuted,
+}
+
+const statValueStyle: React.CSSProperties = {
+  fontSize: 18,
+  fontWeight: 700,
+}
+
+const rowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'minmax(36px, auto) minmax(48px, auto) 1fr minmax(74px, auto)',
+  gap: 8,
+  padding: '6px 8px',
+  borderRadius: 6,
+  alignItems: 'center',
+  fontSize: 13,
+}
+
+const meRowStyle: React.CSSProperties = {
+  ...rowStyle,
+  background: 'rgba(255,107,53,0.14)',
+  border: `1px solid ${menuTheme.accent}55`,
+}
+
+const chipsCellStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+  flexWrap: 'wrap',
+  minWidth: 0,
+  fontSize: 12,
+  color: menuTheme.textHint,
+}
+
+const ctaRowStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 8,
+  marginTop: 6,
+}
+
 export function DragSessionSummary({
   strip,
   finishEvent,
@@ -34,112 +121,58 @@ export function DragSessionSummary({
 }: DragSessionSummaryProps) {
   const myEntries = leaderboard.filter((e) => e.isMe)
   const myBest = myEntries.length
-    ? myEntries.reduce((best, e) => Math.min(best, e.lapTimeMs), Number.POSITIVE_INFINITY)
+    ? myEntries.reduce(
+        (best, e) => Math.min(best, e.lapTimeMs),
+        Number.POSITIVE_INFINITY,
+      )
     : null
 
   return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        background: 'rgba(0,0,0,0.78)',
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        padding: 20,
-      }}
-    >
-      <div
-        style={{
-          background: 'rgba(20,20,24,0.95)',
-          borderRadius: 12,
-          padding: 24,
-          maxWidth: 720,
-          width: '100%',
-          color: '#fff',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 16,
-        }}
-      >
-        <div>
-          <div style={{ opacity: 0.7, fontSize: 12 }}>{strip.displayName}</div>
-          <div style={{ fontSize: 48, fontWeight: 800, letterSpacing: 1 }}>
-            {formatTime(finishEvent.finishTimeMs)}s
+    <MenuOverlay zIndex={100} onBack={onChangeParts}>
+      <MenuPanel width="wide">
+        <MenuTitle>FINISH</MenuTitle>
+        <div style={heroLabelStyle}>{strip.displayName}</div>
+        <div style={heroBigTimeStyle}>{formatTime(finishEvent.finishTimeMs)}s</div>
+        {finishEvent.fouled && (
+          <div style={fouledBannerStyle}>
+            FOULED. Acceleration was dampened off the line.
           </div>
-          {finishEvent.fouled && (
-            <div
-              style={{
-                marginTop: 4,
-                background: '#991b1b',
-                color: '#fff',
-                fontSize: 12,
-                fontWeight: 700,
-                padding: '4px 8px',
-                borderRadius: 4,
-                display: 'inline-block',
-              }}
-            >
-              FOULED. Acceleration was dampened off the line.
-            </div>
-          )}
-        </div>
+        )}
 
-        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(140px, 1fr))', gap: 10 }}>
-          <Stat
-            label="Reaction"
-            value={
-              finishEvent.reactionTimeMs === null
-                ? '--'
-                : `${(finishEvent.reactionTimeMs / 1000).toFixed(2)}s`
-            }
-          />
-          <Stat label="Top speed" value={finishEvent.topSpeed.toFixed(1)} />
-          <Stat
-            label="Personal best"
-            value={myBest === null ? '--' : `${formatTime(myBest)}s`}
-          />
-          <Stat label="Ghost" value={ghostSource} />
-        </div>
+        <MenuSection>
+          <div style={statsGridStyle}>
+            <Stat
+              label="Reaction"
+              value={
+                finishEvent.reactionTimeMs === null
+                  ? '--'
+                  : `${(finishEvent.reactionTimeMs / 1000).toFixed(2)}s`
+              }
+            />
+            <Stat label="Top speed" value={finishEvent.topSpeed.toFixed(1)} />
+            <Stat
+              label="Personal best"
+              value={myBest === null ? '--' : `${formatTime(myBest)}s`}
+            />
+            <Stat label="Ghost" value={ghostSource} />
+          </div>
+        </MenuSection>
 
         {leaderboard.length > 0 && (
-          <div>
-            <div style={{ fontSize: 12, opacity: 0.7, marginBottom: 6 }}>
-              Top times
-            </div>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: 4, fontSize: 13 }}>
+          <MenuSection title="Top times">
+            <div
+              style={{ display: 'flex', flexDirection: 'column', gap: 4 }}
+            >
               {leaderboard.slice(0, 5).map((e) => (
                 <div
                   key={`${e.rank}-${e.nonce ?? 'na'}`}
-                  style={{
-                    display: 'grid',
-                    gridTemplateColumns: '40px 60px 1fr 100px',
-                    gap: 6,
-                    padding: '4px 6px',
-                    background: e.isMe ? 'rgba(154,216,255,0.12)' : 'transparent',
-                    borderRadius: 4,
-                    alignItems: 'center',
-                  }}
+                  style={e.isMe ? meRowStyle : rowStyle}
                 >
-                  <span style={{ opacity: 0.6 }}>#{e.rank}</span>
+                  <span style={{ color: menuTheme.textMuted }}>#{e.rank}</span>
                   <span style={{ fontFamily: 'monospace' }}>{e.initials}</span>
-                  <span
-                    style={{
-                      display: 'flex',
-                      alignItems: 'center',
-                      gap: 6,
-                      flexWrap: 'wrap',
-                      opacity: 0.85,
-                      fontSize: 12,
-                      // Without an explicit min-width: 0 the grid track
-                      // grows to fit the wrapping chips and pushes the
-                      // lap-time column off the right edge on narrow
-                      // viewports. Capping here keeps the row aligned.
-                      minWidth: 0,
-                    }}
-                  >
+                  <span style={chipsCellStyle}>
                     {e.loadout && (
-                      <span style={{ opacity: 0.6 }}>
+                      <span style={{ color: menuTheme.textMuted }}>
                         {e.loadout.tire} / {e.loadout.engine}
                       </span>
                     )}
@@ -148,10 +181,7 @@ export function DragSessionSummary({
                     )}
                     {e.fouled === true && <FoulChip />}
                     {typeof e.topSpeed === 'number' && (
-                      <Chip
-                        title="Trap speed"
-                        label={`${e.topSpeed.toFixed(1)}`}
-                      />
+                      <Chip title="Trap speed" label={`${e.topSpeed.toFixed(1)}`} />
                     )}
                     {typeof e.reactionTimeMs === 'number' && (
                       <Chip
@@ -160,71 +190,49 @@ export function DragSessionSummary({
                       />
                     )}
                   </span>
-                  <span style={{ textAlign: 'right' }}>
+                  <span style={{ textAlign: 'right', fontVariantNumeric: 'tabular-nums' }}>
                     {formatTime(e.lapTimeMs)}s
                   </span>
                 </div>
               ))}
             </div>
-          </div>
+          </MenuSection>
         )}
 
-        <div style={{ display: 'flex', gap: 10, justifyContent: 'flex-end' }}>
+        <div style={ctaRowStyle}>
           <Link
             href="/drag"
             style={{
-              padding: '10px 18px',
-              borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.2)',
-              color: '#fff',
+              flex: 1,
+              padding: '10px 14px',
+              borderRadius: 8,
+              border: `1px solid ${menuTheme.ghostBorder}`,
+              background: 'transparent',
+              color: '#cfcfcf',
+              fontSize: 14,
+              fontWeight: 600,
               textDecoration: 'none',
-              fontSize: 13,
+              textAlign: 'center',
+              fontFamily: 'inherit',
             }}
           >
             Change strip
           </Link>
-          <button
-            onClick={onChangeParts}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 6,
-              border: '1px solid rgba(255,255,255,0.2)',
-              background: 'transparent',
-              color: '#fff',
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
-            Change parts
-          </button>
-          <button
-            onClick={onRaceAgain}
-            style={{
-              padding: '10px 18px',
-              borderRadius: 6,
-              border: 'none',
-              background: '#22c55e',
-              color: '#0a0a0a',
-              fontWeight: 700,
-              cursor: 'pointer',
-              fontSize: 13,
-            }}
-          >
+          <MenuButton onClick={onChangeParts}>Change parts</MenuButton>
+          <MenuButton variant="primary" click="confirm" onClick={onRaceAgain}>
             Race again
-          </button>
+          </MenuButton>
         </div>
-      </div>
-    </div>
+      </MenuPanel>
+    </MenuOverlay>
   )
 }
 
 function Stat({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <div style={{ opacity: 0.6, fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>
-        {label}
-      </div>
-      <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
+      <div style={statLabelStyle}>{label}</div>
+      <div style={statValueStyle}>{value}</div>
     </div>
   )
 }
@@ -239,7 +247,8 @@ function Chip({ title, label }: { title: string; label: string }) {
       style={{
         padding: '1px 6px',
         borderRadius: 999,
-        background: 'rgba(255,255,255,0.1)',
+        background: 'rgba(255,255,255,0.08)',
+        border: `1px solid ${menuTheme.ghostBorder}`,
         fontSize: 10,
         letterSpacing: 0.5,
       }}
