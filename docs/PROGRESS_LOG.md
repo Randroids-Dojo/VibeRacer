@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-09, Spiral Dependency Upgrade Gate adoption + audit pass
+
+- Branch: `main` (direct, doc-only).
+- Changed: adopted the spiral skill's Dependency Upgrade Gate. `docs/DEPENDENCY_LEDGER.md` describes per-dep upgrade procedure (skip rule, detect, CHANGELOG, branch, bump, type-check, test, build, smoke, PR title). `AGENTS.md` reading list and Rule 5 loop now reference the gate. `docs/IMPLEMENTATION_PLAN.md` adds the gate as new step 2 (post-pull) and step 9 (pre-PR), and adds slice-selection priority 2 ("pending dep upgrade"). `docs/WORKING_AGREEMENT.md` adds a `chore(deps):` verification minimum. As part of a 10-round audit pass across the sibling-game family (VibeRacer, VibeGear2, Flatline, VibeCity, FrackingAsteroids), em-dash sweep was clean, OPEN_QUESTIONS / FOLLOWUPS structural checks passed, and a new dot was added to track cutting VibeKit `v0.1.0` upstream so this ledger's `Currently pinned: v0.1.0` line becomes truthful (today VibeKit has release-please configured but no tags published).
+- Verification: dash checks (no em-dashes / en-dashes hit). No code changes; type-check / test / build skipped.
+- Assumptions: the gate is doc-only on this PR; the next iteration that touches `main` is the first one to actually fire it. The `Currently pinned: v0.1.0` line stays as the canonical aspirational target; the upstream-release dot is the unblocker.
+- GDD coverage: no GDD section change; process scaffolding only.
+- Followups: VibeKit adoption work is tracked in `.dots/` (7 migration dots from the donor-code extraction). The new dot tracks cutting v0.1.0 upstream.
+
 ## 2026-05-08, Drag Racing Mode (full mode, six slices in one branch)
 
 - Branch: `claude/add-drag-racing-mode-slvQ7`
