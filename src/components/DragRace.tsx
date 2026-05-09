@@ -8,13 +8,24 @@ import {
 } from 'react'
 import Link from 'next/link'
 import {
+  BoxGeometry,
+  Mesh,
+  MeshBasicMaterial,
+  MeshStandardMaterial,
   PerspectiveCamera,
   WebGLRenderer,
+  type BufferGeometry,
   type Group,
   type Scene,
 } from 'three'
+import { interpolateGhostPose, type Replay } from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
-import { buildScene, type SceneBundle } from '@/game/sceneBuilder'
+import {
+  buildScene,
+  profiledTerrainSkirtGeometry,
+  profiledTrackSurfaceGeometry,
+  type SceneBundle,
+} from '@/game/sceneBuilder'
 import { buildTrackPath } from '@/game/trackPath'
 import {
   DRAG_STRIPS,
@@ -51,6 +62,7 @@ import { selectDragGhost } from '@/lib/dragGhost'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
+import { DragChristmasTree } from './DragChristmasTree'
 
 type Phase = 'garage' | 'staging' | 'countdown' | 'racing' | 'finished'
 
@@ -187,6 +199,12 @@ export function DragRace({ slug }: DragRaceProps) {
   const cameraRef = useRef<PerspectiveCamera | null>(null)
   const carGroupRef = useRef<Group | null>(null)
   const sceneRef = useRef<Scene | null>(null)
+  // Ghost replay state. The active replay drives a small marker mesh that
+  // follows the leaderboard's chosen rival (top, next-faster, or own PB,
+  // selected by `selectDragGhost`). Read on every frame; null hides the
+  // ghost mesh.
+  const ghostReplayRef = useRef<Replay | null>(null)
+  const ghostMeshRef = useRef<Mesh | null>(null)
 
   // Set up Three.js renderer + scene exactly once for the strip lifetime.
   useEffect(() => {
@@ -200,6 +218,51 @@ export function DragRace({ slug }: DragRaceProps) {
     sceneRef.current = bundle.scene
     cameraRef.current = bundle.camera
     carGroupRef.current = bundle.car
+
+    // Swap the flat road for a profile-baked ribbon and lay a matching
+    // terrain skirt under it so the strip has visible hills instead of a
+    // floating noodle on a flat plane. Both meshes are owned by the bundle
+    // (skirt added to bundle.scene; new road geometry replaces the existing
+    // mesh's geometry so material, position, and lifecycle stay shared).
+    const profile = strip.verticalProfile
+    const oldRoadGeom = bundle.trackMesh.geometry as BufferGeometry
+    const profiledRoadGeom = profiledTrackSurfaceGeometry(path, profile)
+    bundle.trackMesh.geometry = profiledRoadGeom
+    oldRoadGeom.dispose()
+
+    const skirtGeom = profiledTerrainSkirtGeometry(path, profile, 24)
+    const skirtMat = new MeshStandardMaterial({
+      color: 0x4a5a3a,
+      roughness: 1,
+    })
+    const skirtMesh = new Mesh(skirtGeom, skirtMat)
+    bundle.scene.add(skirtMesh)
+    const disposeSkirt = () => {
+      bundle.scene.remove(skirtMesh)
+      skirtGeom.dispose()
+      skirtMat.dispose()
+    }
+
+    // Ghost car. Simple translucent cyan box; cheap to render and reads as
+    // "another car" without needing a second GLB load. Hidden by default;
+    // the rAF loop flips visibility on when a replay is loaded and we are
+    // in the racing phase.
+    const ghostGeom = new BoxGeometry(2.2, 1.2, 4.2)
+    const ghostMat = new MeshBasicMaterial({
+      color: 0x80e8ff,
+      transparent: true,
+      opacity: 0.55,
+    })
+    const ghostMesh = new Mesh(ghostGeom, ghostMat)
+    ghostMesh.visible = false
+    bundle.scene.add(ghostMesh)
+    ghostMeshRef.current = ghostMesh
+    const disposeGhost = () => {
+      bundle.scene.remove(ghostMesh)
+      ghostGeom.dispose()
+      ghostMat.dispose()
+      ghostMeshRef.current = null
+    }
 
     const renderer = new WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
@@ -278,6 +341,41 @@ export function DragRace({ slug }: DragRaceProps) {
         car.rotation.set(-pitch, state.heading, 0)
       }
 
+      // Ghost mesh follow. During the racing phase the rival's replay is
+      // sampled by elapsed-since-GO and the ghost is placed on the strip;
+      // y is taken from the strip's profile so it follows the same hills
+      // the player drives over. Hidden in every other phase so the
+      // garage/staging/finished overlays do not show a stale ghost pose.
+      const ghostNode = ghostMeshRef.current
+      const ghostReplay = ghostReplayRef.current
+      if (ghostNode) {
+        if (
+          ph === 'racing' &&
+          ghostReplay &&
+          state.raceStartMs !== null
+        ) {
+          const ghostT = Math.max(0, performance.now() - state.raceStartMs)
+          const pose = interpolateGhostPose(ghostReplay, ghostT)
+          if (pose) {
+            const ghostArc =
+              (pose.x - spawn.position.x) * Math.cos(spawn.heading) +
+              (pose.z - spawn.position.z) * -Math.sin(spawn.heading)
+            const gy = heightAt(strip.verticalProfile, Math.max(0, ghostArc))
+            const gpitch = slopeAt(
+              strip.verticalProfile,
+              Math.max(0, ghostArc),
+            )
+            ghostNode.position.set(pose.x, gy + 0.6, pose.z)
+            ghostNode.rotation.set(-gpitch, pose.heading, 0)
+            ghostNode.visible = true
+          } else {
+            ghostNode.visible = false
+          }
+        } else {
+          ghostNode.visible = false
+        }
+      }
+
       // Camera follow: simple chase. Behind the car along its heading,
       // raised, looking ahead.
       if (cameraRef.current && car) {
@@ -334,6 +432,8 @@ export function DragRace({ slug }: DragRaceProps) {
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement)
       }
+      disposeSkirt()
+      disposeGhost()
       bundle.dispose()
       renderer.dispose()
       rendererRef.current = null
@@ -451,6 +551,38 @@ export function DragRace({ slug }: DragRaceProps) {
     [leaderboard, playerPbMs],
   )
 
+  // Load the ghost's replay whenever the selected nonce changes. Best
+  // effort: a 404 (legacy entry without a stored replay) just leaves
+  // ghostReplayRef null so the rAF loop hides the ghost mesh.
+  useEffect(() => {
+    if (!ghost.nonce) {
+      ghostReplayRef.current = null
+      return undefined
+    }
+    let cancelled = false
+    void fetch(
+      `/api/replay/byNonce?slug=${encodeURIComponent(slug)}&v=${versionHash}&nonce=${ghost.nonce}`,
+    )
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (cancelled) return
+        if (!data || typeof data !== 'object') {
+          ghostReplayRef.current = null
+          return
+        }
+        // Trust the API: it already validated through ReplaySchema before
+        // returning. Storing the raw object keeps the per-frame lookup a
+        // simple array index without re-parsing.
+        ghostReplayRef.current = data as Replay
+      })
+      .catch(() => {
+        if (!cancelled) ghostReplayRef.current = null
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [ghost.nonce, slug, versionHash])
+
   return (
     <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff' }}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
@@ -493,7 +625,7 @@ export function DragRace({ slug }: DragRaceProps) {
       )}
 
       {phase === 'countdown' && countdownStartedAt !== null && (
-        <CountdownTree
+        <DragChristmasTree
           startedAt={countdownStartedAt}
           fouled={countdownFouled}
         />
@@ -544,79 +676,6 @@ function CenterMessage({ title, body }: { title: string; body: string }) {
   )
 }
 
-interface CountdownTreeProps {
-  startedAt: number
-  fouled: boolean
-}
-
-function CountdownTree({ startedAt, fouled }: CountdownTreeProps) {
-  const [tick, setTick] = useState(0)
-  useEffect(() => {
-    const id = window.setInterval(() => setTick((t) => t + 1), 100)
-    return () => window.clearInterval(id)
-  }, [])
-  const elapsed = performance.now() - startedAt
-  const lamps = [
-    { label: 'READY', glowAt: 0 },
-    { label: 'SET', glowAt: 800 },
-    { label: 'GO', glowAt: 1600 },
-  ]
-  return (
-    <div
-      style={{
-        position: 'absolute',
-        inset: 0,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: 24,
-        pointerEvents: 'none',
-      }}
-    >
-      {lamps.map((l) => {
-        const lit = elapsed >= l.glowAt
-        return (
-          <div
-            key={l.label}
-            style={{
-              padding: '14px 22px',
-              borderRadius: 8,
-              background: lit
-                ? l.label === 'GO'
-                  ? '#22c55e'
-                  : '#facc15'
-                : 'rgba(255,255,255,0.08)',
-              color: lit ? '#0a0a0a' : '#666',
-              fontWeight: 800,
-              fontSize: 24,
-              letterSpacing: 2,
-              transition: 'background-color 100ms linear',
-            }}
-          >
-            {l.label}
-          </div>
-        )
-      })}
-      {fouled && (
-        <div
-          style={{
-            position: 'absolute',
-            bottom: '20%',
-            background: '#991b1b',
-            color: '#fff',
-            padding: '8px 16px',
-            borderRadius: 6,
-            fontWeight: 700,
-            letterSpacing: 1,
-          }}
-        >
-          JUMP-START. Acceleration dampened.
-        </div>
-      )}
-      <span style={{ display: 'none' }}>{tick}</span>
-    </div>
-  )
-}
 
 interface SubmitArgs {
   slug: DragStripSlug

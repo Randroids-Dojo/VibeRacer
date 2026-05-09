@@ -131,6 +131,7 @@ import {
   type TrackBiome,
 } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
+import type { VerticalProfile } from './dragVerticalProfile'
 import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
@@ -262,6 +263,11 @@ export interface SceneBundle {
   // and the rAF loop ticks the layer with the camera position each frame so
   // the flurry wraps into a fresh box and the sway phase advances naturally.
   snow: SnowLayer
+  // Underlying road surface mesh built from `trackSurfaceGeometry(path)`.
+  // Exposed so drag mode can swap the geometry for a profile-following
+  // ribbon without restarting the scene. Closed-loop racing should treat
+  // this as read-only.
+  trackMesh: Mesh
   dispose: () => void
 }
 
@@ -421,6 +427,144 @@ function continuousTrackSamples(path: TrackPath): Array<{
     }
   }
   return out
+}
+
+// Profile-aware variant of trackSurfaceGeometry. Each pair of road-edge
+// vertices gets its y from `heightAt(profile, arcLength)`. Produces the
+// same triangle layout and winding so the geometry plugs into the
+// existing track material with no shader changes. Used by drag mode to
+// replace the flat road with a hilly ribbon that visually matches the
+// strip's vertical profile and the per-frame slope physics.
+export function profiledTrackSurfaceGeometry(
+  path: TrackPath,
+  profile: VerticalProfile,
+): BufferGeometry {
+  const samples = continuousTrackSamples(path)
+  const spawn = path.spawn
+  const tx = Math.cos(spawn.heading)
+  const tz = -Math.sin(spawn.heading)
+  const verts: number[] = []
+  for (const { sample, op, t } of samples) {
+    const half = halfWidthAt(op, t)
+    const px = Math.sin(sample.heading)
+    const pz = Math.cos(sample.heading)
+    // Arc length is the planar distance from spawn projected onto the
+    // spawn-direction axis. Drag strips run straight on the ground plane
+    // so the projection is monotonic and lossless.
+    const arcLength = Math.max(
+      0,
+      (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
+    )
+    const y = heightAtForGeometry(profile, arcLength)
+    verts.push(sample.x + px * half, y, sample.z + pz * half)
+    verts.push(sample.x - px * half, y, sample.z - pz * half)
+  }
+  const idx: number[] = []
+  function pushUpTriangle(a: number, b: number, c: number) {
+    const ax = verts[a * 3]
+    const az = verts[a * 3 + 2]
+    const bx = verts[b * 3]
+    const bz = verts[b * 3 + 2]
+    const cx = verts[c * 3]
+    const cz = verts[c * 3 + 2]
+    const ux = bx - ax
+    const uz = bz - az
+    const vx = cx - ax
+    const vz = cz - az
+    if (uz * vx - ux * vz > 0) {
+      idx.push(a, b, c)
+    } else {
+      idx.push(a, c, b)
+    }
+  }
+  for (let i = 0; i < samples.length - 1; i++) {
+    const base = i * 2
+    pushUpTriangle(base, base + 2, base + 1)
+    pushUpTriangle(base + 1, base + 2, base + 3)
+  }
+  const geom = new BufferGeometry()
+  geom.setAttribute(
+    'position',
+    new BufferAttribute(new Float32Array(verts), 3),
+  )
+  geom.setIndex(idx)
+  geom.computeVertexNormals()
+  return geom
+}
+
+// Terrain skirt that follows the road's vertical profile sideways. Renders
+// as a single wide ribbon centered on the spawn axis, slightly below the
+// road surface, so the strip never looks like a floating noodle on a flat
+// plane. Author-chosen `skirtHalfWidth` controls how far the skirt extends
+// past the road edge before the biome ground takes over.
+export function profiledTerrainSkirtGeometry(
+  path: TrackPath,
+  profile: VerticalProfile,
+  skirtHalfWidth: number,
+): BufferGeometry {
+  const samples = continuousTrackSamples(path)
+  const spawn = path.spawn
+  const tx = Math.cos(spawn.heading)
+  const tz = -Math.sin(spawn.heading)
+  const verts: number[] = []
+  // y offset so the skirt sits a hair below the road surface; otherwise
+  // z-fighting flickers along the seam.
+  const SKIRT_Y_OFFSET = -0.05
+  for (const { sample } of samples) {
+    const px = Math.sin(sample.heading)
+    const pz = Math.cos(sample.heading)
+    const arcLength = Math.max(
+      0,
+      (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
+    )
+    const y = heightAtForGeometry(profile, arcLength) + SKIRT_Y_OFFSET
+    verts.push(
+      sample.x + px * skirtHalfWidth,
+      y,
+      sample.z + pz * skirtHalfWidth,
+    )
+    verts.push(
+      sample.x - px * skirtHalfWidth,
+      y,
+      sample.z - pz * skirtHalfWidth,
+    )
+  }
+  const idx: number[] = []
+  for (let i = 0; i < samples.length - 1; i++) {
+    const base = i * 2
+    idx.push(base, base + 2, base + 1)
+    idx.push(base + 1, base + 2, base + 3)
+  }
+  const geom = new BufferGeometry()
+  geom.setAttribute(
+    'position',
+    new BufferAttribute(new Float32Array(verts), 3),
+  )
+  geom.setIndex(idx)
+  geom.computeVertexNormals()
+  return geom
+}
+
+// Local copy that depends only on VerticalProfile keyframes. Keeps this
+// module free of any back-edge into the dragVerticalProfile module's
+// runtime imports. Mirrors the smoothstep interpolation used by the
+// physics path; the two paths agree at every keyframe.
+function heightAtForGeometry(profile: VerticalProfile, s: number): number {
+  if (profile.length === 0) return 0
+  if (profile.length === 1) return profile[0].height
+  if (s <= profile[0].s) return profile[0].height
+  const last = profile[profile.length - 1]
+  if (s >= last.s) return last.height
+  for (let i = 1; i < profile.length; i++) {
+    const a = profile[i - 1]
+    const b = profile[i]
+    if (s <= b.s) {
+      const t = (s - a.s) / (b.s - a.s)
+      const smooth = t * t * (3 - 2 * t)
+      return a.height + (b.height - a.height) * smooth
+    }
+  }
+  return last.height
 }
 
 export function trackSurfaceGeometry(path: TrackPath): BufferGeometry {
@@ -2402,6 +2546,7 @@ export function buildScene(
     racingLine,
     rain,
     snow,
+    trackMesh,
     dispose,
   }
 }

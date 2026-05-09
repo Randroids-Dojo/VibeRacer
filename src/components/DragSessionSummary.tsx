@@ -112,14 +112,39 @@ export function DragSessionSummary({
                     padding: '4px 6px',
                     background: e.isMe ? 'rgba(154,216,255,0.12)' : 'transparent',
                     borderRadius: 4,
+                    alignItems: 'center',
                   }}
                 >
                   <span style={{ opacity: 0.6 }}>#{e.rank}</span>
                   <span style={{ fontFamily: 'monospace' }}>{e.initials}</span>
-                  <span style={{ opacity: 0.6 }}>
-                    {e.loadout
-                      ? `${e.loadout.tire} / ${e.loadout.engine}`
-                      : ''}
+                  <span
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 6,
+                      flexWrap: 'wrap',
+                      opacity: 0.85,
+                      fontSize: 12,
+                    }}
+                  >
+                    {e.loadout && (
+                      <span style={{ opacity: 0.6 }}>
+                        {e.loadout.tire} / {e.loadout.engine}
+                      </span>
+                    )}
+                    {e.fouled === true && <FoulChip />}
+                    {typeof e.topSpeed === 'number' && (
+                      <Chip
+                        title="Trap speed"
+                        label={`${e.topSpeed.toFixed(1)}`}
+                      />
+                    )}
+                    {typeof e.reactionTimeMs === 'number' && (
+                      <Chip
+                        title="Reaction"
+                        label={`${(e.reactionTimeMs / 1000).toFixed(2)}s`}
+                      />
+                    )}
                   </span>
                   <span style={{ textAlign: 'right' }}>
                     {formatTime(e.lapTimeMs)}s
@@ -187,5 +212,46 @@ function Stat({ label, value }: { label: string; value: string }) {
       </div>
       <div style={{ fontSize: 18, fontWeight: 600 }}>{value}</div>
     </div>
+  )
+}
+
+// Compact monochrome chip for the leaderboard row's drag-mode meta.
+// `title` becomes the native tooltip so a hover still tells the player
+// what the value means without bloating the row visually.
+function Chip({ title, label }: { title: string; label: string }) {
+  return (
+    <span
+      title={title}
+      style={{
+        padding: '1px 6px',
+        borderRadius: 999,
+        background: 'rgba(255,255,255,0.1)',
+        fontSize: 10,
+        letterSpacing: 0.5,
+      }}
+    >
+      {label}
+    </span>
+  )
+}
+
+// Red "F" pill for fouled runs. Rendered next to the loadout summary so
+// a fouled time is recognizable at a glance.
+function FoulChip() {
+  return (
+    <span
+      title="Jump-start. Acceleration was dampened off the line."
+      style={{
+        padding: '1px 6px',
+        borderRadius: 999,
+        background: '#991b1b',
+        color: '#fff',
+        fontSize: 10,
+        letterSpacing: 1,
+        fontWeight: 700,
+      }}
+    >
+      F
+    </span>
   )
 }
