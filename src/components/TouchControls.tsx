@@ -1,6 +1,6 @@
 'use client'
 import { useEffect, type CSSProperties } from 'react'
-import { JOYSTICK_RADIUS, type JoystickState } from '@/lib/portable/virtual-joystick'
+import { JOYSTICK_RADIUS, type JoystickState } from '@randroids-dojo/vibekit'
 import { useTouchControls } from '@/hooks/useTouchControls'
 import type { KeyInput } from '@/hooks/useKeyboard'
 import type { TouchMode } from '@/lib/controlSettings'

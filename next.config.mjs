@@ -25,6 +25,9 @@ function resolveAppVersion() {
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: __dirname,
+  // VibeKit ships raw TypeScript (its package.json `main` points to src/index.ts);
+  // Next does not transpile node_modules by default, so opt this package in.
+  transpilePackages: ['@randroids-dojo/vibekit'],
   env: {
     NEXT_PUBLIC_APP_VERSION: resolveAppVersion(),
   },

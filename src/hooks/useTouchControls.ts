@@ -8,7 +8,7 @@ import {
   moveJoystick,
   readJoystick,
   type JoystickState,
-} from '@/lib/portable/virtual-joystick'
+} from '@randroids-dojo/vibekit'
 import type { KeyInput } from './useKeyboard'
 import type { TouchMode } from '@/lib/controlSettings'
 
