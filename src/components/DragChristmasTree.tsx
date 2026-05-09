@@ -4,11 +4,16 @@ import { playCountdownBeep } from '@/game/music'
 
 // NHRA-style staggered countdown tree. The lamp sequence reads top to
 // bottom: pre-stage (white), stage (white), three amber bulbs, then a
-// green bulb that fires the GO beep. The total window is ~2400ms, the
-// same length DragRace's startCountdown reserves before flipping the
-// race phase to 'racing', so the green bulb and the physics start fire
-// in the same animation frame. A foul flag pinned below shows the
-// instant a pre-GO throttle press flips state.fouled in the rAF loop.
+// green bulb that fires the GO beep. The green bulb is pinned to the
+// exact moment DragRace flips its race phase to 'racing' so a player
+// pressing throttle the instant they see green is not falsely fouled.
+// A foul flag pinned below shows the instant a pre-GO throttle press
+// flips state.fouled in the rAF loop.
+
+// Total window in ms. Must match DragRace.startCountdown's `totalMs`.
+// Exposed so a future refactor that wires the countdown component into
+// the parent's setTimeout cannot diverge silently.
+export const DRAG_COUNTDOWN_TOTAL_MS = 2400
 
 interface DragChristmasTreeProps {
   // Single-shot timestamp captured by the parent when the countdown
@@ -37,13 +42,16 @@ interface Lamp {
   isGo: boolean
 }
 
+// Green is pinned to DRAG_COUNTDOWN_TOTAL_MS so the lamp lights at the
+// same moment the parent flips into the racing phase. Earlier lamps are
+// stepped backwards from green at 400ms cadence.
 const LAMPS: Lamp[] = [
-  { color: '#f4f4f4', unlitColor: 'rgba(255,255,255,0.08)', litAt: 0, beepOnLight: null, isGo: false },
-  { color: '#f4f4f4', unlitColor: 'rgba(255,255,255,0.08)', litAt: 400, beepOnLight: null, isGo: false },
-  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: 1000, beepOnLight: false, isGo: false },
-  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: 1400, beepOnLight: false, isGo: false },
-  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: 1800, beepOnLight: false, isGo: false },
-  { color: '#22c55e', unlitColor: 'rgba(34,197,94,0.1)', litAt: 2200, beepOnLight: true, isGo: true },
+  { color: '#f4f4f4', unlitColor: 'rgba(255,255,255,0.08)', litAt: DRAG_COUNTDOWN_TOTAL_MS - 2400, beepOnLight: null, isGo: false },
+  { color: '#f4f4f4', unlitColor: 'rgba(255,255,255,0.08)', litAt: DRAG_COUNTDOWN_TOTAL_MS - 2000, beepOnLight: null, isGo: false },
+  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: DRAG_COUNTDOWN_TOTAL_MS - 1600, beepOnLight: false, isGo: false },
+  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: DRAG_COUNTDOWN_TOTAL_MS - 1200, beepOnLight: false, isGo: false },
+  { color: '#facc15', unlitColor: 'rgba(250,204,21,0.1)', litAt: DRAG_COUNTDOWN_TOTAL_MS - 800, beepOnLight: false, isGo: false },
+  { color: '#22c55e', unlitColor: 'rgba(34,197,94,0.1)', litAt: DRAG_COUNTDOWN_TOTAL_MS, beepOnLight: true, isGo: true },
 ]
 
 const LAMP_LABELS = ['Pre-stage', 'Stage', 'Amber', 'Amber', 'Amber', 'GO'] as const

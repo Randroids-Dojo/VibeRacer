@@ -125,6 +125,11 @@ export function DragSessionSummary({
                       flexWrap: 'wrap',
                       opacity: 0.85,
                       fontSize: 12,
+                      // Without an explicit min-width: 0 the grid track
+                      // grows to fit the wrapping chips and pushes the
+                      // lap-time column off the right edge on narrow
+                      // viewports. Capping here keeps the row aligned.
+                      minWidth: 0,
                     }}
                   >
                     {e.loadout && (

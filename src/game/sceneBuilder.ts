@@ -131,7 +131,7 @@ import {
   type TrackBiome,
 } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
-import type { VerticalProfile } from './dragVerticalProfile'
+import { heightAt, type VerticalProfile } from './dragVerticalProfile'
 import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
@@ -455,7 +455,7 @@ export function profiledTrackSurfaceGeometry(
       0,
       (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
     )
-    const y = heightAtForGeometry(profile, arcLength)
+    const y = heightAt(profile, arcLength)
     verts.push(sample.x + px * half, y, sample.z + pz * half)
     verts.push(sample.x - px * half, y, sample.z - pz * half)
   }
@@ -517,7 +517,7 @@ export function profiledTerrainSkirtGeometry(
       0,
       (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
     )
-    const y = heightAtForGeometry(profile, arcLength) + SKIRT_Y_OFFSET
+    const y = heightAt(profile, arcLength) + SKIRT_Y_OFFSET
     verts.push(
       sample.x + px * skirtHalfWidth,
       y,
@@ -543,28 +543,6 @@ export function profiledTerrainSkirtGeometry(
   geom.setIndex(idx)
   geom.computeVertexNormals()
   return geom
-}
-
-// Local copy that depends only on VerticalProfile keyframes. Keeps this
-// module free of any back-edge into the dragVerticalProfile module's
-// runtime imports. Mirrors the smoothstep interpolation used by the
-// physics path; the two paths agree at every keyframe.
-function heightAtForGeometry(profile: VerticalProfile, s: number): number {
-  if (profile.length === 0) return 0
-  if (profile.length === 1) return profile[0].height
-  if (s <= profile[0].s) return profile[0].height
-  const last = profile[profile.length - 1]
-  if (s >= last.s) return last.height
-  for (let i = 1; i < profile.length; i++) {
-    const a = profile[i - 1]
-    const b = profile[i]
-    if (s <= b.s) {
-      const t = (s - a.s) / (b.s - a.s)
-      const smooth = t * t * (3 - 2 * t)
-      return a.height + (b.height - a.height) * smooth
-    }
-  }
-  return last.height
 }
 
 export function trackSurfaceGeometry(path: TrackPath): BufferGeometry {

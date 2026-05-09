@@ -62,7 +62,11 @@ import { selectDragGhost } from '@/lib/dragGhost'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
-import { DragChristmasTree } from './DragChristmasTree'
+import {
+  DRAG_COUNTDOWN_TOTAL_MS,
+  DragChristmasTree,
+} from './DragChristmasTree'
+import { getTrackBiomePreset } from '@/lib/biomes'
 
 type Phase = 'garage' | 'staging' | 'countdown' | 'racing' | 'finished'
 
@@ -231,8 +235,13 @@ export function DragRace({ slug }: DragRaceProps) {
     oldRoadGeom.dispose()
 
     const skirtGeom = profiledTerrainSkirtGeometry(path, profile, 24)
+    // Skirt color follows the strip's biome so an Alpine snow strip does
+    // not bleed olive grass under its road and a Harbor city strip does
+    // not look like a grassy field. The biome's `groundColor` is the same
+    // hex the surrounding terrain plane already uses, which keeps the
+    // seam visually quiet.
     const skirtMat = new MeshStandardMaterial({
-      color: 0x4a5a3a,
+      color: getTrackBiomePreset(strip.biome).groundColor,
       roughness: 1,
     })
     const skirtMesh = new Mesh(skirtGeom, skirtMat)
@@ -344,16 +353,19 @@ export function DragRace({ slug }: DragRaceProps) {
       // Ghost mesh follow. During the racing phase the rival's replay is
       // sampled by elapsed-since-GO and the ghost is placed on the strip;
       // y is taken from the strip's profile so it follows the same hills
-      // the player drives over. Hidden in every other phase so the
-      // garage/staging/finished overlays do not show a stale ghost pose.
+      // the player drives over. Visibility extends through the 'finished'
+      // phase so the rival freezes at its finish-line pose
+      // (interpolateGhostPose clamps past maxT) instead of vanishing the
+      // moment the player crosses the line. Hidden in garage/staging so
+      // the pre-race overlays never show a stale ghost.
       const ghostNode = ghostMeshRef.current
       const ghostReplay = ghostReplayRef.current
+      const ghostActive =
+        (ph === 'racing' || ph === 'finished') &&
+        ghostReplay !== null &&
+        state.raceStartMs !== null
       if (ghostNode) {
-        if (
-          ph === 'racing' &&
-          ghostReplay &&
-          state.raceStartMs !== null
-        ) {
+        if (ghostActive && ghostReplay && state.raceStartMs !== null) {
           const ghostT = Math.max(0, performance.now() - state.raceStartMs)
           const pose = interpolateGhostPose(ghostReplay, ghostT)
           if (pose) {
@@ -469,13 +481,16 @@ export function DragRace({ slug }: DragRaceProps) {
     // Three "ready/set/go" beats at 800ms each. After GO we transition to
     // 'racing' and seed the race start time. Foul detection runs across the
     // whole window via the rAF loop.
-    const totalMs = 2400
+    // Pinned to DRAG_COUNTDOWN_TOTAL_MS so the green lamp in the
+    // christmas tree component lights at the same moment we flip phase
+    // to 'racing'. A drift between the two would let a fast reaction at
+    // green still register as a foul.
     setTimeout(() => {
       const now = performance.now()
       goAtMsRef.current = now
       stateRef.current = startDragRace(stateRef.current, now)
       setPhase('racing')
-    }, totalMs)
+    }, DRAG_COUNTDOWN_TOTAL_MS)
   }, [path])
 
   const onChooseLoadout = useCallback(
