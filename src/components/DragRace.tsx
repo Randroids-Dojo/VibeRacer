@@ -92,6 +92,17 @@ export function DragRace({ slug }: DragRaceProps) {
   const [finishEvent, setFinishEvent] =
     useState<DragLapCompleteEvent | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  // Captured once when startCountdown fires so a parent re-render during the
+  // countdown phase does not reset the elapsed lamp animation. Cleared back
+  // to null when we leave countdown.
+  const [countdownStartedAt, setCountdownStartedAt] = useState<number | null>(
+    null,
+  )
+  // Mirrors stateRef.current.fouled into React state at low frequency so the
+  // CountdownTree overlay can show "JUMP-START" the moment a pre-GO throttle
+  // press flips the foul flag. The rAF loop owns the canonical value; this
+  // state just lets the overlay react to it.
+  const [countdownFouled, setCountdownFouled] = useState(false)
 
   // Hydrate loadout from storage on mount.
   useEffect(() => {
@@ -143,6 +154,20 @@ export function DragRace({ slug }: DragRaceProps) {
   useEffect(() => {
     phaseRef.current = phase
   }, [phase])
+
+  // While the countdown overlay is up, mirror stateRef.current.fouled into
+  // React state at 50ms cadence so the JUMP-START label appears within a
+  // frame or two of the foul instead of waiting for the racing phase. The
+  // rAF loop owns the actual flag; we just sample it here.
+  useEffect(() => {
+    if (phase !== 'countdown') return undefined
+    const id = window.setInterval(() => {
+      if (stateRef.current.fouled !== countdownFouled) {
+        setCountdownFouled(stateRef.current.fouled)
+      }
+    }, 50)
+    return () => window.clearInterval(id)
+  }, [phase, countdownFouled])
 
   useEffect(() => {
     paramsRef.current = derived.params
@@ -331,6 +356,8 @@ export function DragRace({ slug }: DragRaceProps) {
     const fresh = initDragGameState(path)
     stateRef.current = fresh
     goAtMsRef.current = null
+    setCountdownStartedAt(performance.now())
+    setCountdownFouled(false)
     setHud({
       elapsedMs: 0,
       speed: 0,
@@ -465,8 +492,11 @@ export function DragRace({ slug }: DragRaceProps) {
         <CenterMessage title="STAGE" body="Pull up to the line." />
       )}
 
-      {phase === 'countdown' && (
-        <CountdownTree startedAt={performance.now()} fouled={hud.fouled} />
+      {phase === 'countdown' && countdownStartedAt !== null && (
+        <CountdownTree
+          startedAt={countdownStartedAt}
+          fouled={countdownFouled}
+        />
       )}
 
       {phase === 'racing' && (

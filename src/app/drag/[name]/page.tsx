@@ -2,7 +2,10 @@ import { notFound } from 'next/navigation'
 import { DRAG_STRIP_SLUGS, DragStripSlugSchema } from '@/lib/dragStrips'
 import { DragRace } from '@/components/DragRace'
 
-export const dynamic = 'force-dynamic'
+// The four drag strips are baked into code, so the slug shell is fully
+// static. `generateStaticParams` lists all four; visits to other slugs
+// hit `notFound()`. No `dynamic = 'force-dynamic'` here; that would
+// override the static prerender and contradict generateStaticParams.
 
 export default async function DragStripPage(ctx: {
   params: Promise<{ name: string }>

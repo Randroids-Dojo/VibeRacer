@@ -29,7 +29,12 @@ export function selectDragGhost(
     return { nonce: null, source: 'none' }
   }
 
-  const sorted = [...usable].sort((a, b) => a.lapTimeMs - b.lapTimeMs)
+  // Primary sort by lap time (faster wins); rank as the tiebreaker so a
+  // pair of rows with identical lap times still resolves deterministically
+  // to the leaderboard's authoritative ordering.
+  const sorted = [...usable].sort(
+    (a, b) => a.lapTimeMs - b.lapTimeMs || a.rank - b.rank,
+  )
 
   if (playerPbMs === null) {
     return { nonce: sorted[0].nonce, source: 'top' }

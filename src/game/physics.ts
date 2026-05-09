@@ -114,8 +114,13 @@ export function stepPhysics(
   // gravity-along-slope term computed by dragTick. Defaults to 0 so closed
   // loop callers see byte-identical behavior. Applied after engine and brake
   // integration but before the speed clamp so a long downhill still respects
-  // params.maxSpeed.
-  if (externalLongitudinalAccel !== 0) {
+  // params.maxSpeed. Non-finite inputs (NaN / Infinity) are dropped to 0 so
+  // a bad slopeAt lookup cannot poison the physics state for the rest of
+  // the tick.
+  if (
+    externalLongitudinalAccel !== 0 &&
+    Number.isFinite(externalLongitudinalAccel)
+  ) {
     speed += externalLongitudinalAccel * dtSec
   }
 

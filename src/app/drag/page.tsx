@@ -12,44 +12,53 @@ interface StripPreview {
   topInitials: string | null
 }
 
-async function loadTopTimes(): Promise<StripPreview[]> {
-  if (!hasKvConfigured()) {
-    return ALL_DRAG_STRIPS.map((strip) => ({
-      strip,
-      topTimeMs: null,
-      topInitials: null,
-    }))
-  }
-  const { getKv } = await import('@/lib/kv')
-  const { readLeaderboard } = await import('@/lib/leaderboard')
-  const kv = getKv()
-  return Promise.all(
-    ALL_DRAG_STRIPS.map(async (strip) => {
-      try {
-        const versionHash = dragStripVersionHash(strip)
-        const { entries } = await readLeaderboard(
-          kv,
-          strip.slug,
-          versionHash,
-          1,
-          0,
-          null,
-        )
-        const top = entries[0] ?? null
-        return {
-          strip,
-          topTimeMs: top ? top.lapTimeMs : null,
-          topInitials: top ? top.initials : null,
-        }
-      } catch {
-        return { strip, topTimeMs: null, topInitials: null }
-      }
-    }),
-  )
+function emptyPreviews(): StripPreview[] {
+  return ALL_DRAG_STRIPS.map((strip) => ({
+    strip,
+    topTimeMs: null,
+    topInitials: null,
+  }))
 }
 
-function formatTime(ms: number | null): string {
-  if (ms === null) return 'No times yet'
+async function loadTopTimes(): Promise<StripPreview[]> {
+  if (!hasKvConfigured()) return emptyPreviews()
+  // Wrap the dynamic import + getKv in a try block so a transient KV
+  // outage or a misconfigured environment falls back to the "No times
+  // yet" hub instead of 500-ing the page. The per-strip catch below
+  // already handles individual read failures.
+  try {
+    const { getKv } = await import('@/lib/kv')
+    const { readLeaderboard } = await import('@/lib/leaderboard')
+    const kv = getKv()
+    return await Promise.all(
+      ALL_DRAG_STRIPS.map(async (strip) => {
+        try {
+          const versionHash = dragStripVersionHash(strip)
+          const { entries } = await readLeaderboard(
+            kv,
+            strip.slug,
+            versionHash,
+            1,
+            0,
+            null,
+          )
+          const top = entries[0] ?? null
+          return {
+            strip,
+            topTimeMs: top ? top.lapTimeMs : null,
+            topInitials: top ? top.initials : null,
+          }
+        } catch {
+          return { strip, topTimeMs: null, topInitials: null }
+        }
+      }),
+    )
+  } catch {
+    return emptyPreviews()
+  }
+}
+
+function formatTime(ms: number): string {
   return `${(ms / 1000).toFixed(2)}s`
 }
 

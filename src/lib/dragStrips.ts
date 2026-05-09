@@ -160,11 +160,20 @@ export function dragStripCheckpoints(
   strip: DragStripConfig,
 ): TrackCheckpoint[] {
   const last = strip.lengthCells - 1
-  // Three checkpoints: a 60ft-equivalent split near the start, a midpoint
-  // split, and the finish. None can land on the start piece (row 0). Indices
-  // are clamped so very short strips still produce three distinct rows.
-  const sixtyFt = Math.max(2, Math.min(last - 2, 2))
-  const midpoint = Math.max(sixtyFt + 1, Math.floor(last / 2))
+  // Three distinct checkpoints: a 60ft-equivalent split near the start, a
+  // midpoint split, and the finish. None can land on the start piece
+  // (row 0). The four shipping strips all have lengthCells >= 20 so the
+  // common case picks `sixtyFt = 2`, `midpoint = floor(last / 2)`,
+  // `finish = last`. The clamps below keep the helper honest for shorter
+  // hand-built strips: we require at least four cells so three rows
+  // strictly between the start row and the finish row can be picked.
+  if (last < 3) {
+    throw new Error(
+      `drag strip ${strip.slug} needs lengthCells >= 4 to fit 3 checkpoints`,
+    )
+  }
+  const sixtyFt = Math.min(2, last - 2)
+  const midpoint = Math.max(sixtyFt + 1, Math.min(last - 1, Math.floor(last / 2)))
   const finish = last
   return [
     { row: -sixtyFt, col: 0 },
@@ -189,13 +198,17 @@ export function dragStripToTrack(strip: DragStripConfig): Track {
 // hash implementation can live in a separate environment-aware module
 // (`dragStripVersionHash`) without re-deriving the canonical shape.
 export function dragStripVersionPayload(strip: DragStripConfig): string {
+  // Hash only physics-affecting fields. timeOfDay is purely cosmetic
+  // (lighting preset) and never feeds the surface key or the tuning math,
+  // so retiring a leaderboard for a dawn / noon swap with identical physics
+  // would be wrong. lengthCells, biome, weather, and the vertical profile
+  // all change what a posted time means and so are part of the hash.
   const payload = {
     formatVersion: DRAG_STRIP_FORMAT_VERSION,
     slug: strip.slug,
     lengthCells: strip.lengthCells,
     biome: strip.biome,
     weather: strip.weather,
-    timeOfDay: strip.timeOfDay,
     verticalProfile: strip.verticalProfile.map((k) => ({
       s: k.s,
       height: k.height,

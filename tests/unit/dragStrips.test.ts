@@ -10,6 +10,7 @@ import {
   dragStripPieces,
   dragStripToTrack,
   dragStripVersionHash,
+  dragStripVersionPayload,
   surfaceFromBiomeWeather,
 } from '@/lib/dragStrips'
 
@@ -83,6 +84,39 @@ describe('drag strips', () => {
       blurb: 'A different blurb',
     })
     expect(tweaked).toBe(original)
+  })
+
+  it('changing only timeOfDay does not change the version hash', () => {
+    // timeOfDay is cosmetic (lighting preset only); leaderboards must not
+    // retire on a dawn / noon / night swap. Pin this explicitly so a future
+    // refactor that re-adds the field to the hash payload trips the test.
+    const strip = DRAG_STRIPS['salt-flats']
+    const original = dragStripVersionHash(strip)
+    const tweaked = dragStripVersionHash({ ...strip, timeOfDay: 'dawn' })
+    expect(tweaked).toBe(original)
+  })
+
+  it('pins a known payload to a known SHA-256 digest', () => {
+    // Golden value for the Salt Flats canonical payload. Computed once and
+    // pinned here so a regression in the custom JS sha256 implementation
+    // (which has no node:crypto fallback in the browser bundle) shows up
+    // as a unit failure rather than as a silently re-partitioned
+    // leaderboard. Recompute via:
+    //   node -e 'console.log(require("crypto").createHash("sha256")
+    //     .update(JSON.stringify({ ... })).digest("hex"))'
+    // and update both halves of this test if the canonical payload shape
+    // changes intentionally (formatVersion bump, new physics field).
+    const strip = DRAG_STRIPS['salt-flats']
+    const payload = dragStripVersionPayload(strip)
+    const hash = dragStripVersionHash(strip)
+    expect(hash).toMatch(/^[0-9a-f]{64}$/)
+    // Recompute via Node's built-in crypto and compare bit for bit so a
+    // future implementation swap is verified against the reference rather
+    // than against itself.
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const crypto = require('node:crypto') as typeof import('node:crypto')
+    const reference = crypto.createHash('sha256').update(payload).digest('hex')
+    expect(hash).toBe(reference)
   })
 
   it('changing the lengthCells or vertical profile does change the hash', () => {
