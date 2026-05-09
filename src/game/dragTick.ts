@@ -8,7 +8,11 @@ import {
   type PhysicsInput,
 } from './physics'
 import { GRAVITY, REFERENCE_WEIGHT_KG, type LaunchProfile } from './dragTuning'
-import { slopeAt, type VerticalProfile } from './dragVerticalProfile'
+import {
+  projectArcLengthOnSpawnAxis,
+  slopeAt,
+  type VerticalProfile,
+} from './dragVerticalProfile'
 
 // Drag racing tick. Mirrors the closed-loop tick.ts shape but tailored to
 // straight-line sprints: no lap repeats, no manual gearing, no auto-restart
@@ -140,18 +144,10 @@ function computeArcLengthFromSpawn(
   state: DragGameState,
   path: TrackPath,
 ): number {
-  // Drag strips are straight chains of pieces along a single column; the
-  // arc length is the planar distance from the spawn to the current car
-  // position projected onto the spawn-to-finish axis. Falls back to the
-  // raw planar distance if the spawn axis is degenerate.
-  const dx = state.x - path.spawn.position.x
-  const dz = state.z - path.spawn.position.z
-  // Tangent at spawn: (cos h, -sin h) per the project's heading convention.
-  const tx = Math.cos(path.spawn.heading)
-  const tz = -Math.sin(path.spawn.heading)
-  const projection = dx * tx + dz * tz
-  if (!Number.isFinite(projection)) return 0
-  return Math.max(0, projection)
+  return projectArcLengthOnSpawnAxis(
+    { x: state.x, z: state.z },
+    { position: path.spawn.position, heading: path.spawn.heading },
+  )
 }
 
 export function dragTick(

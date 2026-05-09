@@ -14,6 +14,105 @@ function formatTime(ms: number): string {
   return seconds.toFixed(2)
 }
 
+const overlayWrapStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  pointerEvents: 'none',
+  fontFamily: 'system-ui, sans-serif',
+}
+
+const heroTimerStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  fontSize: 56,
+  fontWeight: 800,
+  letterSpacing: 2,
+  textShadow: '0 2px 6px rgba(0,0,0,0.6)',
+  fontVariantNumeric: 'tabular-nums',
+}
+
+const reactionRowStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 78,
+  left: '50%',
+  transform: 'translateX(-50%)',
+  display: 'flex',
+  gap: 8,
+  alignItems: 'center',
+}
+
+const fouledChipStyle: React.CSSProperties = {
+  padding: '3px 10px',
+  borderRadius: 999,
+  background: '#991b1b',
+  color: '#fff',
+  fontWeight: 700,
+  fontSize: 11,
+  letterSpacing: 1,
+  border: '1px solid #b91c1c',
+}
+
+const reactionPillStyle: React.CSSProperties = {
+  padding: '3px 10px',
+  borderRadius: 999,
+  background: '#161616cc',
+  border: '1px solid #2a2a2a',
+  color: 'rgba(255,255,255,0.85)',
+  fontSize: 11,
+  letterSpacing: 0.5,
+}
+
+const speedPanelStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: 12,
+  top: 56,
+  padding: '8px 12px',
+  background: '#161616cc',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
+  minWidth: 124,
+  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+  color: '#fff',
+}
+
+const labelStyle: React.CSSProperties = {
+  opacity: 0.6,
+  fontSize: 10,
+  textTransform: 'uppercase',
+  letterSpacing: 1.2,
+}
+
+const valueLgStyle: React.CSSProperties = {
+  fontSize: 22,
+  fontWeight: 800,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+const valueMdStyle: React.CSSProperties = {
+  fontSize: 16,
+  fontWeight: 700,
+  fontVariantNumeric: 'tabular-nums',
+}
+
+const splitsPanelStyle: React.CSSProperties = {
+  position: 'absolute',
+  right: 12,
+  top: 162,
+  padding: '8px 12px',
+  background: '#161616cc',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
+  fontSize: 12,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 2,
+  minWidth: 124,
+  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+  color: '#fff',
+}
+
 export function DragHUD({
   elapsedMs,
   speed,
@@ -23,48 +122,12 @@ export function DragHUD({
   topSpeed,
 }: DragHUDProps) {
   return (
-    <div style={{ pointerEvents: 'none' }}>
-      <div
-        style={{
-          position: 'absolute',
-          top: 16,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          fontSize: 56,
-          fontWeight: 800,
-          letterSpacing: 2,
-          textShadow: '0 2px 6px rgba(0,0,0,0.5)',
-        }}
-      >
-        {formatTime(elapsedMs)}s
-      </div>
+    <div style={overlayWrapStyle}>
+      <div style={heroTimerStyle}>{formatTime(elapsedMs)}s</div>
 
-      <div
-        style={{
-          position: 'absolute',
-          top: 90,
-          left: '50%',
-          transform: 'translateX(-50%)',
-          display: 'flex',
-          gap: 10,
-          alignItems: 'center',
-        }}
-      >
-        {fouled && (
-          <span
-            style={{
-              padding: '4px 8px',
-              borderRadius: 4,
-              background: '#991b1b',
-              color: '#fff',
-              fontWeight: 700,
-              fontSize: 12,
-            }}
-          >
-            JUMPED
-          </span>
-        )}
-        <span style={{ fontSize: 12, opacity: 0.8 }}>
+      <div style={reactionRowStyle}>
+        {fouled && <span style={fouledChipStyle}>JUMPED</span>}
+        <span style={reactionPillStyle}>
           Reaction:{' '}
           {reactionTimeMs === null
             ? '--'
@@ -72,47 +135,23 @@ export function DragHUD({
         </span>
       </div>
 
-      <div
-        style={{
-          position: 'absolute',
-          right: 16,
-          top: 16,
-          padding: '6px 10px',
-          background: 'rgba(0,0,0,0.55)',
-          borderRadius: 6,
-          fontSize: 14,
-          minWidth: 120,
-        }}
-      >
-        <div style={{ opacity: 0.7, fontSize: 11 }}>Speed</div>
-        <div style={{ fontSize: 22, fontWeight: 700 }}>
-          {speed.toFixed(1)}
-        </div>
-        <div style={{ opacity: 0.7, fontSize: 11, marginTop: 6 }}>Top speed</div>
-        <div style={{ fontSize: 18 }}>{topSpeed.toFixed(1)}</div>
+      <div style={speedPanelStyle}>
+        <div style={labelStyle}>Speed</div>
+        <div style={valueLgStyle}>{speed.toFixed(1)}</div>
+        <div style={{ ...labelStyle, marginTop: 6 }}>Top speed</div>
+        <div style={valueMdStyle}>{topSpeed.toFixed(1)}</div>
       </div>
 
       {splits.length > 0 && (
-        <div
-          style={{
-            position: 'absolute',
-            right: 16,
-            top: 130,
-            padding: '8px 10px',
-            background: 'rgba(0,0,0,0.55)',
-            borderRadius: 6,
-            fontSize: 12,
-            display: 'flex',
-            flexDirection: 'column',
-            gap: 2,
-            minWidth: 120,
-          }}
-        >
-          <div style={{ opacity: 0.7, fontSize: 11 }}>Splits</div>
+        <div style={splitsPanelStyle}>
+          <div style={labelStyle}>Splits</div>
           {splits.map((tMs, i) => (
-            <div key={i}>
-              <span style={{ opacity: 0.6, marginRight: 6 }}>cp{i + 1}</span>
-              {formatTime(tMs)}s
+            <div
+              key={i}
+              style={{ display: 'flex', justifyContent: 'space-between' }}
+            >
+              <span style={{ opacity: 0.6 }}>cp{i + 1}</span>
+              <span>{formatTime(tMs)}s</span>
             </div>
           ))}
         </div>

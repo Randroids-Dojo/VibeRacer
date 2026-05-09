@@ -20,10 +20,16 @@ import {
 } from 'three'
 import { interpolateGhostPose, type Replay } from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useControlSettings } from '@/hooks/useControlSettings'
 import {
+  applyCameraRig,
   buildScene,
+  DEFAULT_CAMERA_RIG,
+  initCameraRig,
   profiledTerrainSkirtGeometry,
   profiledTrackSurfaceGeometry,
+  updateCameraRig,
+  type CameraRigState,
   type SceneBundle,
 } from '@/game/sceneBuilder'
 import { buildTrackPath } from '@/game/trackPath'
@@ -55,10 +61,12 @@ import {
 } from '@/game/dragTick'
 import {
   heightAt,
+  projectArcLengthOnSpawnAxis,
   slopeAt,
 } from '@/game/dragVerticalProfile'
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { selectDragGhost } from '@/lib/dragGhost'
+import { submitDragRun } from '@/lib/dragSubmit'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
@@ -66,6 +74,7 @@ import {
   DRAG_COUNTDOWN_TOTAL_MS,
   DragChristmasTree,
 } from './DragChristmasTree'
+import { TouchControls } from './TouchControls'
 import { getTrackBiomePreset } from '@/lib/biomes'
 
 type Phase = 'garage' | 'staging' | 'countdown' | 'racing' | 'finished'
@@ -74,15 +83,52 @@ interface DragRaceProps {
   slug: DragStripSlug
 }
 
-function projectArcLength(
-  car: { x: number; z: number },
-  spawn: { x: number; z: number; heading: number },
-): number {
-  const dx = car.x - spawn.x
-  const dz = car.z - spawn.z
-  const tx = Math.cos(spawn.heading)
-  const tz = -Math.sin(spawn.heading)
-  return Math.max(0, dx * tx + dz * tz)
+// World-units half-width of the terrain skirt extruded sideways from the
+// road. Tuned to frame the strip without overlapping the biome ground
+// plane that buildScene already places under the scene.
+const SKIRT_HALF_WIDTH = 24
+
+// Bounding-box dimensions for the ghost car marker. Roughly matches the
+// player car GLB's footprint so the cyan box reads as "another car"
+// rather than as a generic prop. Pivot is at center; +0.6 lifts the
+// box's bottom face to road height.
+const GHOST_BOX_WIDTH = 2.2
+const GHOST_BOX_HEIGHT = 1.2
+const GHOST_BOX_LENGTH = 4.2
+const GHOST_BOX_PIVOT_OFFSET_Y = GHOST_BOX_HEIGHT / 2
+
+// Drag mode reuses the closed-loop camera rig from sceneBuilder so the
+// framing matches the rest of the game. The rig handles position /
+// quaternion lerp internally; we only feed the car's pose each frame.
+
+const raceHeaderStyle: React.CSSProperties = {
+  position: 'absolute',
+  top: 12,
+  left: 12,
+  padding: '6px 12px',
+  background: '#161616cc',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
+  fontSize: 13,
+  pointerEvents: 'auto',
+  display: 'flex',
+  gap: 12,
+  alignItems: 'center',
+  fontFamily: 'system-ui, sans-serif',
+  color: '#fff',
+  boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+}
+const raceHeaderBackStyle: React.CSSProperties = {
+  color: '#ff6b35',
+  textDecoration: 'none',
+  fontWeight: 700,
+  letterSpacing: 0.5,
+}
+const raceHeaderTagsStyle: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.7,
+  textTransform: 'capitalize',
+  letterSpacing: 0.5,
 }
 
 export function DragRace({ slug }: DragRaceProps) {
@@ -126,28 +172,37 @@ export function DragRace({ slug }: DragRaceProps) {
     setHydratedLoadout(true)
   }, [slug])
 
-  // Fetch leaderboard for the strip on mount and after every finish.
+  // Single fetch path the mount effect and the post-submit handler both
+  // call. Best-effort: a network error or a malformed response returns
+  // null so the leaderboard pane keeps showing the last successful list.
+  const refreshLeaderboard = useCallback(async (): Promise<
+    LeaderboardEntry[] | null
+  > => {
+    try {
+      const res = await fetch(
+        `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${versionHash}&limit=25`,
+      )
+      if (!res.ok) return null
+      const data = (await res.json()) as { entries?: LeaderboardEntry[] }
+      return Array.isArray(data.entries) ? data.entries : null
+    } catch {
+      return null
+    }
+  }, [slug, versionHash])
+
+  // Initial leaderboard load on mount and whenever the strip changes.
+  // Post-finish refresh is owned by the submit handler below, which calls
+  // refreshLeaderboard directly the moment the lap is stored. Keeping
+  // finishEvent out of this dep array avoids a duplicate fetch.
   useEffect(() => {
     let cancelled = false
-    async function load() {
-      try {
-        const res = await fetch(
-          `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${versionHash}&limit=25`,
-        )
-        if (!res.ok) return
-        const data = (await res.json()) as { entries?: LeaderboardEntry[] }
-        if (!cancelled && Array.isArray(data.entries)) {
-          setLeaderboard(data.entries)
-        }
-      } catch {
-        // best effort
-      }
-    }
-    void load()
+    void refreshLeaderboard().then((entries) => {
+      if (!cancelled && entries !== null) setLeaderboard(entries)
+    })
     return () => {
       cancelled = true
     }
-  }, [slug, versionHash, finishEvent])
+  }, [refreshLeaderboard])
 
   // Derived params recomputed when the loadout changes; the rAF loop reads
   // from a ref so we never restart the renderer on a part swap.
@@ -195,6 +250,11 @@ export function DragRace({ slug }: DragRaceProps) {
   }, [derived, strip])
 
   const keys = useKeyboard()
+  // Touch / control settings drive the optional virtual joystick overlay
+  // for mobile play. Drag mode mirrors the closed-loop game's behavior
+  // so a player on touch sees the same joystick they use everywhere
+  // else, just without manual shift since drag has no gear UI.
+  const { settings: controlSettings } = useControlSettings()
 
   // Renderer / scene refs
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -203,6 +263,11 @@ export function DragRace({ slug }: DragRaceProps) {
   const cameraRef = useRef<PerspectiveCamera | null>(null)
   const carGroupRef = useRef<Group | null>(null)
   const sceneRef = useRef<Scene | null>(null)
+  // Camera rig state. Persists between frames so the position / quaternion
+  // lerp inside updateCameraRig has somewhere to write smoothed values.
+  // Initialized in the same effect that builds the scene so the first
+  // frame already has a valid pose and the camera does not snap on start.
+  const cameraRigRef = useRef<CameraRigState | null>(null)
   // Ghost replay state. The active replay drives a small marker mesh that
   // follows the leaderboard's chosen rival (top, next-faster, or own PB,
   // selected by `selectDragGhost`). Read on every frame; null hides the
@@ -234,7 +299,7 @@ export function DragRace({ slug }: DragRaceProps) {
     bundle.trackMesh.geometry = profiledRoadGeom
     oldRoadGeom.dispose()
 
-    const skirtGeom = profiledTerrainSkirtGeometry(path, profile, 24)
+    const skirtGeom = profiledTerrainSkirtGeometry(path, profile, SKIRT_HALF_WIDTH)
     // Skirt color follows the strip's biome so an Alpine snow strip does
     // not bleed olive grass under its road and a Harbor city strip does
     // not look like a grassy field. The biome's `groundColor` is the same
@@ -256,7 +321,11 @@ export function DragRace({ slug }: DragRaceProps) {
     // "another car" without needing a second GLB load. Hidden by default;
     // the rAF loop flips visibility on when a replay is loaded and we are
     // in the racing phase.
-    const ghostGeom = new BoxGeometry(2.2, 1.2, 4.2)
+    const ghostGeom = new BoxGeometry(
+      GHOST_BOX_WIDTH,
+      GHOST_BOX_HEIGHT,
+      GHOST_BOX_LENGTH,
+    )
     const ghostMat = new MeshBasicMaterial({
       color: 0x80e8ff,
       transparent: true,
@@ -296,6 +365,16 @@ export function DragRace({ slug }: DragRaceProps) {
     const spawn = path.spawn
     bundle.car.position.set(spawn.position.x, 0, spawn.position.z)
     bundle.car.rotation.y = spawn.heading
+
+    // Seed the camera rig at the spawn so the first frame is already
+    // composed instead of snapping into place on tick 1.
+    cameraRigRef.current = initCameraRig(
+      spawn.position.x,
+      spawn.position.z,
+      spawn.heading,
+      DEFAULT_CAMERA_RIG,
+    )
+    applyCameraRig(bundle.camera, cameraRigRef.current)
 
     let raf = 0
     let lastNow = performance.now()
@@ -339,11 +418,10 @@ export function DragRace({ slug }: DragRaceProps) {
         const arcLength =
           ph === 'racing' || ph === 'finished'
             ? state.arcLengthS
-            : projectArcLength({ x: state.x, z: state.z }, {
-                x: spawn.position.x,
-                z: spawn.position.z,
-                heading: spawn.heading,
-              })
+            : projectArcLengthOnSpawnAxis(
+                { x: state.x, z: state.z },
+                { position: spawn.position, heading: spawn.heading },
+              )
         const y = heightAt(strip.verticalProfile, arcLength)
         const pitch = slopeAt(strip.verticalProfile, arcLength)
         car.position.set(state.x, y, state.z)
@@ -369,15 +447,17 @@ export function DragRace({ slug }: DragRaceProps) {
           const ghostT = Math.max(0, performance.now() - state.raceStartMs)
           const pose = interpolateGhostPose(ghostReplay, ghostT)
           if (pose) {
-            const ghostArc =
-              (pose.x - spawn.position.x) * Math.cos(spawn.heading) +
-              (pose.z - spawn.position.z) * -Math.sin(spawn.heading)
-            const gy = heightAt(strip.verticalProfile, Math.max(0, ghostArc))
-            const gpitch = slopeAt(
-              strip.verticalProfile,
-              Math.max(0, ghostArc),
+            const ghostArc = projectArcLengthOnSpawnAxis(
+              { x: pose.x, z: pose.z },
+              { position: spawn.position, heading: spawn.heading },
             )
-            ghostNode.position.set(pose.x, gy + 0.6, pose.z)
+            const gy = heightAt(strip.verticalProfile, ghostArc)
+            const gpitch = slopeAt(strip.verticalProfile, ghostArc)
+            ghostNode.position.set(
+              pose.x,
+              gy + GHOST_BOX_PIVOT_OFFSET_Y,
+              pose.z,
+            )
             ghostNode.rotation.set(-gpitch, pose.heading, 0)
             ghostNode.visible = true
           } else {
@@ -388,24 +468,20 @@ export function DragRace({ slug }: DragRaceProps) {
         }
       }
 
-      // Camera follow: simple chase. Behind the car along its heading,
-      // raised, looking ahead.
-      if (cameraRef.current && car) {
-        const camDist = 12
-        const camHeight = 5
-        const camLookAhead = 8
-        const hx = Math.cos(state.heading)
-        const hz = -Math.sin(state.heading)
-        cameraRef.current.position.set(
-          car.position.x - hx * camDist,
-          car.position.y + camHeight,
-          car.position.z - hz * camDist,
+      // Camera follow uses the closed-loop rig from sceneBuilder so the
+      // framing matches the rest of the game (height 6, distance 14,
+      // lookAhead 6, fov 70 by default). The rig lerps position and
+      // orientation internally so the camera eases to the target rather
+      // than snapping every frame.
+      if (cameraRef.current && car && cameraRigRef.current) {
+        updateCameraRig(
+          cameraRigRef.current,
+          car.position.x,
+          car.position.z,
+          state.heading,
+          DEFAULT_CAMERA_RIG,
         )
-        cameraRef.current.lookAt(
-          car.position.x + hx * camLookAhead,
-          car.position.y + 1,
-          car.position.z + hz * camLookAhead,
-        )
+        applyCameraRig(cameraRef.current, cameraRigRef.current)
       }
 
       // HUD update at frame rate.
@@ -530,29 +606,14 @@ export function DragRace({ slug }: DragRaceProps) {
       finishEvent,
       loadout,
     })
-      .then(() => {
-        // Refresh leaderboard after submit. Bumping finishEvent to itself by
-        // setting a fresh state would trigger refetch; instead fetch directly.
-        return fetch(
-          `/api/leaderboard?slug=${encodeURIComponent(slug)}&v=${versionHash}&limit=25`,
-        )
-          .then((res) => (res.ok ? res.json() : null))
-          .then((data) => {
-            if (
-              data &&
-              typeof data === 'object' &&
-              Array.isArray((data as { entries?: unknown }).entries)
-            ) {
-              setLeaderboard(
-                (data as { entries: LeaderboardEntry[] }).entries,
-              )
-            }
-          })
+      .then(async () => {
+        const entries = await refreshLeaderboard()
+        if (entries !== null) setLeaderboard(entries)
       })
       .catch(() => {
         // ignore; user can retry by racing again.
       })
-  }, [finishEvent, slug, versionHash, loadout])
+  }, [finishEvent, slug, versionHash, loadout, refreshLeaderboard])
 
   // Pick the player's PB for this strip from the leaderboard (server marks
   // with isMe). selectDragGhost handles the rotation rules.
@@ -602,27 +663,16 @@ export function DragRace({ slug }: DragRaceProps) {
     <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff' }}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
-      {/* Strip name + back link */}
-      <div
-        style={{
-          position: 'absolute',
-          top: 12,
-          left: 12,
-          padding: '6px 10px',
-          background: 'rgba(0,0,0,0.55)',
-          borderRadius: 6,
-          fontSize: 14,
-          pointerEvents: 'auto',
-          display: 'flex',
-          gap: 12,
-          alignItems: 'center',
-        }}
-      >
-        <Link href="/drag" style={{ color: '#9ad8ff', textDecoration: 'none' }}>
-          back
+      {/* Strip name + back chip. Matches the project's HUD chip look:
+          panel background, rounded, subtle border, accent-color back link. */}
+      <div style={raceHeaderStyle}>
+        <Link href="/drag" style={raceHeaderBackStyle}>
+          ‹ back
         </Link>
-        <strong>{strip.displayName}</strong>
-        <span style={{ opacity: 0.6 }}>{strip.biome} {strip.weather}</span>
+        <strong style={{ letterSpacing: 0.5 }}>{strip.displayName}</strong>
+        <span style={raceHeaderTagsStyle}>
+          {strip.biome} · {strip.weather}
+        </span>
       </div>
 
       {phase === 'garage' && hydratedLoadout && (
@@ -668,6 +718,12 @@ export function DragRace({ slug }: DragRaceProps) {
           onChangeParts={onChangeParts}
         />
       )}
+
+      <TouchControls
+        keys={keys}
+        enabled={phase === 'racing' || phase === 'countdown'}
+        mode={controlSettings.touchMode}
+      />
     </div>
   )
 }
@@ -689,58 +745,5 @@ function CenterMessage({ title, body }: { title: string; body: string }) {
       <div style={{ fontSize: 64, fontWeight: 700, letterSpacing: 2 }}>{title}</div>
       <div style={{ opacity: 0.85 }}>{body}</div>
     </div>
-  )
-}
-
-
-interface SubmitArgs {
-  slug: DragStripSlug
-  versionHash: string
-  finishEvent: DragLapCompleteEvent
-  loadout: DragLoadout
-}
-
-async function submitDragRun(args: SubmitArgs): Promise<void> {
-  const { slug, versionHash, finishEvent, loadout } = args
-  // Mint a fresh token via /api/race/start.
-  const startRes = await fetch(
-    `/api/race/start?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
-    { method: 'POST' },
-  )
-  if (!startRes.ok) return
-  const startData = (await startRes.json()) as {
-    token?: string
-  }
-  const token = typeof startData.token === 'string' ? startData.token : null
-  if (!token) return
-
-  let initials = 'YOU'
-  try {
-    const stored = window.localStorage.getItem('viberacer.initials')
-    if (stored && /^[A-Z]{3}$/.test(stored.toUpperCase())) {
-      initials = stored.toUpperCase()
-    }
-  } catch {
-    // ignore
-  }
-
-  const body = {
-    token,
-    checkpoints: finishEvent.hits,
-    lapTimeMs: finishEvent.finishTimeMs,
-    initials,
-    mode: 'drag' as const,
-    loadout,
-    topSpeed: finishEvent.topSpeed,
-    fouled: finishEvent.fouled,
-    reactionTimeMs: finishEvent.reactionTimeMs ?? undefined,
-  }
-  await fetch(
-    `/api/race/submit?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
-    {
-      method: 'POST',
-      headers: { 'content-type': 'application/json' },
-      body: JSON.stringify(body),
-    },
   )
 }

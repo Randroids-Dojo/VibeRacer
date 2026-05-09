@@ -106,11 +106,12 @@ export function DragChristmasTree({ startedAt, fouled }: DragChristmasTreeProps)
           flexDirection: 'column',
           alignItems: 'center',
           gap: 10,
-          padding: 18,
+          padding: '20px 22px',
           borderRadius: 12,
-          background: '#0a0a0a',
-          border: '2px solid #2a2a2a',
-          boxShadow: '0 12px 40px rgba(0,0,0,0.6)',
+          background: '#161616',
+          border: '1px solid #2a2a2a',
+          boxShadow: '0 20px 60px rgba(0,0,0,0.6)',
+          fontFamily: 'system-ui, sans-serif',
         }}
       >
         {LAMPS.map((lamp, i) => {
@@ -157,12 +158,15 @@ export function DragChristmasTree({ startedAt, fouled }: DragChristmasTreeProps)
           style={{
             position: 'absolute',
             bottom: '15%',
-            background: '#991b1b',
-            color: '#fff',
+            background: 'rgba(220,38,38,0.16)',
+            color: '#fda4a4',
+            border: '1px solid rgba(220,38,38,0.55)',
             padding: '8px 16px',
-            borderRadius: 6,
+            borderRadius: 999,
             fontWeight: 700,
-            letterSpacing: 1,
+            letterSpacing: 1.2,
+            fontSize: 12,
+            fontFamily: 'system-ui, sans-serif',
           }}
         >
           JUMP-START. Acceleration dampened.
