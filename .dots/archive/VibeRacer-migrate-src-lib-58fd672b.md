@@ -3,7 +3,7 @@ title: Migrate src/lib/portable/ to consume @randroids-dojo/vibekit
 status: closed
 priority: 2
 issue-type: task
-created-at: "\"2026-05-08T23:26:48.745563-05:00\""
+created-at: "2026-05-08T23:26:48.745563-05:00"
 closed-at: "2026-05-09T15:08:25.743039-05:00"
 close-reason: "shipped in PR https://github.com/Randroids-Dojo/VibeRacer/pull/118"
 ---
