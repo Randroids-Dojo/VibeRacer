@@ -172,7 +172,7 @@
         "src/game/track.ts",
         "src/game/trackPath.ts",
         "src/game/editor.ts",
-        "src/game/editorHistory.ts",
+        "src/lib/portable/editorHistory.ts",
         "src/game/editorZoom.ts",
         "src/game/trackFootprint.ts",
         "src/game/trackWidth.ts",

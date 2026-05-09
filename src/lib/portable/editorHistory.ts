@@ -1,36 +1,42 @@
 /**
- * Pure undo / redo helpers for the Track Editor.
- *
- * The component owns React state and keyboard wiring; this module is
+ * Pure undo / redo helpers, generic over any value type `T`. The
+ * caller owns state, UI, and keyboard wiring; this module is
  * responsible for the immutable stack math:
  *
- *  - `createHistory(initial)` seeds a fresh history with one present entry
- *    and no past or future.
- *  - `pushHistory(history, next)` records the current present onto the past
- *    stack, sets `next` as the new present, clears the redo stack, and caps
- *    the past length at `EDITOR_HISTORY_MAX_PAST` so a long editing session
- *    cannot grow without bound.
+ *  - `createHistory(initial)` seeds a fresh history with one present
+ *    entry and no past or future.
+ *  - `pushHistory(history, next)` records the current present onto
+ *    the past stack, sets `next` as the new present, clears the redo
+ *    stack, and caps the past length at `EDITOR_HISTORY_MAX_PAST` so
+ *    a long editing session cannot grow without bound.
  *  - `undoHistory(history)` pops the most recent past entry into the
- *    present and pushes the prior present onto the future stack so it can
- *    be redone.
- *  - `redoHistory(history)` pops the most recent future entry into the
- *    present and pushes the prior present onto the past stack.
- *  - `canUndo` / `canRedo` are O(1) flags the toolbar reads to disable
- *    buttons.
+ *    present and pushes the prior present onto the future stack so
+ *    it can be redone.
+ *  - `redoHistory(history)` pops the most recent future entry into
+ *    the present and pushes the prior present onto the past stack.
+ *  - `canUndo` / `canRedo` are O(1) flags the consumer reads to
+ *    disable toolbar buttons.
+ *  - `replacePresent(history, next)` swaps the present without
+ *    touching past or future (use for non-recordable edits).
+ *  - `resetHistory(history, initial)` clears both stacks and seeds a
+ *    new present.
  *
- * Equality: when the caller pushes a value that is reference-equal to the
- * current present, the helpers return the same history object. This keeps
- * an idempotent state-setter callsite (e.g. tapping erase on an already
- * empty cell) from polluting the past stack with no-op duplicates.
+ * Equality: when the caller pushes a value that is reference-equal
+ * to the current present, the helpers return the same history
+ * object. This keeps an idempotent state-setter callsite (e.g. a
+ * no-op edit) from polluting the past stack with duplicates. The
+ * helpers spread instead of `concat` internally so an array-typed
+ * `T` is not auto-flattened.
  *
- * Generic `T` lets the same helpers wrap pieces, mood, or any future
- * editor-managed value. The Track Editor wraps `Piece[]`.
+ * VibeRacer wraps `Piece[]` in this; any other editor can wrap any
+ * value with reference identity.
  */
 
-// Hard cap on the number of past states kept around. Each entry is a
-// shallow `Piece[]` reference (the helpers in `src/game/editor.ts` already
-// produce new arrays on every mutation), so 100 entries is well under any
-// memory concern even on a 64-piece track.
+// Hard cap on the number of past states kept around. The caller is
+// responsible for producing a fresh reference on each push (e.g. by
+// spreading arrays before mutating); the cap then bounds memory
+// regardless of `T`'s shape. 100 is comfortably under any practical
+// memory concern for typical editor state.
 export const EDITOR_HISTORY_MAX_PAST = 100
 
 export interface EditorHistory<T> {
