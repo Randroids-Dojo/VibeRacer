@@ -175,6 +175,7 @@ import {
 } from '@/lib/tuningSettings'
 import { PreRaceSetup, type PreRaceSetupResult } from './PreRaceSetup'
 import { ReplaySchema, type Replay } from '@/lib/replay'
+import { fetchJson } from '@/lib/fetchJson'
 import {
   ghostSourceNeedsTopFetch,
   pickGhostAfterPb,
@@ -200,14 +201,9 @@ import {
   setActiveMusic,
   setMusicLapIndex,
   setMusicOffTrack,
-  setMusicPersonalization,
 } from '@/game/music'
-import {
-  NEUTRAL_PERSONALIZATION,
-  personalizeForRacer,
-  personalizeForSlug,
-} from '@/game/musicPersonalization'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
+import { useMusicPersonalization } from '@/hooks/useMusicPersonalization'
 import {
   playAchievementUnlockCue,
   playLapStinger,
@@ -535,31 +531,12 @@ function GameSession({
     }
   }, [slug, initialMusic])
 
-  // Apply per-slug music personalization. The music engine treats this as
-  // idempotent (a no-op when the value matches the active one) so the effect
-  // can safely re-fire on every dependency change. Falls back to the neutral
-  // tweak when the player turned the feature off in Settings; the game track
-  // will sound exactly like the legacy G-minor / 140-BPM loop in that case.
-  // When the player also opted in to the initials mix, the slug seed gets
-  // folded with a hash of their initials so two players on the same slug
-  // hear distinct flavors. An initials edit in Settings re-fires the effect
-  // through the dependency on `initials`.
-  useEffect(() => {
-    let next
-    if (!audioSettings.musicPerTrack) {
-      next = { ...NEUTRAL_PERSONALIZATION }
-    } else if (audioSettings.musicMixInitials) {
-      next = personalizeForRacer(slug, initials)
-    } else {
-      next = personalizeForSlug(slug)
-    }
-    setMusicPersonalization(next)
-  }, [
+  useMusicPersonalization({
     slug,
     initials,
-    audioSettings.musicPerTrack,
-    audioSettings.musicMixInitials,
-  ])
+    musicPerTrack: audioSettings.musicPerTrack,
+    musicMixInitials: audioSettings.musicMixInitials,
+  })
   const keys = useKeyboard(settings.keyBindings)
   const tokenRef = useRef<string | null>(null)
   const submittingRef = useRef(false)
@@ -1555,30 +1532,25 @@ function GameSession({
       // arrives, so the player sees no visual gap.
       setRival(selection)
       setPauseView('menu')
-      fetch(`/api/replay/byNonce?${params.toString()}`)
-        .then(async (res) => {
-          if (!res.ok) return
-          const body = await res.json().catch(() => null)
-          const parsed = ReplaySchema.safeParse(body)
-          if (!parsed.success) return
-          // Only mount the new ghost when the player is still chasing this
-          // rival; a rapid Cancel chase before the replay resolves should
-          // leave the previous ghost in place.
-          if (rivalRef.current?.nonce !== selection.nonce) return
-          activeGhostRef.current = parsed.data
-          activeGhostMetaRef.current = {
-            initials: selection.initials,
-            lapTimeMs: selection.lapTimeMs,
-          }
-        })
-        .catch(() => {
-          // Best-effort. If the rival's replay cannot be fetched (404 from a
-          // legacy lap that predates the replay storage path) we keep the
-          // previous ghost on screen and leave the CHASING pill visible so
-          // the player understands why they did not get a new target. The
-          // banner makes the chase explicit even if the ghost path itself
-          // never updates.
-        })
+      void fetchJson(
+        `/api/replay/byNonce?${params.toString()}`,
+        ReplaySchema,
+      ).then((result) => {
+        // Best-effort. A null result (network error, 404 from a legacy lap
+        // that predates the replay storage path, schema mismatch) leaves
+        // the previous ghost on screen with the CHASING pill still visible
+        // so the player understands why no new target arrived.
+        if (!result) return
+        // Only mount the new ghost when the player is still chasing this
+        // rival; a rapid Cancel chase before the replay resolves should
+        // leave the previous ghost in place.
+        if (rivalRef.current?.nonce !== selection.nonce) return
+        activeGhostRef.current = result.data
+        activeGhostMetaRef.current = {
+          initials: selection.initials,
+          lapTimeMs: selection.lapTimeMs,
+        }
+      })
     },
     [slug, versionHash],
   )
@@ -1653,56 +1625,52 @@ function GameSession({
         cancelled = true
       }
     }
-    fetch(
+    void fetchJson(
       `/api/replay/top?slug=${encodeURIComponent(slug)}&v=${versionHash}`,
-    )
-      .then(async (res) => {
-        if (!res.ok) return
-        const body = await res.json().catch(() => null)
-        const parsed = ReplaySchema.safeParse(body)
-        if (cancelled || !parsed.success) return
-        // Recompute against the freshly fetched top in case a PB lap landed
-        // between the initial paint and the network resolve.
-        const fresh = readLocalBestReplay(slug, versionHash)
-        // Pull the optional `initials` field off the raw response (the
-        // server adds it from the leaderboard top member; an empty board
-        // returns null). Falls back to "???" so the plate never reads
-        // blank when the leaderboard write predates the metadata path.
-        const topInitials =
-          body && typeof body === 'object' && 'initials' in body
-            ? typeof (body as { initials?: unknown }).initials === 'string'
-              ? ((body as { initials: string }).initials as string)
-              : null
+      ReplaySchema,
+    ).then((result) => {
+      // Best-effort; absent ghost is a non-fatal degradation.
+      if (!result || cancelled) return
+      // Recompute against the freshly fetched top in case a PB lap landed
+      // between the initial paint and the network resolve.
+      const fresh = readLocalBestReplay(slug, versionHash)
+      // Pull the optional `initials` field off the raw response (the
+      // server adds it from the leaderboard top member; an empty board
+      // returns null). Falls back to "???" so the plate never reads
+      // blank when the leaderboard write predates the metadata path.
+      const raw = result.raw
+      const topInitials =
+        raw && typeof raw === 'object' && 'initials' in raw
+          ? typeof (raw as { initials?: unknown }).initials === 'string'
+            ? ((raw as { initials: string }).initials as string)
             : null
-        topGhostMetaRef.current = {
-          initials: topInitials ?? '???',
-          lapTimeMs: parsed.data.lapTimeMs,
-        }
-        localPbMetaRef.current = fresh
-          ? { initials, lapTimeMs: fresh.lapTimeMs }
           : null
-        // Same rival-respect rule as the synchronous branch above: if the
-        // player is mid-chase, do not yank the ghost away on the network
-        // resolve. The rival ghost was already mounted by handleChaseRival
-        // and stays put until Cancel chase or Restart.
-        if (rivalRef.current === null) {
-          activeGhostRef.current = pickGhostReplay(
-            source,
-            fresh,
-            parsed.data,
-            lastLapReplayRef.current,
-          )
-          activeGhostMetaRef.current = pickGhostMeta(
-            source,
-            localPbMetaRef.current,
-            topGhostMetaRef.current,
-            lastLapMetaRef.current,
-          )
-        }
-      })
-      .catch(() => {
-        // Best-effort; absent ghost is a non-fatal degradation.
-      })
+      topGhostMetaRef.current = {
+        initials: topInitials ?? '???',
+        lapTimeMs: result.data.lapTimeMs,
+      }
+      localPbMetaRef.current = fresh
+        ? { initials, lapTimeMs: fresh.lapTimeMs }
+        : null
+      // Same rival-respect rule as the synchronous branch above: if the
+      // player is mid-chase, do not yank the ghost away on the network
+      // resolve. The rival ghost was already mounted by handleChaseRival
+      // and stays put until Cancel chase or Restart.
+      if (rivalRef.current === null) {
+        activeGhostRef.current = pickGhostReplay(
+          source,
+          fresh,
+          result.data,
+          lastLapReplayRef.current,
+        )
+        activeGhostMetaRef.current = pickGhostMeta(
+          source,
+          localPbMetaRef.current,
+          topGhostMetaRef.current,
+          lastLapMetaRef.current,
+        )
+      }
+    })
     return () => {
       cancelled = true
     }
@@ -1722,30 +1690,27 @@ function GameSession({
       v: versionHash,
       nonce: challenge.nonce,
     })
-    fetch(`/api/replay/byNonce?${params.toString()}`)
-      .then(async (res) => {
-        if (!res.ok) return
-        const body = await res.json().catch(() => null)
-        const parsed = ReplaySchema.safeParse(body)
-        if (cancelled || !parsed.success) return
-        activeGhostRef.current = parsed.data
-        // Surface the friend's identity above the ghost car. The challenge
-        // payload carries the sender's initials and target time; both come
-        // from the URL, so we trust them as far as a browsable link goes
-        // (the `formatNameplate*` helpers sanitize anyway). Falls back to
-        // the replay's own lap time when the challenge omits a target.
-        activeGhostMetaRef.current = {
-          initials: challenge.from ?? '???',
-          lapTimeMs:
-            typeof challenge.timeMs === 'number' && challenge.timeMs > 0
-              ? challenge.timeMs
-              : parsed.data.lapTimeMs,
-        }
-      })
-      .catch(() => {
-        // Best-effort; if the challenge replay cannot be loaded we degrade to
-        // whichever ghost the regular flow resolved.
-      })
+    void fetchJson(
+      `/api/replay/byNonce?${params.toString()}`,
+      ReplaySchema,
+    ).then((result) => {
+      // Best-effort; if the challenge replay cannot be loaded we degrade
+      // to whichever ghost the regular flow resolved.
+      if (!result || cancelled) return
+      activeGhostRef.current = result.data
+      // Surface the friend's identity above the ghost car. The challenge
+      // payload carries the sender's initials and target time; both come
+      // from the URL, so we trust them as far as a browsable link goes
+      // (the `formatNameplate*` helpers sanitize anyway). Falls back to
+      // the replay's own lap time when the challenge omits a target.
+      activeGhostMetaRef.current = {
+        initials: challenge.from ?? '???',
+        lapTimeMs:
+          typeof challenge.timeMs === 'number' && challenge.timeMs > 0
+            ? challenge.timeMs
+            : result.data.lapTimeMs,
+      }
+    })
     return () => {
       cancelled = true
     }

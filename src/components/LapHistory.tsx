@@ -18,6 +18,7 @@ import {
   menuTheme,
 } from './MenuUI'
 import { useRegisterFocusable } from './MenuNav'
+import { formatLapTime } from '@/lib/timeFormat'
 
 const CHART_WIDTH = 460
 const CHART_HEIGHT = 80
@@ -38,15 +39,6 @@ interface LapHistoryProps {
   // sectors of a specific lap were optimal-run material.
   bestSectors: readonly SectorDuration[]
   onBack: () => void
-}
-
-function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
 }
 
 export function LapHistory({

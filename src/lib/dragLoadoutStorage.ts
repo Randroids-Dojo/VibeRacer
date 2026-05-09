@@ -4,6 +4,7 @@ import {
   type DragLoadout,
 } from './dragParts'
 import type { DragStripSlug } from './dragStrips'
+import { readJson, removeKey, writeJson } from './storage'
 
 // localStorage helpers for drag-mode loadouts. Mirrors the per-track read
 // pattern in src/lib/tuningSettings.ts: a single "last-used" entry plus a
@@ -17,57 +18,22 @@ function perStripKey(slug: DragStripSlug): string {
   return `${PER_STRIP_PREFIX}${slug}`
 }
 
-function safeParseLoadout(raw: string | null): DragLoadout | null {
-  if (!raw) return null
-  try {
-    const parsed = DragLoadoutSchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
-}
-
-function readStorage(): Storage | null {
-  if (typeof window === 'undefined') return null
-  try {
-    return window.localStorage
-  } catch {
-    return null
-  }
-}
-
 export function readDragLoadout(slug: DragStripSlug): DragLoadout {
-  const storage = readStorage()
-  if (!storage) return DEFAULT_DRAG_LOADOUT
-  const perStrip = safeParseLoadout(storage.getItem(perStripKey(slug)))
-  if (perStrip) return perStrip
-  const last = safeParseLoadout(storage.getItem(LAST_KEY))
-  if (last) return last
-  return DEFAULT_DRAG_LOADOUT
+  return (
+    readJson(perStripKey(slug), DragLoadoutSchema) ??
+    readJson(LAST_KEY, DragLoadoutSchema) ??
+    DEFAULT_DRAG_LOADOUT
+  )
 }
 
 export function writeDragLoadout(
   slug: DragStripSlug,
   loadout: DragLoadout,
 ): void {
-  const storage = readStorage()
-  if (!storage) return
-  const json = JSON.stringify(loadout)
-  try {
-    storage.setItem(perStripKey(slug), json)
-    storage.setItem(LAST_KEY, json)
-  } catch {
-    // Storage quota or privacy mode. Silent: the loadout is still in memory
-    // and works for the current session.
-  }
+  writeJson(perStripKey(slug), loadout)
+  writeJson(LAST_KEY, loadout)
 }
 
 export function clearDragLoadout(slug: DragStripSlug): void {
-  const storage = readStorage()
-  if (!storage) return
-  try {
-    storage.removeItem(perStripKey(slug))
-  } catch {
-    // ignore
-  }
+  removeKey(perStripKey(slug))
 }

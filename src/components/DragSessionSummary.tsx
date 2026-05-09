@@ -12,6 +12,7 @@ import {
   MenuTitle,
   menuTheme,
 } from './MenuUI'
+import { formatDragTime as formatTime } from '@/lib/timeFormat'
 
 interface DragSessionSummaryProps {
   strip: DragStripConfig
@@ -25,10 +26,6 @@ interface DragSessionSummaryProps {
   ghostNonce: string | null
   onRaceAgain: () => void
   onChangeParts: () => void
-}
-
-function formatTime(ms: number): string {
-  return (ms / 1000).toFixed(2)
 }
 
 const heroBigTimeStyle: React.CSSProperties = {

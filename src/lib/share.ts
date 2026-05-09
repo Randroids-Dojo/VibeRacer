@@ -34,17 +34,9 @@ export interface SharePayload {
 
 export type ShareOutcome = 'shared' | 'copied' | 'cancelled' | 'failed'
 
-export function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  const mm = String(minutes).padStart(2, '0')
-  const ss = String(seconds).padStart(2, '0')
-  const mmm = String(millis).padStart(3, '0')
-  return `${mm}:${ss}.${mmm}`
-}
+import { formatLapTime } from './timeFormat'
+
+export { formatLapTime }
 
 /**
  * Builds the canonical race URL for sharing. Pinning `?v=<hash>` ensures the

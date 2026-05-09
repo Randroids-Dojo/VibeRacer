@@ -7,6 +7,7 @@ import {
   isLeaderboardRankInfo,
   type LeaderboardRankInfo,
 } from '@/game/leaderboardRank'
+import { readJson, readNumber, writeJson, writeNumber } from './storage'
 
 function bestKey(slug: string, versionHash: string): string {
   return `viberacer.best.${slug}.${versionHash}`
@@ -72,6 +73,15 @@ const TOP_SPEED_LIFETIME_KEY = 'viberacer.bestTopSpeedLifetime'
 // import the game module just for one number).
 const TOP_SPEED_STORAGE_CAP_US = 200
 
+// Sanity cap for a stored reaction time. Anything above 30s is almost
+// certainly a corrupted or hand-edited blob; the renderer agrees on the same
+// ceiling so the storage layer and the HUD will never disagree on what counts
+// as "a real reaction time".
+const REACTION_TIME_CAP_MS = 30_000
+
+const positiveNumber = (n: number): boolean => n > 0
+const positiveBelow = (cap: number) => (n: number): boolean => n > 0 && n <= cap
+
 // The nonce of the player's most recent successful submission on this
 // (slug, version), tracked alongside the lap time it represents. Used by the
 // pause-menu Challenge a Friend flow to build a URL pinned to that exact
@@ -96,11 +106,7 @@ const SectorDurationSchema = z.object({
 const SectorDurationsArraySchema = z.array(SectorDurationSchema)
 
 export function readLocalBest(slug: string, versionHash: string): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(bestKey(slug, versionHash))
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : null
+  return readNumber(bestKey(slug, versionHash), positiveNumber)
 }
 
 export function writeLocalBest(
@@ -108,26 +114,14 @@ export function writeLocalBest(
   versionHash: string,
   lapTimeMs: number,
 ): void {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(
-    bestKey(slug, versionHash),
-    String(Math.round(lapTimeMs)),
-  )
+  writeNumber(bestKey(slug, versionHash), Math.round(lapTimeMs))
 }
 
 export function readLocalBestReplay(
   slug: string,
   versionHash: string,
 ): Replay | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(replayKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = ReplaySchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
+  return readJson(replayKey(slug, versionHash), ReplaySchema)
 }
 
 export function writeLocalBestReplay(
@@ -135,16 +129,7 @@ export function writeLocalBestReplay(
   versionHash: string,
   replay: Replay,
 ): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      replayKey(slug, versionHash),
-      JSON.stringify(replay),
-    )
-  } catch {
-    // Quota exceeded or storage disabled. Ghost is a best-effort enhancement;
-    // failing silently keeps the rest of the lap-complete flow working.
-  }
+  writeJson(replayKey(slug, versionHash), replay)
 }
 
 // Per-PB checkpoint splits. The HUD's live "delta vs PB" tile compares the
@@ -153,15 +138,7 @@ export function readLocalBestSplits(
   slug: string,
   versionHash: string,
 ): CheckpointHit[] | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(splitsKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = SplitsArraySchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
+  return readJson(splitsKey(slug, versionHash), SplitsArraySchema)
 }
 
 export function writeLocalBestSplits(
@@ -169,16 +146,7 @@ export function writeLocalBestSplits(
   versionHash: string,
   hits: CheckpointHit[],
 ): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      splitsKey(slug, versionHash),
-      JSON.stringify(hits),
-    )
-  } catch {
-    // Splits are a best-effort UX enhancement. A quota failure should never
-    // break the lap-complete flow.
-  }
+  writeJson(splitsKey(slug, versionHash), hits)
 }
 
 // All-time best drift score for this (slug, versionHash). Persists across
@@ -189,11 +157,7 @@ export function readLocalBestDrift(
   slug: string,
   versionHash: string,
 ): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(driftBestKey(slug, versionHash))
-  if (!raw) return null
-  const n = Number(raw)
-  return Number.isFinite(n) && n > 0 ? n : null
+  return readNumber(driftBestKey(slug, versionHash), positiveNumber)
 }
 
 export function writeLocalBestDrift(
@@ -201,17 +165,8 @@ export function writeLocalBestDrift(
   versionHash: string,
   score: number,
 ): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(score) || score <= 0) return
-  try {
-    window.localStorage.setItem(
-      driftBestKey(slug, versionHash),
-      String(Math.round(score)),
-    )
-  } catch {
-    // Drift score persistence is a best-effort UX enhancement. Quota
-    // exhaustion should never break the lap-complete flow.
-  }
+  writeNumber(driftBestKey(slug, versionHash), Math.round(score))
 }
 
 // Per-sector best durations for the theoretical-best ("OPTIMAL") lap HUD
@@ -222,15 +177,7 @@ export function readLocalBestSectors(
   slug: string,
   versionHash: string,
 ): SectorDuration[] | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(bestSectorsKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = SectorDurationsArraySchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
+  return readJson(bestSectorsKey(slug, versionHash), SectorDurationsArraySchema)
 }
 
 export function writeLocalBestSectors(
@@ -238,16 +185,7 @@ export function writeLocalBestSectors(
   versionHash: string,
   sectors: readonly SectorDuration[],
 ): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      bestSectorsKey(slug, versionHash),
-      JSON.stringify(sectors),
-    )
-  } catch {
-    // Best-sectors persistence is a best-effort UX enhancement. A quota
-    // failure should never break the lap-complete flow.
-  }
+  writeJson(bestSectorsKey(slug, versionHash), sectors)
 }
 
 // Per-track engagement stats (lap count, total drive time, session count,
@@ -266,15 +204,7 @@ export function readTrackStats(
   slug: string,
   versionHash: string,
 ): TrackStats | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(trackStatsKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = TrackStatsSchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
+  return readJson(trackStatsKey(slug, versionHash), TrackStatsSchema)
 }
 
 export function writeTrackStats(
@@ -282,21 +212,12 @@ export function writeTrackStats(
   versionHash: string,
   stats: TrackStats,
 ): void {
-  if (typeof window === 'undefined') return
   // Defensive: refuse to persist an obviously corrupt snapshot so a single
   // bad write does not poison the stored record. The schema mirrors the
   // reader's shape so a write that survives this check will round-trip.
   const parsed = TrackStatsSchema.safeParse(stats)
   if (!parsed.success) return
-  try {
-    window.localStorage.setItem(
-      trackStatsKey(slug, versionHash),
-      JSON.stringify(parsed.data),
-    )
-  } catch {
-    // Engagement stats are a best-effort UX enhancement. A quota failure
-    // should never break the lap-complete flow.
-  }
+  writeJson(trackStatsKey(slug, versionHash), parsed.data)
 }
 
 // Build a starting snapshot for a fresh slug + version. Re-exports the pure
@@ -314,12 +235,8 @@ export function readLocalBestPbStreak(
   slug: string,
   versionHash: string,
 ): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(pbStreakBestKey(slug, versionHash))
-  if (!raw) return null
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return null
-  return Math.floor(n)
+  const n = readNumber(pbStreakBestKey(slug, versionHash), positiveNumber)
+  return n === null ? null : Math.floor(n)
 }
 
 export function writeLocalBestPbStreak(
@@ -327,17 +244,8 @@ export function writeLocalBestPbStreak(
   versionHash: string,
   streak: number,
 ): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(streak) || streak <= 0) return
-  try {
-    window.localStorage.setItem(
-      pbStreakBestKey(slug, versionHash),
-      String(Math.floor(streak)),
-    )
-  } catch {
-    // PB streak persistence is a best-effort UX enhancement. A quota
-    // failure should never break the lap-complete flow.
-  }
+  writeNumber(pbStreakBestKey(slug, versionHash), Math.floor(streak))
 }
 
 // Most-recent-submit pointer for the friend-challenge link. Updated on every
@@ -347,15 +255,7 @@ export function readLastSubmit(
   slug: string,
   versionHash: string,
 ): LastSubmit | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(lastSubmitNonceKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = LastSubmitSchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : null
-  } catch {
-    return null
-  }
+  return readJson(lastSubmitNonceKey(slug, versionHash), LastSubmitSchema)
 }
 
 export function writeLastSubmit(
@@ -363,20 +263,12 @@ export function writeLastSubmit(
   versionHash: string,
   value: LastSubmit,
 ): void {
-  if (typeof window === 'undefined') return
   // Validate before write so an upstream caller passing garbage cannot poison
   // the localStorage entry. A failed validation is a no-op rather than a
   // throw so the caller's lap-complete path keeps working.
   const parsed = LastSubmitSchema.safeParse(value)
   if (!parsed.success) return
-  try {
-    window.localStorage.setItem(
-      lastSubmitNonceKey(slug, versionHash),
-      JSON.stringify(parsed.data),
-    )
-  } catch {
-    // Quota or storage disabled. Best-effort, never breaks gameplay.
-  }
+  writeJson(lastSubmitNonceKey(slug, versionHash), parsed.data)
 }
 
 // Per-(slug, versionHash) best reaction time at the GO light, in milliseconds.
@@ -389,16 +281,11 @@ export function readLocalBestReaction(
   slug: string,
   versionHash: string,
 ): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(reactionTimeBestKey(slug, versionHash))
-  if (!raw) return null
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return null
-  // Sanity cap: anything above 30s is almost certainly garbage. Mirrors the
-  // pure helper's MAX_REASONABLE_REACTION_MS so the storage layer agrees with
-  // the renderer on what counts as "a real reaction time".
-  if (n > 30_000) return null
-  return Math.round(n)
+  const n = readNumber(
+    reactionTimeBestKey(slug, versionHash),
+    positiveBelow(REACTION_TIME_CAP_MS),
+  )
+  return n === null ? null : Math.round(n)
 }
 
 export function writeLocalBestReaction(
@@ -406,45 +293,23 @@ export function writeLocalBestReaction(
   versionHash: string,
   reactionMs: number,
 ): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(reactionMs) || reactionMs <= 0) return
-  if (reactionMs > 30_000) return
-  try {
-    window.localStorage.setItem(
-      reactionTimeBestKey(slug, versionHash),
-      String(Math.round(reactionMs)),
-    )
-  } catch {
-    // Reaction-time persistence is a best-effort UX enhancement. A quota
-    // failure should never break the race-start flow.
-  }
+  if (reactionMs > REACTION_TIME_CAP_MS) return
+  writeNumber(reactionTimeBestKey(slug, versionHash), Math.round(reactionMs))
 }
 
 // Lifetime best reaction time across every (slug, versionHash). One number,
 // one key, no slug namespace. Lets the home page and the in-race HUD chip
 // surface a single "overall best" that the player can chase on any track.
 export function readLifetimeBestReaction(): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(REACTION_TIME_LIFETIME_KEY)
-  if (!raw) return null
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return null
-  if (n > 30_000) return null
-  return Math.round(n)
+  const n = readNumber(REACTION_TIME_LIFETIME_KEY, positiveBelow(REACTION_TIME_CAP_MS))
+  return n === null ? null : Math.round(n)
 }
 
 export function writeLifetimeBestReaction(reactionMs: number): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(reactionMs) || reactionMs <= 0) return
-  if (reactionMs > 30_000) return
-  try {
-    window.localStorage.setItem(
-      REACTION_TIME_LIFETIME_KEY,
-      String(Math.round(reactionMs)),
-    )
-  } catch {
-    // Best-effort, never breaks gameplay.
-  }
+  if (reactionMs > REACTION_TIME_CAP_MS) return
+  writeNumber(REACTION_TIME_LIFETIME_KEY, Math.round(reactionMs))
 }
 
 // Per-track best leaderboard placement. Stored alongside the local PB lap
@@ -462,17 +327,10 @@ export function readLocalBestRank(
   slug: string,
   versionHash: string,
 ): LeaderboardRankInfo | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(bestRankKey(slug, versionHash))
-  if (!raw) return null
-  try {
-    const parsed = StoredRankSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return null
-    if (parsed.data.rank > parsed.data.boardSize) return null
-    return parsed.data
-  } catch {
-    return null
-  }
+  const parsed = readJson(bestRankKey(slug, versionHash), StoredRankSchema)
+  if (parsed === null) return null
+  if (parsed.rank > parsed.boardSize) return null
+  return parsed
 }
 
 export function writeLocalBestRank(
@@ -480,17 +338,11 @@ export function writeLocalBestRank(
   versionHash: string,
   info: LeaderboardRankInfo,
 ): void {
-  if (typeof window === 'undefined') return
   if (!isLeaderboardRankInfo(info)) return
-  try {
-    window.localStorage.setItem(
-      bestRankKey(slug, versionHash),
-      JSON.stringify({ rank: info.rank, boardSize: info.boardSize }),
-    )
-  } catch {
-    // Rank persistence is a best-effort UX enhancement. A quota failure
-    // should never break the lap-submit flow.
-  }
+  writeJson(bestRankKey(slug, versionHash), {
+    rank: info.rank,
+    boardSize: info.boardSize,
+  })
 }
 
 // Per-(slug, versionHash) best top speed reached on the layout, in raw "us"
@@ -503,13 +355,11 @@ export function readLocalBestTopSpeed(
   slug: string,
   versionHash: string,
 ): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(topSpeedBestKey(slug, versionHash))
-  if (!raw) return null
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return null
-  if (n > TOP_SPEED_STORAGE_CAP_US) return null
-  return Math.round(n * 10) / 10
+  const n = readNumber(
+    topSpeedBestKey(slug, versionHash),
+    positiveBelow(TOP_SPEED_STORAGE_CAP_US),
+  )
+  return n === null ? null : Math.round(n * 10) / 10
 }
 
 export function writeLocalBestTopSpeed(
@@ -517,18 +367,9 @@ export function writeLocalBestTopSpeed(
   versionHash: string,
   topSpeedUs: number,
 ): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(topSpeedUs) || topSpeedUs <= 0) return
   if (topSpeedUs > TOP_SPEED_STORAGE_CAP_US) return
-  try {
-    window.localStorage.setItem(
-      topSpeedBestKey(slug, versionHash),
-      String(Math.round(topSpeedUs * 10) / 10),
-    )
-  } catch {
-    // Top-speed persistence is a best-effort UX enhancement. A quota failure
-    // should never break the lap-complete flow.
-  }
+  writeNumber(topSpeedBestKey(slug, versionHash), Math.round(topSpeedUs * 10) / 10)
 }
 
 // Lifetime best top speed across every (slug, versionHash). One number, one
@@ -536,25 +377,12 @@ export function writeLocalBestTopSpeed(
 // chip surface a single "fastest you've ever gone" target the player can chase
 // on any track.
 export function readLifetimeBestTopSpeed(): number | null {
-  if (typeof window === 'undefined') return null
-  const raw = window.localStorage.getItem(TOP_SPEED_LIFETIME_KEY)
-  if (!raw) return null
-  const n = Number(raw)
-  if (!Number.isFinite(n) || n <= 0) return null
-  if (n > TOP_SPEED_STORAGE_CAP_US) return null
-  return Math.round(n * 10) / 10
+  const n = readNumber(TOP_SPEED_LIFETIME_KEY, positiveBelow(TOP_SPEED_STORAGE_CAP_US))
+  return n === null ? null : Math.round(n * 10) / 10
 }
 
 export function writeLifetimeBestTopSpeed(topSpeedUs: number): void {
-  if (typeof window === 'undefined') return
   if (!Number.isFinite(topSpeedUs) || topSpeedUs <= 0) return
   if (topSpeedUs > TOP_SPEED_STORAGE_CAP_US) return
-  try {
-    window.localStorage.setItem(
-      TOP_SPEED_LIFETIME_KEY,
-      String(Math.round(topSpeedUs * 10) / 10),
-    )
-  } catch {
-    // Best-effort, never breaks gameplay.
-  }
+  writeNumber(TOP_SPEED_LIFETIME_KEY, Math.round(topSpeedUs * 10) / 10)
 }

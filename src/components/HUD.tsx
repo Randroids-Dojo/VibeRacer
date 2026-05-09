@@ -43,18 +43,8 @@ import {
 import { type SpeedUnit } from '@/lib/speedometer'
 import type { TransmissionMode } from '@/game/transmission'
 import { selectHudNotificationStack } from '@/lib/hudNotifications'
-
-function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  const mm = String(minutes).padStart(2, '0')
-  const ss = String(seconds).padStart(2, '0')
-  const mmm = String(millis).padStart(3, '0')
-  return `${mm}:${ss}.${mmm}`
-}
+import { formatLapTime, formatSectorTime } from '@/lib/timeFormat'
+import { hexWithAlpha } from '@/lib/colorUtils'
 
 interface HudProps {
   currentMs: number
@@ -207,16 +197,12 @@ const HUD_ANIMATIONS_CSS = `
 }
 `
 
-// Format a sub-lap sector duration as S.mmm (e.g. "1.421"). Sectors that
-// stretch past 60 s fall back to the same mm:ss.mmm format the lap timer
-// uses so the badge never overflows its slot or reads as a tiny number.
+// Sector PB badge uses the shared sector formatter so it picks up the
+// "0.000" zero fallback (the badge never wants the dashed placeholder; it
+// is rendered only after the sector time is known to be valid).
 function formatSectorDuration(ms: number): string {
   if (!Number.isFinite(ms) || ms < 0) return '0.000'
-  const total = Math.max(0, Math.round(ms))
-  if (total >= 60000) return formatLapTime(total)
-  const seconds = Math.floor(total / 1000)
-  const millis = total % 1000
-  return `${seconds}.${String(millis).padStart(3, '0')}`
+  return formatSectorTime(ms)
 }
 
 function SectorPbBadge({
@@ -530,16 +516,6 @@ function TopSpeedPbChip({
       )}
     </div>
   )
-}
-
-// Append an alpha component to a "#rrggbb" color. Returns rgba(r,g,b,a).
-// Returns the original color unchanged when the input is not a 7-char hex.
-function hexWithAlpha(hex: string, alpha: number): string {
-  if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r}, ${g}, ${b}, ${alpha})`
 }
 
 // Theoretical-best lap block. Sums the player's best ever per-sector

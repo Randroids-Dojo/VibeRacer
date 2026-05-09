@@ -20,6 +20,7 @@ import {
 } from '@/lib/leaderboard'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { shouldOfferChase, type RivalSelection } from '@/lib/rivalGhost'
+import { formatLapTime } from '@/lib/timeFormat'
 import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
 
 interface LeaderboardProps {
@@ -124,13 +125,6 @@ type VersionsState =
   | { kind: 'ready'; latestHash: string | null; versions: VersionOption[] }
   | { kind: 'error' }
 
-function formatLapTime(ms: number): string {
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
-}
 
 function shortHash(hash: string): string {
   return hash.slice(0, 8)

@@ -1,4 +1,5 @@
 'use client'
+import { formatDragTime as formatTime } from '@/lib/timeFormat'
 
 interface DragHUDProps {
   elapsedMs: number
@@ -7,11 +8,6 @@ interface DragHUDProps {
   reactionTimeMs: number | null
   splits: number[]
   topSpeed: number
-}
-
-function formatTime(ms: number): string {
-  const seconds = ms / 1000
-  return seconds.toFixed(2)
 }
 
 const overlayWrapStyle: React.CSSProperties = {

@@ -5,6 +5,7 @@ import {
   type AchievementId,
   type AchievementMap,
 } from '@/game/achievements'
+import { readJson, removeKey, writeJson } from './storage'
 
 // Cross-track lifetime achievements live under a single localStorage key.
 // Most achievements are about the player's overall journey, not a single
@@ -31,44 +32,21 @@ const AchievementUnlockSchema = z.object({
 const AchievementMapSchema = z.record(z.string(), AchievementUnlockSchema)
 
 export function readAchievements(): AchievementMap {
-  if (typeof window === 'undefined') return {}
-  let raw: string | null = null
-  try {
-    raw = window.localStorage.getItem(ACHIEVEMENTS_STORAGE_KEY)
-  } catch {
-    // Hostile or quota-blocked storage. Treat as no unlocks yet so the pane
-    // still renders rather than crashing.
-    return {}
+  const parsed = readJson(ACHIEVEMENTS_STORAGE_KEY, AchievementMapSchema)
+  if (!parsed) return {}
+  // Filter out any ids we no longer know about so a stale stored payload
+  // (e.g. from a renamed achievement) does not poison the renderer.
+  const out: AchievementMap = {}
+  for (const [key, value] of Object.entries(parsed)) {
+    if (!isAchievementId(key)) continue
+    out[key as AchievementId] = value
   }
-  if (!raw) return {}
-  try {
-    const parsed = AchievementMapSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return {}
-    // Filter out any ids we no longer know about so a stale stored payload
-    // (e.g. from a renamed achievement) does not poison the renderer.
-    const out: AchievementMap = {}
-    for (const [key, value] of Object.entries(parsed.data)) {
-      if (!isAchievementId(key)) continue
-      out[key as AchievementId] = value
-    }
-    return out
-  } catch {
-    return {}
-  }
+  return out
 }
 
 export function writeAchievements(map: AchievementMap): void {
+  writeJson(ACHIEVEMENTS_STORAGE_KEY, map)
   if (typeof window === 'undefined') return
-  try {
-    window.localStorage.setItem(
-      ACHIEVEMENTS_STORAGE_KEY,
-      JSON.stringify(map),
-    )
-  } catch {
-    // Achievements are a best-effort UX layer. Quota exhaustion should never
-    // break the lap-complete flow.
-    return
-  }
   try {
     window.dispatchEvent(
       new CustomEvent<AchievementMap>(ACHIEVEMENTS_EVENT, { detail: map }),
@@ -83,24 +61,11 @@ const SlugListSchema = z.array(z.string().min(1))
 // Set of distinct slugs the player has touched. Returned as a fresh array so
 // callers can mutate freely without affecting future reads.
 export function readVisitedSlugs(): string[] {
-  if (typeof window === 'undefined') return []
-  let raw: string | null = null
-  try {
-    raw = window.localStorage.getItem(SLUG_VISITS_STORAGE_KEY)
-  } catch {
-    return []
-  }
-  if (!raw) return []
-  try {
-    const parsed = SlugListSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return []
-    // Dedupe defensively in case a hand-edited payload has duplicates.
-    const seen = new Set<string>()
-    for (const s of parsed.data) seen.add(s)
-    return Array.from(seen)
-  } catch {
-    return []
-  }
+  const parsed = readJson(SLUG_VISITS_STORAGE_KEY, SlugListSchema)
+  if (!parsed) return []
+  // Dedupe defensively in case a hand-edited payload has duplicates.
+  const seen = new Set<string>(parsed)
+  return Array.from(seen)
 }
 
 // Record a slug visit. Returns the new distinct count so the caller can pass
@@ -110,16 +75,7 @@ export function recordSlugVisit(slug: string): number {
   const seen = new Set<string>(current)
   seen.add(slug)
   if (seen.size === current.length) return current.length
-  if (typeof window === 'undefined') return seen.size
-  try {
-    window.localStorage.setItem(
-      SLUG_VISITS_STORAGE_KEY,
-      JSON.stringify(Array.from(seen)),
-    )
-  } catch {
-    // Quota or disabled storage. Best-effort: return the in-memory count so
-    // the achievement evaluator still runs against the freshest known set.
-  }
+  writeJson(SLUG_VISITS_STORAGE_KEY, Array.from(seen))
   return seen.size
 }
 
@@ -127,11 +83,6 @@ export function recordSlugVisit(slug: string): number {
 // flows should never call this; the achievements pane intentionally has no
 // "reset" button so a player cannot accidentally undo their progress.
 export function _clearAchievementsForTesting(): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(ACHIEVEMENTS_STORAGE_KEY)
-    window.localStorage.removeItem(SLUG_VISITS_STORAGE_KEY)
-  } catch {
-    // ignore
-  }
+  removeKey(ACHIEVEMENTS_STORAGE_KEY)
+  removeKey(SLUG_VISITS_STORAGE_KEY)
 }

@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { readJson, writeJson } from './storage'
 
 // User-tunable audio settings. Persisted to localStorage so the choice
 // follows the player across sessions and slugs without server state.
@@ -115,26 +116,12 @@ export function effectiveSfxGain(s: AudioSettings): number {
 }
 
 export function readStoredAudioSettings(): AudioSettings {
-  if (typeof window === 'undefined') return cloneDefaultAudioSettings()
-  try {
-    const raw = window.localStorage?.getItem(AUDIO_SETTINGS_STORAGE_KEY)
-    if (!raw) return cloneDefaultAudioSettings()
-    const parsed = AudioSettingsSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return cloneDefaultAudioSettings()
-    return parsed.data
-  } catch {
-    return cloneDefaultAudioSettings()
-  }
+  return (
+    readJson(AUDIO_SETTINGS_STORAGE_KEY, AudioSettingsSchema) ??
+    cloneDefaultAudioSettings()
+  )
 }
 
 export function writeStoredAudioSettings(settings: AudioSettings): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage?.setItem(
-      AUDIO_SETTINGS_STORAGE_KEY,
-      JSON.stringify(settings),
-    )
-  } catch {
-    // localStorage may be unavailable (private mode, quota). Fail silently.
-  }
+  writeJson(AUDIO_SETTINGS_STORAGE_KEY, settings)
 }

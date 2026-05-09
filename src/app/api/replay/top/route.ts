@@ -1,6 +1,7 @@
 import { NextResponse, type NextRequest } from 'next/server'
 import { SlugSchema, VersionHashSchema } from '@/lib/schemas'
 import { getKv, kvKeys } from '@/lib/kv'
+import { kvGetJson } from '@/lib/kvClient'
 import { ReplaySchema } from '@/lib/replay'
 
 export const runtime = 'nodejs'
@@ -35,15 +36,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: 'no replay' }, { status: 404 })
     }
 
-    // Upstash returns parsed JSON for values stored as JSON strings; tolerate
-    // the raw-string case too in case storage drivers diverge.
-    const raw = await kv.get(kvKeys.lapReplay(nonce))
-    if (!raw) {
-      return NextResponse.json({ error: 'no replay' }, { status: 404 })
-    }
-    const value = typeof raw === 'string' ? JSON.parse(raw) : raw
-    const parsed = ReplaySchema.safeParse(value)
-    if (!parsed.success) {
+    const replay = await kvGetJson(kvKeys.lapReplay(nonce), ReplaySchema)
+    if (!replay) {
       return NextResponse.json({ error: 'no replay' }, { status: 404 })
     }
 
@@ -68,7 +62,7 @@ export async function GET(req: NextRequest) {
       initials = null
     }
 
-    return NextResponse.json({ ...parsed.data, initials })
+    return NextResponse.json({ ...replay, initials })
   } catch {
     return NextResponse.json({ error: 'no replay' }, { status: 404 })
   }

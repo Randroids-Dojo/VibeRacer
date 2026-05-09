@@ -16,6 +16,7 @@
  * flow is never broken by a corrupt or full storage.
  */
 import { z } from 'zod'
+import { readJson, writeJson } from './storage'
 
 // Maximum number of PB-progression entries kept per (slug, versionHash). A
 // single track is unlikely to ever produce 50 distinct PB laps in the wild
@@ -187,15 +188,7 @@ export function readPbHistory(
   slug: string,
   versionHash: string,
 ): PbHistoryEntry[] {
-  if (typeof window === 'undefined') return []
-  const raw = window.localStorage.getItem(pbHistoryKey(slug, versionHash))
-  if (!raw) return []
-  try {
-    const parsed = PbHistoryArraySchema.safeParse(JSON.parse(raw))
-    return parsed.success ? parsed.data : []
-  } catch {
-    return []
-  }
+  return readJson(pbHistoryKey(slug, versionHash), PbHistoryArraySchema) ?? []
 }
 
 /**
@@ -217,14 +210,6 @@ export function appendStoredPbHistory(
   // returns a clone of the prior list in that case, so length comparison
   // catches it).
   if (next.length === prev.length) return next
-  try {
-    window.localStorage.setItem(
-      pbHistoryKey(slug, versionHash),
-      JSON.stringify(next),
-    )
-  } catch {
-    // Quota or storage disabled. PB history is a best-effort UX enhancement;
-    // a write failure should never break the lap-complete flow.
-  }
+  writeJson(pbHistoryKey(slug, versionHash), next)
   return next
 }

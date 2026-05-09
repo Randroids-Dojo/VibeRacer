@@ -1,14 +1,17 @@
 import { NextResponse, type NextRequest } from 'next/server'
+import { z } from 'zod'
 import {
   SlugSchema,
   VersionHashSchema,
   TrackSchema,
+  TrackVersionSchema,
   type Piece,
   type TrackVersion,
 } from '@/lib/schemas'
 import { hashTrack } from '@/lib/hashTrack'
 import { validateClosedLoop } from '@/game/track'
 import { getKv, kvKeys } from '@/lib/kv'
+import { kvGetJson } from '@/lib/kvClient'
 import { isValidRacerId, RACER_ID_COOKIE } from '@/lib/racerId'
 import { convertV1Pieces } from '@/lib/trackVersion'
 
@@ -44,8 +47,9 @@ export async function GET(
     return NextResponse.json({ slug, track: null, versions: [] })
   }
 
-  const version = await kv.get<TrackVersion>(
+  const version = await kvGetJson(
     kvKeys.trackVersion(slug, versionHash),
+    TrackVersionSchema,
   )
   const versions =
     (await kv.lrange(kvKeys.trackVersions(slug), 0, 49)) ?? []
@@ -54,14 +58,27 @@ export async function GET(
     slug,
     versionHash,
     track: version,
-    versions: versions.map((raw) => {
-      try {
-        return JSON.parse(raw) as { hash: string; createdAt: string }
-      } catch {
-        return null
-      }
-    }).filter(Boolean),
+    versions: versions.map(parseVersionListEntry).filter(isPresent),
   })
+}
+
+const VersionListEntrySchema = z.object({
+  hash: z.string().min(1),
+  createdAt: z.string().min(1),
+})
+type VersionListEntry = z.infer<typeof VersionListEntrySchema>
+
+function parseVersionListEntry(raw: string): VersionListEntry | null {
+  try {
+    const parsed = VersionListEntrySchema.safeParse(JSON.parse(raw))
+    return parsed.success ? parsed.data : null
+  } catch {
+    return null
+  }
+}
+
+function isPresent<T>(value: T | null): value is T {
+  return value !== null
 }
 
 export async function PUT(

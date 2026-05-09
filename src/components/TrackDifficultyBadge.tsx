@@ -6,6 +6,7 @@ import {
   type TrackDifficultyInfo,
 } from '@/game/trackDifficulty'
 import type { Piece } from '@/lib/schemas'
+import { hexLightenForText, hexWithAlpha } from '@/lib/colorUtils'
 
 /**
  * Compact pill that surfaces a track's difficulty rating computed from its
@@ -60,34 +61,6 @@ export function TrackDifficultyBadge({
       <span>{label}</span>
     </span>
   )
-}
-
-// Convert "#rrggbb" to "rgba(r,g,b,a)" so the badge background can be
-// translucent without depending on the consumer to predefine an alpha hex.
-function hexWithAlpha(hex: string, alpha: number): string {
-  if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) {
-    return `rgba(255,255,255,${alpha})`
-  }
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  return `rgba(${r},${g},${b},${alpha})`
-}
-
-// Lift the text color off the saturated tier hex so it stays readable on a
-// translucent dark background. Mixes the tier color toward white by 35%.
-function hexLightenForText(hex: string): string {
-  if (typeof hex !== 'string' || !/^#[0-9a-fA-F]{6}$/.test(hex)) {
-    return '#ffffff'
-  }
-  const r = parseInt(hex.slice(1, 3), 16)
-  const g = parseInt(hex.slice(3, 5), 16)
-  const b = parseInt(hex.slice(5, 7), 16)
-  const mix = 0.35
-  const lr = Math.round(r + (255 - r) * mix)
-  const lg = Math.round(g + (255 - g) * mix)
-  const lb = Math.round(b + (255 - b) * mix)
-  return `rgb(${lr},${lg},${lb})`
 }
 
 const baseStyle: React.CSSProperties = {

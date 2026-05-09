@@ -17,6 +17,7 @@ import {
   sanitizeDailyStreakDays,
   type DailyStreakDay,
 } from '@/game/dailyStreak'
+import { readJson, removeKey, writeJson } from './storage'
 
 // localStorage key for the cross-track race-day history. Stored as a
 // JSON-serialized array of `YYYY-MM-DD` strings.
@@ -38,21 +39,9 @@ const StoredDailyStreakSchema = z.object({
  * quota-blocked storage.
  */
 export function readDailyStreakDays(): DailyStreakDay[] {
-  if (typeof window === 'undefined') return []
-  let raw: string | null = null
-  try {
-    raw = window.localStorage.getItem(DAILY_STREAK_STORAGE_KEY)
-  } catch {
-    return []
-  }
-  if (!raw) return []
-  try {
-    const parsed = StoredDailyStreakSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return []
-    return sanitizeDailyStreakDays(parsed.data.days)
-  } catch {
-    return []
-  }
+  const parsed = readJson(DAILY_STREAK_STORAGE_KEY, StoredDailyStreakSchema)
+  if (!parsed) return []
+  return sanitizeDailyStreakDays(parsed.days)
 }
 
 /**
@@ -73,16 +62,8 @@ export function recordDailyStreakDay(dateKey: string): DailyStreakDay[] {
     // caller's `if (next !== prev)` style cheap.
     return prev
   }
+  writeJson(DAILY_STREAK_STORAGE_KEY, { days: next })
   if (typeof window === 'undefined') return next
-  try {
-    window.localStorage.setItem(
-      DAILY_STREAK_STORAGE_KEY,
-      JSON.stringify({ days: next }),
-    )
-  } catch {
-    // Best-effort: a failed write should not break the lap-complete flow.
-    return next
-  }
   try {
     window.dispatchEvent(
       new CustomEvent<DailyStreakDay[]>(DAILY_STREAK_EVENT, { detail: next }),
@@ -100,10 +81,5 @@ export function recordDailyStreakDay(dateKey: string): DailyStreakDay[] {
  * cannot accidentally undo their progress.
  */
 export function _clearDailyStreakForTesting(): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(DAILY_STREAK_STORAGE_KEY)
-  } catch {
-    // ignore
-  }
+  removeKey(DAILY_STREAK_STORAGE_KEY)
 }
