@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-08, Drag Racing Mode (full mode, six slices in one branch)
+
+- Branch: `claude/add-drag-racing-mode-slvQ7`
+- Changed: shipped the drag racing mode end to end at `/drag` and `/drag/<strip>`. Four predefined strips (Salt Flats, Coastal, Alpine, Harbor) each ship with a biome, weather, time of day, and a vertical profile that gives them visible hill shape. Vehicle building is parts based: tires, body, engine, transmission picked from a 5x4x5x4 catalog in `src/lib/dragParts.ts`. The garage UI (`DragGarage`) shows the live derived stats; players cannot edit `CarParams` directly in drag mode. Slope physics is wired through an additive optional `externalLongitudinalAccel` arg on `stepPhysics` (default 0 so closed loop is byte identical) and `dragTick` reads `slopeAt(profile, arcLengthS)` per frame to compute the gravity along slope term. Jump start is "buffet dampening" rather than a DQ: pre GO throttle flips a fouled flag and seeds a heavy accel multiplier that decays exponentially back to normal. Ghost rotation rules (`selectDragGhost`) cover top, next faster, own PB, and none. The submit route accepts `mode: 'drag'`, persists the loadout, top speed, foul flag, and reaction time alongside existing lap meta, and the leaderboard reader surfaces them. The version hash for each strip is computed in pure JS so the same module works in both Node and the browser bundle, and is stable against cosmetic edits but rotates on any physics affecting field. Title screen gains a Drag Racing tile next to Play; the closed loop racing flow is unchanged.
+- Verification: dash checks, `tsc --noEmit`, `pnpm test --run` passed with 3392 tests (65 new), `next build` succeeds with all four `/drag/<strip>` routes prerendered as static.
+- Assumptions: drag tracks live at reserved slugs under `/drag/`, deliberately exempt from the "every URL is a track" pillar. Loadouts persist to localStorage per strip plus a last loaded fallback. The current visual hill rendering reuses the existing flat road geometry and applies the profile only to the car's y / pitch each frame, so the ground geometry stays flat under the car for now; the slope physics still bites because it is computed from the profile not the geometry.
+- GDD coverage: new short section in `docs/GDD.md` describing the four reserved slugs and the parts driven physics. Closed loop pillar gains a brief callout that drag mode is a finite exception.
+- Followups: visible road ribbon following the profile (rather than a flat road plus an offset car), a richer christmas tree with staggered ambers, and a weather override toggle inside the strip are all on `docs/FOLLOWUPS.md` for a future slice. The current ghost rotation reuses the closed loop replay infrastructure; surfacing the ghost car's loadout next to the nameplate is also a followup.
+
 ## 2026-05-08, Portable Game Modules
 
 - Branch: `claude/portable-game-modules`
