@@ -663,6 +663,7 @@ export function DragRace({ slug }: DragRaceProps) {
           finishEvent={finishEvent}
           leaderboard={leaderboard}
           ghostSource={ghost.source}
+          ghostNonce={ghost.nonce}
           onRaceAgain={onRaceAgain}
           onChangeParts={onChangeParts}
         />

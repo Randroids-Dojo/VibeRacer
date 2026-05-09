@@ -10,6 +10,11 @@ interface DragSessionSummaryProps {
   finishEvent: DragLapCompleteEvent
   leaderboard: readonly LeaderboardEntry[]
   ghostSource: DragGhostSource
+  // Nonce of the row the player just raced against. Drives the small
+  // GHOST chip in the leaderboard list so the player can see exactly
+  // which time they were chasing. null when no ghost was active
+  // (empty board).
+  ghostNonce: string | null
   onRaceAgain: () => void
   onChangeParts: () => void
 }
@@ -23,6 +28,7 @@ export function DragSessionSummary({
   finishEvent,
   leaderboard,
   ghostSource,
+  ghostNonce,
   onRaceAgain,
   onChangeParts,
 }: DragSessionSummaryProps) {
@@ -137,6 +143,9 @@ export function DragSessionSummary({
                         {e.loadout.tire} / {e.loadout.engine}
                       </span>
                     )}
+                    {ghostNonce !== null && e.nonce === ghostNonce && (
+                      <GhostChip />
+                    )}
                     {e.fouled === true && <FoulChip />}
                     {typeof e.topSpeed === 'number' && (
                       <Chip
@@ -236,6 +245,29 @@ function Chip({ title, label }: { title: string; label: string }) {
       }}
     >
       {label}
+    </span>
+  )
+}
+
+// Cyan tag pinned to the row the player was chasing during the run that
+// just finished. Color matches the in-scene ghost mesh's translucent
+// cyan box so the player can connect "the cyan car next to me" with the
+// row on the summary screen.
+function GhostChip() {
+  return (
+    <span
+      title="The time you were chasing this run."
+      style={{
+        padding: '1px 6px',
+        borderRadius: 999,
+        background: '#0e7490',
+        color: '#fff',
+        fontSize: 10,
+        letterSpacing: 1,
+        fontWeight: 700,
+      }}
+    >
+      GHOST
     </span>
   )
 }
