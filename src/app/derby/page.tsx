@@ -21,14 +21,33 @@ function emptyPreviews(): ArenaPreview[] {
   }))
 }
 
-// Derby leaderboard reads use a separate path from the loop / drag boards
-// because the entry shape is different (DerbyLeaderboardEntrySchema).
-// Slice 10 lands the actual reader; for slice 6 we ship the hub with
-// "No times yet" placeholders, which is also the safe fallback when KV is
-// not configured.
 async function loadTopTimes(): Promise<ArenaPreview[]> {
   if (!hasKvConfigured()) return emptyPreviews()
-  return emptyPreviews()
+  try {
+    const { getKv } = await import('@/lib/kv')
+    const { readDerbyTopEntry } = await import('@/lib/derbyLeaderboard')
+    const { DERBY_VEHICLES } = await import('@/lib/derbyVehicles')
+    const kv = getKv()
+    return await Promise.all(
+      ALL_DERBY_ARENAS.map(async (arena) => {
+        try {
+          const top = await readDerbyTopEntry(kv, arena.slug)
+          return {
+            arena,
+            topTimeMs: top?.roundTimeMs ?? null,
+            topInitials: top?.initials ?? null,
+            topVehicle: top
+              ? DERBY_VEHICLES[top.vehicle].displayName
+              : null,
+          }
+        } catch {
+          return { arena, topTimeMs: null, topInitials: null, topVehicle: null }
+        }
+      }),
+    )
+  } catch {
+    return emptyPreviews()
+  }
 }
 
 function formatTime(ms: number): string {

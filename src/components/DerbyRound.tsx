@@ -8,6 +8,7 @@ import {
   type DerbyVehicleConfig,
 } from '@/lib/derbyVehicles'
 import type { DerbyArenaSlug, DerbyVehicleType } from '@/lib/schemas'
+import { submitDerbyRun } from '@/lib/derbySubmit'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import {
   DerbyHUD,
@@ -114,10 +115,22 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
   }, [])
 
   const onRoundEnd = useCallback(
-    (_outcome: 'win' | 'loss' | 'timeout', s: DerbyRoundSummary) => {
+    (outcome: 'win' | 'loss' | 'timeout', s: DerbyRoundSummary) => {
       setSummary(s)
+      // Best-effort submit. Wins land on the leaderboard via writeDerbyEntry;
+      // losses and timeouts hit the server too so a future analytics path
+      // can record participation, but the route only ZADDs on outcome win.
+      submitDerbyRun({
+        arena: arenaSlug,
+        vehicle,
+        outcome,
+        roundTimeMs: s.roundTimeMs,
+        finalHealths: s.finalHealths,
+        kills: s.kills,
+        scorePoints: s.scorePoints,
+      }).catch(() => {})
     },
-    [],
+    [arenaSlug, vehicle],
   )
 
   // popupsTick reads popupsRef into a memoized HUD state so the HUD
