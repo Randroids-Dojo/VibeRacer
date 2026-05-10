@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-10, Derby Mode
+
+- Branch: `claude/add-derby-game-mode-fu5ca`
+- Changed: added a third top-level mode (Derby) in 11 slices on the same branch. Slice list: (1) schemas, KV keys, and arena/vehicle catalogs; (2) pure-logic damage model with attacker attribution and proportional split; (3) multi-vehicle tick and round state with deterministic init; (4) seek-then-ram AI controller; (5) arena geometry helpers, `dirt` surface key, Three.js disk plus wall mesh; (6) hub UI at `/derby`, per-arena route, and vehicle picker; (7) DerbyRound + DerbyCanvas + DerbyHUD shell with placeholder visuals and damage popup pool; (8) vehicle loader with named-submesh contract (`body`, `door_l/r`, `hood`, `trunk`, `headlight_l/r`, `taillight_l/r`, four `wheel_*`); (9) damage visualization (paint darkening, broken lights, smoke and fire markers, panel detach with ballistic debris); (10) signed-token persistence with `/api/derby/{start,submit,leaderboard}` and per-arena fastest-win KV ZSETs reusing `RACE_SIGNING_SECRET`; (11) docs sweep (this entry, GDD section 20, FOLLOWUPS, GDD coverage row).
+- Verification: `npm run type-check`, `npm run test` (full Vitest suite runs green; Derby slices added 89 new unit tests across schemas, catalogs, damage, vehicle state, tick, AI, arena, vehicle loader, damage visuals, debris, and three API routes), `npm run build` (production build green; both `/derby` and the `/derby/[arena]` SSG routes appear in the output). Em-dash and en-dash sweeps clean across every Derby file. Playwright e2e spec at `tests/e2e/derby.spec.ts` covers home -> hub -> arena -> picker -> HUD; not run in this environment.
+- Assumptions: vehicle GLB sourcing is a parallel research track. v1 ships placeholder geometry that satisfies the named-submesh contract end to end so damage and panel detach work today; a real GLB swap is a single-branch change to the loader. Cross-domain forgery between loop and derby tokens is blocked by their structurally distinct payloads (derby has `arena` / `vehicle` / `configHash`; loop has `slug` / `versionHash`), so reusing `RACE_SIGNING_SECRET` is safe.
+- GDD coverage: added Derby section 20 with subsystem map. New `GDD_COVERAGE.json` row id 20 marks the mode `done` against shipped catalogs, game logic, UI routes, persistence, and the Playwright smoke. Followups under "Derby mode followups" track real GLB swap, AI difficulty knob, dent decals, particle smoke / fire, touch / gamepad parity, tuning pass, leaderboard pagination plus initials editor, and per-vehicle tabs.
+- Followups: see FOLLOWUPS.md "Derby mode followups".
+
 ## 2026-05-09, Spiral Dependency Upgrade Gate adoption + audit pass
 
 - Branch: `main` (direct, doc-only).

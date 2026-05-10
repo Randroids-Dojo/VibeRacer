@@ -357,7 +357,7 @@ export const CheckpointHitSchema = z.object({
 })
 export type CheckpointHit = z.infer<typeof CheckpointHitSchema>
 
-export const RaceModeSchema = z.enum(['loop', 'drag'])
+export const RaceModeSchema = z.enum(['loop', 'drag', 'derby'])
 export type RaceMode = z.infer<typeof RaceModeSchema>
 
 export const SubmissionSchema = z.object({
@@ -390,3 +390,66 @@ export const SubmissionSchema = z.object({
   reactionTimeMs: z.number().int().nonnegative().optional(),
 })
 export type Submission = z.infer<typeof SubmissionSchema>
+
+// Derby mode schemas. Derby is a survival-derby variant: 4 vehicles in a
+// closed arena, last car standing wins. Round time is the win-time clock used
+// to rank the per-arena leaderboard. Token + submission shapes mirror the loop
+// pattern (RaceTokenPayloadSchema / SubmissionSchema) but the payload fields
+// are different enough that reusing the same schemas would force a forest of
+// optional fields, so a dedicated pair is cleaner.
+
+export const DERBY_VEHICLE_TYPES = [
+  'car',
+  'schoolBus',
+  'bigTruck',
+  'racecar',
+] as const
+export const DerbyVehicleTypeSchema = z.enum(DERBY_VEHICLE_TYPES)
+export type DerbyVehicleType = z.infer<typeof DerbyVehicleTypeSchema>
+
+export const DERBY_ARENA_SLUGS = ['dust-bowl'] as const
+export const DerbyArenaSlugSchema = z.enum(DERBY_ARENA_SLUGS)
+export type DerbyArenaSlug = z.infer<typeof DerbyArenaSlugSchema>
+
+export const DerbyRoundOutcomeSchema = z.enum(['win', 'loss', 'timeout'])
+export type DerbyRoundOutcome = z.infer<typeof DerbyRoundOutcomeSchema>
+
+// Signed token issued by /api/derby/start. configHash pins the arena +
+// vehicle catalog at round-start time so a server-side catalog change
+// invalidates in-flight tokens cleanly.
+export const DerbyTokenPayloadSchema = z.object({
+  arena: DerbyArenaSlugSchema,
+  vehicle: DerbyVehicleTypeSchema,
+  nonce: z.string().regex(/^[a-f0-9]{32}$/),
+  issuedAt: z.number().int().positive(),
+  racerId: RacerIdSchema,
+  configHash: z.string().regex(/^[a-f0-9]{64}$/),
+})
+export type DerbyTokenPayload = z.infer<typeof DerbyTokenPayloadSchema>
+
+// Submission posted by the client after a round ends. roundTimeMs is only
+// meaningful when outcome === 'win'; the server still requires the field for
+// every outcome so the schema stays uniform. finalHealths is indexed by the
+// deterministic carIdx the round was started with (0 = player). kills and
+// scorePoints are HUD-only echoes; the leaderboard ranks by roundTimeMs alone.
+export const DerbySubmissionSchema = z.object({
+  token: z.string().min(1),
+  outcome: DerbyRoundOutcomeSchema,
+  roundTimeMs: z.number().int().positive(),
+  finalHealths: z.array(z.number().int().min(0).max(100)).length(4),
+  kills: z.number().int().min(0).max(3),
+  scorePoints: z.number().int().min(0),
+  initials: InitialsSchema,
+  vehicle: DerbyVehicleTypeSchema,
+})
+export type DerbySubmission = z.infer<typeof DerbySubmissionSchema>
+
+export const DerbyLeaderboardEntrySchema = z.object({
+  initials: InitialsSchema,
+  roundTimeMs: z.number().int().positive(),
+  vehicle: DerbyVehicleTypeSchema,
+  scorePoints: z.number().int().min(0),
+  racerId: RacerIdSchema,
+  postedAt: z.number().int().positive(),
+})
+export type DerbyLeaderboardEntry = z.infer<typeof DerbyLeaderboardEntrySchema>

@@ -1,5 +1,5 @@
 {
-  "updatedAt": "2026-05-05",
+  "updatedAt": "2026-05-10",
   "sections": [
     {
       "id": "2",
@@ -484,6 +484,76 @@
         "src/lib/schemas.ts"
       ],
       "remainingGaps": []
+    },
+    {
+      "id": "20",
+      "title": "Derby Mode",
+      "status": "partial",
+      "implemented": [
+        "arena and vehicle catalogs",
+        "schemas and KV keys",
+        "damage model with attacker attribution and proportional split",
+        "multi-vehicle tick and round-end conditions",
+        "seek-then-ram AI controller with recover state",
+        "circle dirt arena with perimeter wall",
+        "dirt surface key",
+        "hub UI and per-arena vehicle picker",
+        "Three.js round canvas with chase camera",
+        "HUD with place + score chip, cars-left chip, vertical health bar, damage popups",
+        "vehicle loader with named-submesh contract",
+        "damage visualization (paint, lights, smoke, fire) and panel detach",
+        "signed start token, single-use nonce, and per-arena leaderboard ZSETs",
+        "anti-cheat floor and round-time bounds"
+      ],
+      "evidence": [
+        "src/lib/derbyArenas.ts",
+        "src/lib/derbyVehicles.ts",
+        "src/lib/derbyLeaderboard.ts",
+        "src/lib/derbySubmit.ts",
+        "src/lib/signToken.ts",
+        "src/game/derbyVehicleState.ts",
+        "src/game/derbyDamage.ts",
+        "src/game/derbyTick.ts",
+        "src/game/derbyRoundState.ts",
+        "src/game/derbyAi.ts",
+        "src/game/derbyArena.ts",
+        "src/game/derbyVehicleLoader.ts",
+        "src/game/derbyDamageVisuals.ts",
+        "src/game/derbyDebris.ts",
+        "src/components/DerbyRound.tsx",
+        "src/components/DerbyCanvas.tsx",
+        "src/components/DerbyHUD.tsx",
+        "src/components/DerbyVehiclePicker.tsx",
+        "src/app/derby/page.tsx",
+        "src/app/derby/[arena]/page.tsx",
+        "src/app/api/derby/start/route.ts",
+        "src/app/api/derby/submit/route.ts",
+        "src/app/api/derby/leaderboard/route.ts",
+        "tests/unit/derbyArenas.test.ts",
+        "tests/unit/derbyVehicles.test.ts",
+        "tests/unit/derbyDamage.test.ts",
+        "tests/unit/derbyVehicleState.test.ts",
+        "tests/unit/derbyTick.test.ts",
+        "tests/unit/derbyRoundState.test.ts",
+        "tests/unit/derbyAi.test.ts",
+        "tests/unit/derbyArena.test.ts",
+        "tests/unit/derbyVehicleLoader.test.ts",
+        "tests/unit/derbyDamageVisuals.test.ts",
+        "tests/unit/derbyDebris.test.ts",
+        "tests/unit/api.derbyStart.test.ts",
+        "tests/unit/api.derbySubmit.test.ts",
+        "tests/unit/api.derbyLeaderboard.test.ts",
+        "tests/e2e/derby.spec.ts"
+      ],
+      "remainingGaps": [
+        "Real open-source destructible vehicle GLBs (placeholder procedural geometry today)",
+        "AI difficulty knob",
+        "Dent decals and particle-based smoke / fire",
+        "Touch and gamepad parity for the derby canvas",
+        "Mass and damage scalar tuning pass",
+        "Leaderboard pagination panel and post-round initials editor",
+        "Per-vehicle leaderboard tabs (only if single-board metrics show one vehicle dominating)"
+      ]
     }
   ]
 }

@@ -363,6 +363,12 @@ function padMessage(bytes: Uint8Array): Uint8Array {
   return padded
 }
 
+// Surface keys that the drag-strip biome/weather mapper can produce. A
+// strict subset of SurfaceKey: the dirt key was added for derby arenas
+// and is never selected by drag strips, so narrowing the return here lets
+// downstream consumers (DragDerivation.surfaceKey) stay tight.
+export type DragSurfaceKey = Exclude<SurfaceKey, 'dirt'>
+
 // Pick the surface key the tire affinity table is keyed by, given the strip's
 // biome and weather. A drag tire's per-surface multiplier is then looked up
 // against this key. The mapping is intentionally simple: weather wins when it
@@ -371,7 +377,7 @@ function padMessage(bytes: Uint8Array): Uint8Array {
 // strips can map to other surface keys without expanding the catalog.
 export function surfaceFromBiomeWeather(
   strip: Pick<DragStripConfig, 'biome' | 'weather'>,
-): SurfaceKey {
+): DragSurfaceKey {
   const { biome, weather } = strip
   if (weather === 'rainy' || weather === 'foggy') return 'wet'
   if (weather === 'snowy') return 'snow'

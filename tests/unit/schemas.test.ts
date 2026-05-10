@@ -11,7 +11,14 @@ import {
   SlugSchema,
   VersionHashSchema,
   RaceTokenPayloadSchema,
+  RaceModeSchema,
   SubmissionSchema,
+  DerbyVehicleTypeSchema,
+  DerbyArenaSlugSchema,
+  DerbyTokenPayloadSchema,
+  DerbySubmissionSchema,
+  DerbyLeaderboardEntrySchema,
+  DerbyRoundOutcomeSchema,
   MAX_PIECES_PER_TRACK,
   type PieceType,
 } from '@/lib/schemas'
@@ -715,5 +722,125 @@ describe('SubmissionSchema', () => {
       initials: 'rng',
     })
     expect(out.initials).toBe('RNG')
+  })
+})
+
+describe('RaceModeSchema', () => {
+  it('accepts loop, drag, and derby', () => {
+    expect(RaceModeSchema.parse('loop')).toBe('loop')
+    expect(RaceModeSchema.parse('drag')).toBe('drag')
+    expect(RaceModeSchema.parse('derby')).toBe('derby')
+  })
+
+  it('rejects unknown modes', () => {
+    expect(RaceModeSchema.safeParse('arena').success).toBe(false)
+  })
+})
+
+describe('Derby schemas', () => {
+  it('accepts every shipping vehicle type', () => {
+    for (const t of ['car', 'schoolBus', 'bigTruck', 'racecar']) {
+      expect(DerbyVehicleTypeSchema.parse(t)).toBe(t)
+    }
+    expect(DerbyVehicleTypeSchema.safeParse('limo').success).toBe(false)
+  })
+
+  it('accepts every shipping arena slug', () => {
+    expect(DerbyArenaSlugSchema.parse('dust-bowl')).toBe('dust-bowl')
+    expect(DerbyArenaSlugSchema.safeParse('atlantis').success).toBe(false)
+  })
+
+  it('accepts every round outcome', () => {
+    for (const o of ['win', 'loss', 'timeout']) {
+      expect(DerbyRoundOutcomeSchema.parse(o)).toBe(o)
+    }
+  })
+
+  it('parses a well-formed token payload', () => {
+    const payload = {
+      arena: 'dust-bowl',
+      vehicle: 'racecar',
+      nonce: 'f'.repeat(32),
+      issuedAt: 1_700_000_000_000,
+      racerId: '00000000-0000-4000-8000-000000000000',
+      configHash: 'a'.repeat(64),
+    }
+    expect(DerbyTokenPayloadSchema.parse(payload)).toEqual(payload)
+  })
+
+  it('rejects token payload with bad nonce or configHash', () => {
+    const payload = {
+      arena: 'dust-bowl',
+      vehicle: 'racecar',
+      nonce: 'short',
+      issuedAt: 1,
+      racerId: '00000000-0000-4000-8000-000000000000',
+      configHash: 'a'.repeat(64),
+    }
+    expect(DerbyTokenPayloadSchema.safeParse(payload).success).toBe(false)
+    expect(
+      DerbyTokenPayloadSchema.safeParse({
+        ...payload,
+        nonce: 'f'.repeat(32),
+        configHash: 'short',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('parses a well-formed submission', () => {
+    const out = DerbySubmissionSchema.parse({
+      token: 'abc.def',
+      outcome: 'win',
+      roundTimeMs: 90_000,
+      finalHealths: [40, 0, 0, 0],
+      kills: 3,
+      scorePoints: 1900,
+      initials: 'rng',
+      vehicle: 'car',
+    })
+    expect(out.initials).toBe('RNG')
+    expect(out.outcome).toBe('win')
+  })
+
+  it('rejects submission with wrong-length finalHealths', () => {
+    expect(
+      DerbySubmissionSchema.safeParse({
+        token: 'abc.def',
+        outcome: 'win',
+        roundTimeMs: 90_000,
+        finalHealths: [40, 0, 0],
+        kills: 3,
+        scorePoints: 0,
+        initials: 'RNG',
+        vehicle: 'car',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('rejects submission with kills outside 0..3', () => {
+    expect(
+      DerbySubmissionSchema.safeParse({
+        token: 'abc.def',
+        outcome: 'win',
+        roundTimeMs: 90_000,
+        finalHealths: [40, 0, 0, 0],
+        kills: 7,
+        scorePoints: 0,
+        initials: 'RNG',
+        vehicle: 'car',
+      }).success,
+    ).toBe(false)
+  })
+
+  it('parses a leaderboard entry round-trip', () => {
+    const entry = {
+      initials: 'RNG',
+      roundTimeMs: 90_000,
+      vehicle: 'car' as const,
+      scorePoints: 1900,
+      racerId: '00000000-0000-4000-8000-000000000000',
+      postedAt: 1_700_000_000_000,
+    }
+    expect(DerbyLeaderboardEntrySchema.parse(entry)).toEqual(entry)
   })
 })

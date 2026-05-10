@@ -10,8 +10,10 @@ import { z } from 'zod'
 // Every part carries a weight so the total mass aggregates predictably. The
 // weight is in arbitrary units; only the ratio against REFERENCE_WEIGHT_KG in
 // dragTuning matters. Tires also carry a baseGrip and a per-surface affinity
-// table; the runtime picks one of the four surface keys based on the strip's
-// biome and weather and multiplies the tire's affinity against its baseGrip.
+// table; the runtime picks one of the five surface keys (dry, wet, snow,
+// sand, dirt) based on the strip's biome and weather and multiplies the
+// tire's affinity against its baseGrip. The dirt key serves the derby
+// arena and is unused by the drag-strip biome resolver today.
 
 const PartIdSchema = z.string().min(1).max(64)
 
@@ -21,6 +23,12 @@ const SurfaceAffinitySchema = z
     wet: z.number().finite(),
     snow: z.number().finite(),
     sand: z.number().finite(),
+    // Loose dirt: derby arena surface. Drag strips never map to dirt today
+    // via surfaceFromBiomeWeather, so this entry stays unused on the drag
+    // path; it lives here so a derby loadout can drive the same tuning
+    // pipeline a future variant might want without splitting the affinity
+    // schema in two. Initial values mirror each tire's sand affinity.
+    dirt: z.number().finite(),
   })
   .strict()
 
@@ -87,35 +95,35 @@ export const DRAG_TIRES: readonly DragTire[] = [
     label: 'Slicks',
     weight: 60,
     baseGrip: 1.15,
-    surfaceAffinity: { dry: 1.05, wet: 0.5, snow: 0.45, sand: 0.7 },
+    surfaceAffinity: { dry: 1.05, wet: 0.5, snow: 0.45, sand: 0.7, dirt: 0.7 },
   },
   {
     id: 'allRounder',
     label: 'All-rounders',
     weight: 70,
     baseGrip: 1.0,
-    surfaceAffinity: { dry: 1.0, wet: 0.95, snow: 0.85, sand: 0.95 },
+    surfaceAffinity: { dry: 1.0, wet: 0.95, snow: 0.85, sand: 0.95, dirt: 0.95 },
   },
   {
     id: 'rain',
     label: 'Rain tires',
     weight: 75,
     baseGrip: 0.95,
-    surfaceAffinity: { dry: 0.9, wet: 1.2, snow: 0.95, sand: 0.85 },
+    surfaceAffinity: { dry: 0.9, wet: 1.2, snow: 0.95, sand: 0.85, dirt: 0.85 },
   },
   {
     id: 'winter',
     label: 'Winter studs',
     weight: 85,
     baseGrip: 0.95,
-    surfaceAffinity: { dry: 0.85, wet: 0.95, snow: 1.25, sand: 0.85 },
+    surfaceAffinity: { dry: 0.85, wet: 0.95, snow: 1.25, sand: 0.85, dirt: 0.85 },
   },
   {
     id: 'offRoad',
     label: 'Off-road knobby',
     weight: 90,
     baseGrip: 0.92,
-    surfaceAffinity: { dry: 0.9, wet: 0.9, snow: 1.05, sand: 1.2 },
+    surfaceAffinity: { dry: 0.9, wet: 0.9, snow: 1.05, sand: 1.2, dirt: 1.2 },
   },
 ] as const
 

@@ -1,5 +1,5 @@
 import { Redis } from '@upstash/redis'
-import type { Slug, VersionHash, RacerId } from './schemas'
+import type { DerbyArenaSlug, Slug, VersionHash, RacerId } from './schemas'
 
 function requireEnv(name: string): string {
   const value = process.env[name]
@@ -44,10 +44,16 @@ export const kvKeys = {
   ratelimitIp: (ip: string) => `ratelimit:submit:ip:${ip}`,
   ratelimitRacer: (racerId: RacerId) => `ratelimit:submit:racer:${racerId}`,
   ratelimitDaily: (ip: string) => `ratelimit:submit:daily:${ip}`,
+  // Derby mode. One leaderboard per arena (all four vehicle types compete on
+  // the same fastest-time-to-win list; vehicle is shown as info only). The
+  // start-token nonce is single-use and stored under derbyToken().
+  derbyLeaderboard: (arena: DerbyArenaSlug) => `lb:derby:${arena}`,
+  derbyToken: (nonce: string) => `derby:token:${nonce}`,
 } as const
 
 export const TTL = {
   raceTokenSec: 15 * 60,
   ratelimitBurstSec: 60,
   ratelimitDailySec: 24 * 60 * 60,
+  derbyTokenSec: 15 * 60,
 } as const
