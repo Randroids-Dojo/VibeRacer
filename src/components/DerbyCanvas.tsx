@@ -18,6 +18,17 @@ import {
   loadDerbyVehicleAsset,
   type DerbyVehicleAsset,
 } from '@/game/derbyVehicleLoader'
+import {
+  createDamageVisualizer,
+  type DerbyDamageVisualizer,
+} from '@/game/derbyDamageVisuals'
+import {
+  pruneDebris,
+  spawnDebris,
+  tickDebris,
+  type DerbyDebrisItem,
+} from '@/game/derbyDebris'
+import { mulberry32 } from '@/game/derbyRoundState'
 import { derbyTick } from '@/game/derbyTick'
 import {
   initBrain,
@@ -145,6 +156,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     // nothing; loop typically resolves on the same frame for procedural
     // assets so this is invisible at runtime.
     const carAssets: (DerbyVehicleAsset | null)[] = vehicleConfigs.map(() => null)
+    const carVisualizers: (DerbyDamageVisualizer | null)[] = vehicleConfigs.map(
+      () => null,
+    )
     Promise.all(
       vehicleConfigs.map((cfg, i) =>
         loadDerbyVehicleAsset(cfg, i === PLAYER_IDX ? 0xfff7b0 : pickEnemyColor(cfg.type)),
@@ -152,9 +166,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     ).then((assets) => {
       for (let i = 0; i < assets.length; i++) {
         carAssets[i] = assets[i]
+        carVisualizers[i] = createDamageVisualizer(assets[i])
         scene.add(assets[i].group)
       }
     })
+
+    const debrisItems: DerbyDebrisItem[] = []
+    const debrisRng = mulberry32(round.rngSeed ^ 0x9e3779b9)
 
     let lastTimeMs = performance.now()
     let rafId = 0
@@ -249,13 +267,50 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         lastHudPushMs = nowMs
       }
 
-      // Forward hit events as HUD popup spawns.
+      // Forward hit events as HUD popup spawns plus drive damage visuals.
       for (const e of result.events) {
-        if (e.kind === 'hit' && e.victimIdx === PLAYER_IDX) {
+        if (e.kind !== 'hit') continue
+        if (e.victimIdx === PLAYER_IDX) {
           const p = projectToScreen(e.x, e.z)
           onHitRef.current({ amount: e.amount, screenX: p.sx, screenY: p.sy })
         }
+        const visualizer = carVisualizers[e.victimIdx]
+        if (!visualizer) continue
+        const victim = round.cars[e.victimIdx]
+        const nx = e.x - victim.physics.x
+        const nz = e.z - victim.physics.z
+        const len = Math.hypot(nx, nz)
+        const inv = len > 1e-6 ? 1 / len : 0
+        const detached = visualizer.applyHit(
+          e.amount,
+          nx * inv,
+          nz * inv,
+          debrisRng,
+        )
+        if (detached) {
+          scene.add(detached)
+          debrisItems.push(
+            spawnDebris(
+              detached,
+              detached.position,
+              { nx: nx * inv, nz: nz * inv },
+              4 + e.relativeSpeed * 0.2,
+              debrisRng,
+            ),
+          )
+        }
       }
+
+      // Update damage visuals from current state.
+      for (let i = 0; i < round.cars.length; i++) {
+        carVisualizers[i]?.update(round.cars[i])
+      }
+
+      // Advance debris.
+      tickDebris(debrisItems, dtSec, arena.radius)
+      const dead = debrisItems.filter((d) => !d.alive)
+      for (const d of dead) scene.remove(d.object)
+      pruneDebris(debrisItems)
 
       if (round.status === 'ended' && !endedReported) {
         endedReported = true
@@ -288,7 +343,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       stopped = true
       cancelAnimationFrame(rafId)
       window.removeEventListener('resize', onResize)
+      for (const v of carVisualizers) v?.dispose()
       for (const a of carAssets) a?.dispose()
+      for (const d of debrisItems) scene.remove(d.object)
       arenaMesh.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
