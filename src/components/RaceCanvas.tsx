@@ -2,7 +2,7 @@
 import { useEffect, useRef, type CSSProperties, type MutableRefObject } from 'react'
 import { PerspectiveCamera, WebGLRenderer } from 'three'
 import type { Piece, TrackCheckpoint } from '@/lib/schemas'
-import type { TransmissionMode } from '@/game/transmission'
+import { gearProgress01, type TransmissionMode } from '@/game/transmission'
 import {
   TRACK_WIDTH,
   buildTrackPath,
@@ -134,6 +134,7 @@ export interface RaceCanvasHud {
   // does not need to know the pace-note shape.
   paceNote: { text: string; accent: string } | null
   gear: number
+  gearProgress: number
 }
 
 const HUD_UPDATE_MS = 50
@@ -718,6 +719,11 @@ export function RaceCanvas({
     let prevOnTrack = true
     let droneStarted = false
     let prevHitsLen = 0
+    // Transient camera bob from gear shifts. Set on the shift frame, decays
+    // exponentially over ~150ms so the chassis "settles" without shaking the
+    // whole render. Negative for upshifts (front dives as torque cuts),
+    // positive for downshifts (front rises as engine catches the load).
+    let shiftBobY = 0
     let wrongWayState = initWrongWayDetector()
     // Forza-lite rumble loop bookkeeping. `rumblePrevOnTrack` is independent
     // of the audio path's `prevOnTrack` so the gamepad impulse fires even when
@@ -836,6 +842,7 @@ export function RaceCanvas({
         prevShiftUp = false
         prevOnTrack = true
         prevHitsLen = 0
+        shiftBobY = 0
         wrongWayState = initWrongWayDetector()
         driftSession = initDriftSession()
         driftLapBest = 0
@@ -899,6 +906,7 @@ export function RaceCanvas({
         ghostGapHintIdx = 0
         prevShiftDown = false
         prevShiftUp = false
+        shiftBobY = 0
         raf = requestAnimationFrame(loop)
         return
       }
@@ -1009,6 +1017,16 @@ export function RaceCanvas({
         transmissionRef?.current ?? 'automatic',
       )
       state = result.state
+      // Shift bob magnitudes. Upshift is larger and downward (-0.18) because
+      // the chassis "dives" as torque cuts and weight shifts forward; downshift
+      // is smaller and upward (0.14) because re-engaging power lifts the
+      // front. Found by ear/eye on a 14-unit camera distance: bigger reads as
+      // pogo, smaller is invisible.
+      if (result.shiftEvent === 'up') {
+        shiftBobY = -0.18
+      } else if (result.shiftEvent === 'down') {
+        shiftBobY = 0.14
+      }
 
       // Brake-light glow. Resolve the live "should the rear lamps be lit"
       // boolean from the player's mode pick + the per-frame braking predicate
@@ -1135,6 +1153,15 @@ export function RaceCanvas({
         cameraRigRef?.current ?? undefined,
       )
       applyCameraRig(bundle.camera, rig)
+      // Apply transient shift bob on top of the smoothed rig pose so it reads
+      // as a chassis flex, not a permanent camera offset. Decay rate keeps
+      // the visible bob inside ~150ms regardless of frame rate.
+      if (shiftBobY !== 0) {
+        bundle.camera.position.y += shiftBobY
+        const decay = 1 - Math.exp(-((dtMs / 1000) * 12))
+        shiftBobY -= shiftBobY * decay
+        if (Math.abs(shiftBobY) < 0.005) shiftBobY = 0
+      }
 
       // Sample the player's pose into the recording buffer at fixed cadence.
       // Push every sample slot we crossed this frame so a long dt does not
@@ -1407,6 +1434,8 @@ export function RaceCanvas({
           prevOnTrack,
           racing,
           engineNoise: engineNoiseRef?.current,
+          gear: state.gear,
+          shiftEvent: result.shiftEvent,
         })
         prevOnTrack = state.onTrack
       }
@@ -1615,6 +1644,11 @@ export function RaceCanvas({
           ghostGapMs: ghostGapMsValue,
           paceNote: paceNoteValue,
           gear: state.gear,
+          gearProgress: gearProgress01(
+            Math.abs(state.speed),
+            state.gear,
+            paramsRef.current.maxSpeed,
+          ),
         }
         const prevPaceText = prevHud?.paceNote?.text ?? null
         const nextPaceText = next.paceNote?.text ?? null
@@ -1633,6 +1667,7 @@ export function RaceCanvas({
           prevHud.driftLapBest !== next.driftLapBest ||
           prevHud.ghostGapMs !== next.ghostGapMs ||
           prevHud.gear !== next.gear ||
+          prevHud.gearProgress !== next.gearProgress ||
           prevPaceText !== nextPaceText ||
           prevPaceAccent !== nextPaceAccent
         ) {

@@ -17,6 +17,55 @@ describe('stepPhysics', () => {
     expect(Math.abs(s.z)).toBeLessThan(1e-9)
   })
 
+  it('quartic taper: near-launch accel matches linear, near-vMax accel approaches zero', () => {
+    // From standstill with a tiny dt, taper at v=0 is ~1 so the speed gain
+    // should be very close to accel*dt.
+    const dt = 0.05
+    const launch = stepPhysics(
+      s0,
+      { throttle: 1, steer: 0, handbrake: false },
+      dt,
+      true,
+    )
+    const linearGain = DEFAULT_CAR_PARAMS.accel * dt
+    expect(launch.speed).toBeGreaterThan(linearGain * 0.95)
+    expect(launch.speed).toBeLessThanOrEqual(linearGain + 1e-9)
+
+    // At 99% of vMax the taper is 1 - 0.99^4 = ~0.039, so the per-second
+    // speed gain should be ~4% of accel.
+    const nearTop = stepPhysics(
+      { ...s0, speed: DEFAULT_CAR_PARAMS.maxSpeed * 0.99 },
+      { throttle: 1, steer: 0, handbrake: false },
+      0.1,
+      true,
+    )
+    const gain = nearTop.speed - DEFAULT_CAR_PARAMS.maxSpeed * 0.99
+    expect(gain).toBeGreaterThan(0)
+    expect(gain).toBeLessThan(DEFAULT_CAR_PARAMS.accel * 0.1 * 0.1)
+  })
+
+  it('linear taper exponent recovers the legacy curve', () => {
+    // Pass exponent=1 (or 0) to opt out — drag mode does this. Per-tick
+    // gain should match the pre-taper formula speed += accel * throttle * dt.
+    const dt = 0.5
+    const result = stepPhysics(
+      { ...s0, speed: 5 },
+      { throttle: 1, steer: 0, handbrake: false },
+      dt,
+      true,
+      DEFAULT_CAR_PARAMS,
+      1,
+      1,
+      0,
+      1,
+    )
+    const expected = 5 + DEFAULT_CAR_PARAMS.accel * dt
+    expect(result.speed).toBeCloseTo(
+      Math.min(expected, DEFAULT_CAR_PARAMS.maxSpeed),
+      6,
+    )
+  })
+
   it('caps at max speed on track', () => {
     let s = s0
     for (let i = 0; i < 30; i++) {

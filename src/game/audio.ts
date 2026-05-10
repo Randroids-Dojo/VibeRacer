@@ -26,9 +26,22 @@ import {
   DEFAULT_ENGINE_NOISE_MODE,
   type EngineNoiseMode,
 } from '@/lib/audioSettings'
+import { gearProgress01 } from './transmission'
 
 const DRONE_SMOOTH_TC = 0.06
 const DRONE_THROTTLE_BOOST = 0.04
+
+// How much the throttle-as-load term shifts the engine filter cutoff. Scaled
+// by each profile's filterRangeHz so expressive engines (Classic, Electric)
+// get a bigger on/off-throttle swing than mellow ones (Smooth, Warm). Tuned
+// by ear: 0.22 = noticeable but not muddy.
+const LOAD_FILTER_SWING = 0.22
+
+// Sparkle-modulation kicks in over the top REDLINE_BAND of each gear. 0.22
+// (= 1 - 0.78) means the modulation ramps from 0 to 1 over the top 22% of
+// the gear's RPM band, so every upshift gets a near-redline shimmer.
+const REDLINE_BAND = 0.22
+const REDLINE_THRESHOLD = 1 - REDLINE_BAND
 
 const SKID_NOISE_DUR_SEC = 0.4
 const SKID_FILTER_BASE_HZ = 700
@@ -192,10 +205,48 @@ export function droneFilterHz(
   return profile.filterBaseHz + profile.filterRangeHz * ratio
 }
 
+// Gear-aware variants. Pitch and filter sweep from idle to redline as the
+// player drives through the current gear's speed band, then snap back when
+// the gear changes. Without this, upshifts had no audible signature because
+// pitch only tracked raw speed.
+export function droneFreqHzForGear(
+  speedAbs: number,
+  baseMaxSpeed: number,
+  gear: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): number {
+  const profile = engineNoiseProfile(mode)
+  if (baseMaxSpeed <= 0) return profile.baseHz
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  return profile.baseHz + profile.rangeHz * progress
+}
+
+// Filter cutoff also tracks gear progress, plus a throttle-as-load term: full
+// throttle nudges the cutoff up (brighter, more harmonic content), off-
+// throttle drops it (overrun character). Real engines sound very different
+// on vs off throttle even at the same RPM, and the old model ignored that.
+export function droneFilterHzForGear(
+  speedAbs: number,
+  baseMaxSpeed: number,
+  gear: number,
+  throttle: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): number {
+  const profile = engineNoiseProfile(mode)
+  if (baseMaxSpeed <= 0) return profile.filterBaseHz
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  const base = profile.filterBaseHz + profile.filterRangeHz * progress
+  // Centered around 0.5 throttle so light cruise is neutral and the swing in
+  // either direction is symmetric.
+  const loadCenter = clamp01(throttle) - 0.5
+  const loadMod = loadCenter * profile.filterRangeHz * LOAD_FILTER_SWING
+  return Math.max(40, base + loadMod)
+}
+
 export function highSpeedModAmount(speedAbs: number, maxSpeed: number): number {
   if (maxSpeed <= 0) return 0
   const ratio = clamp01(speedAbs / maxSpeed)
-  return clamp01((ratio - 0.78) / 0.22)
+  return clamp01((ratio - REDLINE_THRESHOLD) / REDLINE_BAND)
 }
 
 export function engineToneTargets(
@@ -208,6 +259,48 @@ export function engineToneTargets(
   const mod = highSpeedModAmount(speedAbs, maxSpeed)
   const baseFreq = droneFreqHz(speedAbs, maxSpeed, mode)
   const baseFilter = droneFilterHz(speedAbs, maxSpeed, mode)
+  if (mod <= 0) return { freqHz: baseFreq, filterHz: baseFilter }
+  const primary = Math.sin(timeSec * Math.PI * 2 * profile.highSpeedModRateHz)
+  const secondary = Math.sin(
+    timeSec * Math.PI * 2 * (profile.highSpeedModRateHz * 0.37 + 0.31),
+  )
+  const blended = primary * 0.72 + secondary * 0.28
+  return {
+    freqHz: Math.max(20, baseFreq + blended * profile.highSpeedModDepthHz * mod),
+    filterHz: Math.max(
+      40,
+      baseFilter + blended * profile.highSpeedFilterModHz * mod,
+    ),
+  }
+}
+
+// Gear-aware tone targets. High-speed sparkle modulation kicks in based on
+// gear progress (near redline) instead of raw speed ratio so it triggers in
+// every gear, not only in top gear at peak speed.
+export function engineToneTargetsForGear(
+  speedAbs: number,
+  baseMaxSpeed: number,
+  gear: number,
+  throttle: number,
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+  timeSec = 0,
+): { freqHz: number; filterHz: number } {
+  const profile = engineNoiseProfile(mode)
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  const baseFreq = droneFreqHzForGear(speedAbs, baseMaxSpeed, gear, mode)
+  const baseFilter = droneFilterHzForGear(
+    speedAbs,
+    baseMaxSpeed,
+    gear,
+    throttle,
+    mode,
+  )
+  // Sparkle ramps in over the top REDLINE_BAND of the gear so each shift
+  // gets the near-redline shimmer, not just top gear.
+  const mod =
+    progress < REDLINE_THRESHOLD
+      ? 0
+      : clamp01((progress - REDLINE_THRESHOLD) / REDLINE_BAND)
   if (mod <= 0) return { freqHz: baseFreq, filterHz: baseFilter }
   const primary = Math.sin(timeSec * Math.PI * 2 * profile.highSpeedModRateHz)
   const secondary = Math.sin(
@@ -343,13 +436,24 @@ export function updateEngine(
   onTrack: boolean,
   racing: boolean,
   mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+  gear = 1,
 ): void {
   const v = droneVoice
   const e = getAudioEngine()
   if (!v || !e) return
   const profile = engineNoiseProfile(mode)
   const now = e.ctx.currentTime
-  const targets = engineToneTargets(speedAbs, maxSpeed, mode, now)
+  // maxSpeed here is the base (un-gear-adjusted) car max. Gear progress is
+  // derived from that band, not the gear-adjusted cap, so pitch resets across
+  // upshifts the way a real tach does.
+  const targets = engineToneTargetsForGear(
+    speedAbs,
+    maxSpeed,
+    gear,
+    throttle,
+    mode,
+    now,
+  )
   const baseVol = droneVolume(speedAbs, maxSpeed, onTrack, mode)
   // Subtle throttle bump on top of speed-driven volume so taps register.
   const throttleBoost = Math.max(0, throttle) * profile.throttleBoost
@@ -434,6 +538,13 @@ export interface DriveSfxInput {
   prevOnTrack: boolean
   racing: boolean
   engineNoise?: EngineNoiseMode
+  // Optional gear context. When omitted, audio falls back to gear 1 (no
+  // perceptible band) which matches the legacy single-gear behavior.
+  gear?: number
+  // 'up' | 'down' for one frame after a shift; null/undefined otherwise. The
+  // SFX driver consumes this and triggers the matching one-shot (exhaust pop
+  // on upshift, rev-match blip on downshift).
+  shiftEvent?: 'up' | 'down' | null
 }
 
 export function updateDriveSfx(input: DriveSfxInput): void {
@@ -444,6 +555,7 @@ export function updateDriveSfx(input: DriveSfxInput): void {
     input.onTrack,
     input.racing,
     input.engineNoise,
+    input.gear ?? 1,
   )
   const skid = input.racing
     ? skidIntensity(input.speedAbs, input.maxSpeed, input.steerAbs, input.onTrack)
@@ -451,6 +563,13 @@ export function updateDriveSfx(input: DriveSfxInput): void {
   updateSkid(skid)
   if (input.racing && input.prevOnTrack && !input.onTrack) {
     playOffTrackRumble()
+  }
+  if (input.racing && input.shiftEvent) {
+    if (input.shiftEvent === 'up') {
+      playUpshiftPop(input.engineNoise ?? DEFAULT_ENGINE_NOISE_MODE)
+    } else {
+      playDownshiftBlip(input.engineNoise ?? DEFAULT_ENGINE_NOISE_MODE)
+    }
   }
 }
 
@@ -620,6 +739,88 @@ export function playOffTrackRumble(): void {
   gain.connect(e.sfxBus)
   src.start(start)
   src.stop(start + RUMBLE_DUR_SEC + 0.02)
+}
+
+// Short exhaust crackle on upshift. A profile-tuned downward sweep plus a
+// brief noise burst sells the mechanical "click" without overlapping the
+// drone's own pitch reset.
+export function playUpshiftPop(
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): void {
+  const e = getAudioEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  const profile = engineNoiseProfile(mode)
+  const start = e.ctx.currentTime + 0.005
+  const popDur = 0.11
+  // Sweep starts near redline (85% of the gear band) and falls into the
+  // lower third (35%), mirroring the RPM drop of a real upshift. Pinned to
+  // the profile so smooth/electric sound stylistically right.
+  const startHz = profile.baseHz + profile.rangeHz * 0.85
+  const endHz = profile.baseHz + profile.rangeHz * 0.35
+  const osc = e.ctx.createOscillator()
+  const gain = e.ctx.createGain()
+  osc.type = profile.wave
+  osc.frequency.setValueAtTime(startHz, start)
+  osc.frequency.exponentialRampToValueAtTime(
+    Math.max(20, endHz),
+    start + popDur,
+  )
+  gain.gain.setValueAtTime(0, start)
+  gain.gain.linearRampToValueAtTime(0.22, start + 0.012)
+  gain.gain.exponentialRampToValueAtTime(0.001, start + popDur)
+  osc.connect(gain)
+  gain.connect(e.sfxBus)
+  osc.start(start)
+  osc.stop(start + popDur + 0.02)
+  // Noise transient layered on top for the crackle.
+  const buffer = getOrMakeNoiseBuffer(e, 'shift-pop', 0.18)
+  const src = e.ctx.createBufferSource()
+  src.buffer = buffer
+  const filter = e.ctx.createBiquadFilter()
+  filter.type = 'bandpass'
+  filter.frequency.value = 1400
+  filter.Q.value = 4
+  const ngain = e.ctx.createGain()
+  ngain.gain.setValueAtTime(0, start)
+  ngain.gain.linearRampToValueAtTime(0.12, start + 0.008)
+  ngain.gain.exponentialRampToValueAtTime(0.001, start + 0.08)
+  src.connect(filter)
+  filter.connect(ngain)
+  ngain.connect(e.sfxBus)
+  src.start(start)
+  src.stop(start + 0.12)
+}
+
+// Brief throttle-blip tone to mimic the rev-match a driver does on a
+// downshift. Short upward chirp pinned to the gear's idle band.
+export function playDownshiftBlip(
+  mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
+): void {
+  const e = getAudioEngine()
+  if (!e) return
+  ensureAudioReady(e)
+  const profile = engineNoiseProfile(mode)
+  const start = e.ctx.currentTime + 0.005
+  const blipDur = 0.14
+  const startHz = profile.baseHz + profile.rangeHz * 0.45
+  const peakHz = profile.baseHz + profile.rangeHz * 0.95
+  const osc = e.ctx.createOscillator()
+  const gain = e.ctx.createGain()
+  osc.type = profile.wave
+  osc.frequency.setValueAtTime(startHz, start)
+  osc.frequency.exponentialRampToValueAtTime(peakHz, start + 0.05)
+  osc.frequency.exponentialRampToValueAtTime(
+    Math.max(20, startHz),
+    start + blipDur,
+  )
+  gain.gain.setValueAtTime(0, start)
+  gain.gain.linearRampToValueAtTime(0.18, start + 0.015)
+  gain.gain.exponentialRampToValueAtTime(0.001, start + blipDur)
+  osc.connect(gain)
+  gain.connect(e.sfxBus)
+  osc.start(start)
+  osc.stop(start + blipDur + 0.02)
 }
 
 /** Duck both continuous voices. One-shots ride out their own short tails. */

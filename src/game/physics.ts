@@ -34,6 +34,13 @@ export const ANGULAR_VELOCITY_RESPONSE = 14
 export const HANDBRAKE_ANGULAR_VELOCITY_RESPONSE = 20
 export const ANGULAR_VELOCITY_EPSILON = 1e-5
 
+// Quartic taper exponent for the throttle-side acceleration curve. With k=4
+// the first ~50% of a gear's max speed is near-linear, then accel falls off
+// sharply so the last 5-10% of top speed feels like it's being squeezed out
+// against drag. Time to ~99% of vMax is ~2.3s at base accel/maxSpeed (vs the
+// old linear ~1.4s). Lower k = more linear, higher k = sharper taper.
+export const ACCEL_TAPER_EXPONENT = 4
+
 export interface PhysicsState {
   x: number
   z: number
@@ -82,6 +89,11 @@ export function stepPhysics(
   accelFactor = 1,
   maxSpeedFactor = 1,
   externalLongitudinalAccel = 0,
+  // Taper exponent on the throttle-side accel curve. k=4 (default) gives the
+  // road/race feel the gearing changes were tuned for. Drag mode passes 1 to
+  // keep its linear-accel timing comparable with pre-existing PBs while we
+  // re-tune dragTuning around the curve.
+  accelTaperExponent = ACCEL_TAPER_EXPONENT,
 ): PhysicsState {
   let speed = s.speed
   const throttle = clamp(input.throttle, -1, 1)
@@ -90,7 +102,14 @@ export function stepPhysics(
   const maxSpeed = Math.max(1, params.maxSpeed * maxSpeedFactor)
 
   if (throttle > 0) {
-    speed += accel * throttle * dtSec
+    // Power-curve taper: full accel near launch, falls off as speed approaches
+    // the gear's vMax. Without this the car hit top speed in ~1.4s and the
+    // sound effects ran out of headroom inside a second. Exponent 1 = linear
+    // (legacy); 4 = sharp top-end taper, asymptotic at vMax.
+    const ratio = speed > 0 ? Math.min(speed / maxSpeed, 1) : 0
+    const taper =
+      accelTaperExponent <= 1 ? 1 : 1 - Math.pow(ratio, accelTaperExponent)
+    speed += accel * throttle * taper * dtSec
   } else if (throttle < 0) {
     if (speed > 0) {
       speed += params.brake * throttle * dtSec

@@ -166,6 +166,10 @@ interface HudProps {
   lapConsistency?: LapConsistencyInfo | null
   transmission?: TransmissionMode
   gear?: number
+  // 0..1 progress through the current gear's speed band. Drives the redline
+  // color tint on the gear chip so the player can read when an upshift is due
+  // without staring at the speedometer.
+  gearProgress?: number
   compact?: boolean
 }
 
@@ -533,6 +537,56 @@ function TopSpeedPbChip({
 }
 
 // Append an alpha component to a "#rrggbb" color. Returns rgba(r,g,b,a).
+function GearChip({
+  gear,
+  gearProgress,
+  transmission,
+  compact,
+}: {
+  gear: number
+  gearProgress: number
+  transmission: TransmissionMode
+  compact: boolean
+}) {
+  // Redline tint kicks in over the top 15% of a gear's band so the player
+  // sees the visual cue right when an upshift would feel best. Color shifts
+  // from amber (default) through orange (~85%) into red (>=95%).
+  const r = gearProgress
+  const isManual = transmission === 'manual'
+  let borderColor = 'rgba(255, 211, 107, 0.55)'
+  let valueColor = 'white'
+  let glow = '0 4px 16px rgba(0, 0, 0, 0.45)'
+  if (r >= 0.95) {
+    borderColor = 'rgba(255, 92, 92, 0.95)'
+    valueColor = '#ff8585'
+    glow = '0 4px 20px rgba(255, 80, 80, 0.55)'
+  } else if (r >= 0.85) {
+    borderColor = 'rgba(255, 158, 71, 0.9)'
+    valueColor = '#ffb277'
+  }
+  const dynamicChip: React.CSSProperties = {
+    ...(compact ? compactGearChip : gearChip),
+    borderColor,
+    boxShadow: glow,
+  }
+  const dynamicValue: React.CSSProperties = {
+    ...gearChipValue,
+    color: valueColor,
+  }
+  return (
+    <div
+      style={dynamicChip}
+      role="status"
+      aria-live="polite"
+      data-testid="hud-gear-chip"
+    >
+      <span style={gearChipLabel}>GEAR</span>
+      <span style={dynamicValue}>{gear}</span>
+      <span style={gearChipHint}>{isManual ? 'Q / E' : 'AUTO'}</span>
+    </div>
+  )
+}
+
 // Returns the original color unchanged when the input is not a 7-char hex.
 function hexWithAlpha(hex: string, alpha: number): string {
   if (!/^#[0-9a-f]{6}$/i.test(hex)) return hex
@@ -920,17 +974,13 @@ export function HUD(props: HudProps) {
           <PredictionBlock prediction={props.prediction} />
         </div>
       ) : null}
-      {props.transmission === 'manual' ? (
-        <div
-          style={compact ? compactGearChip : gearChip}
-          role="status"
-          aria-live="polite"
-          data-testid="hud-gear-chip"
-        >
-          <span style={gearChipLabel}>GEAR</span>
-          <span style={gearChipValue}>{props.gear ?? 1}</span>
-          <span style={gearChipHint}>Q / E</span>
-        </div>
+      {props.transmission ? (
+        <GearChip
+          gear={props.gear ?? 1}
+          gearProgress={props.gearProgress ?? 0}
+          transmission={props.transmission}
+          compact={compact}
+        />
       ) : null}
       {props.showDrift ? (
         <DriftPanel
