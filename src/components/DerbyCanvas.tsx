@@ -14,6 +14,8 @@ import {
   buildArenaMesh,
   type DerbyArenaMesh,
 } from '@/game/derbyArena'
+import { buildDerbyScenery, type DerbyScenery } from '@/game/derbyScenery'
+import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
 import {
   loadDerbyVehicleAsset,
   type DerbyVehicleAsset,
@@ -149,6 +151,16 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
     const arenaMesh: DerbyArenaMesh = buildArenaMesh(arena)
     scene.add(arenaMesh.group)
+    // Decorative skirt around the arena: rocks, dirt piles, dead trees,
+    // tires, drums, concrete chunks. Purely cosmetic; sits outside the
+    // wall so cars never reach it.
+    const scenery: DerbyScenery = buildDerbyScenery(arena)
+    scene.add(scenery.group)
+    // Stadium ring beyond the scenery: stepped concrete bowl, instanced
+    // crowd, light poles. Inner radius derived from the scenery skirt's
+    // outer extent so the venue stays correctly nested for any arena radius.
+    const stadium: DerbyStadium = buildDerbyStadium(arena, 128)
+    scene.add(stadium.group)
 
     const round: DerbyRoundState = initDerbyRound({
       arena,
@@ -379,6 +391,8 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       for (const v of carVisualizers) v?.dispose()
       for (const a of carAssets) a?.dispose()
       for (const d of debrisItems) scene.remove(d.object)
+      stadium.dispose()
+      scenery.dispose()
       arenaMesh.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
