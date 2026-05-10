@@ -40,6 +40,12 @@ import {
   type DerbyRoundState,
 } from '@/game/derbyRoundState'
 import { isDestroyed } from '@/game/derbyVehicleState'
+import {
+  applyCameraRig,
+  initCameraRig,
+  updateCameraRig,
+} from '@/game/sceneBuilder'
+import { readPlayerInput } from '@/game/playerInput'
 import type { KeyInput } from '@/hooks/useKeyboard'
 import type { DerbyArenaConfig } from '@/lib/derbyArenas'
 import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
@@ -135,10 +141,10 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     scene.add(sun)
 
     const camera = new PerspectiveCamera(
-      55,
+      70,
       container.clientWidth / container.clientHeight,
-      0.5,
-      400,
+      0.1,
+      2000,
     )
 
     const arenaMesh: DerbyArenaMesh = buildArenaMesh(arena)
@@ -148,6 +154,17 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       arena,
       vehicleTypes: vehicleConfigs.map((v) => v.type),
     })
+
+    // Camera rig matches the loop's chase camera (DEFAULT_CAMERA_RIG):
+    // smoothed position + look-target lerp, height 6, distance 14, fov 70.
+    // initCameraRig seeds it at the player's spawn so the first frame is
+    // already in pose; updateCameraRig+applyCameraRig run inside step().
+    const cameraRig = initCameraRig(
+      round.cars[PLAYER_IDX].physics.x,
+      round.cars[PLAYER_IDX].physics.z,
+      round.cars[PLAYER_IDX].physics.heading,
+    )
+    applyCameraRig(camera, cameraRig)
 
     const brains: DerbyAiBrain[] = vehicleConfigs.map(() => initBrain())
 
@@ -200,10 +217,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
           VEHICLE_WHEEL_RADIUS,
           car.physics.z,
         )
-        // Heading 0 = +X, PI/2 = -Z. Rotate the group so its +Z axis aligns
-        // with the heading direction. world rotation about Y matches
-        // -(heading - PI/2) under the simulator's convention.
-        asset.group.rotation.y = -car.physics.heading + Math.PI / 2
+        // Procedural model has its hood at local -Z and taillights at local
+        // +Z, so local -Z is "front". Physics heading h points in world
+        // direction (cos h, -sin h). To send local -Z to that world vector,
+        // the Three.js Y rotation must be (h - PI/2). The previous formula
+        // negated h, which mirrored every steering input visually and made
+        // the chase camera spin the wrong way around the car.
+        asset.group.rotation.y = car.physics.heading - Math.PI / 2
         asset.group.visible = !isDestroyed(car)
       }
     }
@@ -240,12 +260,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       const dtSec = Math.min(0.05, (nowMs - lastTimeMs) / 1000)
       lastTimeMs = nowMs
 
-      // Build per-car PhysicsInput. carIdx 0 is the player from keyboard;
-      // remaining carIdx are CPU AI.
+      // Build per-car PhysicsInput. carIdx 0 is the player; the rest are CPU AI.
+      // The player input goes through the shared readPlayerInput so the
+      // keyboard / gamepad / touch translation matches loop and drag.
       const inputs: PhysicsInput[] = []
       for (let i = 0; i < round.cars.length; i++) {
         if (i === PLAYER_IDX) {
-          inputs.push(playerInputFromKeys(keysRef.current))
+          inputs.push(readPlayerInput(keysRef.current))
         } else {
           inputs.push(
             stepAi(brains[i], {
@@ -261,15 +282,16 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       const result = derbyTick(round, { perCar: inputs }, dtSec)
       syncVisuals()
 
-      // Camera follows the player from above and behind.
+      // Camera rig: same chase behavior as the loop mode (smoothed lerp,
+      // look-ahead, default height/distance/fov).
       const player = round.cars[PLAYER_IDX]
-      const camDist = 16
-      const camHeight = 12
-      const ch = player.physics.heading
-      const cx = player.physics.x - Math.cos(ch) * camDist
-      const cz = player.physics.z + Math.sin(ch) * camDist
-      camera.position.set(cx, camHeight, cz)
-      camera.lookAt(player.physics.x, 0, player.physics.z)
+      updateCameraRig(
+        cameraRig,
+        player.physics.x,
+        player.physics.z,
+        player.physics.heading,
+      )
+      applyCameraRig(camera, cameraRig)
 
       // Forward HUD updates at most ~10 Hz to avoid React renders every frame.
       if (nowMs - lastHudPushMs > 100 || result.events.length > 0) {
@@ -379,14 +401,6 @@ function pickEnemyColor(type: string): number {
     default:
       return 0x3ddc84
   }
-}
-
-function playerInputFromKeys(k: KeyInput): PhysicsInput {
-  const throttle = k.axes ? k.axes.throttle : k.forward ? 1 : k.backward ? -1 : 0
-  const steer = k.axes
-    ? k.axes.steer
-    : (k.right ? 1 : 0) - (k.left ? 1 : 0)
-  return { throttle, steer, handbrake: k.handbrake }
 }
 
 function computePlace(round: DerbyRoundState): number {
