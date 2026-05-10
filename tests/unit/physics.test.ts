@@ -33,6 +33,48 @@ describe('stepPhysics', () => {
     expect(s.speed).toBeLessThanOrEqual(DEFAULT_CAR_PARAMS.offTrackMaxSpeed + 1e-6)
   })
 
+  it('off-track from a standstill still accelerates with throttle (not stuck at zero)', () => {
+    let s = s0
+    for (let i = 0; i < 60; i++) {
+      s = stepPhysics(s, { throttle: 1, steer: 0, handbrake: false }, 1 / 60, false)
+    }
+    expect(s.speed).toBeGreaterThan(1)
+    expect(s.speed).toBeLessThanOrEqual(DEFAULT_CAR_PARAMS.offTrackMaxSpeed + 1e-6)
+  })
+
+  it('off-track partial throttle still escapes a standstill', () => {
+    let s = s0
+    for (let i = 0; i < 120; i++) {
+      s = stepPhysics(s, { throttle: 0.5, steer: 0, handbrake: false }, 1 / 60, false)
+    }
+    expect(s.speed).toBeGreaterThan(0.5)
+  })
+
+  it('off-track reverse from a standstill builds speed (not stuck)', () => {
+    let s = s0
+    for (let i = 0; i < 60; i++) {
+      s = stepPhysics(s, { throttle: -1, steer: 0, handbrake: false }, 1 / 60, false)
+    }
+    expect(s.speed).toBeLessThan(-0.5)
+    expect(s.speed).toBeGreaterThanOrEqual(-DEFAULT_CAR_PARAMS.offTrackMaxSpeed - 1e-6)
+  })
+
+  it('off-track entry at high speed still gets pulled down to the cap', () => {
+    let s = { ...s0, speed: 20 }
+    for (let i = 0; i < 30; i++) {
+      s = stepPhysics(s, { throttle: 1, steer: 0, handbrake: false }, 0.5, false)
+    }
+    expect(s.speed).toBeLessThanOrEqual(DEFAULT_CAR_PARAMS.offTrackMaxSpeed + 1e-6)
+  })
+
+  it('off-track coasting decays speed to zero', () => {
+    let s = { ...s0, speed: 5 }
+    for (let i = 0; i < 60; i++) {
+      s = stepPhysics(s, { throttle: 0, steer: 0, handbrake: false }, 1 / 60, false)
+    }
+    expect(s.speed).toBeCloseTo(0, 1)
+  })
+
   it('brake while moving slows the car', () => {
     const moving = { x: 0, z: 0, heading: 0, speed: 20 }
     const s = stepPhysics(moving, { throttle: -1, steer: 0, handbrake: false }, 0.2, true)
