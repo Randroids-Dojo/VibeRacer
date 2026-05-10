@@ -442,10 +442,29 @@ function continuousTrackSamples(path: TrackPath): Array<{
 export function profiledTrackSurfaceGeometry(
   path: TrackPath,
   profile: VerticalProfile,
+  backExtension: number = 0,
 ): BufferGeometry {
   const samples = continuousTrackSamples(path)
   const spawn = path.spawn
   const verts: number[] = []
+  // Optional back extension: prepend one virtual vertex pair `backExtension`
+  // units behind the first sample (against the spawn axis). Lets drag mode
+  // cover the gap between the chase camera and the spawn cell so the bottom
+  // of the screen lands on the road instead of the surrounding ground plane.
+  if (backExtension > 0 && samples.length > 0) {
+    const first = samples[0]
+    const fSample = first.sample
+    const fHalf = halfWidthAt(first.op, first.t)
+    const px = Math.sin(fSample.heading)
+    const pz = Math.cos(fSample.heading)
+    const tx = Math.cos(spawn.heading)
+    const tz = -Math.sin(spawn.heading)
+    const baseX = fSample.x - tx * backExtension
+    const baseZ = fSample.z - tz * backExtension
+    const y = heightAt(profile, 0)
+    verts.push(baseX + px * fHalf, y, baseZ + pz * fHalf)
+    verts.push(baseX - px * fHalf, y, baseZ - pz * fHalf)
+  }
   for (const { sample, op, t } of samples) {
     const half = halfWidthAt(op, t)
     const px = Math.sin(sample.heading)
@@ -476,7 +495,8 @@ export function profiledTrackSurfaceGeometry(
       idx.push(a, c, b)
     }
   }
-  for (let i = 0; i < samples.length - 1; i++) {
+  const pairCount = verts.length / 6
+  for (let i = 0; i < pairCount - 1; i++) {
     const base = i * 2
     pushUpTriangle(base, base + 2, base + 1)
     pushUpTriangle(base + 1, base + 2, base + 3)
@@ -500,6 +520,7 @@ export function profiledTerrainSkirtGeometry(
   path: TrackPath,
   profile: VerticalProfile,
   skirtHalfWidth: number,
+  backExtension: number = 0,
 ): BufferGeometry {
   const samples = continuousTrackSamples(path)
   const spawn = path.spawn
@@ -507,6 +528,27 @@ export function profiledTerrainSkirtGeometry(
   // y offset so the skirt sits a hair below the road surface; otherwise
   // z-fighting flickers along the seam.
   const SKIRT_Y_OFFSET = -0.05
+  if (backExtension > 0 && samples.length > 0) {
+    const first = samples[0]
+    const fSample = first.sample
+    const px = Math.sin(fSample.heading)
+    const pz = Math.cos(fSample.heading)
+    const tx = Math.cos(spawn.heading)
+    const tz = -Math.sin(spawn.heading)
+    const baseX = fSample.x - tx * backExtension
+    const baseZ = fSample.z - tz * backExtension
+    const y = heightAt(profile, 0) + SKIRT_Y_OFFSET
+    verts.push(
+      baseX + px * skirtHalfWidth,
+      y,
+      baseZ + pz * skirtHalfWidth,
+    )
+    verts.push(
+      baseX - px * skirtHalfWidth,
+      y,
+      baseZ - pz * skirtHalfWidth,
+    )
+  }
   for (const { sample } of samples) {
     const px = Math.sin(sample.heading)
     const pz = Math.cos(sample.heading)
@@ -527,7 +569,8 @@ export function profiledTerrainSkirtGeometry(
     )
   }
   const idx: number[] = []
-  for (let i = 0; i < samples.length - 1; i++) {
+  const pairCount = verts.length / 6
+  for (let i = 0; i < pairCount - 1; i++) {
     const base = i * 2
     idx.push(base, base + 2, base + 1)
     idx.push(base + 1, base + 2, base + 3)

@@ -294,12 +294,26 @@ export function DragRace({ slug }: DragRaceProps) {
     // (skirt added to bundle.scene; new road geometry replaces the existing
     // mesh's geometry so material, position, and lifecycle stay shared).
     const profile = strip.verticalProfile
+    // Visual back-extension behind the spawn so the chase camera (positioned
+    // ~12u behind the car) does not see the surrounding ground plane in front
+    // of the start of the strip. Pure cosmetics; physics and arc length are
+    // unaffected because they project from the spawn position.
+    const ROAD_BACK_EXTENSION = 30
     const oldRoadGeom = bundle.trackMesh.geometry as BufferGeometry
-    const profiledRoadGeom = profiledTrackSurfaceGeometry(path, profile)
+    const profiledRoadGeom = profiledTrackSurfaceGeometry(
+      path,
+      profile,
+      ROAD_BACK_EXTENSION,
+    )
     bundle.trackMesh.geometry = profiledRoadGeom
     oldRoadGeom.dispose()
 
-    const skirtGeom = profiledTerrainSkirtGeometry(path, profile, SKIRT_HALF_WIDTH)
+    const skirtGeom = profiledTerrainSkirtGeometry(
+      path,
+      profile,
+      SKIRT_HALF_WIDTH,
+      ROAD_BACK_EXTENSION,
+    )
     // Skirt color follows the strip's biome so an Alpine snow strip does
     // not bleed olive grass under its road and a Harbor city strip does
     // not look like a grassy field. The biome's `groundColor` is the same

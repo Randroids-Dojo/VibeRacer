@@ -252,28 +252,35 @@ describe('dragTick', () => {
 
   it('finishes when the car reaches the final checkpoint cell and freezes the timer', () => {
     const setup = setupRace('salt-flats')
-    const finishCp = setup.strip
-    const last = finishCp.lengthCells - 1
-    const finishX = setup.path.order[last].piece.col * 20
-    const finishZ = -last * 20
-    let state: typeof setup.state = { ...setup.state, x: finishX, z: finishZ, speed: 5 }
-    let nowMs = 5000
-    // Advance one tick which should cross checkpoints in order. Because the
-    // car is teleported past intermediate checkpoints we may need multiple
-    // frames if the cell-walk only catches one CP per frame; iterate until
-    // finished or 50 frames pass.
-    let result = dragTick(
-      state,
-      { throttle: 0, steer: 0, handbrake: false },
-      16,
-      nowMs,
-      setup.path,
-      setup.derived.params,
-      setup.config,
-    )
-    // First tick: state moves to the finish cell. To register all three CPs
-    // in order we step the car backwards to the 60ft cell then advance.
-    expect(result.state.lastCellKey).toBe(`${-last},0`)
+    const last = setup.strip.lengthCells - 1
+    // Walk the car cell by cell along the strip so the cell-walk picks up
+    // every checkpoint in order. The third checkpoint (at row -last) must
+    // trigger a finish event. Without the K = length - 1 fix, drag inherited
+    // the closed-loop "wrap back to start" entry and the race never ended.
+    let state = setup.state
+    let nowMs = 16
+    let finished: ReturnType<typeof dragTick>['finished'] = null
+    for (let row = 1; row <= last; row++) {
+      state = { ...state, x: 0, z: -row * 20 }
+      const result = dragTick(
+        state,
+        { throttle: 0, steer: 0, handbrake: false },
+        16,
+        nowMs,
+        setup.path,
+        setup.derived.params,
+        setup.config,
+      )
+      state = result.state
+      if (result.finished) {
+        finished = result.finished
+        break
+      }
+      nowMs += 16
+    }
+    expect(finished).not.toBeNull()
+    expect(finished?.hits).toHaveLength(3)
+    expect(state.finishedAtMs).not.toBeNull()
   })
 
   it('does not record additional checkpoints once finished', () => {
