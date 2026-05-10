@@ -18,6 +18,7 @@ import {
 } from '@/game/topSpeedPb'
 import { type SpeedUnit } from '@/lib/speedometer'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
+import { formatLapTimeOrDash } from '@/lib/timeFormat'
 
 interface TrackStatsPaneProps {
   // Persisted engagement stats for the current slug + version. Null reads as
@@ -126,11 +127,11 @@ export function TrackStatsPane({
           />
           <StatTile
             label="Avg lap"
-            value={avg !== null ? formatLapTime(avg) : '--'}
+            value={formatLapTimeOrDash(avg)}
           />
           <StatTile
             label="Best lap"
-            value={bestAllTimeMs !== null ? formatLapTime(bestAllTimeMs) : '--'}
+            value={formatLapTimeOrDash(bestAllTimeMs)}
             accent
           />
           <StatTile
@@ -297,13 +298,3 @@ function StatTile({
   )
 }
 
-// Mirror LapHistory's lap-time formatter so the pane reads identically. Kept
-// local so a refactor of one display does not silently change the other.
-function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
-}

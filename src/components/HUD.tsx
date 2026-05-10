@@ -43,7 +43,11 @@ import {
 import { type SpeedUnit } from '@/lib/speedometer'
 import type { TransmissionMode } from '@/game/transmission'
 import { selectHudNotificationStack } from '@/lib/hudNotifications'
-import { formatLapTime, formatSectorTime } from '@/lib/timeFormat'
+import {
+  formatLapTime,
+  formatLapTimeOrDash,
+  formatSectorTime,
+} from '@/lib/timeFormat'
 import { hexWithAlpha } from '@/lib/colorUtils'
 
 interface HudProps {
@@ -292,9 +296,9 @@ function PredictionBlock({ prediction }: { prediction: LapPrediction }) {
   )
 }
 
-function timeOrDash(ms: number | null): string {
-  return ms !== null ? formatLapTime(ms) : '--'
-}
+// Local alias: keeps callsites terse and lets us swap the default dash
+// later (e.g. an em-dash) without touching every consumer.
+const timeOrDash = formatLapTimeOrDash
 
 // Medal chip pinned next to BEST (ALL TIME). The tier is computed from the
 // player's PB versus the route's leaderboard #1 lap time. The tier color

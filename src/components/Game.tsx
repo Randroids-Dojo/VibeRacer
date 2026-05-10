@@ -15,13 +15,6 @@ import type { TransmissionMode } from '@/game/transmission'
 import type { TrackBiome } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
 import type { TrackMusic } from '@/lib/trackMusic'
-import {
-  KNOWN_MUSIC_EVENT,
-  MY_MUSIC_EVENT,
-  MUSIC_OVERRIDES_EVENT,
-  recordKnownMusic,
-  resolvePersonalMusic,
-} from '@/lib/myMusic'
 import { WEATHER_LABELS } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
@@ -198,10 +191,10 @@ import {
   RACE_START_CROSSFADE_SEC,
   crossfadeTo,
   playFinishStinger,
-  setActiveMusic,
   setMusicLapIndex,
   setMusicOffTrack,
 } from '@/game/music'
+import { useActiveMusic } from '@/hooks/useActiveMusic'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { useMusicPersonalization } from '@/hooks/useMusicPersonalization'
 import {
@@ -510,26 +503,7 @@ function GameSession({
     },
     [rawApplyTuning, recordTuningChange, slug],
   )
-  useEffect(() => {
-    recordKnownMusic(slug, initialMusic)
-    setActiveMusic(resolvePersonalMusic(slug, initialMusic))
-    function refreshMusic() {
-      setActiveMusic(resolvePersonalMusic(slug, initialMusic))
-    }
-    window.addEventListener(MY_MUSIC_EVENT, refreshMusic)
-    window.addEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
-    window.addEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
-    window.addEventListener('storage', refreshMusic)
-    return () => {
-      window.removeEventListener(MY_MUSIC_EVENT, refreshMusic)
-      window.removeEventListener(MUSIC_OVERRIDES_EVENT, refreshMusic)
-      window.removeEventListener(KNOWN_MUSIC_EVENT, refreshMusic)
-      window.removeEventListener('storage', refreshMusic)
-      setMusicLapIndex(0)
-      setMusicOffTrack(false)
-      setActiveMusic(null)
-    }
-  }, [slug, initialMusic])
+  useActiveMusic(slug, initialMusic)
 
   useMusicPersonalization({
     slug,

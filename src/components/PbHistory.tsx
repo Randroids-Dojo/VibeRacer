@@ -9,19 +9,11 @@ import {
   type PbHistoryEntry,
 } from '@/lib/pbHistory'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
+import { formatLapTime, formatLapTimeOrDash } from '@/lib/timeFormat'
 
 interface PbHistoryProps {
   entries: readonly PbHistoryEntry[]
   onBack: () => void
-}
-
-function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
 }
 
 // PB-improvement deltas typically land in the sub-second to multi-second
@@ -79,7 +71,7 @@ export function PbHistory({ entries, onBack }: PbHistoryProps) {
           <SummaryStat
             label="Current"
             value={
-              summary.latestMs !== null ? formatLapTime(summary.latestMs) : '--'
+              formatLapTimeOrDash(summary.latestMs)
             }
           />
           <SummaryStat

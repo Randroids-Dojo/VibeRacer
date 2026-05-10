@@ -14,6 +14,7 @@ import {
   labelForConsistencyTier,
 } from '@/game/lapConsistency'
 import { MenuButton, MenuOverlay, MenuPanel, menuTheme } from './MenuUI'
+import { formatLapTime, formatLapTimeOrDash } from '@/lib/timeFormat'
 
 interface SessionSummaryProps {
   stats: SessionSummaryStats
@@ -94,26 +95,16 @@ export function SessionSummary({
             />
             <StatTile
               label="Best lap"
-              value={
-                stats.bestLapMs !== null ? formatLapTime(stats.bestLapMs) : '--'
-              }
+              value={formatLapTimeOrDash(stats.bestLapMs)}
               accent
             />
             <StatTile
               label="Avg lap"
-              value={
-                stats.averageLapMs !== null
-                  ? formatLapTime(stats.averageLapMs)
-                  : '--'
-              }
+              value={formatLapTimeOrDash(stats.averageLapMs)}
             />
             <StatTile
               label="Total lap time"
-              value={
-                stats.totalLapMs !== null
-                  ? formatLapTime(stats.totalLapMs)
-                  : '--'
-              }
+              value={formatLapTimeOrDash(stats.totalLapMs)}
             />
             <StatTile
               label={stats.beatsAllTime ? 'New PB' : 'Vs PB'}
@@ -480,14 +471,6 @@ function StatTile({
   )
 }
 
-function formatLapTime(ms: number): string {
-  if (!Number.isFinite(ms) || ms < 0) return '--:--.---'
-  const total = Math.max(0, Math.round(ms))
-  const minutes = Math.floor(total / 60000)
-  const seconds = Math.floor((total % 60000) / 1000)
-  const millis = total % 1000
-  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}.${String(millis).padStart(3, '0')}`
-}
 
 function formatSignedDelta(ms: number): string {
   if (!Number.isFinite(ms)) return '+0.000'

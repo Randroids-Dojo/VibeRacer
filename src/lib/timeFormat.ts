@@ -39,3 +39,11 @@ export function formatDragTime(ms: number): string {
   if (!Number.isFinite(ms)) return '0.00'
   return (ms / 1000).toFixed(2)
 }
+
+// `formatLapTime` plus a "no value yet" fallback. The HUD, lap history,
+// session summary, track stats pane, and PB history surfaces all need
+// "PB on file? render it; otherwise render `--`", so they share this
+// helper rather than each open-coding the ternary.
+export function formatLapTimeOrDash(ms: number | null, dash = '--'): string {
+  return ms === null ? dash : formatLapTime(ms)
+}

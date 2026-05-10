@@ -53,6 +53,7 @@ import {
   TRANSMISSION_MODES,
   type TransmissionMode,
 } from '@/game/transmission'
+import { readJson, writeJson } from './storage'
 
 // Re-export so component code can import the enum + type from one place
 // (controlSettings) alongside the rest of the user-preference surface.
@@ -830,24 +831,14 @@ export function cloneBindings(bindings: KeyBindings): KeyBindings {
 }
 
 export function readStoredControlSettings(): ControlSettings {
-  if (typeof window === 'undefined') return cloneDefaultSettings()
-  const raw = window.localStorage.getItem(CONTROL_SETTINGS_STORAGE_KEY)
-  if (!raw) return cloneDefaultSettings()
-  try {
-    const parsed = ControlSettingsSchema.safeParse(JSON.parse(raw))
-    if (!parsed.success) return cloneDefaultSettings()
-    return parsed.data
-  } catch {
-    return cloneDefaultSettings()
-  }
+  return (
+    readJson(CONTROL_SETTINGS_STORAGE_KEY, ControlSettingsSchema) ??
+    cloneDefaultSettings()
+  )
 }
 
 export function writeStoredControlSettings(settings: ControlSettings): void {
-  if (typeof window === 'undefined') return
-  window.localStorage.setItem(
-    CONTROL_SETTINGS_STORAGE_KEY,
-    JSON.stringify(settings),
-  )
+  writeJson(CONTROL_SETTINGS_STORAGE_KEY, settings)
 }
 
 // Friendly label for a KeyboardEvent.code value. Keeps the Settings UI

@@ -18,7 +18,7 @@ import {
   menuTheme,
 } from './MenuUI'
 import { useRegisterFocusable } from './MenuNav'
-import { formatLapTime } from '@/lib/timeFormat'
+import { formatLapTime, formatLapTimeOrDash } from '@/lib/timeFormat'
 
 const CHART_WIDTH = 460
 const CHART_HEIGHT = 80
@@ -136,11 +136,11 @@ export function LapHistory({
           <SummaryStat label="Laps" value={stats.count.toString()} />
           <SummaryStat
             label="Best"
-            value={stats.bestMs !== null ? formatLapTime(stats.bestMs) : '--'}
+            value={formatLapTimeOrDash(stats.bestMs)}
           />
           <SummaryStat
             label="Average"
-            value={stats.averageMs !== null ? formatLapTime(stats.averageMs) : '--'}
+            value={formatLapTimeOrDash(stats.averageMs)}
           />
         </div>
 
