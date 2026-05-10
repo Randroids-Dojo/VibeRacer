@@ -736,6 +736,33 @@ export function SettingsPane({
           </div>
 
           <div style={subSection}>
+            <div style={subTitle}>Enhanced shifting (experimental)</div>
+            <MenuHint>
+              RPM-based engine audio, geometric gear ratios, shift torque cut,
+              exhaust pop, and chassis bob. In active troubleshooting; off by
+              default. Flip on to try the new feel, off to return to baseline.
+            </MenuHint>
+            <div style={touchToggleRow}>
+              <MenuButton
+                variant={settings.enhancedShifting ? 'secondary' : 'primary'}
+                onClick={() =>
+                  onChange({ ...settings, enhancedShifting: false })
+                }
+              >
+                Off
+              </MenuButton>
+              <MenuButton
+                variant={settings.enhancedShifting ? 'primary' : 'secondary'}
+                onClick={() =>
+                  onChange({ ...settings, enhancedShifting: true })
+                }
+              >
+                On
+              </MenuButton>
+            </div>
+          </div>
+
+          <div style={subSection}>
             <div style={subTitle}>Keyboard</div>
             <MenuHint>
               Click or tap a slot, then press the key you want.

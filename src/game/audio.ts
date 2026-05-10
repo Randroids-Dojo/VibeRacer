@@ -208,7 +208,8 @@ export function droneFilterHz(
 // Gear-aware variants. Pitch and filter sweep from idle to redline as the
 // player drives through the current gear's speed band, then snap back when
 // the gear changes. Without this, upshifts had no audible signature because
-// pitch only tracked raw speed.
+// pitch only tracked raw speed. These variants are only called from the
+// enhanced-shifting audio path, so they read the dynamic gear table.
 export function droneFreqHzForGear(
   speedAbs: number,
   baseMaxSpeed: number,
@@ -217,7 +218,7 @@ export function droneFreqHzForGear(
 ): number {
   const profile = engineNoiseProfile(mode)
   if (baseMaxSpeed <= 0) return profile.baseHz
-  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed, true)
   return profile.baseHz + profile.rangeHz * progress
 }
 
@@ -234,7 +235,7 @@ export function droneFilterHzForGear(
 ): number {
   const profile = engineNoiseProfile(mode)
   if (baseMaxSpeed <= 0) return profile.filterBaseHz
-  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed, true)
   const base = profile.filterBaseHz + profile.filterRangeHz * progress
   // Centered around 0.5 throttle so light cruise is neutral and the swing in
   // either direction is symmetric.
@@ -286,7 +287,7 @@ export function engineToneTargetsForGear(
   timeSec = 0,
 ): { freqHz: number; filterHz: number } {
   const profile = engineNoiseProfile(mode)
-  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed)
+  const progress = gearProgress01(speedAbs, gear, baseMaxSpeed, true)
   const baseFreq = droneFreqHzForGear(speedAbs, baseMaxSpeed, gear, mode)
   const baseFilter = droneFilterHzForGear(
     speedAbs,
@@ -437,23 +438,21 @@ export function updateEngine(
   racing: boolean,
   mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
   gear = 1,
+  // When false (default), pitch and filter follow raw speed — the legacy
+  // model that shipped before the gear-feel rework. When true, the gear-aware
+  // model takes over: pitch resets on upshift and filter cutoff modulates
+  // with throttle.
+  enhancedShifting = false,
 ): void {
   const v = droneVoice
   const e = getAudioEngine()
   if (!v || !e) return
   const profile = engineNoiseProfile(mode)
   const now = e.ctx.currentTime
-  // maxSpeed here is the base (un-gear-adjusted) car max. Gear progress is
-  // derived from that band, not the gear-adjusted cap, so pitch resets across
-  // upshifts the way a real tach does.
-  const targets = engineToneTargetsForGear(
-    speedAbs,
-    maxSpeed,
-    gear,
-    throttle,
-    mode,
-    now,
-  )
+  // maxSpeed here is the base (un-gear-adjusted) car max.
+  const targets = enhancedShifting
+    ? engineToneTargetsForGear(speedAbs, maxSpeed, gear, throttle, mode, now)
+    : engineToneTargets(speedAbs, maxSpeed, mode, now)
   const baseVol = droneVolume(speedAbs, maxSpeed, onTrack, mode)
   // Subtle throttle bump on top of speed-driven volume so taps register.
   const throttleBoost = Math.max(0, throttle) * profile.throttleBoost
@@ -543,11 +542,16 @@ export interface DriveSfxInput {
   gear?: number
   // 'up' | 'down' for one frame after a shift; null/undefined otherwise. The
   // SFX driver consumes this and triggers the matching one-shot (exhaust pop
-  // on upshift, rev-match blip on downshift).
+  // on upshift, rev-match blip on downshift). Honored only when
+  // enhancedShifting is true.
   shiftEvent?: 'up' | 'down' | null
+  // Gates the gear-aware audio pipeline (RPM-based pitch, throttle-as-load
+  // filter, shift one-shots). Default false matches the pre-rework feel.
+  enhancedShifting?: boolean
 }
 
 export function updateDriveSfx(input: DriveSfxInput): void {
+  const enhanced = input.enhancedShifting === true
   updateEngine(
     input.speedAbs,
     input.maxSpeed,
@@ -556,6 +560,7 @@ export function updateDriveSfx(input: DriveSfxInput): void {
     input.racing,
     input.engineNoise,
     input.gear ?? 1,
+    enhanced,
   )
   const skid = input.racing
     ? skidIntensity(input.speedAbs, input.maxSpeed, input.steerAbs, input.onTrack)
@@ -564,7 +569,7 @@ export function updateDriveSfx(input: DriveSfxInput): void {
   if (input.racing && input.prevOnTrack && !input.onTrack) {
     playOffTrackRumble()
   }
-  if (input.racing && input.shiftEvent) {
+  if (enhanced && input.racing && input.shiftEvent) {
     if (input.shiftEvent === 'up') {
       playUpshiftPop(input.engineNoise ?? DEFAULT_ENGINE_NOISE_MODE)
     } else {

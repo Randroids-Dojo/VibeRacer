@@ -148,6 +148,11 @@ export interface RaceCanvasProps {
   // a Settings toggle flips the gearbox on the next frame without re-initing
   // the canvas. Optional: omitting it falls back to automatic.
   transmissionRef?: MutableRefObject<TransmissionMode>
+  // Live ref into the experimental enhanced-shifting flag. When false (the
+  // default), the rAF loop falls back to legacy gear handling, linear accel,
+  // speed-keyed audio, and skips the shift cut + camera bob. Optional;
+  // omitting it disables the rework entirely.
+  enhancedShiftingRef?: MutableRefObject<boolean>
   biome?: TrackBiome | null
   decorations?: readonly TrackDecoration[]
   paramsRef: MutableRefObject<CarParams>
@@ -348,6 +353,7 @@ export function RaceCanvas({
   checkpointCount,
   checkpoints,
   transmissionRef,
+  enhancedShiftingRef,
   biome = null,
   decorations = EMPTY_DECORATIONS,
   paramsRef,
@@ -1001,6 +1007,7 @@ export function RaceCanvas({
       // with incorrect timestamps. Reading the pre-tick value keeps the
       // tracker on the lap clock that was in effect during the frame.
       const preStepRaceStartMs = state.raceStartMs
+      const enhancedShifting = enhancedShiftingRef?.current ?? false
       const result = tick(
         state,
         {
@@ -1015,17 +1022,21 @@ export function RaceCanvas({
         path,
         paramsRef.current,
         transmissionRef?.current ?? 'automatic',
+        enhancedShifting,
       )
       state = result.state
       // Shift bob magnitudes. Upshift is larger and downward (-0.18) because
       // the chassis "dives" as torque cuts and weight shifts forward; downshift
       // is smaller and upward (0.14) because re-engaging power lifts the
       // front. Found by ear/eye on a 14-unit camera distance: bigger reads as
-      // pogo, smaller is invisible.
-      if (result.shiftEvent === 'up') {
-        shiftBobY = -0.18
-      } else if (result.shiftEvent === 'down') {
-        shiftBobY = 0.14
+      // pogo, smaller is invisible. Skipped entirely when enhancedShifting is
+      // off so the legacy feel includes no chassis flex on shifts.
+      if (enhancedShifting) {
+        if (result.shiftEvent === 'up') {
+          shiftBobY = -0.18
+        } else if (result.shiftEvent === 'down') {
+          shiftBobY = 0.14
+        }
       }
 
       // Brake-light glow. Resolve the live "should the rear lamps be lit"
@@ -1436,6 +1447,7 @@ export function RaceCanvas({
           engineNoise: engineNoiseRef?.current,
           gear: state.gear,
           shiftEvent: result.shiftEvent,
+          enhancedShifting,
         })
         prevOnTrack = state.onTrack
       }
@@ -1648,6 +1660,7 @@ export function RaceCanvas({
             Math.abs(state.speed),
             state.gear,
             paramsRef.current.maxSpeed,
+            enhancedShifting,
           ),
         }
         const prevPaceText = prevHud?.paceNote?.text ?? null

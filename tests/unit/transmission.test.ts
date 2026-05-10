@@ -64,10 +64,14 @@ describe('transmission helpers', () => {
     expect(fifth.maxSpeed).toBeCloseTo(DEFAULT_CAR_PARAMS.maxSpeed)
   })
 
-  it('uses geometric ratio spacing (each gear roughly 1.3-1.5x the last)', () => {
+  it('dynamic specs use geometric ratio spacing (each gear roughly 1.3-1.5x the last)', () => {
+    // The default (legacy) ratios are arithmetically spaced; geometric
+    // spacing is opt-in through the dynamic flag and only applies when the
+    // player has enabled enhancedShifting in Settings.
     for (let g = 2; g <= MANUAL_GEAR_MAX; g++) {
       const ratio =
-        manualGearSpec(g).maxSpeedFactor / manualGearSpec(g - 1).maxSpeedFactor
+        manualGearSpec(g, true).maxSpeedFactor /
+        manualGearSpec(g - 1, true).maxSpeedFactor
       expect(ratio).toBeGreaterThan(1.25)
       expect(ratio).toBeLessThan(1.55)
     }

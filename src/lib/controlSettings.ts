@@ -378,6 +378,13 @@ export interface ControlSettings {
   // keep the same race feel they had before this preference moved off of the
   // track and onto the player.
   transmission: TransmissionMode
+  // Experimental: opts the player into the gear-feel rework — geometric gear
+  // ratios, RPM-keyed engine audio, shift torque cut, exhaust pop and
+  // downshift blip, camera bob, and smart auto-shifting. Default false so the
+  // baseline drive feel stays exactly as it was before this feature shipped.
+  // The system is in active troubleshooting; flipping it on will be obvious
+  // to the player and they can flip it back off any time.
+  enhancedShifting: boolean
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -431,6 +438,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   gamepadRumbleIntensity: DEFAULT_GAMEPAD_RUMBLE_INTENSITY,
   timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
   transmission: DEFAULT_TRANSMISSION,
+  enhancedShifting: false,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -620,6 +628,11 @@ const ControlSettingsSchema = z.object({
   // players who want manual shifting flip it on once in Settings and it
   // applies to every track they race.
   transmission: z.enum(TRANSMISSION_MODES).default(DEFAULT_TRANSMISSION),
+  // Enhanced shifting (experimental). Default false so the baseline drive
+  // feel stays exactly as it was before the gear-feel rework. Legacy stored
+  // payloads pick up the same default so existing players are not surprised
+  // by a different car behavior on next load.
+  enhancedShifting: z.boolean().default(false),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -663,6 +676,7 @@ export function cloneDefaultSettings(): ControlSettings {
     gamepadRumbleIntensity: { ...DEFAULT_GAMEPAD_RUMBLE_INTENSITY },
     timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
     transmission: DEFAULT_CONTROL_SETTINGS.transmission,
+    enhancedShifting: DEFAULT_CONTROL_SETTINGS.enhancedShifting,
   }
 }
 
