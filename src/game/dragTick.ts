@@ -253,9 +253,12 @@ export function dragTick(
   }
 
   // Checkpoint walk identical to the closed-loop tick but with a finish
-  // freeze on the final checkpoint instead of a lap wrap.
+  // freeze on the final checkpoint instead of a lap wrap. The closed-loop
+  // builder appends a synthetic wrap-back-to-start entry to cpTriggerPieceIdx;
+  // drag races finish at the explicit last checkpoint, so K excludes that
+  // trailing entry.
   if (newKey !== state.lastCellKey) {
-    const K = path.cpTriggerPieceIdx.length
+    const K = path.cpTriggerPieceIdx.length - 1
     const expectedPieceIdx = path.cpTriggerPieceIdx[nextCpId]
     const expectedPiece = path.order[expectedPieceIdx].piece
     const expectedKey = cellKey(expectedPiece.row, expectedPiece.col)
