@@ -9,7 +9,7 @@ import {
   replacePresent,
   resetHistory,
   undoHistory,
-} from '@/lib/portable/editorHistory'
+} from '@randroids-dojo/vibekit'
 
 describe('createHistory', () => {
   it('seeds with the initial value as present and empty stacks', () => {

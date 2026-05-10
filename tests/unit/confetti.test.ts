@@ -12,7 +12,7 @@ import {
   makeRng,
   spawnConfettiBatch,
   stepConfetti,
-} from '@/lib/portable/confetti'
+} from '@randroids-dojo/vibekit'
 
 describe('makeRng', () => {
   it('is deterministic for a given seed', () => {

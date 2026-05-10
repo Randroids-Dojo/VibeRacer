@@ -6,7 +6,7 @@ import {
   JOYSTICK_RADIUS,
   moveJoystick,
   readJoystick,
-} from '@/lib/portable/virtual-joystick'
+} from '@randroids-dojo/vibekit'
 
 describe('virtual joystick', () => {
   it('is inactive on creation and reads zero', () => {

@@ -27,7 +27,7 @@ import {
   isBatchExpired,
   spawnConfettiBatch,
   stepConfetti,
-} from '@/lib/portable/confetti'
+} from '@randroids-dojo/vibekit'
 
 export type ConfettiKind = 'pb' | 'record'
 

@@ -13,6 +13,7 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
+    "@randroids-dojo/vibekit": "github:Randroids-Dojo/VibeKit#v0.1.0",
     "@upstash/redis": "^1.37.0",
     "next": "^15.0.0",
     "react": "^19.0.0",

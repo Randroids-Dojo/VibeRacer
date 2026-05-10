@@ -87,7 +87,7 @@ import {
   redoHistory,
   undoHistory,
   type EditorHistory,
-} from '@/lib/portable/editorHistory'
+} from '@randroids-dojo/vibekit'
 import {
   ZOOM_DEFAULT,
   ZOOM_MAX,
