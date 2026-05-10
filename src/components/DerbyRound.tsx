@@ -65,8 +65,8 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
   const keysRef = useKeyboard(settings.keyBindings)
   // Wire gamepad input onto the same KeyInput ref so the canvas reads a
   // single source. useGamepad writes both digital booleans and the analog
-  // axes override; playerInputFromKeys in DerbyCanvas already prefers axes
-  // when set.
+  // axes override; readPlayerInput (called by DerbyCanvas every frame)
+  // prefers the analog axes whenever the pad is active.
   useGamepad(keysRef, undefined, settings.gamepadBindings)
 
   const [snapshot, setSnapshot] = useState<DerbyHudSnapshot>({
