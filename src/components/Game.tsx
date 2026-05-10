@@ -423,6 +423,7 @@ interface HudState {
   // (off-track, Settings toggle off, no path data on file).
   paceNote: { text: string; accent: string } | null
   gear: number
+  gearProgress: number
 }
 
 type PauseView =
@@ -1058,6 +1059,7 @@ function GameSession({
       leaderboardRank: readLocalBestRank(slug, versionHash),
       paceNote: null,
       gear: 1,
+      gearProgress: 0,
     }
   })
 
@@ -1166,6 +1168,7 @@ function GameSession({
       ghostGapMs: next.ghostGapMs,
       paceNote: next.paceNote,
       gear: next.gear,
+      gearProgress: next.gearProgress,
     }))
   }, [])
 
@@ -2771,6 +2774,7 @@ function GameSession({
         carMaxSpeed={tuning.maxSpeed}
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
+        gearProgress={hud.gearProgress}
         transmission={settings.transmission}
         compact={compactHud}
       />

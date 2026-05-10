@@ -8,6 +8,7 @@ import {
   type PhysicsInput,
 } from './physics'
 import {
+  autoShiftGear,
   DEFAULT_MANUAL_GEAR,
   DEFAULT_TRANSMISSION,
   manualGearSpec,
@@ -15,6 +16,16 @@ import {
   type TransmissionMode,
 } from './transmission'
 import { vehicleTrackContact } from './wheelContact'
+
+// Brief torque cut on every shift. ~110ms gives the upshift a perceptible
+// "click" without feeling like input lag during a 30-second drag run that
+// may chain four upshifts (4 * 110ms = 440ms of cut total).
+export const SHIFT_TORQUE_CUT_SEC = 0.11
+// 50% residual thrust during the cut. Why: full zero feels like a stall in
+// an arcade racer where players never lift; 50% keeps the car rolling so the
+// chassis bob and audio rev-drop read as a shift, not a hesitation. Real
+// DCT cars cut to ~10% but they're not chasing 60fps "feel."
+export const SHIFT_TORQUE_CUT_THRUST = 0.5
 
 export interface GameState {
   x: number
@@ -30,6 +41,10 @@ export interface GameState {
   lapCount: number
   lastLapTimeMs: number | null
   gear: number
+  // Counts down each tick. While > 0 the throttle is multiplied by the
+  // residual-thrust constant so the player feels the shift in the chassis,
+  // not just the audio.
+  torqueCutSec: number
 }
 
 export interface LapCompleteEvent {
@@ -41,6 +56,9 @@ export interface LapCompleteEvent {
 export interface TickResult {
   state: GameState
   lapComplete: LapCompleteEvent | null
+  // 'up' or 'down' on the frame a shift fires; null otherwise. RaceCanvas
+  // forwards this to the SFX driver to trigger the exhaust pop / rev blip.
+  shiftEvent: 'up' | 'down' | null
 }
 
 export interface TickInput extends PhysicsInput {
@@ -65,6 +83,7 @@ export function initGameState(path: TrackPath): GameState {
     lapCount: 0,
     lastLapTimeMs: null,
     gear: DEFAULT_MANUAL_GEAR,
+    torqueCutSec: 0,
   }
 }
 
@@ -83,13 +102,50 @@ export function tick(
 ): TickResult {
   const dtSec = dtMs / 1000
   let gear = state.gear
+  let torqueCutSec = Math.max(0, state.torqueCutSec - dtSec)
+  let shiftEvent: 'up' | 'down' | null = null
+
   if (transmission === 'manual') {
-    if (input.shiftDown) gear = shiftManualGear(gear, 'down')
-    if (input.shiftUp) gear = shiftManualGear(gear, 'up')
-  } else if (gear !== DEFAULT_MANUAL_GEAR) {
-    gear = DEFAULT_MANUAL_GEAR
+    let nextGear = gear
+    if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
+    if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
+    if (nextGear !== gear) {
+      shiftEvent = nextGear > gear ? 'up' : 'down'
+      torqueCutSec = SHIFT_TORQUE_CUT_SEC
+      gear = nextGear
+    }
+  } else {
+    // Auto: always recompute the gear from current speed so a manual->auto
+    // toggle (or paused-frame catchup that crossed multiple bands) lands on
+    // the correct gear without waiting for hysteresis to drag it back.
+    const speedAbs = Math.abs(state.speed)
+    const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear)
+    if (nextGear !== gear) {
+      // Multi-gear deltas come from transmission-mode toggles or large dt
+      // catchups, not from racing. Treat as a silent snap (no rev blip, no
+      // torque cut) so the player isn't punished for changing a setting.
+      // A normal racing upshift only ever crosses one boundary per tick.
+      const isCascade = Math.abs(nextGear - gear) > 1
+      if (!isCascade) {
+        shiftEvent = nextGear > gear ? 'up' : 'down'
+        if (torqueCutSec <= 0) torqueCutSec = SHIFT_TORQUE_CUT_SEC
+      }
+      gear = nextGear
+    }
   }
-  const gearSpec = transmission === 'manual' ? manualGearSpec(gear) : null
+
+  // In manual we apply both factors (lower gears are quick but capped). In
+  // auto we keep the accel factor so low gears still launch hard, but skip
+  // the maxSpeedFactor cap so the system can keep pushing toward base maxSpeed
+  // across upshifts without the per-gear ceiling blocking forward progress.
+  // NOTE: this is a behavior change from pre-Phase-5 auto, which used 1x for
+  // both factors. Auto now launches noticeably harder out of gear 1 and rolls
+  // off slightly slower at top. Lap PBs recorded under the old auto model
+  // remain valid (no schema change) but feel from the same tuning differs.
+  const gearSpec = manualGearSpec(gear)
+  const baseMaxFactor = transmission === 'manual' ? gearSpec.maxSpeedFactor : 1
+  const cutMul = torqueCutSec > 0 ? SHIFT_TORQUE_CUT_THRUST : 1
+  const finalAccelFactor = gearSpec.accelFactor * cutMul
 
   const contactNow = vehicleTrackContact(path, state.x, state.z, state.heading)
   const onTrack = contactNow.onTrack
@@ -114,8 +170,8 @@ export function tick(
         dtSec,
         onTrack,
         params,
-        gearSpec?.accelFactor ?? 1,
-        gearSpec?.maxSpeedFactor ?? 1,
+        finalAccelFactor,
+        baseMaxFactor,
       )
 
   let hits = state.hits
@@ -172,7 +228,9 @@ export function tick(
       lapCount,
       lastLapTimeMs,
       gear,
+      torqueCutSec,
     },
     lapComplete,
+    shiftEvent,
   }
 }

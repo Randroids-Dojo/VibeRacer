@@ -2,14 +2,19 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import {
   achievementUnlockCuePattern,
   droneFilterHz,
+  droneFilterHzForGear,
   droneFreqHz,
+  droneFreqHzForGear,
   droneVolume,
   engineToneTargets,
+  engineToneTargetsForGear,
   highSpeedModAmount,
   playAchievementUnlockCue,
+  playDownshiftBlip,
   playLapStinger,
   playOffTrackRumble,
   playPbFanfare,
+  playUpshiftPop,
   playWrongWayCue,
   playUiClick,
   silenceAllSfx,
@@ -25,6 +30,7 @@ import {
   wrongWayCuePattern,
   _resetSfxForTesting,
 } from '@/game/audio'
+import { manualGearSpec } from '@/game/transmission'
 import { _resetAudioEngineForTesting, getAudioEngine } from '@/game/audioEngine'
 
 // ---------------------------------------------------------------------------
@@ -132,6 +138,92 @@ describe('engineToneTargets', () => {
     expect(Math.abs(electricA.freqHz - electricB.freqHz)).toBeGreaterThan(
       Math.abs(warmA.freqHz - warmB.freqHz),
     )
+  })
+})
+
+describe('droneFreqHzForGear', () => {
+  it('starts at idle when speed is below the gear band', () => {
+    expect(droneFreqHzForGear(0, 26, 2, 'classic')).toBeCloseTo(60, 6)
+  })
+
+  it('reaches redline at the top of the gear band', () => {
+    // Gear 5 spans up to baseMaxSpeed.
+    expect(droneFreqHzForGear(26, 26, 5, 'classic')).toBeCloseTo(60 + 220, 6)
+  })
+
+  it('resets pitch on upshift (lower in next gear at same speed)', () => {
+    // At a speed inside gear 2's band, pitch in gear 2 should be near
+    // redline; the same speed at the bottom of gear 3's band should be at
+    // idle. The pitch DROP across an upshift is the whole point.
+    const speedNearTop2 = 26 * 0.39
+    const inGear2 = droneFreqHzForGear(speedNearTop2, 26, 2, 'classic')
+    const inGear3 = droneFreqHzForGear(speedNearTop2, 26, 3, 'classic')
+    expect(inGear2).toBeGreaterThan(inGear3)
+  })
+})
+
+describe('droneFilterHzForGear', () => {
+  it('opens up under throttle vs off-throttle at the same gear progress', () => {
+    const onThrottle = droneFilterHzForGear(13, 26, 3, 1, 'classic')
+    const offThrottle = droneFilterHzForGear(13, 26, 3, 0, 'classic')
+    expect(onThrottle).toBeGreaterThan(offThrottle)
+  })
+
+  it('clamps to a positive minimum off-throttle', () => {
+    expect(droneFilterHzForGear(0, 26, 1, 0, 'warm')).toBeGreaterThan(40)
+  })
+})
+
+describe('engineToneTargetsForGear', () => {
+  it('sweeps across each gear band from idle to redline', () => {
+    const bottom = engineToneTargetsForGear(0, 26, 1, 1, 'classic', 0)
+    const top = engineToneTargetsForGear(
+      26 * manualGearSpec(1).maxSpeedFactor,
+      26,
+      1,
+      1,
+      'classic',
+      0,
+    )
+    expect(top.freqHz).toBeGreaterThan(bottom.freqHz)
+  })
+
+  it('animates near redline (top ~20% of any gear)', () => {
+    // Pick a speed near the top of gear 3.
+    const baseMax = 26
+    const speedNearRedline3 = baseMax * 0.55 * 0.99
+    const a = engineToneTargetsForGear(
+      speedNearRedline3,
+      baseMax,
+      3,
+      1,
+      'warm',
+      0.1,
+    )
+    const b = engineToneTargetsForGear(
+      speedNearRedline3,
+      baseMax,
+      3,
+      1,
+      'warm',
+      0.2,
+    )
+    expect(a.freqHz).not.toBeCloseTo(b.freqHz, 6)
+  })
+})
+
+describe('shift one-shots', () => {
+  it('upshift pop schedules at least one oscillator and one buffer source', () => {
+    playUpshiftPop('classic')
+    expect(oscillators.length).toBeGreaterThanOrEqual(1)
+    expect(bufferSources.length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('downshift blip schedules an oscillator that stops within ~170ms', () => {
+    playDownshiftBlip('classic')
+    expect(oscillators.length).toBeGreaterThanOrEqual(1)
+    const stop = Math.max(...oscillators.map((o) => o.stoppedAt ?? 0))
+    expect(stop).toBeLessThan(0.18)
   })
 })
 

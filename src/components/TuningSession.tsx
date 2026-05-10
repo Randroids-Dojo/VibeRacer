@@ -123,6 +123,7 @@ export function TuningSession({
     ghostGapMs: null,
     paceNote: null,
     gear: 1,
+    gearProgress: 0,
   })
   const [saveName, setSaveName] = useState('')
 
@@ -263,6 +264,7 @@ export function TuningSession({
       ghostGapMs: null,
       paceNote: null,
       gear: 1,
+      gearProgress: 0,
     })
     setPhase('countdown')
   }
@@ -489,6 +491,7 @@ export function TuningSession({
       ghostGapMs: null,
       paceNote: null,
       gear: 1,
+      gearProgress: 0,
     })
     setPhase('countdown')
   }

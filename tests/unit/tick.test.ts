@@ -62,6 +62,117 @@ describe('tick', () => {
     expect(manual.state.gear).toBe(2)
   })
 
+  it('emits a shiftEvent when the player upshifts in manual', () => {
+    const s = startRace(initGameState(path), 0)
+    const r = tick(
+      s,
+      { throttle: 0, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      path,
+      undefined,
+      'manual',
+    )
+    expect(r.shiftEvent).toBe('up')
+    expect(r.state.gear).toBe(2)
+    expect(r.state.torqueCutSec).toBeGreaterThan(0)
+  })
+
+  it('emits a shiftEvent when auto-mode crosses a gear boundary', () => {
+    const s = {
+      ...startRace(initGameState(path), 0),
+      // Speed just past gear 1's cap so auto should upshift.
+      speed: DEFAULT_CAR_PARAMS.maxSpeed * 0.3,
+    }
+    const r = tick(
+      s,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+    )
+    expect(r.shiftEvent).toBe('up')
+    expect(r.state.gear).toBeGreaterThan(1)
+  })
+
+  it('does not re-arm the cut on a chained single-gear auto upshift', () => {
+    // Speed just past the gear 2 cap (0.40 * 26 = 10.4) so auto wants gear 3.
+    // The cut from the prior gear 1->2 shift is still ticking down.
+    const baseState = {
+      ...startRace(initGameState(path), 0),
+      gear: 2,
+      torqueCutSec: 0.05,
+      speed: DEFAULT_CAR_PARAMS.maxSpeed * 0.41,
+    }
+    const r = tick(
+      baseState,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+    )
+    expect(r.state.gear).toBe(3)
+    expect(r.shiftEvent).toBe('up')
+    // Cut window should not have been bumped back up to SHIFT_TORQUE_CUT_SEC;
+    // it just continues counting down from where it was.
+    expect(r.state.torqueCutSec).toBeLessThan(0.05)
+  })
+
+  it('snaps gear silently on a multi-band cascade (transmission toggle)', () => {
+    // Player is coasting in gear 5 at low speed when they flip the setting
+    // from manual to automatic. Gear should snap down without a downshift
+    // blip or unrequested torque cut.
+    const baseState = {
+      ...startRace(initGameState(path), 0),
+      gear: 5,
+      speed: DEFAULT_CAR_PARAMS.maxSpeed * 0.1,
+    }
+    const r = tick(
+      baseState,
+      { throttle: 0, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+    )
+    expect(r.state.gear).toBeLessThan(5)
+    expect(r.shiftEvent).toBeNull()
+    expect(r.state.torqueCutSec).toBe(0)
+  })
+
+  it('torque cut reduces effective acceleration on the shift frame', () => {
+    const baseState = startRace(initGameState(path), 0)
+    const dtMs = 16
+    // Frame A: shift up (torque cut starts).
+    const cut = tick(
+      baseState,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      dtMs,
+      dtMs,
+      path,
+      undefined,
+      'manual',
+    )
+    // Frame B: same input but no shift, torque cut already cleared by setting
+    // baseState's gear to the post-shift gear (no shift event = no cut).
+    const noCut = tick(
+      { ...baseState, gear: 2 },
+      { throttle: 1, steer: 0, handbrake: false },
+      dtMs,
+      dtMs,
+      path,
+      undefined,
+      'manual',
+    )
+    // The cut frame must accelerate less than the same gear without a cut.
+    expect(cut.state.speed).toBeLessThan(noCut.state.speed)
+  })
+
   it('manual low gear limits top speed below high gear', () => {
     const s = {
       ...startRace(initGameState(path), 0),
