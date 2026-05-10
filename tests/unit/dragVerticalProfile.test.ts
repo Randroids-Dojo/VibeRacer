@@ -4,6 +4,7 @@ import {
   bakeProfileIntoPath,
   heightAt,
   profileLength,
+  projectArcLengthOnSpawnAxis,
   slopeAt,
   verticalProfileFromNormalized,
 } from '@/game/dragVerticalProfile'
@@ -133,5 +134,63 @@ describe('vertical profile helpers', () => {
       { sFrac: 1, height: 0 },
     ])
     expect(profileLength(profile)).toBe(800)
+  })
+})
+
+describe('projectArcLengthOnSpawnAxis', () => {
+  // Heading 0 means the spawn tangent is +x (per the engine convention).
+  // A point that is N units along +x from the spawn projects to N.
+  it('projects a forward point along heading 0 to its +x distance', () => {
+    expect(
+      projectArcLengthOnSpawnAxis(
+        { x: 50, z: 0 },
+        { position: { x: 0, z: 0 }, heading: 0 },
+      ),
+    ).toBeCloseTo(50, 9)
+  })
+
+  // Strips spawn pointing along -z in the actual scene (heading PI/2 in
+  // engine convention because cos(PI/2) = 0, -sin(PI/2) = -1). A point
+  // that is N units along -z from the spawn must project to N.
+  it('projects forward correctly when the spawn heading rotates the basis', () => {
+    expect(
+      projectArcLengthOnSpawnAxis(
+        { x: 0, z: -120 },
+        { position: { x: 0, z: 0 }, heading: Math.PI / 2 },
+      ),
+    ).toBeCloseTo(120, 9)
+  })
+
+  // A point that is behind the spawn (negative arc length) clamps to 0
+  // so callers that look up `heightAt(profile, arcLength)` always get a
+  // valid value at the start of the strip rather than reading off the
+  // first keyframe.
+  it('clamps a backwards point to zero', () => {
+    expect(
+      projectArcLengthOnSpawnAxis(
+        { x: -10, z: 0 },
+        { position: { x: 0, z: 0 }, heading: 0 },
+      ),
+    ).toBe(0)
+  })
+
+  // A point that is purely lateral to the spawn axis projects to 0
+  // because the dot product with the tangent is 0. Same clamp applies.
+  it('returns 0 for a purely lateral offset', () => {
+    expect(
+      projectArcLengthOnSpawnAxis(
+        { x: 0, z: 25 },
+        { position: { x: 0, z: 0 }, heading: 0 },
+      ),
+    ).toBe(0)
+  })
+
+  it('treats a NaN coordinate as zero so a bad upstream value does not poison the projection', () => {
+    expect(
+      projectArcLengthOnSpawnAxis(
+        { x: Number.NaN, z: 0 },
+        { position: { x: 0, z: 0 }, heading: 0 },
+      ),
+    ).toBe(0)
   })
 })

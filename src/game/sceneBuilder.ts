@@ -131,7 +131,11 @@ import {
   type TrackBiome,
 } from '@/lib/biomes'
 import type { TrackDecoration } from '@/lib/decorations'
-import { heightAt, type VerticalProfile } from './dragVerticalProfile'
+import {
+  heightAt,
+  projectArcLengthOnSpawnAxis,
+  type VerticalProfile,
+} from './dragVerticalProfile'
 import {
   drawRacingNumberToCanvas,
   type RacingNumberSetting,
@@ -442,8 +446,6 @@ export function profiledTrackSurfaceGeometry(
 ): BufferGeometry {
   const samples = continuousTrackSamples(path)
   const spawn = path.spawn
-  const tx = Math.cos(spawn.heading)
-  const tz = -Math.sin(spawn.heading)
   const verts: number[] = []
   // Optional back extension: prepend one virtual vertex pair `backExtension`
   // units behind the first sample (against the spawn axis). Lets drag mode
@@ -455,6 +457,8 @@ export function profiledTrackSurfaceGeometry(
     const fHalf = halfWidthAt(first.op, first.t)
     const px = Math.sin(fSample.heading)
     const pz = Math.cos(fSample.heading)
+    const tx = Math.cos(spawn.heading)
+    const tz = -Math.sin(spawn.heading)
     const baseX = fSample.x - tx * backExtension
     const baseZ = fSample.z - tz * backExtension
     const y = heightAt(profile, 0)
@@ -465,12 +469,9 @@ export function profiledTrackSurfaceGeometry(
     const half = halfWidthAt(op, t)
     const px = Math.sin(sample.heading)
     const pz = Math.cos(sample.heading)
-    // Arc length is the planar distance from spawn projected onto the
-    // spawn-direction axis. Drag strips run straight on the ground plane
-    // so the projection is monotonic and lossless.
-    const arcLength = Math.max(
-      0,
-      (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
+    const arcLength = projectArcLengthOnSpawnAxis(
+      { x: sample.x, z: sample.z },
+      { position: spawn.position, heading: spawn.heading },
     )
     const y = heightAt(profile, arcLength)
     verts.push(sample.x + px * half, y, sample.z + pz * half)
@@ -523,8 +524,6 @@ export function profiledTerrainSkirtGeometry(
 ): BufferGeometry {
   const samples = continuousTrackSamples(path)
   const spawn = path.spawn
-  const tx = Math.cos(spawn.heading)
-  const tz = -Math.sin(spawn.heading)
   const verts: number[] = []
   // y offset so the skirt sits a hair below the road surface; otherwise
   // z-fighting flickers along the seam.
@@ -534,6 +533,8 @@ export function profiledTerrainSkirtGeometry(
     const fSample = first.sample
     const px = Math.sin(fSample.heading)
     const pz = Math.cos(fSample.heading)
+    const tx = Math.cos(spawn.heading)
+    const tz = -Math.sin(spawn.heading)
     const baseX = fSample.x - tx * backExtension
     const baseZ = fSample.z - tz * backExtension
     const y = heightAt(profile, 0) + SKIRT_Y_OFFSET
@@ -551,9 +552,9 @@ export function profiledTerrainSkirtGeometry(
   for (const { sample } of samples) {
     const px = Math.sin(sample.heading)
     const pz = Math.cos(sample.heading)
-    const arcLength = Math.max(
-      0,
-      (sample.x - spawn.position.x) * tx + (sample.z - spawn.position.z) * tz,
+    const arcLength = projectArcLengthOnSpawnAxis(
+      { x: sample.x, z: sample.z },
+      { position: spawn.position, heading: spawn.heading },
     )
     const y = heightAt(profile, arcLength) + SKIRT_Y_OFFSET
     verts.push(

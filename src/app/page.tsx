@@ -59,6 +59,10 @@ export default async function HomePage() {
             Drag Racing
           </Link>
 
+          <Link href="/derby" style={primaryBtnStyle}>
+            Derby
+          </Link>
+
           <DailyChallenge />
 
           <DailyStreak />

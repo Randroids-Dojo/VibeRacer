@@ -125,10 +125,19 @@ export function stepPhysics(
   }
 
   if (!onTrack) {
+    // Skip drag when throttle is driving in the direction of motion below
+    // the cap, otherwise a constant offTrackDrag can exceed the throttle's
+    // per-tick contribution and leave the player stuck at zero off-road
+    // with no way back to the track.
     const drag = params.offTrackDrag * dtSec
-    if (Math.abs(speed) <= drag) speed = 0
-    else speed -= sign(speed) * drag
-    speed = clamp(speed, -params.offTrackMaxSpeed, params.offTrackMaxSpeed)
+    const cap = params.offTrackMaxSpeed
+    const driving =
+      (throttle > 0 && speed >= 0) || (throttle < 0 && speed <= 0)
+    if (Math.abs(speed) > cap || !driving) {
+      if (Math.abs(speed) <= drag) speed = 0
+      else speed -= sign(speed) * drag
+    }
+    speed = clamp(speed, -cap, cap)
   } else {
     speed = clamp(speed, -params.maxReverseSpeed, maxSpeed)
   }
