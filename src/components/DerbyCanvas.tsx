@@ -40,6 +40,11 @@ import {
   type DerbyRoundState,
 } from '@/game/derbyRoundState'
 import { isDestroyed } from '@/game/derbyVehicleState'
+import {
+  applyCameraRig,
+  initCameraRig,
+  updateCameraRig,
+} from '@/game/sceneBuilder'
 import { readPlayerInput } from '@/game/playerInput'
 import type { KeyInput } from '@/hooks/useKeyboard'
 import type { DerbyArenaConfig } from '@/lib/derbyArenas'
@@ -136,10 +141,10 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     scene.add(sun)
 
     const camera = new PerspectiveCamera(
-      55,
+      70,
       container.clientWidth / container.clientHeight,
-      0.5,
-      400,
+      0.1,
+      2000,
     )
 
     const arenaMesh: DerbyArenaMesh = buildArenaMesh(arena)
@@ -149,6 +154,17 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       arena,
       vehicleTypes: vehicleConfigs.map((v) => v.type),
     })
+
+    // Camera rig matches the loop's chase camera (DEFAULT_CAMERA_RIG):
+    // smoothed position + look-target lerp, height 6, distance 14, fov 70.
+    // initCameraRig seeds it at the player's spawn so the first frame is
+    // already in pose; updateCameraRig+applyCameraRig run inside step().
+    const cameraRig = initCameraRig(
+      round.cars[PLAYER_IDX].physics.x,
+      round.cars[PLAYER_IDX].physics.z,
+      round.cars[PLAYER_IDX].physics.heading,
+    )
+    applyCameraRig(camera, cameraRig)
 
     const brains: DerbyAiBrain[] = vehicleConfigs.map(() => initBrain())
 
@@ -263,15 +279,16 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       const result = derbyTick(round, { perCar: inputs }, dtSec)
       syncVisuals()
 
-      // Camera follows the player from above and behind.
+      // Camera rig: same chase behavior as the loop mode (smoothed lerp,
+      // look-ahead, default height/distance/fov).
       const player = round.cars[PLAYER_IDX]
-      const camDist = 16
-      const camHeight = 12
-      const ch = player.physics.heading
-      const cx = player.physics.x - Math.cos(ch) * camDist
-      const cz = player.physics.z + Math.sin(ch) * camDist
-      camera.position.set(cx, camHeight, cz)
-      camera.lookAt(player.physics.x, 0, player.physics.z)
+      updateCameraRig(
+        cameraRig,
+        player.physics.x,
+        player.physics.z,
+        player.physics.heading,
+      )
+      applyCameraRig(camera, cameraRig)
 
       // Forward HUD updates at most ~10 Hz to avoid React renders every frame.
       if (nowMs - lastHudPushMs > 100 || result.events.length > 0) {
