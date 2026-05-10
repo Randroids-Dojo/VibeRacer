@@ -40,6 +40,7 @@ import {
   type DerbyRoundState,
 } from '@/game/derbyRoundState'
 import { isDestroyed } from '@/game/derbyVehicleState'
+import { readPlayerInput } from '@/game/playerInput'
 import type { KeyInput } from '@/hooks/useKeyboard'
 import type { DerbyArenaConfig } from '@/lib/derbyArenas'
 import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
@@ -240,12 +241,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       const dtSec = Math.min(0.05, (nowMs - lastTimeMs) / 1000)
       lastTimeMs = nowMs
 
-      // Build per-car PhysicsInput. carIdx 0 is the player from keyboard;
-      // remaining carIdx are CPU AI.
+      // Build per-car PhysicsInput. carIdx 0 is the player; the rest are CPU AI.
+      // The player input goes through the shared readPlayerInput so the
+      // keyboard / gamepad / touch translation matches loop and drag.
       const inputs: PhysicsInput[] = []
       for (let i = 0; i < round.cars.length; i++) {
         if (i === PLAYER_IDX) {
-          inputs.push(playerInputFromKeys(keysRef.current))
+          inputs.push(readPlayerInput(keysRef.current))
         } else {
           inputs.push(
             stepAi(brains[i], {
@@ -379,14 +381,6 @@ function pickEnemyColor(type: string): number {
     default:
       return 0x3ddc84
   }
-}
-
-function playerInputFromKeys(k: KeyInput): PhysicsInput {
-  const throttle = k.axes ? k.axes.throttle : k.forward ? 1 : k.backward ? -1 : 0
-  const steer = k.axes
-    ? k.axes.steer
-    : (k.right ? 1 : 0) - (k.left ? 1 : 0)
-  return { throttle, steer, handbrake: k.handbrake }
 }
 
 function computePlace(round: DerbyRoundState): number {

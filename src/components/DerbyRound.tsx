@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { DERBY_ARENAS } from '@/lib/derbyArenas'
 import {
   DERBY_VEHICLES,
@@ -10,6 +10,8 @@ import {
 import type { DerbyArenaSlug, DerbyVehicleType } from '@/lib/schemas'
 import { submitDerbyRun } from '@/lib/derbySubmit'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { useGamepad } from '@/hooks/useGamepad'
+import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   DerbyHUD,
   POPUP_LIFETIME_MS,
@@ -22,6 +24,7 @@ import {
   type DerbyHudSnapshot,
   type DerbyRoundSummary,
 } from './DerbyCanvas'
+import { TouchControls } from './TouchControls'
 
 // Top-level Derby round host. Owns:
 // - the keyboard ref the canvas reads each frame
@@ -43,17 +46,28 @@ interface DerbyRoundProps {
 export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
   const arena = DERBY_ARENAS[arenaSlug]
   const playerConfig = DERBY_VEHICLES[vehicle]
+  const { settings } = useControlSettings()
 
   // CPU vehicle types: pick the three non-player vehicles deterministically
   // by carIdx so the lineup is the same every round for a given player
   // pick. Spec says one of each non-player type; total 4 cars.
-  const cpuTypes = useCpuVehicleTypes(vehicle)
-  const vehicleConfigs: DerbyVehicleConfig[] = [
-    playerConfig,
-    ...cpuTypes.map((t) => DERBY_VEHICLES[t]),
-  ]
+  // Memoize the configs array so DerbyCanvas's effect (which has
+  // vehicleConfigs in its deps) does not tear down and rebuild the scene on
+  // every parent re-render. Without this, every HUD push would reset the
+  // round to its initial frame, which manifested as cars that never moved.
+  const vehicleConfigs: DerbyVehicleConfig[] = useMemo(() => {
+    const cpuTypes: DerbyVehicleType[] = (
+      ['car', 'schoolBus', 'bigTruck', 'racecar'] as const
+    ).filter((t) => t !== vehicle)
+    return [playerConfig, ...cpuTypes.map((t) => DERBY_VEHICLES[t])]
+  }, [playerConfig, vehicle])
 
-  const keysRef = useKeyboard()
+  const keysRef = useKeyboard(settings.keyBindings)
+  // Wire gamepad input onto the same KeyInput ref so the canvas reads a
+  // single source. useGamepad writes both digital booleans and the analog
+  // axes override; playerInputFromKeys in DerbyCanvas already prefers axes
+  // when set.
+  useGamepad(keysRef, undefined, settings.gamepadBindings)
 
   const [snapshot, setSnapshot] = useState<DerbyHudSnapshot>({
     place: 1,
@@ -152,6 +166,11 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
         onRoundEnd={onRoundEnd}
       />
       <DerbyHUD state={hudState} />
+      <TouchControls
+        keys={keysRef}
+        enabled={summary === null}
+        mode={settings.touchMode}
+      />
       {summary !== null ? (
         <ResultsPanel
           arenaName={arena.displayName}
@@ -211,15 +230,6 @@ function Stat({ label, value }: { label: string; value: string }) {
       <div style={statValue}>{value}</div>
     </div>
   )
-}
-
-// Pick three CPU vehicle types given the player's pick. Strategy:
-// preserve a varied lineup by always including one of each non-player
-// vehicle type. With four shipping types and the player taking one, the
-// remaining three slots fall out naturally.
-function useCpuVehicleTypes(player: DerbyVehicleType): DerbyVehicleType[] {
-  const types: DerbyVehicleType[] = ['car', 'schoolBus', 'bigTruck', 'racecar']
-  return types.filter((t) => t !== player)
 }
 
 const pageStyle: React.CSSProperties = {
