@@ -729,6 +729,12 @@ function GameSession({
   // straight off `settings` since they re-render on settings changes.
   const transmissionRef = useRef<TransmissionMode>(settings.transmission)
   transmissionRef.current = settings.transmission
+  // Mirrors settings.enhancedShifting into the rAF loop so a Settings flip
+  // applies on the next frame without re-initing the canvas. Default false
+  // so the baseline drive feel matches what shipped before the gear-feel
+  // rework.
+  const enhancedShiftingRef = useRef<boolean>(settings.enhancedShifting)
+  enhancedShiftingRef.current = settings.enhancedShifting
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -2632,6 +2638,7 @@ function GameSession({
         checkpointCount={checkpointCount}
         checkpoints={checkpoints}
         transmissionRef={transmissionRef}
+        enhancedShiftingRef={enhancedShiftingRef}
         biome={trackBiome ?? null}
         decorations={trackDecorations}
         paramsRef={paramsRef}
@@ -2776,6 +2783,7 @@ function GameSession({
         gear={hud.gear}
         gearProgress={hud.gearProgress}
         transmission={settings.transmission}
+        enhancedShifting={settings.enhancedShifting}
         compact={compactHud}
       />
       {achievementToast ? (

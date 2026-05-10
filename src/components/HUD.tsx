@@ -168,8 +168,13 @@ interface HudProps {
   gear?: number
   // 0..1 progress through the current gear's speed band. Drives the redline
   // color tint on the gear chip so the player can read when an upshift is due
-  // without staring at the speedometer.
+  // without staring at the speedometer. Only meaningful when enhancedShifting
+  // is on; otherwise it stays at 0 and the chip stays the legacy amber.
   gearProgress?: number
+  // Gates the gear chip's auto-mode visibility and the redline tint. When
+  // false (default), the chip behaves the way it did before the gear-feel
+  // rework: visible in manual only, no color shift.
+  enhancedShifting?: boolean
   compact?: boolean
 }
 
@@ -974,10 +979,11 @@ export function HUD(props: HudProps) {
           <PredictionBlock prediction={props.prediction} />
         </div>
       ) : null}
-      {props.transmission ? (
+      {props.transmission &&
+      (props.enhancedShifting || props.transmission === 'manual') ? (
         <GearChip
           gear={props.gear ?? 1}
-          gearProgress={props.gearProgress ?? 0}
+          gearProgress={props.enhancedShifting ? props.gearProgress ?? 0 : 0}
           transmission={props.transmission}
           compact={compact}
         />

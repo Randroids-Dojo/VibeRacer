@@ -99,53 +99,74 @@ export function tick(
   path: TrackPath,
   params: CarParams = DEFAULT_CAR_PARAMS,
   transmission: TransmissionMode = DEFAULT_TRANSMISSION,
+  // Opts the player into the gear-feel rework. When false (the default and
+  // current shipped baseline), the function behaves exactly like the
+  // pre-rework tick: legacy gear ratios, no torque cut, no shift events,
+  // automatic mode locked to gear 1, linear acceleration curve.
+  enhancedShifting = false,
 ): TickResult {
   const dtSec = dtMs / 1000
   let gear = state.gear
   let torqueCutSec = Math.max(0, state.torqueCutSec - dtSec)
   let shiftEvent: 'up' | 'down' | null = null
 
-  if (transmission === 'manual') {
-    let nextGear = gear
-    if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
-    if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
-    if (nextGear !== gear) {
-      shiftEvent = nextGear > gear ? 'up' : 'down'
-      torqueCutSec = SHIFT_TORQUE_CUT_SEC
-      gear = nextGear
+  if (enhancedShifting) {
+    if (transmission === 'manual') {
+      let nextGear = gear
+      if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
+      if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
+      if (nextGear !== gear) {
+        shiftEvent = nextGear > gear ? 'up' : 'down'
+        torqueCutSec = SHIFT_TORQUE_CUT_SEC
+        gear = nextGear
+      }
+    } else {
+      // Auto: always recompute the gear from current speed so a manual->auto
+      // toggle (or paused-frame catchup that crossed multiple bands) lands on
+      // the correct gear without waiting for hysteresis to drag it back.
+      const speedAbs = Math.abs(state.speed)
+      const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear, true)
+      if (nextGear !== gear) {
+        // Multi-gear deltas come from transmission-mode toggles or large dt
+        // catchups, not from racing. Treat as a silent snap (no rev blip, no
+        // torque cut) so the player isn't punished for changing a setting.
+        // A normal racing upshift only ever crosses one boundary per tick.
+        const isCascade = Math.abs(nextGear - gear) > 1
+        if (!isCascade) {
+          shiftEvent = nextGear > gear ? 'up' : 'down'
+          if (torqueCutSec <= 0) torqueCutSec = SHIFT_TORQUE_CUT_SEC
+        }
+        gear = nextGear
+      }
     }
   } else {
-    // Auto: always recompute the gear from current speed so a manual->auto
-    // toggle (or paused-frame catchup that crossed multiple bands) lands on
-    // the correct gear without waiting for hysteresis to drag it back.
-    const speedAbs = Math.abs(state.speed)
-    const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear)
-    if (nextGear !== gear) {
-      // Multi-gear deltas come from transmission-mode toggles or large dt
-      // catchups, not from racing. Treat as a silent snap (no rev blip, no
-      // torque cut) so the player isn't punished for changing a setting.
-      // A normal racing upshift only ever crosses one boundary per tick.
-      const isCascade = Math.abs(nextGear - gear) > 1
-      if (!isCascade) {
-        shiftEvent = nextGear > gear ? 'up' : 'down'
-        if (torqueCutSec <= 0) torqueCutSec = SHIFT_TORQUE_CUT_SEC
-      }
-      gear = nextGear
+    // Legacy path. Matches pre-rework tick behavior exactly: manual cycles
+    // gears via shift inputs, auto locks to gear 1, no torque cut, no shift
+    // events. The torque cut counter still drains so a player who toggles
+    // the feature off mid-cut clears it within ~110ms instead of latching.
+    if (transmission === 'manual') {
+      if (input.shiftDown) gear = shiftManualGear(gear, 'down')
+      if (input.shiftUp) gear = shiftManualGear(gear, 'up')
+    } else if (gear !== DEFAULT_MANUAL_GEAR) {
+      gear = DEFAULT_MANUAL_GEAR
     }
   }
 
-  // In manual we apply both factors (lower gears are quick but capped). In
-  // auto we keep the accel factor so low gears still launch hard, but skip
-  // the maxSpeedFactor cap so the system can keep pushing toward base maxSpeed
-  // across upshifts without the per-gear ceiling blocking forward progress.
-  // NOTE: this is a behavior change from pre-Phase-5 auto, which used 1x for
-  // both factors. Auto now launches noticeably harder out of gear 1 and rolls
-  // off slightly slower at top. Lap PBs recorded under the old auto model
-  // remain valid (no schema change) but feel from the same tuning differs.
-  const gearSpec = manualGearSpec(gear)
-  const baseMaxFactor = transmission === 'manual' ? gearSpec.maxSpeedFactor : 1
-  const cutMul = torqueCutSec > 0 ? SHIFT_TORQUE_CUT_THRUST : 1
-  const finalAccelFactor = gearSpec.accelFactor * cutMul
+  // Gear factor selection. Enhanced mode applies the new geometric specs and
+  // its accelFactor in both transmissions; legacy mode applies the legacy
+  // specs only in manual (auto runs at 1x like before the rework).
+  const gearSpec = manualGearSpec(gear, enhancedShifting)
+  const baseMaxFactor =
+    transmission === 'manual' ? gearSpec.maxSpeedFactor : 1
+  let baseAccelFactor: number
+  if (enhancedShifting) {
+    baseAccelFactor = gearSpec.accelFactor
+  } else {
+    baseAccelFactor = transmission === 'manual' ? gearSpec.accelFactor : 1
+  }
+  const cutMul =
+    enhancedShifting && torqueCutSec > 0 ? SHIFT_TORQUE_CUT_THRUST : 1
+  const finalAccelFactor = baseAccelFactor * cutMul
 
   const contactNow = vehicleTrackContact(path, state.x, state.z, state.heading)
   const onTrack = contactNow.onTrack
@@ -172,6 +193,11 @@ export function tick(
         params,
         finalAccelFactor,
         baseMaxFactor,
+        0,
+        // Legacy mode keeps the linear acceleration curve. Enhanced mode uses
+        // the default quartic taper inside stepPhysics for the asymptotic
+        // top-end pull.
+        enhancedShifting ? undefined : 1,
       )
 
   let hits = state.hits
