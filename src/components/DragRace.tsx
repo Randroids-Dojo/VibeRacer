@@ -16,7 +16,7 @@ import {
   type Group,
   type Scene,
 } from 'three'
-import { interpolateGhostPose, type Replay } from '@/lib/replay'
+import { type Replay } from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
@@ -32,10 +32,11 @@ import {
   type CameraRigState,
   type SceneBundle,
 } from '@/game/sceneBuilder'
+import { type GhostMeta } from '@/game/ghostNameplate'
 import {
-  nameplateOpacityForDistance,
-  type GhostMeta,
-} from '@/game/ghostNameplate'
+  applyGhostPresentation,
+  initGhostPresentation,
+} from '@/game/ghostPresentation'
 import { buildTrackPath } from '@/game/trackPath'
 import {
   DRAG_STRIPS,
@@ -358,8 +359,7 @@ export function DragRace({ slug }: DragRaceProps) {
     const ghostNameplate = buildGhostNameplate()
     ghostCar.add(ghostNameplate.group)
     ghostNameplateRef.current = ghostNameplate
-    let lastNameplateKey: string | null = null
-    let lastNameplateVisible = false
+    const ghostPresentationState = initGhostPresentation()
     const disposeGhost = () => {
       ghostCar.remove(ghostNameplate.group)
       ghostNameplate.dispose()
@@ -455,73 +455,39 @@ export function DragRace({ slug }: DragRaceProps) {
         car.rotation.set(-pitch, state.heading, 0)
       }
 
-      // Ghost car follow. During the racing phase the rival's replay is
-      // sampled by elapsed-since-GO and the ghost is placed on the strip;
-      // y is taken from the strip's profile so it follows the same hills
-      // the player drives over. Visibility extends through the 'finished'
-      // phase so the rival freezes at its finish-line pose
-      // (interpolateGhostPose clamps past maxT) instead of vanishing the
-      // moment the player crosses the line. Hidden in garage/staging so
-      // the pre-race overlays never show a stale ghost.
+      // Ghost car + floating nameplate. The shared helper handles pose
+      // sampling, visibility, distance-fade, and the cache-keyed plate
+      // redraw; we just hand it the strip's hilly terrain sampler so the
+      // ghost follows the same profile the player car drives over. The
+      // 'finished' phase keeps active=true so the rival freezes at its
+      // finish-line pose (the replay sampler clamps past maxT) instead
+      // of vanishing the moment the player crosses the line.
       const ghostNode = ghostCarRef.current
       const ghostPlate = ghostNameplateRef.current
-      const ghostReplay = ghostReplayRef.current
-      const ghostActive =
-        (ph === 'racing' || ph === 'finished') &&
-        ghostReplay !== null &&
-        state.raceStartMs !== null
-      let ghostVisibleThisFrame = false
-      let ghostDistanceToPlayer = Number.POSITIVE_INFINITY
-      if (ghostNode) {
-        if (ghostActive && ghostReplay && state.raceStartMs !== null) {
-          const ghostT = Math.max(0, performance.now() - state.raceStartMs)
-          const pose = interpolateGhostPose(ghostReplay, ghostT)
-          if (pose) {
-            const ghostArc = projectArcLengthOnSpawnAxis(
-              { x: pose.x, z: pose.z },
+      if (ghostNode && ghostPlate) {
+        applyGhostPresentation(ghostPresentationState, {
+          ghostCar: ghostNode,
+          ghostPlate,
+          replay: ghostReplayRef.current,
+          raceStartMs: state.raceStartMs,
+          nowMs: performance.now(),
+          active: ph === 'racing' || ph === 'finished',
+          showNameplate: true,
+          meta: ghostMetaRef.current,
+          source: 'top',
+          playerX: state.x,
+          playerZ: state.z,
+          resolveTerrain: (x, z) => {
+            const arc = projectArcLengthOnSpawnAxis(
+              { x, z },
               { position: spawn.position, heading: spawn.heading },
             )
-            const gy = heightAt(strip.verticalProfile, ghostArc)
-            const gpitch = slopeAt(strip.verticalProfile, ghostArc)
-            ghostNode.position.set(pose.x, gy, pose.z)
-            ghostNode.rotation.set(-gpitch, pose.heading, 0)
-            ghostNode.visible = true
-            ghostVisibleThisFrame = true
-            ghostDistanceToPlayer = Math.hypot(
-              pose.x - state.x,
-              pose.z - state.z,
-            )
-          } else {
-            ghostNode.visible = false
-          }
-        } else {
-          ghostNode.visible = false
-        }
-      }
-
-      // Nameplate. Hidden whenever the ghost itself is hidden, and faded
-      // out when the ghost is close to the player so it cannot cover the
-      // player's car in chase cameras. Re-applies the texture only when
-      // the meta tuple changes so steady-state frames are a single string
-      // compare.
-      if (ghostPlate) {
-        const opacity = nameplateOpacityForDistance(ghostDistanceToPlayer)
-        const meta = ghostMetaRef.current
-        const wantPlate =
-          ghostVisibleThisFrame && meta !== null && opacity > 0
-        if (wantPlate && meta) {
-          const key = `top|${meta.initials}|${meta.lapTimeMs}`
-          if (key !== lastNameplateKey || !lastNameplateVisible) {
-            ghostPlate.apply(meta, 'top')
-            lastNameplateKey = key
-            lastNameplateVisible = true
-          }
-          ghostPlate.setOpacity(opacity)
-        } else if (lastNameplateVisible) {
-          ghostPlate.setVisible(false)
-          lastNameplateVisible = false
-          lastNameplateKey = null
-        }
+            return {
+              y: heightAt(strip.verticalProfile, arc),
+              pitch: slopeAt(strip.verticalProfile, arc),
+            }
+          },
+        })
       }
 
       // Camera follow uses the closed-loop rig from sceneBuilder so the

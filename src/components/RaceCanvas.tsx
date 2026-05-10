@@ -26,10 +26,11 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import { type GhostMeta } from '@/game/ghostNameplate'
 import {
-  nameplateOpacityForDistance,
-  type GhostMeta,
-} from '@/game/ghostNameplate'
+  applyGhostPresentation,
+  initGhostPresentation,
+} from '@/game/ghostPresentation'
 import type { GhostSource } from '@/lib/ghostSource'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
@@ -65,7 +66,6 @@ import { setGameIntensity } from '@/game/music'
 import {
   MAX_REPLAY_SAMPLES,
   REPLAY_SAMPLE_MS,
-  interpolateGhostPose,
   type Replay,
 } from '@/lib/replay'
 import {
@@ -690,10 +690,10 @@ export function RaceCanvas({
     // camera-facing by construction so the plate always reads upright.
     const ghostNameplate = buildGhostNameplate()
     ghostMesh.add(ghostNameplate.group)
-    // Track the last applied (meta-key, source) combo so a per-frame poll
-    // is a single string compare when nothing changed.
-    let lastNameplateKey: string | null = null
-    let lastNameplateVisible = false
+    // Per-frame ghost+nameplate state. The shared helper reads / writes
+    // this struct every frame; the cache key inside lets the canvas-
+    // backed nameplate skip its texture redraw on the steady state.
+    const ghostPresentationState = initGhostPresentation()
 
     // Per-lap recording. The buffer is interleaved [x, z, heading] triples and
     // is sampled at REPLAY_SAMPLE_MS offsets from raceStartMs so playback is a
@@ -825,8 +825,8 @@ export function RaceCanvas({
         applyCameraRig(bundle.camera, rig)
         ghostMesh.visible = false
         ghostNameplate.setVisible(false)
-        lastNameplateVisible = false
-        lastNameplateKey = null
+        ghostPresentationState.lastNameplateVisible = false
+        ghostPresentationState.lastNameplateKey = null
         if (carPoseOutRef) {
           carPoseOutRef.current = { x: state.x, z: state.z, heading: state.heading }
         }
@@ -1196,72 +1196,31 @@ export function RaceCanvas({
         }
       }
 
-      // Render the active ghost. Its time origin is the same raceStartMs the
-      // player uses, so when tick resets raceStartMs on a finish-line crossing
-      // the ghost automatically restarts from t=0 with the player.
-      const replay = activeGhostRef?.current ?? null
-      const showGhost = showGhostRef?.current ?? true
-      let ghostVisibleThisFrame = false
-      let ghostDistanceToPlayer = Number.POSITIVE_INFINITY
-      if (replay && showGhost && state.raceStartMs !== null) {
-        const tLap = ts - state.raceStartMs
-        const pose = interpolateGhostPose(replay, tLap)
-        if (pose) {
-          ghostMesh.position.set(pose.x, 0, pose.z)
-          ghostMesh.rotation.y = pose.heading
-          ghostMesh.visible = true
-          ghostVisibleThisFrame = true
-          ghostDistanceToPlayer = Math.hypot(
-            pose.x - state.x,
-            pose.z - state.z,
-          )
-          if (ghostPoseOutRef) {
-            ghostPoseOutRef.current = {
-              x: pose.x,
-              z: pose.z,
-              heading: pose.heading,
-            }
-          }
-        } else {
-          ghostMesh.visible = false
-          if (ghostPoseOutRef) ghostPoseOutRef.current = null
-        }
-      } else {
-        ghostMesh.visible = false
-        if (ghostPoseOutRef) ghostPoseOutRef.current = null
-      }
-
-      // Sync the floating ghost nameplate. The plate is hidden whenever the
-      // ghost car itself is hidden (no ghost on screen means no name to put
-      // above it) or the player turned the toggle off. Otherwise the plate
-      // shows the active meta tuple, fading out when the ghost is close to
-      // the player so it cannot cover the player's car in chase cameras.
-      const nameplateOn = showGhostNameplateRef?.current ?? true
-      const nameplateOpacity =
-        nameplateOpacityForDistance(ghostDistanceToPlayer)
-      const wantNameplate =
-        ghostVisibleThisFrame && nameplateOn && nameplateOpacity > 0
-      if (wantNameplate) {
-        const meta = activeGhostMetaRef?.current ?? null
-        const source = ghostSourceRef?.current ?? 'auto'
-        // Build a cheap key for the combined (meta, source) tuple so the
-        // expensive canvas draw path runs only on a real change. The key
-        // shape mirrors `nameplateCacheKey` but inlined here so we do not
-        // import from sceneBuilder twice.
-        const key =
-          meta === null
-            ? `<none>|${source}`
-            : `${source}|${meta.initials}|${meta.lapTimeMs}`
-        if (key !== lastNameplateKey || !lastNameplateVisible) {
-          ghostNameplate.apply(meta, source)
-          lastNameplateKey = key
-          lastNameplateVisible = true
-        }
-        ghostNameplate.setOpacity(nameplateOpacity)
-      } else if (lastNameplateVisible) {
-        ghostNameplate.setVisible(false)
-        lastNameplateVisible = false
-        lastNameplateKey = null
+      // Render the active ghost + floating nameplate. Both are driven by
+      // the shared `applyGhostPresentation` helper so closed-loop and
+      // drag stay in lockstep on pose sampling, distance fade, and the
+      // cache-keyed plate redraw. The replay's time origin is the same
+      // raceStartMs the player uses, so when tick resets raceStartMs on
+      // a finish-line crossing the ghost automatically restarts from
+      // t=0 with the player. Closed-loop tracks are flat (no
+      // `resolveTerrain`), so the helper places the ghost at y=0.
+      const ghostFrame = applyGhostPresentation(ghostPresentationState, {
+        ghostCar: ghostMesh,
+        ghostPlate: ghostNameplate,
+        replay: activeGhostRef?.current ?? null,
+        raceStartMs: state.raceStartMs,
+        nowMs: ts,
+        active: showGhostRef?.current ?? true,
+        showNameplate: showGhostNameplateRef?.current ?? true,
+        meta: activeGhostMetaRef?.current ?? null,
+        source: ghostSourceRef?.current ?? 'auto',
+        playerX: state.x,
+        playerZ: state.z,
+      })
+      const ghostVisibleThisFrame = ghostFrame.visible
+      const ghostDistanceToPlayer = ghostFrame.distance
+      if (ghostPoseOutRef) {
+        ghostPoseOutRef.current = ghostFrame.pose
       }
 
       // Skid marks: lay a paired stripe behind the rear wheels when the
