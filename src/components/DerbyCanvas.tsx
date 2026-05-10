@@ -217,10 +217,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
           VEHICLE_WHEEL_RADIUS,
           car.physics.z,
         )
-        // Heading 0 = +X, PI/2 = -Z. Rotate the group so its +Z axis aligns
-        // with the heading direction. world rotation about Y matches
-        // -(heading - PI/2) under the simulator's convention.
-        asset.group.rotation.y = -car.physics.heading + Math.PI / 2
+        // Procedural model has its hood at local -Z and taillights at local
+        // +Z, so local -Z is "front". Physics heading h points in world
+        // direction (cos h, -sin h). To send local -Z to that world vector,
+        // the Three.js Y rotation must be (h - PI/2). The previous formula
+        // negated h, which mirrored every steering input visually and made
+        // the chase camera spin the wrong way around the car.
+        asset.group.rotation.y = car.physics.heading - Math.PI / 2
         asset.group.visible = !isDestroyed(car)
       }
     }
