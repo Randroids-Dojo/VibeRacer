@@ -3,13 +3,8 @@
 import { useEffect, useRef } from 'react'
 import {
   AmbientLight,
-  BoxGeometry,
   Color,
-  CylinderGeometry,
   DirectionalLight,
-  Group,
-  Mesh,
-  MeshStandardMaterial,
   PerspectiveCamera,
   Scene,
   Vector3,
@@ -19,7 +14,11 @@ import {
   buildArenaMesh,
   type DerbyArenaMesh,
 } from '@/game/derbyArena'
-import { derbyTick, type DerbyTickEvent } from '@/game/derbyTick'
+import {
+  loadDerbyVehicleAsset,
+  type DerbyVehicleAsset,
+} from '@/game/derbyVehicleLoader'
+import { derbyTick } from '@/game/derbyTick'
 import {
   initBrain,
   stepAi,
@@ -141,10 +140,21 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
     const brains: DerbyAiBrain[] = vehicleConfigs.map(() => initBrain())
 
-    const carVisuals: VehicleVisual[] = vehicleConfigs.map((cfg, i) =>
-      buildPlaceholderVehicle(cfg, i === PLAYER_IDX),
-    )
-    for (const v of carVisuals) scene.add(v.group)
+    // Vehicle assets load asynchronously to keep the contract aligned with
+    // the future GLB path. While the assets resolve, the cars render
+    // nothing; loop typically resolves on the same frame for procedural
+    // assets so this is invisible at runtime.
+    const carAssets: (DerbyVehicleAsset | null)[] = vehicleConfigs.map(() => null)
+    Promise.all(
+      vehicleConfigs.map((cfg, i) =>
+        loadDerbyVehicleAsset(cfg, i === PLAYER_IDX ? 0xfff7b0 : pickEnemyColor(cfg.type)),
+      ),
+    ).then((assets) => {
+      for (let i = 0; i < assets.length; i++) {
+        carAssets[i] = assets[i]
+        scene.add(assets[i].group)
+      }
+    })
 
     let lastTimeMs = performance.now()
     let rafId = 0
@@ -155,8 +165,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     function syncVisuals() {
       for (let i = 0; i < round.cars.length; i++) {
         const car = round.cars[i]
-        const visual = carVisuals[i]
-        visual.group.position.set(
+        const asset = carAssets[i]
+        if (!asset) continue
+        asset.group.position.set(
           car.physics.x,
           VEHICLE_WHEEL_RADIUS,
           car.physics.z,
@@ -164,8 +175,8 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         // Heading 0 = +X, PI/2 = -Z. Rotate the group so its +Z axis aligns
         // with the heading direction. world rotation about Y matches
         // -(heading - PI/2) under the simulator's convention.
-        visual.group.rotation.y = -car.physics.heading + Math.PI / 2
-        visual.group.visible = !isDestroyed(car)
+        asset.group.rotation.y = -car.physics.heading + Math.PI / 2
+        asset.group.visible = !isDestroyed(car)
       }
     }
 
@@ -277,7 +288,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       stopped = true
       cancelAnimationFrame(rafId)
       window.removeEventListener('resize', onResize)
-      for (const v of carVisuals) v.dispose()
+      for (const a of carAssets) a?.dispose()
       arenaMesh.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
@@ -287,74 +298,6 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
   }, [arena, vehicleConfigs, keysRef])
 
   return <div ref={containerRef} style={canvasContainerStyle} />
-}
-
-interface VehicleVisual {
-  group: Group
-  body: Mesh
-  dispose: () => void
-}
-
-// Build a procedural placeholder vehicle. Slice 8 swaps the implementation
-// to load a GLB and pluck named submeshes; the public shape (a Group with
-// a `body` child Mesh) stays the same so slice 9's damage visualizer can
-// target it without branching.
-function buildPlaceholderVehicle(
-  config: DerbyVehicleConfig,
-  isPlayer: boolean,
-): VehicleVisual {
-  const group = new Group()
-  group.name = `derbyVehicle:${config.type}`
-
-  const bodyW = config.collisionRadius * 1.4
-  const bodyL = config.collisionRadius * 2.0
-  const bodyH = VEHICLE_BODY_HEIGHT
-
-  const bodyGeometry = new BoxGeometry(bodyW, bodyH, bodyL)
-  const bodyColor = isPlayer ? 0xfff7b0 : pickEnemyColor(config.type)
-  const bodyMaterial = new MeshStandardMaterial({
-    color: bodyColor,
-    roughness: 0.6,
-    metalness: 0.1,
-  })
-  const body = new Mesh(bodyGeometry, bodyMaterial)
-  body.name = 'body'
-  body.position.y = bodyH / 2
-  group.add(body)
-
-  // Wheels: four small cylinders rotated to lie flat. Named per the GLB
-  // contract so the future damage visualizer can find them.
-  const wheelGeo = new CylinderGeometry(
-    VEHICLE_WHEEL_RADIUS,
-    VEHICLE_WHEEL_RADIUS,
-    0.3,
-    16,
-  )
-  const wheelMat = new MeshStandardMaterial({ color: 0x222222, roughness: 0.9 })
-  const wheelOffsets: { name: string; x: number; z: number }[] = [
-    { name: 'wheel_fl', x: -bodyW / 2, z: -bodyL / 2 + 0.4 },
-    { name: 'wheel_fr', x: bodyW / 2, z: -bodyL / 2 + 0.4 },
-    { name: 'wheel_rl', x: -bodyW / 2, z: bodyL / 2 - 0.4 },
-    { name: 'wheel_rr', x: bodyW / 2, z: bodyL / 2 - 0.4 },
-  ]
-  for (const w of wheelOffsets) {
-    const wheel = new Mesh(wheelGeo, wheelMat)
-    wheel.name = w.name
-    wheel.rotation.z = Math.PI / 2
-    wheel.position.set(w.x, 0, w.z)
-    group.add(wheel)
-  }
-
-  return {
-    group,
-    body,
-    dispose() {
-      bodyGeometry.dispose()
-      bodyMaterial.dispose()
-      wheelGeo.dispose()
-      wheelMat.dispose()
-    },
-  }
 }
 
 function pickEnemyColor(type: string): number {
