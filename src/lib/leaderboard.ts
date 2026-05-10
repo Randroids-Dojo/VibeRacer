@@ -67,11 +67,11 @@ export const DEFAULT_SORT_DIRECTION: Record<LeaderboardSortKey, SortDirection> =
 //
 // Tie-break is always by ascending rank so two entries with the same key
 // land in their natural leaderboard order.
-export function sortLeaderboardEntries(
-  entries: readonly LeaderboardEntry[],
+export function sortLeaderboardEntries<T extends LeaderboardEntry>(
+  entries: readonly T[],
   key: LeaderboardSortKey,
   direction: SortDirection,
-): LeaderboardEntry[] {
+): T[] {
   const copy = entries.slice()
   const sign = direction === 'asc' ? 1 : -1
   copy.sort((a, b) => {
