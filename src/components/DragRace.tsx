@@ -8,9 +8,7 @@ import {
 } from 'react'
 import Link from 'next/link'
 import {
-  BoxGeometry,
   Mesh,
-  MeshBasicMaterial,
   MeshStandardMaterial,
   PerspectiveCamera,
   WebGLRenderer,
@@ -23,6 +21,8 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   applyCameraRig,
+  buildGhostCar,
+  buildGhostNameplate,
   buildScene,
   DEFAULT_CAMERA_RIG,
   initCameraRig,
@@ -32,6 +32,10 @@ import {
   type CameraRigState,
   type SceneBundle,
 } from '@/game/sceneBuilder'
+import {
+  nameplateOpacityForDistance,
+  type GhostMeta,
+} from '@/game/ghostNameplate'
 import { buildTrackPath } from '@/game/trackPath'
 import {
   DRAG_STRIPS,
@@ -70,6 +74,7 @@ import { submitDragRun } from '@/lib/dragSubmit'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
+import { Speedometer } from './Speedometer'
 import {
   DRAG_COUNTDOWN_TOTAL_MS,
   DragChristmasTree,
@@ -87,15 +92,6 @@ interface DragRaceProps {
 // road. Tuned to frame the strip without overlapping the biome ground
 // plane that buildScene already places under the scene.
 const SKIRT_HALF_WIDTH = 24
-
-// Bounding-box dimensions for the ghost car marker. Roughly matches the
-// player car GLB's footprint so the cyan box reads as "another car"
-// rather than as a generic prop. Pivot is at center; +0.6 lifts the
-// box's bottom face to road height.
-const GHOST_BOX_WIDTH = 2.2
-const GHOST_BOX_HEIGHT = 1.2
-const GHOST_BOX_LENGTH = 4.2
-const GHOST_BOX_PIVOT_OFFSET_Y = GHOST_BOX_HEIGHT / 2
 
 // Drag mode reuses the closed-loop camera rig from sceneBuilder so the
 // framing matches the rest of the game. The rig handles position /
@@ -242,6 +238,7 @@ export function DragRace({ slug }: DragRaceProps) {
 
   useEffect(() => {
     paramsRef.current = derived.params
+    maxSpeedRef.current = derived.params.maxSpeed
     configRef.current = {
       totalWeight: derived.derivation.totalWeight,
       launch: derived.launch,
@@ -268,12 +265,27 @@ export function DragRace({ slug }: DragRaceProps) {
   // Initialized in the same effect that builds the scene so the first
   // frame already has a valid pose and the camera does not snap on start.
   const cameraRigRef = useRef<CameraRigState | null>(null)
-  // Ghost replay state. The active replay drives a small marker mesh that
-  // follows the leaderboard's chosen rival (top, next-faster, or own PB,
-  // selected by `selectDragGhost`). Read on every frame; null hides the
-  // ghost mesh.
+  // Ghost replay state. The active replay drives a translucent cyan clone
+  // of the player car (built via `buildGhostCar`) that follows the
+  // leaderboard's chosen rival (top, next-faster, or own PB, selected by
+  // `selectDragGhost`). Read on every frame; null hides the ghost car.
   const ghostReplayRef = useRef<Replay | null>(null)
-  const ghostMeshRef = useRef<Mesh | null>(null)
+  const ghostCarRef = useRef<Group | null>(null)
+  // Floating "WHO + TIME" plate above the ghost car. Built once per scene
+  // and re-applied whenever the active ghost meta changes; the rAF loop
+  // hides / fades it based on distance to the player.
+  const ghostNameplateRef = useRef<ReturnType<
+    typeof buildGhostNameplate
+  > | null>(null)
+  const ghostMetaRef = useRef<GhostMeta | null>(null)
+
+  // Live speed values surfaced to the bottom-center Speedometer overlay.
+  // The overlay drives its own rAF loop, so writing into refs lets the
+  // gauge needle and peak marker update at 60 Hz without re-rendering the
+  // rest of the React tree.
+  const speedRef = useRef<number>(0)
+  const maxSpeedRef = useRef<number>(derived.params.maxSpeed)
+  const topSpeedRef = useRef<number>(0)
 
   // Set up Three.js renderer + scene exactly once for the strip lifetime.
   useEffect(() => {
@@ -331,29 +343,30 @@ export function DragRace({ slug }: DragRaceProps) {
       skirtMat.dispose()
     }
 
-    // Ghost car. Simple translucent cyan box; cheap to render and reads as
-    // "another car" without needing a second GLB load. Hidden by default;
-    // the rAF loop flips visibility on when a replay is loaded and we are
-    // in the racing phase.
-    const ghostGeom = new BoxGeometry(
-      GHOST_BOX_WIDTH,
-      GHOST_BOX_HEIGHT,
-      GHOST_BOX_LENGTH,
-    )
-    const ghostMat = new MeshBasicMaterial({
-      color: 0x80e8ff,
-      transparent: true,
-      opacity: 0.55,
-    })
-    const ghostMesh = new Mesh(ghostGeom, ghostMat)
-    ghostMesh.visible = false
-    bundle.scene.add(ghostMesh)
-    ghostMeshRef.current = ghostMesh
+    // Ghost car. The closed-loop game's `buildGhostCar` clones the same
+    // GLB the player drives and tints every material translucent cyan, so
+    // the ghost reads as "another car" rather than a generic prop. Hidden
+    // by default; the rAF loop flips visibility on when a replay is loaded
+    // and the race has started. Nameplate is parented to the ghost group
+    // so it inherits world position each frame.
+    const ghostBuild = buildGhostCar()
+    const ghostCar = ghostBuild.ghost
+    ghostCar.visible = false
+    bundle.scene.add(ghostCar)
+    ghostCarRef.current = ghostCar
+
+    const ghostNameplate = buildGhostNameplate()
+    ghostCar.add(ghostNameplate.group)
+    ghostNameplateRef.current = ghostNameplate
+    let lastNameplateKey: string | null = null
+    let lastNameplateVisible = false
     const disposeGhost = () => {
-      bundle.scene.remove(ghostMesh)
-      ghostGeom.dispose()
-      ghostMat.dispose()
-      ghostMeshRef.current = null
+      ghostCar.remove(ghostNameplate.group)
+      ghostNameplate.dispose()
+      bundle.scene.remove(ghostCar)
+      ghostBuild.dispose()
+      ghostCarRef.current = null
+      ghostNameplateRef.current = null
     }
 
     const renderer = new WebGLRenderer({ antialias: true })
@@ -442,7 +455,7 @@ export function DragRace({ slug }: DragRaceProps) {
         car.rotation.set(-pitch, state.heading, 0)
       }
 
-      // Ghost mesh follow. During the racing phase the rival's replay is
+      // Ghost car follow. During the racing phase the rival's replay is
       // sampled by elapsed-since-GO and the ghost is placed on the strip;
       // y is taken from the strip's profile so it follows the same hills
       // the player drives over. Visibility extends through the 'finished'
@@ -450,12 +463,15 @@ export function DragRace({ slug }: DragRaceProps) {
       // (interpolateGhostPose clamps past maxT) instead of vanishing the
       // moment the player crosses the line. Hidden in garage/staging so
       // the pre-race overlays never show a stale ghost.
-      const ghostNode = ghostMeshRef.current
+      const ghostNode = ghostCarRef.current
+      const ghostPlate = ghostNameplateRef.current
       const ghostReplay = ghostReplayRef.current
       const ghostActive =
         (ph === 'racing' || ph === 'finished') &&
         ghostReplay !== null &&
         state.raceStartMs !== null
+      let ghostVisibleThisFrame = false
+      let ghostDistanceToPlayer = Number.POSITIVE_INFINITY
       if (ghostNode) {
         if (ghostActive && ghostReplay && state.raceStartMs !== null) {
           const ghostT = Math.max(0, performance.now() - state.raceStartMs)
@@ -467,18 +483,44 @@ export function DragRace({ slug }: DragRaceProps) {
             )
             const gy = heightAt(strip.verticalProfile, ghostArc)
             const gpitch = slopeAt(strip.verticalProfile, ghostArc)
-            ghostNode.position.set(
-              pose.x,
-              gy + GHOST_BOX_PIVOT_OFFSET_Y,
-              pose.z,
-            )
+            ghostNode.position.set(pose.x, gy, pose.z)
             ghostNode.rotation.set(-gpitch, pose.heading, 0)
             ghostNode.visible = true
+            ghostVisibleThisFrame = true
+            ghostDistanceToPlayer = Math.hypot(
+              pose.x - state.x,
+              pose.z - state.z,
+            )
           } else {
             ghostNode.visible = false
           }
         } else {
           ghostNode.visible = false
+        }
+      }
+
+      // Nameplate. Hidden whenever the ghost itself is hidden, and faded
+      // out when the ghost is close to the player so it cannot cover the
+      // player's car in chase cameras. Re-applies the texture only when
+      // the meta tuple changes so steady-state frames are a single string
+      // compare.
+      if (ghostPlate) {
+        const opacity = nameplateOpacityForDistance(ghostDistanceToPlayer)
+        const meta = ghostMetaRef.current
+        const wantPlate =
+          ghostVisibleThisFrame && meta !== null && opacity > 0
+        if (wantPlate && meta) {
+          const key = `top|${meta.initials}|${meta.lapTimeMs}`
+          if (key !== lastNameplateKey || !lastNameplateVisible) {
+            ghostPlate.apply(meta, 'top')
+            lastNameplateKey = key
+            lastNameplateVisible = true
+          }
+          ghostPlate.setOpacity(opacity)
+        } else if (lastNameplateVisible) {
+          ghostPlate.setVisible(false)
+          lastNameplateVisible = false
+          lastNameplateKey = null
         }
       }
 
@@ -496,6 +538,15 @@ export function DragRace({ slug }: DragRaceProps) {
           DEFAULT_CAMERA_RIG,
         )
         applyCameraRig(cameraRef.current, cameraRigRef.current)
+      }
+
+      // Live speed refs for the Speedometer overlay. Always updated so the
+      // gauge needle drops to zero between phases instead of freezing on
+      // the last racing frame. The peak ref is reset alongside the game
+      // state in startCountdown so a fresh attempt starts the marker clean.
+      speedRef.current = state.speed
+      if (state.topSpeed > topSpeedRef.current) {
+        topSpeedRef.current = state.topSpeed
       }
 
       // HUD update at frame rate.
@@ -558,6 +609,8 @@ export function DragRace({ slug }: DragRaceProps) {
     const fresh = initDragGameState(path)
     stateRef.current = fresh
     goAtMsRef.current = null
+    speedRef.current = 0
+    topSpeedRef.current = 0
     setCountdownStartedAt(performance.now())
     setCountdownFouled(false)
     setHud({
@@ -641,6 +694,27 @@ export function DragRace({ slug }: DragRaceProps) {
     [leaderboard, playerPbMs],
   )
 
+  // Push the active ghost's "WHO + TIME" tuple into a ref so the rAF loop
+  // can drive the floating nameplate without re-rendering. The matching
+  // entry is the leaderboard row whose nonce matches the active ghost.
+  // null hides the plate (e.g. when the leaderboard is empty or the
+  // selected entry has no nonce).
+  useEffect(() => {
+    if (!ghost.nonce) {
+      ghostMetaRef.current = null
+      return
+    }
+    const entry = leaderboard.find((e) => e.nonce === ghost.nonce)
+    if (!entry) {
+      ghostMetaRef.current = null
+      return
+    }
+    ghostMetaRef.current = {
+      initials: entry.initials,
+      lapTimeMs: entry.lapTimeMs,
+    }
+  }, [ghost.nonce, leaderboard])
+
   // Load the ghost's replay whenever the selected nonce changes. Best
   // effort: a 404 (legacy entry without a stored replay) just leaves
   // ghostReplayRef null so the rAF loop hides the ghost mesh.
@@ -713,13 +787,22 @@ export function DragRace({ slug }: DragRaceProps) {
       {phase === 'racing' && (
         <DragHUD
           elapsedMs={hud.elapsedMs}
-          speed={hud.speed}
           fouled={hud.fouled}
           reactionTimeMs={hud.reactionTimeMs}
           splits={hud.splits}
-          topSpeed={hud.topSpeed}
         />
       )}
+
+      {(phase === 'racing' || phase === 'finished') &&
+        controlSettings.showSpeedometer && (
+          <Speedometer
+            speedRef={speedRef}
+            maxSpeedRef={maxSpeedRef}
+            unit={controlSettings.speedUnit}
+            topSpeedRef={topSpeedRef}
+            showTopSpeedMarker={controlSettings.showTopSpeedMarker}
+          />
+        )}
 
       {phase === 'finished' && finishEvent && (
         <DragSessionSummary
