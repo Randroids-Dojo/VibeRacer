@@ -9,6 +9,7 @@ import {
 } from '@/lib/derbyVehicles'
 import { DERBY_ARENAS } from '@/lib/derbyArenas'
 import type { DerbyArenaSlug, DerbyVehicleType } from '@/lib/schemas'
+import { DerbyRound } from './DerbyRound'
 
 // Derby per-arena landing screen. Picks a vehicle and starts a round. The
 // actual round host (DerbyRound) lands in slice 7 behind the same
@@ -28,38 +29,11 @@ export function DerbyVehiclePicker({
 
   if (started) {
     return (
-      <main style={pageStyle}>
-        <div style={stageStyle}>
-          <header style={logoWrapStyle}>
-            <h1 style={logoStyle}>{arena.displayName}</h1>
-            <p style={tagStyle}>
-              Round starting with the {DERBY_VEHICLES[chosen].displayName}.
-            </p>
-          </header>
-          <div style={menuStyle} data-derby-round-placeholder="true">
-            <p style={{ margin: 0, opacity: 0.85 }}>
-              The round host wires up in slice 7. This placeholder confirms
-              the picker handed off the chosen arena and vehicle.
-            </p>
-            <div style={pillRowStyle}>
-              <span style={pillStyle}>arena: {arena.slug}</span>
-              <span style={pillStyle}>
-                vehicle: {DERBY_VEHICLES[chosen].displayName}
-              </span>
-            </div>
-            <button
-              type="button"
-              style={secondaryBtnStyle}
-              onClick={() => setStarted(false)}
-            >
-              Back to vehicle pick
-            </button>
-            <Link href="/derby" style={backLinkStyle}>
-              {'‹'} back to derby hub
-            </Link>
-          </div>
-        </div>
-      </main>
+      <DerbyRound
+        arenaSlug={arenaSlug}
+        vehicle={chosen}
+        onRetry={() => setStarted(false)}
+      />
     )
   }
 
@@ -263,29 +237,6 @@ const primaryBtnStyle: React.CSSProperties = {
   textAlign: 'center',
   cursor: 'pointer',
   boxShadow: '0 6px 0 #9c2a3c',
-}
-const secondaryBtnStyle: React.CSSProperties = {
-  padding: '10px 14px',
-  background: 'rgba(255,255,255,0.1)',
-  color: 'white',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 10,
-  fontFamily: 'inherit',
-  fontWeight: 600,
-  cursor: 'pointer',
-}
-const pillRowStyle: React.CSSProperties = {
-  display: 'flex',
-  gap: 6,
-  flexWrap: 'wrap',
-  fontSize: 11,
-}
-const pillStyle: React.CSSProperties = {
-  padding: '2px 8px',
-  borderRadius: 999,
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.08)',
-  letterSpacing: 0.3,
 }
 const backLinkStyle: React.CSSProperties = {
   color: '#ff6b35',

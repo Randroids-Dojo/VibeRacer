@@ -20,13 +20,13 @@ test('arena page shows the four vehicle cards', async ({ page }) => {
   await expect(page.getByText('Racecar')).toBeVisible()
 })
 
-test('selecting a vehicle and starting hands off to the round host placeholder', async ({
+test('selecting a vehicle and starting mounts the round HUD', async ({
   page,
 }) => {
   await page.goto('/derby/dust-bowl')
   await page.getByRole('button', { name: /Big Truck/ }).click()
   await page.getByTestId('derby-start-button').click()
-  await expect(page.locator('[data-derby-round-placeholder="true"]')).toBeVisible()
-  await expect(page.getByText('arena: dust-bowl')).toBeVisible()
-  await expect(page.getByText('vehicle: Big Truck')).toBeVisible()
+  await expect(page.locator('[data-derby-place-chip="true"]')).toBeVisible()
+  await expect(page.locator('[data-derby-cars-left-chip="true"]')).toBeVisible()
+  await expect(page.locator('[data-derby-health-bar="true"]')).toBeVisible()
 })
