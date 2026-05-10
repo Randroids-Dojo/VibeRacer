@@ -235,7 +235,9 @@ const resultsOverlay: React.CSSProperties = {
   background: 'rgba(0,0,0,0.7)',
   display: 'grid',
   placeItems: 'center',
-  zIndex: 10,
+  // Sits above every fixed app surface (HUD, dev toolbars) so the modal
+  // cannot be obscured by a higher stacking layer below.
+  zIndex: 1000,
 }
 const resultsCard: React.CSSProperties = {
   background: '#161616',

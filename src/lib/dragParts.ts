@@ -10,8 +10,10 @@ import { z } from 'zod'
 // Every part carries a weight so the total mass aggregates predictably. The
 // weight is in arbitrary units; only the ratio against REFERENCE_WEIGHT_KG in
 // dragTuning matters. Tires also carry a baseGrip and a per-surface affinity
-// table; the runtime picks one of the four surface keys based on the strip's
-// biome and weather and multiplies the tire's affinity against its baseGrip.
+// table; the runtime picks one of the five surface keys (dry, wet, snow,
+// sand, dirt) based on the strip's biome and weather and multiplies the
+// tire's affinity against its baseGrip. The dirt key serves the derby
+// arena and is unused by the drag-strip biome resolver today.
 
 const PartIdSchema = z.string().min(1).max(64)
 

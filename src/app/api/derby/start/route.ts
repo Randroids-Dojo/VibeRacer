@@ -52,17 +52,25 @@ export async function POST(req: NextRequest) {
 
   const token = signDerbyToken(payload)
 
-  await getKv().set(
-    kvKeys.derbyToken(nonce),
-    JSON.stringify({
-      arena: arena.data,
-      vehicle: vehicle.data,
-      racerId,
-      issuedAt,
-      configHash,
-    }),
-    { ex: TTL.derbyTokenSec },
-  )
+  try {
+    await getKv().set(
+      kvKeys.derbyToken(nonce),
+      JSON.stringify({
+        arena: arena.data,
+        vehicle: vehicle.data,
+        racerId,
+        issuedAt,
+        configHash,
+      }),
+      { ex: TTL.derbyTokenSec },
+    )
+  } catch (err) {
+    // Without the nonce in KV the submit route would silent-drop, leaving
+    // the client with a token it can never redeem. Surface a 503 so the
+    // client can retry instead of running a doomed round.
+    console.error('[derby/start] kv set failed:', err)
+    return NextResponse.json({ error: 'kv unavailable' }, { status: 503 })
+  }
 
   return NextResponse.json({
     token,

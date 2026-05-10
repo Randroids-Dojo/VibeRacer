@@ -66,12 +66,13 @@ export function derbyTick(
   const events: DerbyTickEvent[] = []
 
   if (round.status === 'ended') return { events }
-  if (round.status === 'pre') {
-    round.status = 'running'
-  }
 
   if (!Number.isFinite(dtSec) || dtSec <= 0) {
     return { events }
+  }
+
+  if (round.status === 'pre') {
+    round.status = 'running'
   }
 
   const dtMs = dtSec * 1000
@@ -105,6 +106,9 @@ export function derbyTick(
     const a = round.cars[i]
     if (isDestroyed(a)) continue
     for (let j = i + 1; j < round.cars.length; j++) {
+      // Re-check `a` each pass: applyAndEmit may have destroyed it during
+      // a prior pair this frame, in which case it should not collide again.
+      if (isDestroyed(a)) break
       const b = round.cars[j]
       if (isDestroyed(b)) continue
       const contact = checkContact(a, b, round.configs[i].collisionRadius, round.configs[j].collisionRadius)

@@ -59,12 +59,21 @@ const FIRE_COLOR = new Color(0xff5022)
 export interface DerbyDamageVisualizer {
   // Update visuals from the current car state. Idempotent and cheap.
   update(state: DerbyCarState): void
-  // Roll a panel detach for this hit. amount is the clamped damage; nx/nz
-  // is the contact normal in world XZ pointing toward the attacker so we
-  // can pick a panel by hit angle. Returns the detached panel mesh (with
-  // world-space transform baked in) when a panel actually detaches, or
-  // null when this hit did not trigger one.
-  applyHit(amount: number, nx: number, nz: number, rng: () => number): Mesh | null
+  // Roll a panel detach for this hit. amount is the clamped damage;
+  // worldNx/worldNz is the contact normal in world XZ pointing toward the
+  // attacker; victimHeading is the victim's heading in radians (0 = +X).
+  // The visualizer rotates the normal into the victim's local frame
+  // before picking a panel so a side hit on a rotated car still reads as
+  // a side hit. Returns the detached panel mesh (with world-space
+  // transform baked in) when a panel actually detaches, or null
+  // otherwise.
+  applyHit(
+    amount: number,
+    worldNx: number,
+    worldNz: number,
+    victimHeading: number,
+    rng: () => number,
+  ): Mesh | null
   // Free any allocations the visualizer added to the asset. Restores the
   // original paint and light materials so the asset can be reused for a
   // future round (not used in v1; round end disposes the asset entirely).
@@ -181,24 +190,31 @@ export function createDamageVisualizer(
     lastTier = tier
   }
 
-  function pickPanelByAngle(nx: number, nz: number): RequiredSubmeshName | null {
-    // The contact normal points from the victim toward the attacker. In
-    // the car's local frame, the front sits at +Z (after the asset's
-    // rotation in DerbyCanvas, the car heading projects into local +Z).
-    // We work entirely in world XZ here because the visualizer does not
-    // know the car heading. Without that, hit-angle sorting falls back to
-    // a random pick from the still-attached panels.
+  function pickPanelByAngle(
+    worldNx: number,
+    worldNz: number,
+    victimHeading: number,
+  ): RequiredSubmeshName | null {
     const candidates = DETACHABLE_PANELS.filter((p) => !detachedPanels.has(p))
     if (candidates.length === 0) return null
-    // Use nx / nz to bias the choice deterministically: front-on hits
-    // prefer hood; rear-on prefer trunk; side hits prefer doors.
-    const absX = Math.abs(nx)
-    const absZ = Math.abs(nz)
-    if (absZ > absX) {
-      const preferred: RequiredSubmeshName = nz > 0 ? 'hood' : 'trunk'
+    // Rotate the world-space hit normal into the victim's local frame.
+    // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
+    // local +X (front) maps to the world direction (cos(heading),
+    // -sin(heading)). Rotating the world vector by +heading aligns the
+    // local frame so local +X is forward and local +Z is right.
+    const cos = Math.cos(victimHeading)
+    const sin = Math.sin(victimHeading)
+    const localFwd = worldNx * cos + worldNz * -sin
+    const localRight = worldNx * sin + worldNz * cos
+    const absFwd = Math.abs(localFwd)
+    const absRight = Math.abs(localRight)
+    // Front-on hits (positive forward component) prefer hood; rear-on
+    // prefer trunk; side hits prefer the door on the impact side.
+    if (absFwd > absRight) {
+      const preferred: RequiredSubmeshName = localFwd > 0 ? 'hood' : 'trunk'
       if (candidates.includes(preferred)) return preferred
     } else {
-      const preferred: RequiredSubmeshName = nx > 0 ? 'door_l' : 'door_r'
+      const preferred: RequiredSubmeshName = localRight > 0 ? 'door_r' : 'door_l'
       if (candidates.includes(preferred)) return preferred
     }
     return candidates[0]
@@ -211,11 +227,12 @@ export function createDamageVisualizer(
       const tier = tierFromFraction(fraction)
       if (tier !== lastTier) setTier(tier)
     },
-    applyHit(amount, nx, nz, rng) {
+    applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null
-      // Use the rng for cases where multiple panels are equally preferred.
+      // rng is reserved for tie-breaking among equally preferred panels;
+      // the angle pick covers the common cases on its own.
       void rng
-      const choice = pickPanelByAngle(nx, nz)
+      const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
       if (choice === null) return null
       detachedPanels.add(choice)
       const panel = asset.submeshes[choice]

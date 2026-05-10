@@ -11,12 +11,10 @@ import { DERBY_ARENAS } from '@/lib/derbyArenas'
 import type { DerbyArenaSlug, DerbyVehicleType } from '@/lib/schemas'
 import { DerbyRound } from './DerbyRound'
 
-// Derby per-arena landing screen. Picks a vehicle and starts a round. The
-// actual round host (DerbyRound) lands in slice 7 behind the same
-// `started` gate; for slice 6 the start button toggles a placeholder so
-// the e2e smoke can drive the picker without depending on the round
-// renderer. The placeholder includes the chosen arena and vehicle so
-// mostly the slice-6 contract can be observed end to end.
+// Derby per-arena landing screen. Picks a vehicle and starts a round.
+// Pressing the start button mounts <DerbyRound /> behind the `started`
+// gate; the picker stays mounted under the round so a "Run it back" from
+// the results panel can flip `started` back without re-fetching the arena.
 
 export function DerbyVehiclePicker({
   arenaSlug,

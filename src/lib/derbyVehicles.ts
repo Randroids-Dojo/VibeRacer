@@ -184,5 +184,9 @@ export function derbyVehicleCanonical(v: DerbyVehicleConfig): string {
     mass: v.mass,
     collisionRadius: v.collisionRadius,
     carParams: v.carParams,
+    // Anti-cheat floor is consulted by /api/derby/submit. Pinning it into
+    // the configHash means a server-side floor change retires in-flight
+    // tokens cleanly instead of silently changing the rules under them.
+    theoreticalMinWinMs: v.theoreticalMinWinMs,
   })
 }

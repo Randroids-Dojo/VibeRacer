@@ -1,4 +1,4 @@
-import { Mesh, Object3D, Vector3 } from 'three'
+import type { Object3D } from 'three'
 
 // Tiny ballistic integrator for detached vehicle panels in derby mode. A
 // piece of debris is a Three.js Object3D plus a position/velocity/spin
@@ -75,8 +75,11 @@ export function tickDebris(
       item.object.position.y = 0
       if (Math.abs(item.vy) < 0.5) {
         item.vy = 0
-        item.vx *= 1 - DEBRIS_GROUND_FRICTION * dtSec * 4
-        item.vz *= 1 - DEBRIS_GROUND_FRICTION * dtSec * 4
+        // Clamp the friction multiplier above zero so a frame drop or tab
+        // backgrounding cannot flip velocity sign.
+        const damp = Math.max(0, 1 - DEBRIS_GROUND_FRICTION * dtSec * 4)
+        item.vx *= damp
+        item.vz *= damp
       } else {
         item.vy = -item.vy * DEBRIS_GROUND_RESTITUTION
         item.vx *= 1 - DEBRIS_GROUND_FRICTION * 0.5
@@ -107,16 +110,3 @@ export function pruneDebris(items: DerbyDebrisItem[]): number {
   return removed
 }
 
-// Build a debris transform from a vehicle's panel mesh. The panel keeps
-// its local geometry/material reference but is detached from its parent
-// so the integrator can treat it as a free object in world space. The
-// caller adds the returned Object3D to the scene root.
-export function detachPanelToWorld(
-  panel: Mesh,
-  parentWorldPosition: Vector3,
-): Mesh {
-  panel.removeFromParent()
-  const world = panel.localToWorld(new Vector3(0, 0, 0))
-  panel.position.copy(world.add(parentWorldPosition).sub(parentWorldPosition))
-  return panel
-}

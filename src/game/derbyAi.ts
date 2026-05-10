@@ -34,7 +34,6 @@ export const APPROACH_RADIUS = 30
 export const VELOCITY_LEAD_SECONDS = 0.5
 export const RECOVER_DURATION_MS = 600
 export const RECENT_HIT_WINDOW_MS = 200
-export const STALL_SPEED = 3
 export const ARENA_INSET_MARGIN = 4
 
 export function initBrain(): DerbyAiBrain {
@@ -68,12 +67,6 @@ export function stepAi(brain: DerbyAiBrain, input: AiInput): PhysicsInput {
     brain.recoverUntilMs = input.nowMs + RECOVER_DURATION_MS
     return { throttle: -1, steer: 0, handbrake: false }
   }
-  if (Math.abs(self.physics.speed) < STALL_SPEED && brain.state !== 'recover') {
-    // Soft stall: reverse briefly without leaving the FSM cleanly so a
-    // legitimate slow approach (about to ram a stopped car) is not
-    // interrupted. We trip recover only when there is no nearby target.
-  }
-
   const target = pickTarget(brain, input)
   if (target === null) {
     brain.targetIdx = -1

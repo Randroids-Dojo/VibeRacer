@@ -58,7 +58,12 @@ describe('derbyTick', () => {
     }
     for (const car of round.cars) {
       const r = Math.hypot(car.physics.x, car.physics.z)
-      expect(r).toBeLessThanOrEqual(ARENA.radius + 1e-3)
+      // clampToArena keeps each car center within radius minus its
+      // collisionRadius, not just inside the raw radius. Asserting against
+      // the buffered limit catches the case where a car clipped halfway
+      // through the wall.
+      const limit = ARENA.radius - round.configs[car.carIdx].collisionRadius
+      expect(r).toBeLessThanOrEqual(limit + 1e-3)
     }
   })
 

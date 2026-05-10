@@ -55,7 +55,10 @@ export function clampInsideArena(
   buffer: number,
 ): { x: number; z: number; clamped: boolean } {
   const r = Math.hypot(x, z)
-  const limit = arena.radius - buffer
+  // Clamp to zero so an oversized buffer (collision radius >= arena radius)
+  // collapses every car to the origin instead of projecting through it to
+  // the opposite side.
+  const limit = Math.max(0, arena.radius - buffer)
   if (r <= limit) return { x, z, clamped: false }
   const inv = r > 1e-6 ? 1 / r : 1
   return { x: x * inv * limit, z: z * inv * limit, clamped: true }

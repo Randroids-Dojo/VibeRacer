@@ -97,29 +97,40 @@ describe('createDamageVisualizer', () => {
   it('applyHit below the threshold does not detach a panel', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    const result = viz.applyHit(10, 1, 0, () => 0.5)
+    const result = viz.applyHit(10, 1, 0, 0, () => 0.5)
     expect(result).toBeNull()
     expect(asset.submeshes.door_l.visible).toBe(true)
     viz.dispose()
   })
 
-  it('applyHit at or above the threshold detaches a panel', () => {
+  it('front-on hit detaches the hood', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    const result = viz.applyHit(40, 1, 0, () => 0.5)
-    expect(result).not.toBeNull()
-    // Side hit prefers a door.
-    expect(['door_l', 'door_r']).toContain(result!.name)
-    expect(asset.submeshes[result!.name as 'door_l' | 'door_r'].visible).toBe(false)
+    // heading=0 means the car faces world +X; a normal of (1, 0) is a
+    // front-on hit so the hood pops first.
+    const result = viz.applyHit(40, 1, 0, 0, () => 0.5)
+    expect(result?.name).toBe('hood')
+    expect(asset.submeshes.hood.visible).toBe(false)
+    viz.dispose()
+  })
+
+  it('side hit on a rotated car detaches a door, not a panel from the unrotated frame', () => {
+    const asset = freshAsset('car')
+    const viz = createDamageVisualizer(asset)
+    // Car rotated 90 degrees so its forward is world -Z. A world-space
+    // normal of (1, 0) is now a side hit, and the picker must rotate the
+    // normal into the local frame to see that.
+    const result = viz.applyHit(40, 1, 0, Math.PI / 2, () => 0.5)
+    expect(['door_l', 'door_r']).toContain(result?.name)
     viz.dispose()
   })
 
   it('does not detach the same panel twice', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    const first = viz.applyHit(40, 0, 1, () => 0.5) // front, prefers hood
+    const first = viz.applyHit(40, 1, 0, 0, () => 0.5) // front
     expect(first?.name).toBe('hood')
-    const second = viz.applyHit(40, 0, 1, () => 0.5)
+    const second = viz.applyHit(40, 1, 0, 0, () => 0.5)
     expect(second?.name).not.toBe('hood')
     viz.dispose()
   })
@@ -128,12 +139,20 @@ describe('createDamageVisualizer', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const seen = new Set<string>()
-    for (let i = 0; i < 6; i++) {
-      const r = viz.applyHit(40, i % 2 === 0 ? 1 : 0, i % 2 === 0 ? 0 : 1, () => 0.5)
+    // Cycle through front, right, rear, left to exercise every panel slot.
+    const directions: Array<[number, number]> = [
+      [1, 0],
+      [0, 1],
+      [-1, 0],
+      [0, -1],
+    ]
+    for (let i = 0; i < 8; i++) {
+      const [nx, nz] = directions[i % directions.length]
+      const r = viz.applyHit(40, nx, nz, 0, () => 0.5)
       if (r) seen.add(r.name)
     }
     expect(seen.size).toBe(4)
-    const after = viz.applyHit(40, 1, 0, () => 0.5)
+    const after = viz.applyHit(40, 1, 0, 0, () => 0.5)
     expect(after).toBeNull()
     viz.dispose()
   })

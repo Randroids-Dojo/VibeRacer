@@ -37,7 +37,8 @@ export async function GET(req: NextRequest) {
   try {
     const result = await readDerbyLeaderboard(getKv(), arena.data, limit, offset)
     return NextResponse.json(result)
-  } catch {
+  } catch (err) {
+    console.error('[derby/leaderboard] read failed:', err)
     return NextResponse.json({ entries: [], total: 0 })
   }
 }

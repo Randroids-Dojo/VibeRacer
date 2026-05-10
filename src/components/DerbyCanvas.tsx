@@ -154,7 +154,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     // Vehicle assets load asynchronously to keep the contract aligned with
     // the future GLB path. While the assets resolve, the cars render
     // nothing; loop typically resolves on the same frame for procedural
-    // assets so this is invisible at runtime.
+    // assets so this is invisible at runtime. The teardown flag below
+    // catches the case where the effect cleans up before the load
+    // resolves: late assets get disposed immediately so they do not leak.
     const carAssets: (DerbyVehicleAsset | null)[] = vehicleConfigs.map(() => null)
     const carVisualizers: (DerbyDamageVisualizer | null)[] = vehicleConfigs.map(
       () => null,
@@ -163,13 +165,21 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       vehicleConfigs.map((cfg, i) =>
         loadDerbyVehicleAsset(cfg, i === PLAYER_IDX ? 0xfff7b0 : pickEnemyColor(cfg.type)),
       ),
-    ).then((assets) => {
-      for (let i = 0; i < assets.length; i++) {
-        carAssets[i] = assets[i]
-        carVisualizers[i] = createDamageVisualizer(assets[i])
-        scene.add(assets[i].group)
-      }
-    })
+    )
+      .then((assets) => {
+        if (stopped) {
+          for (const a of assets) a.dispose()
+          return
+        }
+        for (let i = 0; i < assets.length; i++) {
+          carAssets[i] = assets[i]
+          carVisualizers[i] = createDamageVisualizer(assets[i])
+          scene.add(assets[i].group)
+        }
+      })
+      .catch((err) => {
+        console.error('[DerbyCanvas] vehicle asset load failed:', err)
+      })
 
     const debrisItems: DerbyDebrisItem[] = []
     const debrisRng = mulberry32(round.rngSeed ^ 0x9e3779b9)
@@ -285,6 +295,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
           e.amount,
           nx * inv,
           nz * inv,
+          victim.physics.heading,
           debrisRng,
         )
         if (detached) {

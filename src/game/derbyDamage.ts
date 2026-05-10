@@ -105,10 +105,12 @@ export function resolveCollision(
   const dvx = va.vx - vb.vx
   const dvz = va.vz - vb.vz
   const relativeSpeed = Math.hypot(dvx, dvz)
-  // Component of the relative velocity along the contact normal. Always
-  // taken as an absolute so a "side-swipe with low normal energy" deals
-  // less damage than a head-on at the same closing speed.
-  const impactComponent = Math.abs(dvx * contact.nx + dvz * contact.nz)
+  // Component of the relative velocity that closes the contact (positive
+  // when the two cars are moving toward each other along the normal).
+  // Separating motion produces zero impact energy; without this guard a
+  // pile-up can deal phantom damage while the cars are pulling apart.
+  const closingComponent = dvx * contact.nx + dvz * contact.nz
+  const impactComponent = Math.max(0, closingComponent)
   const verdict = classifyAttacker(a, b, contact)
 
   if (relativeSpeed < 1e-3) {

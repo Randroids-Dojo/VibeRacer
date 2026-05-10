@@ -101,12 +101,13 @@ describe('resolveCollision', () => {
   })
 
   it('split-case: the lighter car takes more damage', () => {
-    // Both moving slowly head-on toward each other along the X axis but
-    // neither component is high enough to count as "driving into" past the
-    // velocity threshold. Force a split by giving them small mirrored
-    // headings.
-    const a = makeCar(0, 'racecar', { speed: 1, heading: Math.PI / 2 })
-    const b = makeCar(1, 'bigTruck', { speed: 1, heading: -Math.PI / 2 })
+    // Both closing along +X at low speed: a heads forward (+X), b heads
+    // backward toward a (-X). Neither's speed-into-contact crosses the
+    // VELOCITY_INTO_CONTACT_THRESHOLD so classifyAttacker returns split.
+    // The closing motion exists along the contact normal so the impact
+    // term is non-zero and the mass-weighted split path is exercised.
+    const a = makeCar(0, 'racecar', { speed: 1, heading: 0 })
+    const b = makeCar(1, 'bigTruck', { speed: 1, heading: Math.PI })
     const out = resolveCollision(
       a,
       b,
@@ -116,7 +117,7 @@ describe('resolveCollision', () => {
     )
     expect(out.attacker).toBe('split')
     // Lighter racecar takes more damage than the heavier bigTruck.
-    expect(out.aDelta).toBeGreaterThanOrEqual(out.bDelta)
+    expect(out.aDelta).toBeGreaterThan(out.bDelta)
   })
 
   it('zero relative speed produces zero damage regardless of verdict', () => {

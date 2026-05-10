@@ -488,7 +488,7 @@
     {
       "id": "20",
       "title": "Derby Mode",
-      "status": "done",
+      "status": "partial",
       "implemented": [
         "arena and vehicle catalogs",
         "schemas and KV keys",

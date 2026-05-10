@@ -40,12 +40,14 @@ async function loadTopTimes(): Promise<ArenaPreview[]> {
               ? DERBY_VEHICLES[top.vehicle].displayName
               : null,
           }
-        } catch {
+        } catch (err) {
+          console.error('[derby/hub] top-time read failed', { arena: arena.slug, err })
           return { arena, topTimeMs: null, topInitials: null, topVehicle: null }
         }
       }),
     )
-  } catch {
+  } catch (err) {
+    console.error('[derby/hub] kv import failed', err)
     return emptyPreviews()
   }
 }

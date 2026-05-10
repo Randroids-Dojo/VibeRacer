@@ -104,14 +104,15 @@ export async function readDerbyTopEntry(
   return entries[0] ?? null
 }
 
-// Helper for tests and the start route to mint a stable nonce. 16 bytes of
-// hex from createHash so the value is always 32 chars and matches the
-// schema regex without needing crypto.randomBytes.
-export function newDerbyNonce(seed: string = String(Date.now())): string {
-  return createHash('sha256')
-    .update(seed + Math.random().toString())
-    .digest('hex')
-    .slice(0, 32)
+// Helper for tests and the start route to mint a 32-char hex nonce that
+// matches the schema regex without needing crypto.randomBytes. When `seed`
+// is supplied the output is deterministic so tests can pin a value; the
+// default branch falls back to Date.now() + Math.random() so production
+// callers get unique nonces.
+export function newDerbyNonce(seed?: string): string {
+  const material =
+    seed !== undefined ? seed : `${Date.now()}:${Math.random()}`
+  return createHash('sha256').update(material).digest('hex').slice(0, 32)
 }
 
 // Build the canonical leaderboard entry from a submission. Pulls only the
