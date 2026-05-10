@@ -9,6 +9,7 @@ import {
   rankCars,
   type DerbyCarState,
 } from './derbyVehicleState'
+import { clampInsideArena } from './derbyArena'
 import type { DerbyRoundState } from './derbyRoundState'
 import type { DerbyRoundOutcome } from '@/lib/schemas'
 
@@ -143,25 +144,31 @@ export function derbyTick(
 }
 
 function clampToArena(car: DerbyCarState, round: DerbyRoundState): void {
-  const radius = round.arena.radius
   const collisionRadius = round.configs[car.carIdx].collisionRadius
-  const limit = radius - collisionRadius
+  const clamped = clampInsideArena(
+    round.arena,
+    car.physics.x,
+    car.physics.z,
+    collisionRadius,
+  )
+  if (!clamped.clamped) return
+  // Apply the position clamp.
+  car.physics.x = clamped.x
+  car.physics.z = clamped.z
+  // Inward normal at the contact point. Built directly here rather than
+  // routing through arenaWallNormalAt because we have the original
+  // pre-clamp distance handy and want to avoid a second hypot.
   const dist = Math.hypot(car.physics.x, car.physics.z)
-  if (dist <= limit) return
-  // Clamp position back to the boundary and zero the outward radial
-  // component of velocity. We rebuild heading from the resulting velocity
-  // vector so the car is left pointing along its tangential motion.
   const inv = dist > 1e-6 ? 1 / dist : 1
   const nx = -car.physics.x * inv
   const nz = -car.physics.z * inv
-  car.physics.x += nx * (dist - limit) // push inward
-  car.physics.z += nz * (dist - limit)
-  // Decompose velocity onto inward normal and reflect / clamp outward part.
+  // Decompose velocity onto the inward normal and zero the outward part
+  // so the car comes to rest against the wall instead of skating along it.
   const speed = car.physics.speed
   const heading = car.physics.heading
   const vx = Math.cos(heading) * speed
   const vz = -Math.sin(heading) * speed
-  const outward = -(vx * nx + vz * nz) // positive when moving outward
+  const outward = -(vx * nx + vz * nz)
   if (outward > 0) {
     const newVx = vx + outward * nx
     const newVz = vz + outward * nz
@@ -169,10 +176,6 @@ function clampToArena(car: DerbyCarState, round: DerbyRoundState): void {
     if (newSpeed < 1e-4) {
       car.physics.speed = 0
     } else {
-      // Preserve direction sign. If the original speed was negative
-      // (reversing), keep the new motion as forward speed: the car was
-      // backing into the wall, the wall stops the reverse, and the next
-      // tick the player can choose to drive forward.
       car.physics.speed = newSpeed
       car.physics.heading = Math.atan2(-newVz, newVx)
     }
