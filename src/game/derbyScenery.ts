@@ -26,9 +26,11 @@ import type { DerbyArenaConfig } from '@/lib/derbyArenas'
 // reachable, so the layout is purely cosmetic.
 
 // Skirt extends from just past the wall out to the stadium inner radius.
-// Scenery items live anywhere inside this annulus.
+// Scenery items live anywhere inside this annulus. Exported so the stadium
+// builder can stack itself against the actual outer edge without
+// duplicating the literal.
 const SKIRT_INNER_RADIUS_PAD = 1.5 // start a bit past the wall so cars are not visually inside dirt
-const SKIRT_OUTER_RADIUS = 128
+export const SKIRT_OUTER_RADIUS = 128
 
 // Color palette tuned for the dust-bowl biome. Swap per-arena later when more
 // arenas land (forest skirt, snow skirt, etc.).

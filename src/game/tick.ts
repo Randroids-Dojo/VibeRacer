@@ -21,7 +21,7 @@ import { vehicleTrackContact } from './wheelContact'
 // puts top at ~52 m/s (~116 mph) which lands comfortably in the
 // arcade-fast range without breaking turning-radius behavior at the top
 // of the speed window. Because we also force the quartic taper on, the
-// car asymptotes against the new top — the practical effect is "you only
+// car asymptotes against the new top. The practical effect is "you only
 // see true top speed on long straightaways."
 //
 // Manual-mode players: gear caps multiply with this too, so a manual run
@@ -142,21 +142,26 @@ export function tick(
       // toggle (or paused-frame catchup that crossed multiple bands) lands on
       // the correct gear without waiting for hysteresis to drag it back.
       // When extendedTopSpeed is on the effective cap is 2x, so we feed the
-      // doubled base into autoShiftGear — otherwise the upshift triggers
+      // doubled base into autoShiftGear, otherwise the upshift triggers
       // (ratio > maxSpeedFactor * 0.95) fire at half the new speed window
       // and the car pegs gear 5 for the entire upper half of the pull.
       const speedAbs = Math.abs(state.speed)
       const autoShiftBase = extendedTopSpeed
         ? params.maxSpeed * EXTENDED_TOP_SPEED_MUL
         : params.maxSpeed
-      const nextGear = autoShiftGear(speedAbs, autoShiftBase, gear, true)
+      const nextGear = autoShiftGear(
+        speedAbs,
+        autoShiftBase,
+        gear,
+        enhancedShifting,
+      )
       if (nextGear !== gear) {
         // Multi-gear deltas don't happen during normal racing: the rAF loop
         // clamps dt to 50ms (RaceCanvas) so a 2+ gear walk in one tick is
         // structurally impossible from acceleration alone. The branch fires
         // for transmission-mode toggles mid-race and for externally pinned
-        // speed (replay scrub, dev tools, tests). Treat as a silent snap —
-        // no rev blip — so the player isn't punished for changing a setting.
+        // speed (replay scrub, dev tools, tests). Treat as a silent snap
+        // (no rev blip) so the player isn't punished for changing a setting.
         const isCascade = Math.abs(nextGear - gear) > 1
         if (!isCascade) {
           // Audio + visual feedback still fires (pitch reset, exhaust pop,
@@ -188,7 +193,7 @@ export function tick(
   // its accelFactor in both transmissions; legacy mode applies the legacy
   // specs only in manual (auto runs at 1x like before the rework).
   // Enhanced auto also applies maxSpeedFactor so the taper inside stepPhysics
-  // kicks in within each gear's band — the upshift then fires when the
+  // kicks in within each gear's band. The upshift then fires when the
   // engine is already bogging into the cap, which is what auto-shift logic
   // expects and what makes shifts feel like transitions instead of cuts.
   const gearSpec = manualGearSpec(gear, enhancedShifting)

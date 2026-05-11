@@ -33,29 +33,31 @@ describe('seedFromArena', () => {
 })
 
 describe('buildDerbyScenery', () => {
-  it('produces a named group with at least the skirt plus several scenery items', () => {
+  it('produces a named group with the expected scenery item count', () => {
     const s = buildDerbyScenery(ARENA)
     expect(s.group.name).toContain('derbyScenery')
-    // Skirt plus 10 + 24 + 50 rocks + 8 cacti (each: trunk + 1-2 arms) +
-    // 6 trees (trunk + foliage) + 14 piles + 22-44 tires + 16 drums +
-    // 14 concrete = well over 100 children. Use a conservative floor.
-    expect(s.group.children.length).toBeGreaterThan(100)
+    // Skirt (1) + 10 boulders + 24 medium rocks + 50 pebbles + 6 dead trees
+    // each with trunk+foliage (12) + 8 cacti each with trunk + 1-2 arms
+    // (8 trunks + ~12 arms = ~20) + 14 dirt piles + 22-44 tires (1-2 stack
+    // each, expected ~33) + 16 drums + 14 concrete = bounded range. Lower
+    // bound 170 catches an 80%+ regression in any category; upper bound
+    // 220 catches accidental duplication. Tight enough to be a real
+    // tripwire, loose enough to tolerate the stacking + arm RNG.
+    expect(s.group.children.length).toBeGreaterThan(170)
+    expect(s.group.children.length).toBeLessThan(220)
     s.dispose()
   })
 
   it('keeps every scenery item outside the arena perimeter', () => {
     const s = buildDerbyScenery(ARENA)
-    // Skip the first child (the skirt RingGeometry) which is centered at
-    // origin by design. Every other mesh is a placed scenery item.
-    let checked = 0
+    // First child is the skirt RingGeometry, centered at origin by design.
+    // Every other mesh is a placed scenery item and must live in the
+    // annulus outside the wall.
     for (let i = 1; i < s.group.children.length; i++) {
       const child = s.group.children[i] as Mesh
       const r = Math.hypot(child.position.x, child.position.z)
-      if (r === 0) continue // some children are decorative attachments centered on a parent
       expect(r).toBeGreaterThanOrEqual(ARENA.radius)
-      checked++
     }
-    expect(checked).toBeGreaterThan(50)
     s.dispose()
   })
 

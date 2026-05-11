@@ -86,7 +86,11 @@ export function derbyTick(
     if (isDestroyed(car)) continue
     const input = inputs.perCar[i] ?? { throttle: 0, steer: 0, handbrake: false }
     const params = round.configs[i].carParams
-    car.physics = stepPhysics(car.physics, input, dtSec, true, params)
+    // Derby opts out of the road-mode quartic taper (final arg = 1). Vehicle
+    // catalog accel/maxSpeed values were tuned against a linear curve, and
+    // closing speeds drive derbyDamage.resolveCollision — a hidden top-end
+    // taper would mute every ram. Drag mode opts out the same way.
+    car.physics = stepPhysics(car.physics, input, dtSec, true, params, 1, 1, 0, 1)
     car.aliveMs += dtMs
   }
 

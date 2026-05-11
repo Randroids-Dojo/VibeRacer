@@ -140,19 +140,16 @@ export function buildDerbyStadium(
   bowl.receiveShadow = true
   group.add(bowl)
 
-  // Painted seat strip on each tread. A short colored ring sitting on the
-  // tread surface so the bleachers read as built for sitting and not as a
-  // bare ramp. Each step gets its own color from the palette.
+  // Painted seat strip on each tread. A short colored ring (open-ended
+  // cylinder shell with DoubleSide material) sits on the tread surface so
+  // the bleachers read as built for sitting and not as a bare ramp. Each
+  // step gets its own color from the palette.
   for (let i = 0; i < STEP_COUNT; i++) {
-    const innerR = innerRadius + i * TREAD_WIDTH + 0.4
-    const outerR = innerR + 0.3
+    const seatRadius = innerRadius + i * TREAD_WIDTH + 0.7
     const h = (i + 1) * STEP_HEIGHT + 0.12
     const seatGeometry = track(
-      new CylinderGeometry(outerR, outerR, 0.18, 96, 1, true),
+      new CylinderGeometry(seatRadius, seatRadius, 0.18, 96, 1, true),
     )
-    // Use a thin band: the cylinder surface on its outer edge looks like a
-    // painted line wrapped around the tread. A second inner cylinder hides
-    // the back face on the player-facing side.
     const seatMat = trackMat(
       new MeshStandardMaterial({
         color: SEAT_COLORS[i % SEAT_COLORS.length],
@@ -183,16 +180,19 @@ export function buildDerbyStadium(
   let totalCrowd = 0
   const treadRadii: number[] = []
   const treadHeights: number[] = []
+  const treadCounts: number[] = []
   for (let i = 0; i < STEP_COUNT; i++) {
     // Each person sits between the seat strip and the riser of the next
     // step. Place the body center on the rear half of the tread so the
     // person's back is against the next riser.
     const radius = innerRadius + i * TREAD_WIDTH + TREAD_WIDTH * 0.7
     const height = (i + 1) * STEP_HEIGHT + CROWD_BOX_H / 2 + 0.2
+    const count = Math.floor(
+      radius * 2 * Math.PI * CROWD_DENSITY_PER_RAD * 0.05,
+    )
     treadRadii.push(radius)
     treadHeights.push(height)
-    const arcCircumferenceRad = 2 * Math.PI
-    const count = Math.floor(radius * arcCircumferenceRad * CROWD_DENSITY_PER_RAD * 0.05)
+    treadCounts.push(count)
     totalCrowd += count
   }
   const crowdMesh = new InstancedMesh(crowdGeom, crowdMat, totalCrowd)
@@ -204,8 +204,7 @@ export function buildDerbyStadium(
   for (let i = 0; i < STEP_COUNT; i++) {
     const radius = treadRadii[i]
     const y = treadHeights[i]
-    const arcCircumferenceRad = 2 * Math.PI
-    const count = Math.floor(radius * arcCircumferenceRad * CROWD_DENSITY_PER_RAD * 0.05)
+    const count = treadCounts[i]
     for (let p = 0; p < count; p++) {
       const theta = (p / count) * Math.PI * 2 + rng() * 0.06
       const radialJitter = (rng() - 0.5) * (TREAD_WIDTH * 0.25)
@@ -223,7 +222,7 @@ export function buildDerbyStadium(
   group.add(crowdMesh)
 
   // Stadium light poles. Tall thin cylinders capped by a glowing white box
-  // — a stylized floodlight. Visible above the bleachers from anywhere in
+  // (a stylized floodlight). Visible above the bleachers from anywhere in
   // the arena.
   const poleRadius = finalR + 1.5
   const poleGeom = track(new CylinderGeometry(0.22, 0.28, LIGHT_POLE_HEIGHT, 8))
@@ -273,16 +272,14 @@ export function buildDerbyStadium(
   }
 }
 
-// Mirrors the scenery seed so the crowd palette per arena follows the same
-// stable mapping the rocks do. Local copy keeps the stadium module from
-// importing the scenery module just for one helper.
+// Local copy of the scenery seed with a golden-ratio XOR offset so the
+// crowd RNG is decorrelated from the rock layout. Without the offset, the
+// crowd gaps would line up with rock clusters. Kept inline to avoid the
+// stadium module importing the scenery module just for one helper.
 function seedFromArena(arena: DerbyArenaConfig): number {
   let h = 2166136261 >>> 0
   for (let i = 0; i < arena.slug.length; i++) {
     h = Math.imul(h ^ arena.slug.charCodeAt(i), 16777619) >>> 0
   }
-  // Different offset from the scenery seed so the crowd RNG is not
-  // perfectly correlated with the rock layout (otherwise crowd cluster
-  // gaps would line up with rock clusters).
   return Math.imul(h ^ 0x9e3779b1, 16777619) >>> 0
 }
