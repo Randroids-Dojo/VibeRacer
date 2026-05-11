@@ -34,8 +34,10 @@ export interface CollisionDamage {
 // to look.
 export const SPEED_DIFF_THRESHOLD = 6
 export const VELOCITY_INTO_CONTACT_THRESHOLD = 3
-export const DAMAGE_SCALE = 30
-export const MAX_HIT_DAMAGE = 80
+// Damage formula: baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
+export const DAMAGE_SCALE = 50
+// Per-hit cap, kept below the weakest vehicle's HP so no clean hit one-shots.
+export const MAX_HIT_DAMAGE = 30
 
 // World-frame velocity of a car given its physics state. Heading 0 = +X,
 // PI/2 = -Z, matching stepPhysics. Speed is signed; a negative speed means
@@ -118,15 +120,12 @@ export function resolveCollision(
   }
 
   if (verdict === 'aIsAttacker') {
-    // a's baseDamage scaled by relative speed and the attacker-mass weight
-    // applied to b. Mass weight: 2 * mAttacker / (mAttacker + mVictim) so a
-    // mass-matched hit is 1.0 and a heavy attacker into a light victim is
-    // up to 2x.
+    // Linear in impactComponent on purpose: a quadratic-in-speed model
+    // makes any clean high-speed hit clamp to the cap and one-shot.
     const massFactor =
       (2 * aConfig.mass) / Math.max(1, aConfig.mass + bConfig.mass)
     const raw =
-      (aConfig.baseDamage * relativeSpeed * impactComponent * massFactor) /
-      DAMAGE_SCALE
+      (aConfig.baseDamage * impactComponent * massFactor) / DAMAGE_SCALE
     return {
       aDelta: 0,
       bDelta: clampHit(Math.round(raw)),
@@ -138,8 +137,7 @@ export function resolveCollision(
     const massFactor =
       (2 * bConfig.mass) / Math.max(1, aConfig.mass + bConfig.mass)
     const raw =
-      (bConfig.baseDamage * relativeSpeed * impactComponent * massFactor) /
-      DAMAGE_SCALE
+      (bConfig.baseDamage * impactComponent * massFactor) / DAMAGE_SCALE
     return {
       aDelta: clampHit(Math.round(raw)),
       bDelta: 0,
@@ -154,11 +152,9 @@ export function resolveCollision(
   const aShare = (2 * bConfig.mass) / totalMass
   const bShare = (2 * aConfig.mass) / totalMass
   const halfA =
-    (0.5 * bConfig.baseDamage * relativeSpeed * impactComponent * aShare) /
-    DAMAGE_SCALE
+    (0.5 * bConfig.baseDamage * impactComponent * aShare) / DAMAGE_SCALE
   const halfB =
-    (0.5 * aConfig.baseDamage * relativeSpeed * impactComponent * bShare) /
-    DAMAGE_SCALE
+    (0.5 * aConfig.baseDamage * impactComponent * bShare) / DAMAGE_SCALE
   return {
     aDelta: clampHit(Math.round(halfA)),
     bDelta: clampHit(Math.round(halfB)),

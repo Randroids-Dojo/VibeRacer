@@ -17,10 +17,11 @@ export interface DerbyVehicleConfig {
   modelUrl: string
   carParams: CarParams
   // Starting health for this vehicle. Higher health vehicles take more hits
-  // to destroy. Range 60..200 for v1.
+  // to destroy. Range 130..400 for v1.
   health: number
   // Base damage scalar this vehicle deals on a clean hit. The actual damage
-  // applied by derbyDamage scales this by relative speed and mass ratio.
+  // applied by derbyDamage scales this linearly by closing speed and the
+  // attacker/victim mass ratio. Range 12..24 for v1.
   baseDamage: number
   // Mass in arbitrary units. Used for collision impulse split and the
   // attacker heuristic when speeds are close. Range 800..3000 for v1.
@@ -30,7 +31,7 @@ export interface DerbyVehicleConfig {
   collisionRadius: number
   // Theoretical lowest time-to-win for this vehicle in milliseconds. The
   // server rejects submissions that beat this floor. Computed from the
-  // vehicle's baseDamage and the worst-case enemy health (the bigTruck at
+  // vehicle's baseDamage and the worst-case enemy health (the schoolBus at
   // full health) assuming continuous full-power ramming, with a 30 percent
   // headroom cushion.
   theoreticalMinWinMs: number
@@ -100,11 +101,11 @@ const RACECAR_PARAMS: CarParams = {
   offTrackDrag: 7,
 }
 
-// The bigTruck has the highest health among shipping vehicles; the worst case
-// for time-to-win is destroying three bigTrucks. Multiply by an inverse
-// efficiency floor so the anti-cheat floor stays generous: a real player
-// landing every hit at peak relative speed will still clear it.
-const WORST_CASE_TARGET_HEALTH = 160 * 3
+// The schoolBus has the highest health among shipping vehicles; the worst
+// case for time-to-win is destroying three school buses. Multiply by an
+// inverse efficiency floor so the anti-cheat floor stays generous: a real
+// player landing every hit at peak closing speed will still clear it.
+const WORST_CASE_TARGET_HEALTH = 400 * 3
 const ANTI_CHEAT_HEADROOM = 0.7
 
 function theoreticalMinWinMs(baseDamage: number): number {
@@ -123,48 +124,48 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     displayName: 'Sedan',
     modelUrl: '/models/derby/car.glb',
     carParams: CAR_PARAMS,
-    health: 100,
+    health: 200,
     baseDamage: 14,
     mass: 1300,
     collisionRadius: 1.6,
     theoreticalMinWinMs: theoreticalMinWinMs(14),
-    blurb: 'Balanced ride. Enough speed to chase, enough mass to hit hard.',
+    blurb: 'Balanced ride. Enough speed to chase, enough HP to trade hits.',
   },
   schoolBus: {
     type: 'schoolBus',
     displayName: 'School Bus',
     modelUrl: '/models/derby/schoolBus.glb',
     carParams: SCHOOL_BUS_PARAMS,
-    health: 180,
-    baseDamage: 18,
+    health: 400,
+    baseDamage: 16,
     mass: 2800,
     collisionRadius: 2.6,
-    theoreticalMinWinMs: theoreticalMinWinMs(18),
-    blurb: 'Slow and ponderous, but it shrugs off hits and crushes anything sideways.',
+    theoreticalMinWinMs: theoreticalMinWinMs(16),
+    blurb: 'Massive rolling tank. Soaks dozens of hits and shoves anything sideways.',
   },
   bigTruck: {
     type: 'bigTruck',
     displayName: 'Big Truck',
     modelUrl: '/models/derby/bigTruck.glb',
     carParams: BIG_TRUCK_PARAMS,
-    health: 160,
-    baseDamage: 22,
+    health: 320,
+    baseDamage: 24,
     mass: 2400,
     collisionRadius: 2.4,
-    theoreticalMinWinMs: theoreticalMinWinMs(22),
-    blurb: 'Heavy hitter. Lower top speed than the racecar; massive damage on contact.',
+    theoreticalMinWinMs: theoreticalMinWinMs(24),
+    blurb: 'Heavy hitter. The hardest single hit in the field; chews through lighter cars.',
   },
   racecar: {
     type: 'racecar',
     displayName: 'Racecar',
     modelUrl: '/models/derby/racecar.glb',
     carParams: RACECAR_PARAMS,
-    health: 70,
-    baseDamage: 10,
+    health: 130,
+    baseDamage: 12,
     mass: 900,
     collisionRadius: 1.4,
-    theoreticalMinWinMs: theoreticalMinWinMs(10),
-    blurb: 'Fragile and fast. Outmaneuver them or get crushed in a single hit.',
+    theoreticalMinWinMs: theoreticalMinWinMs(12),
+    blurb: 'Glass cannon on wheels. Outmaneuver heavies or you melt in a handful of hits.',
   },
 }
 

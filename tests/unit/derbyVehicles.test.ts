@@ -22,7 +22,7 @@ describe('derby vehicles', () => {
   it('every config has plausible non-zero stats', () => {
     for (const v of ALL_DERBY_VEHICLES) {
       expect(v.health).toBeGreaterThan(0)
-      expect(v.health).toBeLessThanOrEqual(200)
+      expect(v.health).toBeLessThanOrEqual(500)
       expect(v.baseDamage).toBeGreaterThan(0)
       expect(v.mass).toBeGreaterThan(0)
       expect(v.collisionRadius).toBeGreaterThan(0)

@@ -49,7 +49,9 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
   critical: 0.5,
 }
 
-const PANEL_DETACH_DAMAGE_THRESHOLD = 25
+// Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
+// Tuned so a hard ram detaches a panel, while mild side-bumps do not.
+const PANEL_DETACH_DAMAGE_THRESHOLD = 12
 const PAINT_TARGET_NAMES: RequiredSubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
 const DETACHABLE_PANELS: RequiredSubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
 
