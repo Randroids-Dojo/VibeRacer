@@ -125,20 +125,20 @@ export function gearProgress01(
   return t < 0 ? 0 : t > 1 ? 1 : t
 }
 
-// Hysteresis on auto-downshifts. Downshift only when the ratio falls to 70%
-// of the previous gear's max. Without this the car flip-flops between gears
-// every time you brush the boundary under partial throttle.
-const AUTO_DOWNSHIFT_HYSTERESIS = 0.7
+// Auto downshift trigger as a fraction of the previous gear's max ratio.
+// Drop a gear only when the ratio has fallen this far into the gear-below's
+// band, so light throttle modulation around a boundary does not flip-flop.
+const AUTO_DOWNSHIFT_HYSTERESIS_FRAC = 0.7
 
-// Auto upshift trigger as a fraction of the gear's max ratio. Trips the
-// shift slightly before the cap so:
+// Auto upshift trigger as a fraction of the current gear's max ratio. Fires
+// the shift slightly before the cap so:
 //   1) the asymptotic accel taper (which never strictly reaches vMax with
 //      enhanced gear caps applied) does not strand the car just below the
 //      cap with no way to upshift, and
-//   2) the shift fires while the engine is already bogging (accel ~5-10%
-//      of peak), so it reads as a transition into fresh power instead of
-//      an interruption of peak thrust.
-const AUTO_UPSHIFT_TRIGGER = 0.95
+//   2) the shift fires while the engine is already bogging — at 95% of cap
+//      the quartic taper leaves ~18% of peak accel — so it reads as a
+//      transition into a fresh power band, not an interruption of peak.
+const AUTO_UPSHIFT_TRIGGER_FRAC = 0.95
 
 // Auto transmission shift logic. Upshifts greedily when the current gear's
 // band is exceeded, downshifts only when speed has fallen well into the
@@ -155,13 +155,13 @@ export function autoShiftGear(
   const ratio = speedAbs / baseMaxSpeed
   while (
     gear < MANUAL_GEAR_MAX &&
-    ratio > table[gear - 1].maxSpeedFactor * AUTO_UPSHIFT_TRIGGER
+    ratio > table[gear - 1].maxSpeedFactor * AUTO_UPSHIFT_TRIGGER_FRAC
   ) {
     gear += 1
   }
   while (
     gear > MANUAL_GEAR_MIN &&
-    ratio < table[gear - 2].maxSpeedFactor * AUTO_DOWNSHIFT_HYSTERESIS
+    ratio < table[gear - 2].maxSpeedFactor * AUTO_DOWNSHIFT_HYSTERESIS_FRAC
   ) {
     gear -= 1
   }

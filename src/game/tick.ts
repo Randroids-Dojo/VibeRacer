@@ -127,9 +127,12 @@ export function tick(
       const speedAbs = Math.abs(state.speed)
       const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear, true)
       if (nextGear !== gear) {
-        // Multi-gear deltas come from transmission-mode toggles or large dt
-        // catchups, not from racing. Treat as a silent snap (no rev blip)
-        // so the player isn't punished for changing a setting.
+        // Multi-gear deltas don't happen during normal racing: the rAF loop
+        // clamps dt to 50ms (RaceCanvas) so a 2+ gear walk in one tick is
+        // structurally impossible from acceleration alone. The branch fires
+        // for transmission-mode toggles mid-race and for externally pinned
+        // speed (replay scrub, dev tools, tests). Treat as a silent snap —
+        // no rev blip — so the player isn't punished for changing a setting.
         const isCascade = Math.abs(nextGear - gear) > 1
         if (!isCascade) {
           // Audio + visual feedback still fires (pitch reset, exhaust pop,
