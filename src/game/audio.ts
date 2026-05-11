@@ -167,10 +167,7 @@ const ENGINE_NOISE_PROFILES: Record<EngineNoiseMode, EngineNoiseProfile> = {
 }
 
 function engineNoiseProfile(mode: EngineNoiseMode): EngineNoiseProfile {
-  return (
-    ENGINE_NOISE_PROFILES[mode] ??
-    ENGINE_NOISE_PROFILES[DEFAULT_ENGINE_NOISE_MODE]
-  )
+  return ENGINE_NOISE_PROFILES[mode]
 }
 
 // ---------------------------------------------------------------------------
@@ -438,7 +435,7 @@ export function updateEngine(
   racing: boolean,
   mode: EngineNoiseMode = DEFAULT_ENGINE_NOISE_MODE,
   gear = 1,
-  // When false (default), pitch and filter follow raw speed — the legacy
+  // When false (default), pitch and filter follow raw speed. The legacy
   // model that shipped before the gear-feel rework. When true, the gear-aware
   // model takes over: pitch resets on upshift and filter cutoff modulates
   // with throttle.

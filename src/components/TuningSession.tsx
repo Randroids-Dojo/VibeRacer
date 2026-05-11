@@ -214,6 +214,13 @@ export function TuningSession({
   brakeLightModeRef.current = settings.brakeLights
   const engineNoiseRef = useRef(audioSettings.engineNoise)
   engineNoiseRef.current = audioSettings.engineNoise
+  // Mirror the experimental drive-feel flags so the Tuning Lab runs the
+  // same car the player races in Game. Without this, tuning sliders are
+  // evaluated against the legacy baseline regardless of Settings.
+  const enhancedShiftingRef = useRef<boolean>(settings.enhancedShifting)
+  enhancedShiftingRef.current = settings.enhancedShifting
+  const extendedTopSpeedRef = useRef<boolean>(settings.extendedTopSpeed)
+  extendedTopSpeedRef.current = settings.extendedTopSpeed
   const phaseRef = useRef<Phase>(phase)
   phaseRef.current = phase
 
@@ -540,6 +547,8 @@ export function TuningSession({
             headlightsOnRef={headlightsOnRef}
             brakeLightModeRef={brakeLightModeRef}
             engineNoiseRef={engineNoiseRef}
+            enhancedShiftingRef={enhancedShiftingRef}
+            extendedTopSpeedRef={extendedTopSpeedRef}
             timeOfDayRef={timeOfDayRef}
             weatherRef={weatherRef}
             disableMusicIntensity

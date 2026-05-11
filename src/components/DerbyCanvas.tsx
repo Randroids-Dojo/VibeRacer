@@ -14,7 +14,11 @@ import {
   buildArenaMesh,
   type DerbyArenaMesh,
 } from '@/game/derbyArena'
-import { buildDerbyScenery, type DerbyScenery } from '@/game/derbyScenery'
+import {
+  buildDerbyScenery,
+  SKIRT_OUTER_RADIUS,
+  type DerbyScenery,
+} from '@/game/derbyScenery'
 import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
 import {
   loadDerbyVehicleAsset,
@@ -58,9 +62,9 @@ import type { PhysicsInput } from '@/game/physics'
 // derbyTick every frame, and updates car meshes from the resulting state.
 // Player input comes from a keyboard ref; CPU inputs come from derbyAi.
 //
-// Vehicle visuals here are procedural box geometry (slice 7) so the
-// integration is testable end to end before slice 8 swaps in real GLBs
-// against the named-submesh contract.
+// Vehicle visuals are still procedural box / cylinder geometry. The async
+// signature on loadDerbyVehicleAsset lets a future GLB code path slot in
+// against the named-submesh contract without touching this loop.
 
 export interface DerbyCanvasProps {
   arena: DerbyArenaConfig
@@ -159,7 +163,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     // Stadium ring beyond the scenery: stepped concrete bowl, instanced
     // crowd, light poles. Inner radius derived from the scenery skirt's
     // outer extent so the venue stays correctly nested for any arena radius.
-    const stadium: DerbyStadium = buildDerbyStadium(arena, 128)
+    const stadium: DerbyStadium = buildDerbyStadium(arena, SKIRT_OUTER_RADIUS)
     scene.add(stadium.group)
 
     const round: DerbyRoundState = initDerbyRound({
@@ -258,10 +262,14 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       })
     }
 
+    // Reused across every hit-projection call so a multi-car pileup that
+    // fires dozens of hit events in a frame does not allocate a fresh
+    // Vector3 each time.
+    const projectScratch = new Vector3()
     function projectToScreen(x: number, z: number): { sx: number; sy: number } {
-      const v = new Vector3(x, VEHICLE_BODY_HEIGHT, z).project(camera)
-      const sx = (v.x * 0.5 + 0.5) * container!.clientWidth
-      const sy = (1 - (v.y * 0.5 + 0.5)) * container!.clientHeight
+      projectScratch.set(x, VEHICLE_BODY_HEIGHT, z).project(camera)
+      const sx = (projectScratch.x * 0.5 + 0.5) * container!.clientWidth
+      const sy = (1 - (projectScratch.y * 0.5 + 0.5)) * container!.clientHeight
       return { sx, sy }
     }
 
@@ -351,10 +359,12 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         carVisualizers[i]?.update(round.cars[i])
       }
 
-      // Advance debris.
+      // Advance debris. Removing dead meshes inline avoids the per-frame
+      // filter() allocation; pruneDebris compacts the array afterward.
       tickDebris(debrisItems, dtSec, arena.radius)
-      const dead = debrisItems.filter((d) => !d.alive)
-      for (const d of dead) scene.remove(d.object)
+      for (let i = 0; i < debrisItems.length; i++) {
+        if (!debrisItems[i].alive) scene.remove(debrisItems[i].object)
+      }
       pruneDebris(debrisItems)
 
       if (round.status === 'ended' && !endedReported) {

@@ -2637,6 +2637,13 @@ function GameSession({
     }
   }
 
+  // Effective top speed for HUD readouts. Mirrors the maxSpeedRef formula
+  // (line 877) so the speedometer dial, top-speed PB tier classification,
+  // and TrackStatsPane all read the same scaled ceiling without inlining
+  // the conditional three times.
+  const effectiveCarMaxSpeed =
+    tuning.maxSpeed * (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
+
   return (
     <div style={root}>
       <TitleMusic />
@@ -2786,10 +2793,7 @@ function GameSession({
           phase === 'racing' && !paused ? hud.topSpeedPb : null
         }
         speedUnit={settings.speedUnit}
-        carMaxSpeed={
-          tuning.maxSpeed *
-          (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
-        }
+        carMaxSpeed={effectiveCarMaxSpeed}
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
         gearProgress={hud.gearProgress}
@@ -2918,10 +2922,7 @@ function GameSession({
               bestTopSpeedUs={hud.pbTopSpeedUs}
               lifetimeBestTopSpeedUs={readLifetimeBestTopSpeed()}
               speedUnit={settings.speedUnit}
-              carMaxSpeed={
-                tuning.maxSpeed *
-                (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
-              }
+              carMaxSpeed={effectiveCarMaxSpeed}
               onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'achievements' ? (

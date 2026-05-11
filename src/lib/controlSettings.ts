@@ -378,7 +378,7 @@ export interface ControlSettings {
   // keep the same race feel they had before this preference moved off of the
   // track and onto the player.
   transmission: TransmissionMode
-  // Experimental: opts the player into the gear-feel rework — geometric gear
+  // Experimental: opts the player into the gear-feel rework. Geometric gear
   // ratios, RPM-keyed engine audio, shift torque cut, exhaust pop and
   // downshift blip, camera bob, and smart auto-shifting. Default false so the
   // baseline drive feel stays exactly as it was before this feature shipped.
@@ -387,7 +387,7 @@ export interface ControlSettings {
   enhancedShifting: boolean
   // Experimental: doubles base top speed and stretches the acceleration
   // curve so reaching the new cap is asymptotic. Designed so the player
-  // only sees true top speed on long straightaways. Default false — the
+  // only sees true top speed on long straightaways. Default false, so the
   // baseline car has its original 1.4s linear pull to maxSpeed.
   extendedTopSpeed: boolean
 }

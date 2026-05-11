@@ -1,5 +1,3 @@
-import type { CarParams } from './physics'
-
 export const TRANSMISSION_MODES = ['automatic', 'manual'] as const
 export type TransmissionMode = (typeof TRANSMISSION_MODES)[number]
 
@@ -15,7 +13,7 @@ export interface ManualGearSpec {
   accelFactor: number
 }
 
-// Default (legacy) gear ratios. Arithmetically spaced — these are the values
+// Default (legacy) gear ratios. Arithmetically spaced. These are the values
 // that shipped before the enhanced-shifting rework, and they are restored as
 // the baseline so a player with `enhancedShifting=false` (the default) gets
 // the exact pre-rework drive feel.
@@ -66,21 +64,6 @@ export function shiftManualGear(
 export function manualGearSpec(gear: number, dynamic = false): ManualGearSpec {
   const clamped = clampManualGear(gear)
   return gearSpecsFor(dynamic)[clamped - 1]
-}
-
-export function carParamsForTransmission(
-  params: CarParams,
-  mode: TransmissionMode,
-  gear: number,
-  dynamic = false,
-): CarParams {
-  if (mode !== 'manual') return params
-  const spec = manualGearSpec(gear, dynamic)
-  return {
-    ...params,
-    maxSpeed: Math.max(1, params.maxSpeed * spec.maxSpeedFactor),
-    accel: Math.max(0, params.accel * spec.accelFactor),
-  }
 }
 
 // Speed band each gear covers, in absolute world units. Used both for the
@@ -135,8 +118,8 @@ const AUTO_DOWNSHIFT_HYSTERESIS_FRAC = 0.7
 //   1) the asymptotic accel taper (which never strictly reaches vMax with
 //      enhanced gear caps applied) does not strand the car just below the
 //      cap with no way to upshift, and
-//   2) the shift fires while the engine is already bogging — at 95% of cap
-//      the quartic taper leaves ~18% of peak accel — so it reads as a
+//   2) the shift fires while the engine is already bogging (at 95% of cap
+//      the quartic taper leaves ~18% of peak accel), so it reads as a
 //      transition into a fresh power band, not an interruption of peak.
 const AUTO_UPSHIFT_TRIGGER_FRAC = 0.95
 

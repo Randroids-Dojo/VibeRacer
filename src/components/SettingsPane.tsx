@@ -455,10 +455,6 @@ export function SettingsPane({
     onChange({ ...settings, showLeaderboardRank: value })
   }
 
-  function setShowPaceNotes(value: boolean) {
-    onChange({ ...settings, showPaceNotes: value })
-  }
-
   function setSpeedUnit(unit: SpeedUnit) {
     clickSoft()
     onChange({ ...settings, speedUnit: unit })
@@ -765,10 +761,10 @@ export function SettingsPane({
           <div style={subSection}>
             <div style={subTitle}>Extended top speed (experimental)</div>
             <MenuHint>
-              Doubles the car's top speed and stretches the acceleration so
-              reaching the new cap is asymptotic — you'll only hit true top on
-              long straightaways. Off by default; baseline car keeps its
-              shipped maxSpeed and linear pull.
+              Doubles the car&apos;s top speed and stretches the acceleration
+              curve so reaching the new cap is asymptotic. You&apos;ll only
+              hit true top on long straightaways. Off by default; baseline
+              car keeps its shipped maxSpeed and linear pull.
             </MenuHint>
             <div style={touchToggleRow}>
               <MenuButton

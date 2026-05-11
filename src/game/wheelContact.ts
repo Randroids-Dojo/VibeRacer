@@ -2,6 +2,15 @@ import { cellKey, DIR_OFFSETS } from './track'
 import { halfWidthAt } from './trackWidth'
 import { distanceToCenterline, worldToCell, type TrackPath } from './trackPath'
 
+// Module-level constant so the candidate-cell sweep does not re-build a new
+// array (and a fresh spread of Object.values) on every wheel-contact call.
+// Hot path: vehicleTrackContact runs once per tick and itself calls
+// wheelTrackContact four times, so 60 fps × 4 = 240 allocations/sec saved.
+const CELLS_TO_CHECK: readonly { dr: number; dc: number }[] = [
+  { dr: 0, dc: 0 },
+  ...Object.values(DIR_OFFSETS),
+]
+
 export const WHEEL_CONTACT_FRONT_OFFSET = 1.55
 export const WHEEL_CONTACT_REAR_OFFSET = 1.35
 export const WHEEL_CONTACT_HALF_TRACK = 0.95
@@ -82,8 +91,7 @@ export function wheelTrackContact(
 ): WheelContact {
   const cell = worldToCell(x, z)
   const candidateIdxs = new Set<number>()
-  const cellsToCheck = [{ dr: 0, dc: 0 }, ...Object.values(DIR_OFFSETS)]
-  for (const offset of cellsToCheck) {
+  for (const offset of CELLS_TO_CHECK) {
     const key = cellKey(cell.row + offset.dr, cell.col + offset.dc)
     const locators = path.cellToLocators.get(key)
     if (locators !== undefined && locators.length > 0) {

@@ -1017,7 +1017,7 @@ export function RaceCanvas({
       const extendedTopSpeed = extendedTopSpeedRef?.current ?? false
       // Effective speed ceiling for the frame. Used everywhere a consumer
       // would otherwise divide by the unscaled `paramsRef.current.maxSpeed`
-      // — without this scaling, skid / smoke / drift / rumble / music
+      // Without this scaling, skid / smoke / drift / rumble / music
       // intensity and the gear-progress HUD bar would all saturate at half
       // deflection during the upper half of an extended-mode pull.
       const effectiveMaxSpeed =
@@ -1672,12 +1672,19 @@ export function RaceCanvas({
           ghostGapMs: ghostGapMsValue,
           paceNote: paceNoteValue,
           gear: state.gear,
-          gearProgress: gearProgress01(
-            Math.abs(state.speed),
-            state.gear,
-            effectiveMaxSpeed,
-            enhancedShifting,
-          ),
+          // Quantize gear progress to 0.05 steps so the HUD diff does not
+          // tick every single frame during acceleration. The GearChip's
+          // visual thresholds (0.85, 0.95) sit on round bucket boundaries,
+          // so the redline tint still fires at the right moment.
+          gearProgress:
+            Math.round(
+              gearProgress01(
+                Math.abs(state.speed),
+                state.gear,
+                effectiveMaxSpeed,
+                enhancedShifting,
+              ) * 20,
+            ) / 20,
         }
         const prevPaceText = prevHud?.paceNote?.text ?? null
         const nextPaceText = next.paceNote?.text ?? null
