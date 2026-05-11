@@ -128,13 +128,18 @@ export function tick(
       const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear, true)
       if (nextGear !== gear) {
         // Multi-gear deltas come from transmission-mode toggles or large dt
-        // catchups, not from racing. Treat as a silent snap (no rev blip, no
-        // torque cut) so the player isn't punished for changing a setting.
-        // A normal racing upshift only ever crosses one boundary per tick.
+        // catchups, not from racing. Treat as a silent snap (no rev blip)
+        // so the player isn't punished for changing a setting.
         const isCascade = Math.abs(nextGear - gear) > 1
         if (!isCascade) {
+          // Audio + visual feedback still fires (pitch reset, exhaust pop,
+          // chassis bob) but the physics torque cut is skipped in auto. The
+          // shift now happens at low accel (engine bogging into the gear
+          // cap thanks to maxSpeedFactor in auto), so layering a half-thrust
+          // window on top of an already-tapered pull turned into noticeable
+          // jank during chained early-gear shifts. Manual keeps the cut
+          // because the player chose the shift timing.
           shiftEvent = nextGear > gear ? 'up' : 'down'
-          if (torqueCutSec <= 0) torqueCutSec = SHIFT_TORQUE_CUT_SEC
         }
         gear = nextGear
       }
@@ -155,9 +160,13 @@ export function tick(
   // Gear factor selection. Enhanced mode applies the new geometric specs and
   // its accelFactor in both transmissions; legacy mode applies the legacy
   // specs only in manual (auto runs at 1x like before the rework).
+  // Enhanced auto also applies maxSpeedFactor so the taper inside stepPhysics
+  // kicks in within each gear's band — the upshift then fires when the
+  // engine is already bogging into the cap, which is what auto-shift logic
+  // expects and what makes shifts feel like transitions instead of cuts.
   const gearSpec = manualGearSpec(gear, enhancedShifting)
   const baseMaxFactor =
-    transmission === 'manual' ? gearSpec.maxSpeedFactor : 1
+    transmission === 'manual' || enhancedShifting ? gearSpec.maxSpeedFactor : 1
   let baseAccelFactor: number
   if (enhancedShifting) {
     baseAccelFactor = gearSpec.accelFactor

@@ -130,6 +130,16 @@ export function gearProgress01(
 // every time you brush the boundary under partial throttle.
 const AUTO_DOWNSHIFT_HYSTERESIS = 0.7
 
+// Auto upshift trigger as a fraction of the gear's max ratio. Trips the
+// shift slightly before the cap so:
+//   1) the asymptotic accel taper (which never strictly reaches vMax with
+//      enhanced gear caps applied) does not strand the car just below the
+//      cap with no way to upshift, and
+//   2) the shift fires while the engine is already bogging (accel ~5-10%
+//      of peak), so it reads as a transition into fresh power instead of
+//      an interruption of peak thrust.
+const AUTO_UPSHIFT_TRIGGER = 0.95
+
 // Auto transmission shift logic. Upshifts greedily when the current gear's
 // band is exceeded, downshifts only when speed has fallen well into the
 // gear-below's band so light throttle modulation doesn't cause oscillation.
@@ -145,7 +155,7 @@ export function autoShiftGear(
   const ratio = speedAbs / baseMaxSpeed
   while (
     gear < MANUAL_GEAR_MAX &&
-    ratio > table[gear - 1].maxSpeedFactor
+    ratio > table[gear - 1].maxSpeedFactor * AUTO_UPSHIFT_TRIGGER
   ) {
     gear += 1
   }

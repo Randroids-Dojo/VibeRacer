@@ -134,6 +134,15 @@ describe('autoShiftGear', () => {
     expect(g).toBe(MANUAL_GEAR_MAX)
   })
 
+  it('upshifts at 95% of the gear cap so the asymptotic taper does not strand the car', () => {
+    const baseMax = 26
+    // Just below 95% of gear 1 cap: no upshift.
+    const gear1Cap = manualGearSpec(1).maxSpeedFactor * baseMax
+    expect(autoShiftGear(gear1Cap * 0.94, baseMax, 1)).toBe(1)
+    // Just above the 95% trigger: upshift.
+    expect(autoShiftGear(gear1Cap * 0.96, baseMax, 1)).toBe(2)
+  })
+
   it('handles a multi-band jump (paused-frame catchup) in one call', () => {
     // Speed 90% of base from a standstill in gear 1 — the while loop should
     // walk all the way up, not stop after one step.
