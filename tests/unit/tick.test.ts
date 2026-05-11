@@ -118,17 +118,45 @@ describe('tick', () => {
     expect(r.state.gear).toBeGreaterThan(1)
   })
 
-  it('enhanced auto applies gear maxSpeedFactor so the gear caps actual speed', () => {
-    // Pin speed past gear 1's cap with the (legacy) auto disabled; gear 1
-    // maxSpeed in dynamic is 0.28 * 26 = 7.28. With maxSpeedFactor applied
-    // in enhanced auto, the physics clamp should pull speed back to 7.28
-    // until autoShiftGear upshifts the car into a wider gear. We force the
-    // gear to 1 to isolate the maxSpeedFactor application from the
-    // shift logic for this test.
+  it('enhanced auto applies gear maxSpeedFactor so accel tapers within each gear', () => {
+    // Hold the car at speed 5 in gear 1 — below the 95% upshift trigger
+    // (0.28 * 0.95 = 0.266 → trigger at speed 6.92, ratio 0.192 here). One
+    // tick at full throttle. With the gear cap applied the quartic taper
+    // bites hard against the 7.28 cap and the per-tick gain is small;
+    // without the cap the taper would be computed against base maxSpeed 26
+    // and the gain would be nearly the full accel * dt.
+    const s = { ...startRace(initGameState(path), 0), gear: 1, speed: 5 }
+    const r = tick(
+      s,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      true,
+    )
+    // autoShiftGear must NOT upshift at this speed (ratio 0.192 < 0.266).
+    expect(r.state.gear).toBe(1)
+    // Expected per-tick gain with cap applied (taper against 7.28):
+    //   accel * (1 - (5/7.28)^4) * dt = 29.7 * 0.778 * 0.016 = ~0.37 m/s.
+    // Without the cap (the old buggy path, taper against 26):
+    //   accel * (1 - (5/26)^4) * dt = 29.7 * 0.999 * 0.016 = ~0.475 m/s.
+    // The 0.42 upper bound passes only when the cap is engaged.
+    const gain = r.state.speed - 5
+    expect(gain).toBeGreaterThan(0.3)
+    expect(gain).toBeLessThan(0.42)
+  })
+
+  it('enhanced auto downshifts at 70% of prev gear cap without arming a torque cut', () => {
+    // Set gear=3 with a speed that has fallen well into gear 2's interior.
+    // Gear 2 cap = 0.40 * 26 = 10.4; the downshift hysteresis says drop to
+    // gear 2 when ratio falls below gear-2-cap * 0.7 = 7.28 (ratio 0.28).
+    // Pin speed at 6.5 (ratio 0.25) so a downshift is unambiguously due.
     const s = {
       ...startRace(initGameState(path), 0),
-      gear: 1,
-      speed: 12,
+      gear: 3,
+      speed: 6.5,
     }
     const r = tick(
       s,
@@ -140,12 +168,10 @@ describe('tick', () => {
       'automatic',
       true,
     )
-    // autoShiftGear will upshift away from gear 1 immediately at speed 12
-    // (ratio 0.46 > 0.28 * 0.95 = 0.266), so we check that the speed has
-    // been clamped or that the gear has changed (either proves the cap is
-    // engaged). Asserting clamp-or-shift keeps the contract loose enough to
-    // tolerate future tuning of the 95% trigger.
-    expect(r.state.gear !== 1 || r.state.speed <= 7.28 + 1e-6).toBe(true)
+    expect(r.state.gear).toBeLessThan(3)
+    expect(r.shiftEvent).toBe('down')
+    // Auto downshifts share the same "no cut" rule as auto upshifts.
+    expect(r.state.torqueCutSec).toBe(0)
   })
 
   it('legacy auto stays in gear 1 regardless of speed', () => {
