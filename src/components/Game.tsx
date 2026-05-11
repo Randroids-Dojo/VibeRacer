@@ -2,7 +2,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import type { Piece, TrackCheckpoint, TrackMood } from '@/lib/schemas'
-import type { LapCompleteEvent } from '@/game/tick'
+import { EXTENDED_TOP_SPEED_MUL, type LapCompleteEvent } from '@/game/tick'
 import { resolveActiveMood, trackHasMood } from '@/game/trackMood'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
@@ -735,6 +735,10 @@ function GameSession({
   // rework.
   const enhancedShiftingRef = useRef<boolean>(settings.enhancedShifting)
   enhancedShiftingRef.current = settings.enhancedShifting
+  // Mirrors settings.extendedTopSpeed into the rAF loop. Same opt-in story:
+  // when off (default), the car keeps its baseline maxSpeed and linear pull.
+  const extendedTopSpeedRef = useRef<boolean>(settings.extendedTopSpeed)
+  extendedTopSpeedRef.current = settings.extendedTopSpeed
   // Stable canvas ref the rear-view pass renders into. Held here at the
   // Game.tsx level so the inset survives across pause / resume without
   // retearing the renderer.
@@ -865,9 +869,12 @@ function GameSession({
   const speedRef = useRef<number>(0)
   // Mirrors the live tuning's maxSpeed for the gauge needle. Updated each
   // render from `tuning` so a slider tweak in TuningPanel reshapes the dial
-  // immediately.
+  // immediately. Scaled by the extendedTopSpeed multiplier so the dial
+  // dome matches the actual cap when that flag is on; otherwise the needle
+  // would peg at half-deflection forever during the upper half of a pull.
   const maxSpeedRef = useRef<number>(tuning.maxSpeed)
-  maxSpeedRef.current = tuning.maxSpeed
+  maxSpeedRef.current =
+    tuning.maxSpeed * (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
   // Session top-speed (always >= 0). The Speedometer overlay updates this
   // inside its own rAF loop using `updateTopSpeed`; owning the ref here means
   // the peak survives the component's mount / unmount cycle on pause / resume,
@@ -2639,6 +2646,7 @@ function GameSession({
         checkpoints={checkpoints}
         transmissionRef={transmissionRef}
         enhancedShiftingRef={enhancedShiftingRef}
+        extendedTopSpeedRef={extendedTopSpeedRef}
         biome={trackBiome ?? null}
         decorations={trackDecorations}
         paramsRef={paramsRef}
@@ -2778,7 +2786,10 @@ function GameSession({
           phase === 'racing' && !paused ? hud.topSpeedPb : null
         }
         speedUnit={settings.speedUnit}
-        carMaxSpeed={tuning.maxSpeed}
+        carMaxSpeed={
+          tuning.maxSpeed *
+          (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
+        }
         lapConsistency={computeLapConsistency(lapHistory)}
         gear={hud.gear}
         gearProgress={hud.gearProgress}
@@ -2907,7 +2918,10 @@ function GameSession({
               bestTopSpeedUs={hud.pbTopSpeedUs}
               lifetimeBestTopSpeedUs={readLifetimeBestTopSpeed()}
               speedUnit={settings.speedUnit}
-              carMaxSpeed={tuning.maxSpeed}
+              carMaxSpeed={
+                tuning.maxSpeed *
+                (settings.extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
+              }
               onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'achievements' ? (

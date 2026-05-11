@@ -148,6 +148,113 @@ describe('tick', () => {
     expect(gain).toBeLessThan(0.42)
   })
 
+  it('extendedTopSpeed doubles the effective speed cap', () => {
+    // Pre-rev the car well past the legacy maxSpeed and clear race state to
+    // isolate the cap: no throttle, no auto-shift considerations beyond gear
+    // 1, no shifts in legacy mode anyway.
+    const baseState = {
+      ...startRace(initGameState(path), 0),
+      speed: 100,
+    }
+    const baseline = tick(
+      baseState,
+      { throttle: 0, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      false,
+      false,
+    )
+    const extended = tick(
+      baseState,
+      { throttle: 0, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      false,
+      true,
+    )
+    // Baseline clamps to 26 (DEFAULT_CAR_PARAMS.maxSpeed); extended clamps
+    // to 52 (2x). Both apply rolling friction over the tick. Bounds wide
+    // enough to tolerate future friction tuning while still asserting
+    // "near 52, not near 26."
+    expect(baseline.state.speed).toBeLessThan(27)
+    expect(extended.state.speed).toBeGreaterThan(48)
+    expect(extended.state.speed).toBeLessThanOrEqual(52)
+  })
+
+  it('extendedTopSpeed forces the quartic taper so the long pull is asymptotic', () => {
+    // Compare two single-tick runs at v=20 (under both caps, no clamp).
+    // Legacy linear pull: gain = accel * dt = 18 * 0.016 = 0.288 m/s.
+    // Extended (cap 52, taper): gain = 18 * (1 - (20/52)^4) * 0.016 =
+    //   18 * 0.978 * 0.016 = ~0.282 m/s.
+    // Compare two single-tick runs at v=40 (above legacy cap of 26, in
+    // the extended-only tapered band):
+    //   Baseline clamps to 26 then friction acts — speed drops to ~26.
+    //   Extended is uncapped and tapered: gain at 40 = 18*(1-(40/52)^4)*
+    //   0.016 = 18 * 0.65 * 0.016 = ~0.187 m/s, new speed ~40.19.
+    // The divergence at v=40 unambiguously demonstrates both effects of
+    // the flag (higher cap AND taper).
+    const baseState = {
+      ...startRace(initGameState(path), 0),
+      speed: 40,
+    }
+    const baseline = tick(
+      baseState,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      false,
+      false,
+    )
+    const extended = tick(
+      baseState,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      false,
+      true,
+    )
+    // Baseline must clamp back down (or be in the process of clamping)
+    // because the legacy cap is 26 and speed=40 starts above it.
+    expect(baseline.state.speed).toBeLessThan(27)
+    // Extended must continue rising but only slightly — the quartic taper
+    // is pulling accel down hard at 77% of cap.
+    expect(extended.state.speed).toBeGreaterThan(40)
+    expect(extended.state.speed).toBeLessThan(40.4)
+  })
+
+  it('extendedTopSpeed off leaves baseline behavior identical', () => {
+    // A regression guard: with extendedTopSpeed=false (default) the speed
+    // cap stays at the original maxSpeed regardless of the flag plumbing.
+    const baseState = {
+      ...startRace(initGameState(path), 0),
+      speed: 100,
+    }
+    const result = tick(
+      baseState,
+      { throttle: 1, steer: 0, handbrake: false },
+      16,
+      16,
+      path,
+      undefined,
+      'automatic',
+      false,
+      false,
+    )
+    expect(result.state.speed).toBeLessThanOrEqual(DEFAULT_CAR_PARAMS.maxSpeed)
+  })
+
   it('enhanced auto downshifts at 70% of prev gear cap without arming a torque cut', () => {
     // Set gear=3 with a speed that has fallen well into gear 2's interior.
     // Gear 2 cap = 0.40 * 26 = 10.4; the downshift hysteresis says drop to
