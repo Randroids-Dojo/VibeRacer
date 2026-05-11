@@ -53,6 +53,7 @@ import {
 } from '@/lib/haptics'
 import { computeContinuousRumble } from '@/lib/gamepadRumble'
 import {
+  EXTENDED_TOP_SPEED_MUL,
   initGameState,
   startRace,
   tick,
@@ -153,6 +154,10 @@ export interface RaceCanvasProps {
   // speed-keyed audio, and skips the shift cut + camera bob. Optional;
   // omitting it disables the rework entirely.
   enhancedShiftingRef?: MutableRefObject<boolean>
+  // Live ref into the experimental extended-top-speed flag. When false
+  // (default), the car keeps its baseline maxSpeed and the linear/legacy
+  // acceleration curve.
+  extendedTopSpeedRef?: MutableRefObject<boolean>
   biome?: TrackBiome | null
   decorations?: readonly TrackDecoration[]
   paramsRef: MutableRefObject<CarParams>
@@ -354,6 +359,7 @@ export function RaceCanvas({
   checkpoints,
   transmissionRef,
   enhancedShiftingRef,
+  extendedTopSpeedRef,
   biome = null,
   decorations = EMPTY_DECORATIONS,
   paramsRef,
@@ -1008,6 +1014,15 @@ export function RaceCanvas({
       // tracker on the lap clock that was in effect during the frame.
       const preStepRaceStartMs = state.raceStartMs
       const enhancedShifting = enhancedShiftingRef?.current ?? false
+      const extendedTopSpeed = extendedTopSpeedRef?.current ?? false
+      // Effective speed ceiling for the frame. Used everywhere a consumer
+      // would otherwise divide by the unscaled `paramsRef.current.maxSpeed`
+      // — without this scaling, skid / smoke / drift / rumble / music
+      // intensity and the gear-progress HUD bar would all saturate at half
+      // deflection during the upper half of an extended-mode pull.
+      const effectiveMaxSpeed =
+        paramsRef.current.maxSpeed *
+        (extendedTopSpeed ? EXTENDED_TOP_SPEED_MUL : 1)
       const result = tick(
         state,
         {
@@ -1023,6 +1038,7 @@ export function RaceCanvas({
         paramsRef.current,
         transmissionRef?.current ?? 'automatic',
         enhancedShifting,
+        extendedTopSpeed,
       )
       state = result.state
       // Shift bob magnitudes. Upshift is larger and downward (-0.18) because
@@ -1276,7 +1292,7 @@ export function RaceCanvas({
         const skidSteerAbs = Math.abs(steerInput)
         const intensity = skidIntensity(
           skidSpeedAbs,
-          paramsRef.current.maxSpeed,
+          effectiveMaxSpeed,
           skidSteerAbs,
           state.onTrack,
         )
@@ -1303,7 +1319,7 @@ export function RaceCanvas({
         const showTireSmoke = showTireSmokeRef?.current ?? true
         const smokeIntensity = puffIntensity(
           skidSpeedAbs,
-          paramsRef.current.maxSpeed,
+          effectiveMaxSpeed,
           skidSteerAbs,
           brakingNow ? 1 : 0,
           state.onTrack,
@@ -1328,7 +1344,7 @@ export function RaceCanvas({
         // input shape so the audio cue and the score stay in sync.
         dIntensity = driftIntensity(
           skidSpeedAbs,
-          paramsRef.current.maxSpeed,
+          effectiveMaxSpeed,
           skidSteerAbs,
         )
         const driftResult = stepDriftSession(driftSession, {
@@ -1427,7 +1443,7 @@ export function RaceCanvas({
       }
 
       if (!disableMusicRef.current) {
-        setGameIntensity(Math.abs(state.speed) / paramsRef.current.maxSpeed)
+        setGameIntensity(Math.abs(state.speed) / effectiveMaxSpeed)
         const racing = state.raceStartMs !== null
         if (racing && !droneStarted) {
           startEngineDrone()
@@ -1438,7 +1454,7 @@ export function RaceCanvas({
         const throttle = throttleInput
         updateDriveSfx({
           speedAbs: Math.abs(state.speed),
-          maxSpeed: paramsRef.current.maxSpeed,
+          maxSpeed: effectiveMaxSpeed,
           throttle,
           steerAbs,
           onTrack: state.onTrack,
@@ -1474,7 +1490,7 @@ export function RaceCanvas({
         const speedAbs = Math.abs(state.speed)
         const mags = computeContinuousRumble({
           speedAbs,
-          maxSpeed: paramsRef.current.maxSpeed,
+          maxSpeed: effectiveMaxSpeed,
           onTrack: state.onTrack,
           driftIntensity: dIntensity,
           brakeLock: keys.current.backward && speedAbs < 1,
@@ -1659,7 +1675,7 @@ export function RaceCanvas({
           gearProgress: gearProgress01(
             Math.abs(state.speed),
             state.gear,
-            paramsRef.current.maxSpeed,
+            effectiveMaxSpeed,
             enhancedShifting,
           ),
         }

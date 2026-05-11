@@ -385,6 +385,11 @@ export interface ControlSettings {
   // The system is in active troubleshooting; flipping it on will be obvious
   // to the player and they can flip it back off any time.
   enhancedShifting: boolean
+  // Experimental: doubles base top speed and stretches the acceleration
+  // curve so reaching the new cap is asymptotic. Designed so the player
+  // only sees true top speed on long straightaways. Default false — the
+  // baseline car has its original 1.4s linear pull to maxSpeed.
+  extendedTopSpeed: boolean
 }
 
 export const DEFAULT_KEY_BINDINGS: KeyBindings = {
@@ -439,6 +444,7 @@ export const DEFAULT_CONTROL_SETTINGS: ControlSettings = {
   timeOfDayCycle: DEFAULT_TIME_OF_DAY_CYCLE,
   transmission: DEFAULT_TRANSMISSION,
   enhancedShifting: false,
+  extendedTopSpeed: false,
 }
 
 export const CONTROL_SETTINGS_STORAGE_KEY = 'viberacer.controls'
@@ -633,6 +639,9 @@ const ControlSettingsSchema = z.object({
   // payloads pick up the same default so existing players are not surprised
   // by a different car behavior on next load.
   enhancedShifting: z.boolean().default(false),
+  // Extended top speed (experimental). Default false. Same opt-in story
+  // as enhancedShifting: legacy payloads stay on the baseline linear pull.
+  extendedTopSpeed: z.boolean().default(false),
 })
 
 export function cloneDefaultCameraSettings(): CameraRigSettings {
@@ -677,6 +686,7 @@ export function cloneDefaultSettings(): ControlSettings {
     timeOfDayCycle: DEFAULT_CONTROL_SETTINGS.timeOfDayCycle,
     transmission: DEFAULT_CONTROL_SETTINGS.transmission,
     enhancedShifting: DEFAULT_CONTROL_SETTINGS.enhancedShifting,
+    extendedTopSpeed: DEFAULT_CONTROL_SETTINGS.extendedTopSpeed,
   }
 }
 

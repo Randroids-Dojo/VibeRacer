@@ -17,6 +17,18 @@ import {
 } from './transmission'
 import { vehicleTrackContact } from './wheelContact'
 
+// Multiplier applied to base maxSpeed when extendedTopSpeed is on. 2.0
+// puts top at ~52 m/s (~116 mph) which lands comfortably in the
+// arcade-fast range without breaking turning-radius behavior at the top
+// of the speed window. Because we also force the quartic taper on, the
+// car asymptotes against the new top — the practical effect is "you only
+// see true top speed on long straightaways."
+//
+// Manual-mode players: gear caps multiply with this too, so a manual run
+// with extendedTopSpeed on has every gear's wall at 2x its old absolute
+// speed. The gear-feel ratios stay intact; the absolute speeds just shift.
+export const EXTENDED_TOP_SPEED_MUL = 2.0
+
 // Brief torque cut on every shift. ~110ms gives the upshift a perceptible
 // "click" without feeling like input lag during a 30-second drag run that
 // may chain four upshifts (4 * 110ms = 440ms of cut total).
@@ -104,6 +116,11 @@ export function tick(
   // pre-rework tick: legacy gear ratios, no torque cut, no shift events,
   // automatic mode locked to gear 1, linear acceleration curve.
   enhancedShifting = false,
+  // Opts the player into the higher-top-speed / longer-pull preset. When
+  // true, the effective maxSpeed doubles and the quartic taper is forced
+  // on, so reaching true top is asymptotic. Default false so the baseline
+  // car behaves exactly as it did before this preset shipped.
+  extendedTopSpeed = false,
 ): TickResult {
   const dtSec = dtMs / 1000
   let gear = state.gear
@@ -124,8 +141,15 @@ export function tick(
       // Auto: always recompute the gear from current speed so a manual->auto
       // toggle (or paused-frame catchup that crossed multiple bands) lands on
       // the correct gear without waiting for hysteresis to drag it back.
+      // When extendedTopSpeed is on the effective cap is 2x, so we feed the
+      // doubled base into autoShiftGear — otherwise the upshift triggers
+      // (ratio > maxSpeedFactor * 0.95) fire at half the new speed window
+      // and the car pegs gear 5 for the entire upper half of the pull.
       const speedAbs = Math.abs(state.speed)
-      const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear, true)
+      const autoShiftBase = extendedTopSpeed
+        ? params.maxSpeed * EXTENDED_TOP_SPEED_MUL
+        : params.maxSpeed
+      const nextGear = autoShiftGear(speedAbs, autoShiftBase, gear, true)
       if (nextGear !== gear) {
         // Multi-gear deltas don't happen during normal racing: the rAF loop
         // clamps dt to 50ms (RaceCanvas) so a 2+ gear walk in one tick is
@@ -168,8 +192,15 @@ export function tick(
   // engine is already bogging into the cap, which is what auto-shift logic
   // expects and what makes shifts feel like transitions instead of cuts.
   const gearSpec = manualGearSpec(gear, enhancedShifting)
-  const baseMaxFactor =
+  const gearMaxFactor =
     transmission === 'manual' || enhancedShifting ? gearSpec.maxSpeedFactor : 1
+  // Extended top speed multiplies the per-tick maxSpeed cap so every gear
+  // (and the auto-mode base) can reach a higher absolute speed. Composes
+  // with manual gear caps so a manual run still feels gear-limited, just
+  // against a higher ceiling.
+  const baseMaxFactor = extendedTopSpeed
+    ? gearMaxFactor * EXTENDED_TOP_SPEED_MUL
+    : gearMaxFactor
   let baseAccelFactor: number
   if (enhancedShifting) {
     baseAccelFactor = gearSpec.accelFactor
@@ -206,10 +237,10 @@ export function tick(
         finalAccelFactor,
         baseMaxFactor,
         0,
-        // Legacy mode keeps the linear acceleration curve. Enhanced mode uses
-        // the default quartic taper inside stepPhysics for the asymptotic
-        // top-end pull.
-        enhancedShifting ? undefined : 1,
+        // Linear curve in legacy mode. Quartic taper kicks in for either
+        // enhanced shifting (intentional gear feel) or extended top speed
+        // (so the doubled cap is asymptotic, not a linear sprint).
+        enhancedShifting || extendedTopSpeed ? undefined : 1,
       )
 
   let hits = state.hits

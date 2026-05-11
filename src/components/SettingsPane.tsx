@@ -763,6 +763,34 @@ export function SettingsPane({
           </div>
 
           <div style={subSection}>
+            <div style={subTitle}>Extended top speed (experimental)</div>
+            <MenuHint>
+              Doubles the car's top speed and stretches the acceleration so
+              reaching the new cap is asymptotic — you'll only hit true top on
+              long straightaways. Off by default; baseline car keeps its
+              shipped maxSpeed and linear pull.
+            </MenuHint>
+            <div style={touchToggleRow}>
+              <MenuButton
+                variant={settings.extendedTopSpeed ? 'secondary' : 'primary'}
+                onClick={() =>
+                  onChange({ ...settings, extendedTopSpeed: false })
+                }
+              >
+                Off
+              </MenuButton>
+              <MenuButton
+                variant={settings.extendedTopSpeed ? 'primary' : 'secondary'}
+                onClick={() =>
+                  onChange({ ...settings, extendedTopSpeed: true })
+                }
+              >
+                On
+              </MenuButton>
+            </div>
+          </div>
+
+          <div style={subSection}>
             <div style={subTitle}>Keyboard</div>
             <MenuHint>
               Click or tap a slot, then press the key you want.
