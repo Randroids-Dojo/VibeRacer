@@ -34,13 +34,9 @@ export interface CollisionDamage {
 // to look.
 export const SPEED_DIFF_THRESHOLD = 6
 export const VELOCITY_INTO_CONTACT_THRESHOLD = 3
-// Damage = baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
-// At DAMAGE_SCALE = 50 a Sedan vs Sedan hit at closing speed 24 deals
-// about 7 damage, so a 200 HP car survives roughly 25 to 30 hits.
+// Damage formula: baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
 export const DAMAGE_SCALE = 50
-// A single hit can never wipe more than this much HP. Lower than the
-// weakest vehicle's health so a glass-cannon racecar still survives the
-// first contact.
+// Per-hit cap, kept below the weakest vehicle's HP so no clean hit one-shots.
 export const MAX_HIT_DAMAGE = 30
 
 // World-frame velocity of a car given its physics state. Heading 0 = +X,
@@ -124,13 +120,8 @@ export function resolveCollision(
   }
 
   if (verdict === 'aIsAttacker') {
-    // a's baseDamage scaled linearly by the closing speed at the contact
-    // and the attacker-mass weight applied to b. Mass weight:
-    // 2 * mAttacker / (mAttacker + mVictim) so a mass-matched hit is 1.0
-    // and a heavy attacker into a light victim is up to 2x. Damage is
-    // intentionally linear in impactComponent: a quadratic-in-speed model
-    // makes any clean high-speed hit instantly clamp to the max and
-    // one-shot the victim, which is exactly the bug we are avoiding.
+    // Linear in impactComponent on purpose: a quadratic-in-speed model
+    // makes any clean high-speed hit clamp to the cap and one-shot.
     const massFactor =
       (2 * aConfig.mass) / Math.max(1, aConfig.mass + bConfig.mass)
     const raw =

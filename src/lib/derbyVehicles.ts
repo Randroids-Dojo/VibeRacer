@@ -17,13 +17,11 @@ export interface DerbyVehicleConfig {
   modelUrl: string
   carParams: CarParams
   // Starting health for this vehicle. Higher health vehicles take more hits
-  // to destroy. Range 130..400 for v1: a typical clean hit deals 5..12 HP,
-  // so a 200 HP sedan survives roughly 20..30 hits and a 400 HP school bus
-  // survives roughly 40..60 hits.
+  // to destroy. Range 130..400 for v1.
   health: number
   // Base damage scalar this vehicle deals on a clean hit. The actual damage
   // applied by derbyDamage scales this linearly by closing speed and the
-  // attacker/victim mass ratio. Range 12..26 for v1.
+  // attacker/victim mass ratio. Range 12..24 for v1.
   baseDamage: number
   // Mass in arbitrary units. Used for collision impulse split and the
   // attacker heuristic when speeds are close. Range 800..3000 for v1.
@@ -33,7 +31,7 @@ export interface DerbyVehicleConfig {
   collisionRadius: number
   // Theoretical lowest time-to-win for this vehicle in milliseconds. The
   // server rejects submissions that beat this floor. Computed from the
-  // vehicle's baseDamage and the worst-case enemy health (the bigTruck at
+  // vehicle's baseDamage and the worst-case enemy health (the schoolBus at
   // full health) assuming continuous full-power ramming, with a 30 percent
   // headroom cushion.
   theoreticalMinWinMs: number

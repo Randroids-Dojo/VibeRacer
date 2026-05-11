@@ -91,13 +91,9 @@ export function stepAi(brain: DerbyAiBrain, input: AiInput): PhysicsInput {
   return { throttle: 1, steer, handbrake: false }
 }
 
-// Pick the alive enemy with the smallest "distance / (1 + woundFraction * 2)".
-// Lower-health enemies become attractive at longer ranges, so the AI piles
-// onto a wounded car instead of fixating on the nearest healthy one.
-// Normalizing by each car's own maxHealth keeps the formula scale-invariant
-// across vehicles with very different HP pools (a 130 HP racecar and a 400
-// HP school bus get compared by the same wound fraction). Returns null when
-// no alive enemies exist.
+// Pick the alive enemy with the smallest distance/(1 + woundFraction*2).
+// Wound fraction is normalized per-vehicle so a 130 HP racecar and a 400 HP
+// bus compare on equal footing. Returns null when no alive enemies exist.
 export function pickTarget(
   brain: DerbyAiBrain,
   input: AiInput,
