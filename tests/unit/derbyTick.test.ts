@@ -120,7 +120,10 @@ describe('derbyTick', () => {
     round.cars[0].physics.z = 0
     round.cars[0].physics.heading = 0
     round.cars[0].physics.speed = 20
-    round.cars[1].physics.x = round.configs[0].collisionRadius + round.configs[1].collisionRadius - 0.1
+    // Head-on along X: OBB touching distance is the sum of the two cars'
+    // half-lengths along the forward axis. Pull the second car 0.1 m inside
+    // that boundary so the SAT pass finds a small overlap.
+    round.cars[1].physics.x = round.configs[0].obbHalfLength + round.configs[1].obbHalfLength - 0.1
     round.cars[1].physics.z = 0
     round.cars[1].physics.heading = 0
     round.cars[1].physics.speed = 0
@@ -151,8 +154,14 @@ describe('derbyTick', () => {
     round.cars[0].physics.z = 0
     round.cars[0].physics.heading = 0
     round.cars[0].physics.speed = 20
-    round.cars[1].physics.x = round.configs[0].collisionRadius + round.configs[1].collisionRadius - 0.1
+    // Head-on along X: OBB touching distance is the sum of the two cars'
+    // half-lengths along the forward axis. Pull the second car 0.1 m inside
+    // that boundary so the SAT pass finds a small overlap. Heading must
+    // match the first car's so both forward axes are +X; otherwise the
+    // racecar inherits the starting-ring heading and faces sideways.
+    round.cars[1].physics.x = round.configs[0].obbHalfLength + round.configs[1].obbHalfLength - 0.1
     round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
     round.cars[1].health = 1
     round.cars[2].physics.x = -50
     round.cars[3].physics.x = 50
@@ -161,6 +170,51 @@ describe('derbyTick', () => {
     expect(round.cars[1].status).toBe('destroyed')
     expect(round.cars[0].kills).toBe(before + 1)
     expect(out.events.some((e) => e.kind === 'destroyed' && e.victimIdx === 1)).toBe(true)
+  })
+
+  it('OBB pass: a sedan parked inside the school bus length-wise gap gets pushed out', () => {
+    // Regression for "I clip through the back of the bus". The legacy
+    // circle test enforced only ~4.10m around the bus center, so a sedan
+    // parked at ~1.30m on the bus's local +X axis was completely inside
+    // the bus rectangle yet outside both circles. After the OBB switch
+    // the SAT pass detects this overlap and separate() pushes the cars
+    // apart along the smallest-overlap axis (the bus's local Z = sides).
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['schoolBus', 'car', 'car', 'racecar'],
+    })
+    round.cars[0].physics.x = 0
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.heading = 0
+    round.cars[0].physics.speed = 0
+    const cfgBus = round.configs[0]
+    const cfgSedan = round.configs[1]
+    // Park the sedan well inside the bus rectangle but outside both
+    // legacy collision circles.
+    round.cars[1].physics.x = cfgBus.obbHalfLength - cfgSedan.obbHalfLength - 0.5
+    round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
+    round.cars[1].physics.speed = 0
+    round.cars[2].physics.x = -50
+    round.cars[3].physics.x = 50
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    // Verify the cars no longer overlap on every SAT axis. The shared
+    // forward axis at heading=0 is X and side axis is Z; both intervals
+    // must be disjoint or just touching.
+    const bus = round.cars[0]
+    const sedan = round.cars[1]
+    const busHl = cfgBus.obbHalfLength
+    const busHw = cfgBus.obbHalfWidth
+    const sedanHl = cfgSedan.obbHalfLength
+    const sedanHw = cfgSedan.obbHalfWidth
+    const busXLo = bus.physics.x - busHl, busXHi = bus.physics.x + busHl
+    const busZLo = bus.physics.z - busHw, busZHi = bus.physics.z + busHw
+    const sedanXLo = sedan.physics.x - sedanHl, sedanXHi = sedan.physics.x + sedanHl
+    const sedanZLo = sedan.physics.z - sedanHw, sedanZHi = sedan.physics.z + sedanHw
+    const xOverlap = Math.min(busXHi, sedanXHi) - Math.max(busXLo, sedanXLo)
+    const zOverlap = Math.min(busZHi, sedanZHi) - Math.max(busZLo, sedanZLo)
+    // At least one axis must be a separating axis (no overlap, modulo eps).
+    expect(xOverlap < 1e-3 || zOverlap < 1e-3).toBe(true)
   })
 
   it('is a no-op once the round has ended', () => {

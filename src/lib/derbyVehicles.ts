@@ -27,8 +27,17 @@ export interface DerbyVehicleConfig {
   // attacker heuristic when speeds are close. Range 800..3000 for v1.
   mass: number
   // Approximate XZ-plane collision radius around the car center. Used for
-  // arena containment and a cheap broad-phase before the OBB-vs-OBB pass.
+  // arena containment and as a cheap broad-phase before the per-pair OBB
+  // narrow-phase test. Should be >= half the diagonal of the OBB so it
+  // never misses a real overlap.
   collisionRadius: number
+  // Oriented-bounding-box half-extents, in metres. width = half the
+  // dimension along the car's local X axis (door-to-door); length = half
+  // the dimension along the local forward axis. Used by derbyTick's OBB
+  // SAT contact pass so a long vehicle (school bus) cannot be clipped
+  // through its front or rear by a smaller car.
+  obbHalfWidth: number
+  obbHalfLength: number
   // Theoretical lowest time-to-win for this vehicle in milliseconds. The
   // server rejects submissions that beat this floor. Computed from the
   // vehicle's baseDamage and the worst-case enemy health (the schoolBus at
@@ -127,7 +136,13 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     health: 200,
     baseDamage: 14,
     mass: 1300,
-    collisionRadius: 1.6,
+    // collisionRadius pads the broad phase so it never misses an OBB
+    // overlap. Set to half the bounding-box diagonal of the GLB plus a
+    // small safety margin; tools/blender/build_derby_vehicle.py builds the
+    // sedan at width 1.85 / length 4.20, half-diagonal ~2.30.
+    collisionRadius: 2.35,
+    obbHalfWidth: 0.95,
+    obbHalfLength: 2.15,
     theoreticalMinWinMs: theoreticalMinWinMs(14),
     blurb: 'Balanced ride. Enough speed to chase, enough HP to trade hits.',
   },
@@ -139,7 +154,10 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     health: 400,
     baseDamage: 16,
     mass: 2800,
-    collisionRadius: 2.6,
+    // GLB is width 2.40 / length 7.80; half-diagonal ~4.07.
+    collisionRadius: 4.10,
+    obbHalfWidth: 1.25,
+    obbHalfLength: 3.95,
     theoreticalMinWinMs: theoreticalMinWinMs(16),
     blurb: 'Massive rolling tank. Soaks dozens of hits and shoves anything sideways.',
   },
@@ -151,7 +169,10 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     health: 320,
     baseDamage: 24,
     mass: 2400,
-    collisionRadius: 2.4,
+    // GLB is width 2.30 / length 5.40; half-diagonal ~2.94.
+    collisionRadius: 3.00,
+    obbHalfWidth: 1.20,
+    obbHalfLength: 2.75,
     theoreticalMinWinMs: theoreticalMinWinMs(24),
     blurb: 'Heavy hitter. The hardest single hit in the field; chews through lighter cars.',
   },
@@ -163,7 +184,10 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     health: 130,
     baseDamage: 12,
     mass: 900,
-    collisionRadius: 1.4,
+    // GLB is width 1.95 / length 4.55; half-diagonal ~2.47.
+    collisionRadius: 2.55,
+    obbHalfWidth: 1.00,
+    obbHalfLength: 2.30,
     theoreticalMinWinMs: theoreticalMinWinMs(12),
     blurb: 'Glass cannon on wheels. Outmaneuver heavies or you melt in a handful of hits.',
   },
@@ -184,6 +208,8 @@ export function derbyVehicleCanonical(v: DerbyVehicleConfig): string {
     baseDamage: v.baseDamage,
     mass: v.mass,
     collisionRadius: v.collisionRadius,
+    obbHalfWidth: v.obbHalfWidth,
+    obbHalfLength: v.obbHalfLength,
     carParams: v.carParams,
     // Anti-cheat floor is consulted by /api/derby/submit. Pinning it into
     // the configHash means a server-side floor change retires in-flight
