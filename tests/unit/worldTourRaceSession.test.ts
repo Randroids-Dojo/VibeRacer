@@ -1,0 +1,239 @@
+import { describe, it, expect } from 'vitest'
+import {
+  COUNTDOWN_SECONDS_DEFAULT,
+  createRaceSession,
+  finishingStandings,
+  stepRaceSession,
+  type RaceSessionConfig,
+  type RaceSessionState,
+  type StepInput,
+} from '@/game/worldTourRaceSession'
+import { DEFAULT_CAR_PARAMS } from '@/game/physics'
+import type { AiTrackView } from '@/game/worldTourAi'
+
+const ROSTER = [{ id: 'a' }, { id: 'b' }, { id: 'c' }]
+
+const FLAT_STRAIGHT: AiTrackView = {
+  centerXAt: () => 0,
+  curveAt: () => 0,
+}
+
+const CONFIG: RaceSessionConfig = {
+  totalLaps: 1,
+  lapDistanceMeters: 200,
+}
+
+function freshSession(): RaceSessionState {
+  return createRaceSession({
+    slotCount: 4,
+    laneCount: 2,
+    aiDrivers: ROSTER,
+    seed: 1,
+    totalLaps: 1,
+    lapDistanceMeters: 200,
+    playerCarId: 'starter',
+  })
+}
+
+const FULL_THROTTLE: StepInput = {
+  playerInput: { throttle: 1, steer: 0, handbrake: false },
+  dt: 1 / 60,
+  track: FLAT_STRAIGHT,
+  aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+}
+
+describe('createRaceSession', () => {
+  it('seeds the field with the player on the pole and AI in the remaining slots', () => {
+    const s = freshSession()
+    expect(s.cars).toHaveLength(4)
+    expect(s.cars[0]!.isPlayer).toBe(true)
+    expect(s.cars[0]!.driverId).toBeNull()
+    expect(s.cars[0]!.aiState).toBeNull()
+    for (let i = 1; i < 4; i++) {
+      expect(s.cars[i]!.isPlayer).toBe(false)
+      expect(s.cars[i]!.aiState).not.toBeNull()
+    }
+  })
+
+  it('starts in countdown with the documented length', () => {
+    const s = freshSession()
+    expect(s.phase).toBe('countdown')
+    expect(s.countdownRemainingSec).toBe(COUNTDOWN_SECONDS_DEFAULT)
+    expect(s.elapsedMs).toBe(0)
+    expect(s.tick).toBe(0)
+  })
+
+  it('places all cars at their grid slot positions', () => {
+    const s = freshSession()
+    for (const car of s.cars) {
+      expect(car.physics.speed).toBe(0)
+      expect(car.physics.heading).toBe(0)
+    }
+  })
+})
+
+describe('stepRaceSession (countdown)', () => {
+  it('counts down without moving cars', () => {
+    let s = freshSession()
+    const originalX = s.cars.map((c) => c.physics.x)
+    for (let i = 0; i < 30; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    }
+    expect(s.phase).toBe('countdown')
+    for (let i = 0; i < s.cars.length; i++) {
+      expect(s.cars[i]!.physics.x).toBe(originalX[i])
+      expect(s.cars[i]!.physics.speed).toBe(0)
+    }
+  })
+
+  it('flips to racing once the countdown elapses', () => {
+    let s = freshSession()
+    // Step enough frames to exceed the countdown.
+    for (let i = 0; i < (COUNTDOWN_SECONDS_DEFAULT + 1) * 60; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    }
+    expect(s.phase).not.toBe('countdown')
+  })
+})
+
+describe('stepRaceSession (racing)', () => {
+  it('integrates physics for the player when racing', () => {
+    let s = freshSession()
+    // Burn through the countdown.
+    for (let i = 0; i < (COUNTDOWN_SECONDS_DEFAULT + 1) * 60; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    }
+    expect(s.cars[0]!.physics.speed).toBeGreaterThan(0)
+  })
+
+  it('integrates physics for every AI car when racing', () => {
+    let s = freshSession()
+    for (let i = 0; i < (COUNTDOWN_SECONDS_DEFAULT + 1) * 60; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    }
+    for (let i = 1; i < s.cars.length; i++) {
+      expect(s.cars[i]!.physics.speed).toBeGreaterThan(0)
+    }
+  })
+
+  it('is deterministic under identical inputs and seed', () => {
+    let a = freshSession()
+    let b = freshSession()
+    for (let i = 0; i < 600; i++) {
+      a = stepRaceSession(a, FULL_THROTTLE, CONFIG)
+      b = stepRaceSession(b, FULL_THROTTLE, CONFIG)
+    }
+    expect(a.cars.map((c) => c.physics.x)).toEqual(b.cars.map((c) => c.physics.x))
+    expect(a.cars.map((c) => c.physics.z)).toEqual(b.cars.map((c) => c.physics.z))
+    expect(a.cars.map((c) => c.physics.speed)).toEqual(
+      b.cars.map((c) => c.physics.speed),
+    )
+  })
+
+  it('flips a car to finished after distanceTraveled exceeds the lap distance', () => {
+    const session = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 20,
+      playerCarId: 'starter',
+    })
+    let s = session
+    // Step enough that the player must travel 20 m. Full throttle at
+    // base accel reaches plenty of speed in a few seconds.
+    for (let i = 0; i < 60 * 8; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, {
+        totalLaps: 1,
+        lapDistanceMeters: 20,
+      })
+      if (s.phase === 'finished') break
+    }
+    expect(s.cars[0]!.status).toBe('finished')
+    expect(s.cars[0]!.finishedAtMs).not.toBeNull()
+    expect(s.finishingOrder).toContain(0)
+  })
+
+  it('flips a car to DNF when it sits with no forward progress for the timeout', () => {
+    const config: RaceSessionConfig = {
+      totalLaps: 1,
+      lapDistanceMeters: 200,
+    }
+    const session = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 200,
+      playerCarId: 'starter',
+    })
+    let s = session
+    const NEUTRAL: StepInput = {
+      playerInput: { throttle: 0, steer: 0, handbrake: false },
+      dt: 1 / 30,
+      track: FLAT_STRAIGHT,
+      aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+    }
+    // Burn through the countdown without throttle, then sit for the
+    // no-progress timeout (60 s).
+    for (let i = 0; i < (COUNTDOWN_SECONDS_DEFAULT + 61) * 30; i++) {
+      s = stepRaceSession(s, NEUTRAL, config)
+      if (s.cars[0]!.status === 'dnf') break
+    }
+    expect(s.cars[0]!.status).toBe('dnf')
+  })
+
+  it('moves to finished once every car has finished or DNF d', () => {
+    const session = createRaceSession({
+      slotCount: 2,
+      laneCount: 1,
+      aiDrivers: [{ id: 'rival' }],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 30,
+      playerCarId: 'starter',
+    })
+    let s = session
+    for (let i = 0; i < 60 * 12; i++) {
+      s = stepRaceSession(s, FULL_THROTTLE, {
+        totalLaps: 1,
+        lapDistanceMeters: 30,
+      })
+      if (s.phase === 'finished') break
+    }
+    expect(s.phase).toBe('finished')
+    expect(s.cars.every((c) => c.status !== 'racing')).toBe(true)
+  })
+
+  it('does not advance further once finished', () => {
+    let s = freshSession()
+    // Force the phase.
+    s = { ...s, phase: 'finished' }
+    const before = s.tick
+    s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    expect(s.phase).toBe('finished')
+    expect(s.tick).toBe(before + 1)
+  })
+})
+
+describe('finishingStandings', () => {
+  it('returns the finishing order followed by any unfinished cars', () => {
+    const session = freshSession()
+    const state: RaceSessionState = {
+      ...session,
+      finishingOrder: [2, 0],
+    }
+    expect(finishingStandings(state)).toEqual([2, 0, 1, 3])
+  })
+
+  it('is exactly the finishing order when every car has crossed the line', () => {
+    const session = freshSession()
+    const state: RaceSessionState = {
+      ...session,
+      finishingOrder: [0, 3, 1, 2],
+    }
+    expect(finishingStandings(state)).toEqual([0, 3, 1, 2])
+  })
+})
