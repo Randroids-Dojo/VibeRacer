@@ -11,6 +11,7 @@ import {
 } from './derbyVehicleState'
 import { clampInsideArena } from './derbyArena'
 import type { DerbyRoundState } from './derbyRoundState'
+import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
 import type { DerbyRoundOutcome } from '@/lib/schemas'
 
 // Per-frame engine for a Derby round. derbyTick runs:
@@ -102,10 +103,12 @@ export function derbyTick(
     clampToArena(car, round)
   }
 
-  // 3. Pairwise contact. Circle-vs-circle on collisionRadius is enough for
-  // v1; OBB refinement is a later slice if it becomes necessary. Each
-  // contact resolves once per frame; repeat hits between the same pair are
-  // OK because cars get separated and have to re-close to hit again.
+  // 3. Pairwise contact. Broad phase = circle-vs-circle on collisionRadius
+  // (cheap early-out so SAT does not run on every pair every frame); narrow
+  // phase = OBB-vs-OBB SAT so a long vehicle (school bus) cannot be clipped
+  // through its front or rear by a smaller car. Each contact resolves once
+  // per frame; repeat hits between the same pair are OK because separate()
+  // pushes the cars apart and they have to re-close.
   for (let i = 0; i < round.cars.length; i++) {
     const a = round.cars[i]
     if (isDestroyed(a)) continue
@@ -115,9 +118,11 @@ export function derbyTick(
       if (isDestroyed(a)) break
       const b = round.cars[j]
       if (isDestroyed(b)) continue
-      const contact = checkContact(a, b, round.configs[i].collisionRadius, round.configs[j].collisionRadius)
+      if (!circleBroadPhase(a, b, round.configs[i].collisionRadius, round.configs[j].collisionRadius)) {
+        continue
+      }
+      const contact = obbContact(a, b, round.configs[i], round.configs[j])
       if (!contact) continue
-      // Push the cars apart along the normal so they do not get stuck.
       separate(a, b, round.configs[i].mass, round.configs[j].mass, contact.overlap, contact.nx, contact.nz)
       const damage = resolveCollision(
         a,
@@ -198,36 +203,132 @@ interface ContactResult {
   z: number
 }
 
-function checkContact(
+function circleBroadPhase(
   a: DerbyCarState,
   b: DerbyCarState,
   ra: number,
   rb: number,
-): ContactResult | null {
+): boolean {
   const dx = b.physics.x - a.physics.x
   const dz = b.physics.z - a.physics.z
-  const dist = Math.hypot(dx, dz)
   const min = ra + rb
-  if (dist >= min) return null
-  if (dist < 1e-6) {
-    // Cars at the same position. Pick an arbitrary normal so separation
-    // does not divide by zero. This case is rare; a previous frame should
-    // have separated them.
-    return { nx: 1, nz: 0, overlap: min, x: a.physics.x, z: a.physics.z }
-  }
-  const nx = dx / dist
-  const nz = dz / dist
-  const overlap = min - dist
-  // Contact point: midway between the two centers, biased by radius so the
-  // popup anchors at the actual point of impact.
-  const t = ra / min
+  return dx * dx + dz * dz < min * min
+}
+
+// Forward / right basis vectors for a car. Heading 0 = +X, PI/2 = -Z
+// (matching stepPhysics's velocityOf). Right is forward rotated 90 degrees
+// clockwise when viewed from above (+Y), matching the chase camera's "the
+// world tilts away from steering" feel.
+function carAxes(heading: number): {
+  fx: number
+  fz: number
+  rx: number
+  rz: number
+} {
+  const fx = Math.cos(heading)
+  const fz = -Math.sin(heading)
+  return { fx, fz, rx: -fz, rz: fx }
+}
+
+interface ObbCorners {
+  // 4 corners in world XZ, ordered: front-left, front-right, rear-right, rear-left.
+  c: [number, number][]
+  cx: number
+  cz: number
+}
+
+function carCorners(car: DerbyCarState, cfg: DerbyVehicleConfig): ObbCorners {
+  const { fx, fz, rx, rz } = carAxes(car.physics.heading)
+  const hw = cfg.obbHalfWidth
+  const hl = cfg.obbHalfLength
+  const cx = car.physics.x
+  const cz = car.physics.z
+  const fxL = fx * hl
+  const fzL = fz * hl
+  const rxW = rx * hw
+  const rzW = rz * hw
   return {
-    nx,
-    nz,
-    overlap,
-    x: a.physics.x + dx * t,
-    z: a.physics.z + dz * t,
+    cx,
+    cz,
+    c: [
+      [cx + fxL - rxW, cz + fzL - rzW], // front-left
+      [cx + fxL + rxW, cz + fzL + rzW], // front-right
+      [cx - fxL + rxW, cz - fzL + rzW], // rear-right
+      [cx - fxL - rxW, cz - fzL - rzW], // rear-left
+    ],
   }
+}
+
+// Project 4 corners onto a 2D axis (ax, az). Returns the projected
+// interval's half-extent (always >= 0) and its center along the axis. We
+// use half + center instead of raw [lo, hi] because the MTV magnitude on
+// any axis is `(halfA + halfB) - |centerDiff|`, which handles the nested
+// case (one box fully inside the other) correctly. The naive
+// `min(aHi, bHi) - max(aLo, bLo)` formula returns the smaller box's
+// width in that case, which is not enough to separate the two when the
+// caller's separate() pushes by `overlap` along the MTV.
+function projectExtent(
+  corners: [number, number][],
+  ax: number,
+  az: number,
+): { center: number; half: number } {
+  let lo = Infinity
+  let hi = -Infinity
+  for (const [px, pz] of corners) {
+    const t = px * ax + pz * az
+    if (t < lo) lo = t
+    if (t > hi) hi = t
+  }
+  return { center: (lo + hi) / 2, half: (hi - lo) / 2 }
+}
+
+// OBB-vs-OBB Separating Axis Theorem. The four candidate axes are each
+// car's forward and right basis vectors. Returns the minimum-translation
+// vector pointing from a toward b on overlap, or null on separation.
+function obbContact(
+  a: DerbyCarState,
+  b: DerbyCarState,
+  ca: DerbyVehicleConfig,
+  cb: DerbyVehicleConfig,
+): ContactResult | null {
+  const aCorners = carCorners(a, ca)
+  const bCorners = carCorners(b, cb)
+  const axesA = carAxes(a.physics.heading)
+  const axesB = carAxes(b.physics.heading)
+  const axes: [number, number][] = [
+    [axesA.fx, axesA.fz],
+    [axesA.rx, axesA.rz],
+    [axesB.fx, axesB.fz],
+    [axesB.rx, axesB.rz],
+  ]
+  let minOverlap = Infinity
+  let mtvAx = 0
+  let mtvAz = 0
+  for (const [ax, az] of axes) {
+    const aExt = projectExtent(aCorners.c, ax, az)
+    const bExt = projectExtent(bCorners.c, ax, az)
+    const overlap = aExt.half + bExt.half - Math.abs(aExt.center - bExt.center)
+    if (overlap <= 0) return null
+    if (overlap < minOverlap) {
+      minOverlap = overlap
+      mtvAx = ax
+      mtvAz = az
+    }
+  }
+  // Orient the normal so it points from a's center toward b's center; the
+  // separation step expects nx,nz to push b away from a.
+  const dx = bCorners.cx - aCorners.cx
+  const dz = bCorners.cz - aCorners.cz
+  if (mtvAx * dx + mtvAz * dz < 0) {
+    mtvAx = -mtvAx
+    mtvAz = -mtvAz
+  }
+  // Contact point: midway between the two centers along the MTV. Good
+  // enough for the HUD popup anchor; a real contact-manifold solve would
+  // pick the deepest penetrating vertex, but that is overkill for v1.
+  const cx = (aCorners.cx + bCorners.cx) * 0.5
+  const cz = (aCorners.cz + bCorners.cz) * 0.5
+  return { nx: mtvAx, nz: mtvAz, overlap: minOverlap, x: cx, z: cz }
 }
 
 function separate(

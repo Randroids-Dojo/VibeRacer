@@ -63,6 +63,10 @@ export default async function HomePage() {
             Derby
           </Link>
 
+          <Link href="/model-viewer" style={primaryBtnStyle}>
+            Model Viewer
+          </Link>
+
           <DailyChallenge />
 
           <DailyStreak />
