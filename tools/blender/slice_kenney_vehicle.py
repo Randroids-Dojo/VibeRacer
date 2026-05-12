@@ -439,7 +439,15 @@ def rename_source_doors() -> None:
 
 
 def add_lights(body: bpy.types.Object, variant: SliceVariant) -> list[bpy.types.Object]:
-    """Add 4 small named emissive cubes at front / rear of the body bbox."""
+    """Add 4 small named emissive cubes at front / rear of the car.
+
+    Positions are derived from the WHEEL positions, not the body bbox.
+    After slicing, the body's bound_box reads inflated on some variants
+    (sedan: ~4m × ~4m × ~3.7m) and produces lamp positions that float far
+    outside the actual car silhouette, which blows up the model-viewer
+    camera framing and hides the wheels. Wheels keep their authored
+    positions through the pipeline and are reliable anchors.
+    """
     head_mat = make_pbr(
         "derbyHeadlight",
         color=(1.0, 0.96, 0.78),
@@ -460,31 +468,44 @@ def add_lights(body: bpy.types.Object, variant: SliceVariant) -> list[bpy.types.
     fwd_idx = ("x", "y", "z").index(fwd_axis)
     side_idx = ("x", "y", "z").index(side_axis)
     up_idx = 2
-    mn, mx = world_bbox(body)
-    width = mx[side_idx] - mn[side_idx]
-    height = mx[up_idx] - mn[up_idx]
-    # Lights sit at ~30% of width inset from center, so a sedan reads as
-    # a pair of headlights with a license plate gap; smaller cars
-    # collapse to one wide light when the offset would clip the body.
-    side_offset = width * 0.30
-    light_z = mn[up_idx] + height * 0.42
-    # Tuned to read as a "lamp" not a "billboard". Forward depth is the
-    # thinnest dimension so the outer face is what the player sees; side
-    # and vertical extents are kept tight so they don't dominate the
-    # front fascia. Real headlights are roughly 15cm wide; with the
-    # variant import_scale baked in, width * 0.08 lands in that range.
+
+    # Pull the four wheel positions to anchor lamp placement.
+    wheel_objs = [
+        bpy.data.objects.get(f"wheel_{w}") for w in ("fl", "fr", "rl", "rr")
+    ]
+    wheel_positions = [
+        w.matrix_world.translation for w in wheel_objs if w is not None
+    ]
+    if not wheel_positions:
+        # Fallback to the body bbox; should never hit because rename_wheels
+        # runs before us, but keep the path safe.
+        mn, mx = world_bbox(body)
+        wheel_fwd_min = mn[fwd_idx]
+        wheel_fwd_max = mx[fwd_idx]
+        wheel_side_max = (mx[side_idx] - mn[side_idx]) * 0.5
+        wheel_up = mn[up_idx] + (mx[up_idx] - mn[up_idx]) * 0.35
+    else:
+        wheel_fwd_max = max(p[fwd_idx] for p in wheel_positions)
+        wheel_fwd_min = min(p[fwd_idx] for p in wheel_positions)
+        wheel_side_max = max(abs(p[side_idx]) for p in wheel_positions)
+        wheel_up = max(p[up_idx] for p in wheel_positions)
+
+    # Lamp face sized in absolute units (works regardless of import_scale
+    # because the wheel reference itself absorbs the scale).
     size_long = 0.06
-    size_side = max(0.20, width * 0.10)
-    size_up = max(0.12, height * 0.10)
-    # The body shell has rounded corners, so at the lamp's z height the
-    # rear/front face is set INBOARD of the bbox plane. Centering the lamp
-    # on the bbox plane buries it inside the curve and the shell occludes
-    # it. Place the lamp's inner face flush with the bbox plane and let
-    # the whole lamp protrude outward; combined with the tight size (6cm
-    # deep, 20cm × 12cm face) the result reads as a small lens rather
-    # than a billboard.
-    front_pos = mx[fwd_idx] + size_long / 2
-    rear_pos = mn[fwd_idx] - size_long / 2
+    size_side = 0.22
+    size_up = 0.12
+    # Lamps sit at ~70% of the wheel-side extent so they read as a
+    # headlight pair and don't bleed onto the wheel wells.
+    side_offset = wheel_side_max * 0.7
+    # Lamps mounted at the body-belt height: above the wheel centers by
+    # a bit so they hit the chassis face, not the wheel arch.
+    light_z = wheel_up + 0.30
+    # Place the lamp just past the outermost wheel along the forward
+    # axis. This puts them at roughly the front / rear bumper line, which
+    # is where Kenney's painted lamps land on the source body.
+    front_pos = wheel_fwd_max + 0.55
+    rear_pos = wheel_fwd_min - 0.55
 
     def place(name: str, mat: bpy.types.Material, fwd_v: float, side_sign: int) -> bpy.types.Object:
         loc = [0.0, 0.0, 0.0]
