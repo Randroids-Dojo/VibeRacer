@@ -22,8 +22,6 @@ import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
 
 export const REQUIRED_SUBMESHES = [
   'body',
-  'door_l',
-  'door_r',
   'hood',
   'trunk',
   'headlight_l',
@@ -35,7 +33,19 @@ export const REQUIRED_SUBMESHES = [
   'wheel_rl',
   'wheel_rr',
 ] as const
+// Doors are OPTIONAL on the Kenney-sourced sedan/truck/race because slicing
+// or overlaying a door panel on a thin shell body looks worse than not
+// having one (visible blocky protrusions). Real-source-door variants
+// (ambulance) and the procedural placeholder still ship doors; the damage
+// visualizer skips door work gracefully when they are absent.
+export const OPTIONAL_SUBMESHES = ['door_l', 'door_r'] as const
 export type RequiredSubmeshName = (typeof REQUIRED_SUBMESHES)[number]
+export type OptionalSubmeshName = (typeof OPTIONAL_SUBMESHES)[number]
+export type SubmeshName = RequiredSubmeshName | OptionalSubmeshName
+const ALL_SUBMESHES: readonly SubmeshName[] = [
+  ...REQUIRED_SUBMESHES,
+  ...OPTIONAL_SUBMESHES,
+]
 
 export type WheelName = 'wheel_fl' | 'wheel_fr' | 'wheel_rl' | 'wheel_rr'
 export const WHEEL_NAMES: WheelName[] = [
@@ -62,8 +72,11 @@ export interface DerbyVehicleAsset {
   // case Three.js's GLTFLoader wraps the primitives under a Group named
   // for the node and gives the child meshes auto-numbered names. We
   // accept Object3D here and resolve to the underlying Mesh(es) on a
-  // case-by-case basis (see firstMeshOf / meshesOf below).
-  submeshes: Record<RequiredSubmeshName, Object3D>
+  // case-by-case basis (see firstMeshOf / meshesOf below). Required
+  // submeshes are always present; optional ones (doors) are present only
+  // for variants that ship a real door node.
+  submeshes: Record<RequiredSubmeshName, Object3D> &
+    Partial<Record<OptionalSubmeshName, Object3D>>
   // Per-wheel pivot groups for steering and rolling. Wired up by
   // attachWheelPivots() so DerbyCanvas can drive them each frame.
   wheelPivots: Record<WheelName, WheelPivot>
@@ -110,17 +123,17 @@ const LIGHT_SIZE = 0.25
 // nest required parts under intermediate empties or transform nodes
 // (Blender's exporter sometimes does this).
 export function assertVehicleContract(group: Group): DerbyVehicleAsset {
-  const found: Partial<Record<RequiredSubmeshName, Object3D>> = {}
+  const found: Partial<Record<SubmeshName, Object3D>> = {}
   group.traverse((node) => {
     // Accept either a Mesh or any Object3D that has at least one Mesh
     // descendant. glTF nodes with multiple primitives come through as a
     // Group named after the source node and Mesh children with
     // auto-numbered names; we match on the parent's name and let the
     // visualizer drill into the children when it needs Mesh references.
-    if (!(REQUIRED_SUBMESHES as readonly string[]).includes(node.name)) return
+    if (!(ALL_SUBMESHES as readonly string[]).includes(node.name)) return
     if (node instanceof Mesh || firstMeshOf(node) !== null) {
-      if (!found[node.name as RequiredSubmeshName]) {
-        found[node.name as RequiredSubmeshName] = node
+      if (!found[node.name as SubmeshName]) {
+        found[node.name as SubmeshName] = node
       }
     }
   })
@@ -133,7 +146,8 @@ export function assertVehicleContract(group: Group): DerbyVehicleAsset {
       `derby vehicle asset is missing required submeshes: ${missing.join(', ')}`,
     )
   }
-  const submeshes = found as Record<RequiredSubmeshName, Object3D>
+  const submeshes = found as Record<RequiredSubmeshName, Object3D> &
+    Partial<Record<OptionalSubmeshName, Object3D>>
   const wheelPivots = attachWheelPivots(group, submeshes)
   return {
     group,

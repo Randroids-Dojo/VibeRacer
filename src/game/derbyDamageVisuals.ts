@@ -11,7 +11,7 @@ import {
 import {
   meshesOf,
   type DerbyVehicleAsset,
-  type RequiredSubmeshName,
+  type SubmeshName,
 } from './derbyVehicleLoader'
 import type { DerbyCarState } from './derbyVehicleState'
 
@@ -55,8 +55,11 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
 // Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
 // Tuned so a hard ram detaches a panel, while mild side-bumps do not.
 const PANEL_DETACH_DAMAGE_THRESHOLD = 12
-const PAINT_TARGET_NAMES: RequiredSubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
-const DETACHABLE_PANELS: RequiredSubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
+// Paint and detach lists include doors as candidates. Variants whose
+// asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
+// simply do not contribute door entries to the visualizer's working sets.
+const PAINT_TARGET_NAMES: SubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
+const DETACHABLE_PANELS: SubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
 
 const SMOKE_COLOR = new Color(0x444444)
 const FIRE_COLOR = new Color(0xff5022)
@@ -121,7 +124,7 @@ export function createDamageVisualizer(
       'headlight_r',
       'taillight_l',
       'taillight_r',
-    ] as RequiredSubmeshName[]
+    ] as SubmeshName[]
   ).flatMap((name) => {
     const node = asset.submeshes[name]
     if (!node) return []
@@ -163,7 +166,12 @@ export function createDamageVisualizer(
   fire.visible = false
   asset.group.add(fire)
 
-  const detachedPanels = new Set<RequiredSubmeshName>()
+  const detachedPanels = new Set<SubmeshName>()
+  // Filter the static DETACHABLE list to panels actually present on this
+  // asset; doors are optional on Kenney sliced variants.
+  const availableDetachables: SubmeshName[] = DETACHABLE_PANELS.filter(
+    (p) => asset.submeshes[p] !== undefined,
+  )
   let lastTier: DamageTier = 'pristine'
 
   function setTier(tier: DamageTier): void {
@@ -208,8 +216,8 @@ export function createDamageVisualizer(
     worldNx: number,
     worldNz: number,
     victimHeading: number,
-  ): RequiredSubmeshName | null {
-    const candidates = DETACHABLE_PANELS.filter((p) => !detachedPanels.has(p))
+  ): SubmeshName | null {
+    const candidates = availableDetachables.filter((p) => !detachedPanels.has(p))
     if (candidates.length === 0) return null
     // Rotate the world-space hit normal into the victim's local frame.
     // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
@@ -225,10 +233,10 @@ export function createDamageVisualizer(
     // Front-on hits (positive forward component) prefer hood; rear-on
     // prefer trunk; side hits prefer the door on the impact side.
     if (absFwd > absRight) {
-      const preferred: RequiredSubmeshName = localFwd > 0 ? 'hood' : 'trunk'
+      const preferred: SubmeshName = localFwd > 0 ? 'hood' : 'trunk'
       if (candidates.includes(preferred)) return preferred
     } else {
-      const preferred: RequiredSubmeshName = localRight > 0 ? 'door_r' : 'door_l'
+      const preferred: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
       if (candidates.includes(preferred)) return preferred
     }
     return candidates[0]
@@ -250,6 +258,10 @@ export function createDamageVisualizer(
       if (choice === null) return null
       detachedPanels.add(choice)
       const panel = asset.submeshes[choice]
+      // pickPanelByAngle only chooses from availableDetachables, which is
+      // filtered against undefined entries, so this assert is true by
+      // construction; the explicit check keeps the type checker happy.
+      if (!panel) return null
       // Real detach: capture the panel's world transform, remove it from
       // its parent in the car asset, then return it so the caller can add
       // it to the scene as free-standing debris. The panel literally

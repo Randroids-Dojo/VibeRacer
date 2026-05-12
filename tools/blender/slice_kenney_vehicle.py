@@ -336,12 +336,13 @@ def slice_body_into_parts(
 
     out: dict[str, bpy.types.Object] = {"body": body, "hood": hood, "trunk": trunk}
 
-    # Door slabs (only when the source GLB does not already provide them).
-    if not variant.has_source_doors:
-        door_l, door_r = build_door_slabs(body, variant, side, axes, fwd_min, length, interior_mat)
-        out["door_l"] = door_l
-        out["door_r"] = door_r
-
+    # Door panels: only emitted when the source GLB ships door-left and
+    # door-right nodes (ambulance). For shell-bodied variants (sedan,
+    # truck, race) we skip doors entirely: overlay boxes look like blocky
+    # protrusions on the shell, and bisecting the shell for a door slab
+    # tends to leave empty meshes. The runtime contract treats doors as
+    # optional and the damage visualizer falls back to hood / trunk
+    # detach for these variants.
     return out
 
 
@@ -354,17 +355,17 @@ def build_door_slabs(
     length: float,
     interior_mat: bpy.types.Material,
 ) -> tuple[bpy.types.Object, bpy.types.Object]:
-    """Build small "door" overlay boxes positioned flush against the body's
-    side panels. Truly slicing a door piece out of Kenney's shell bodies
+    """Build "door" panel boxes embedded INSIDE the body shell so they sit
+    flush at the body's outer surface and are occluded by the body until
+    they detach. Truly slicing a door piece out of Kenney's shell bodies
     risks leaving zero-vertex meshes (the shell is thin so multi-axis
-    bisect can over-eat). Overlays are reliable: every variant always
-    ships a real, non-empty mesh for both doors so assertVehicleContract
-    can never reject the GLB on door grounds. The cost is a small visible
-    decal sitting on the door region; on detach, the overlay flies off
-    and the chassis remains. The Kenney source for ambulance ships
-    doors as separate Nodes and the rename_source_doors path uses those
-    directly — this overlay code is only the fallback for variants that
-    do not."""
+    bisect can over-eat); embedded overlays are reliable. When a panel
+    detaches at runtime the body shell stays put and the door flies out
+    as free-standing debris, so the visual reads as "a chunk popped off
+    that side of the car" rather than "a thin flag detached from outside
+    the car". The Kenney source for ambulance ships doors as separate
+    Nodes and the rename_source_doors path uses those directly — this
+    overlay code is only the fallback for variants that do not."""
     mn, mx = world_bbox(body)
     side_idx = ("x", "y", "z").index(axes["side"])
     fwd_idx = ("x", "y", "z").index(axes["forward"])
@@ -372,14 +373,22 @@ def build_door_slabs(
     width = mx[side_idx] - mn[side_idx]
     height = mx[up_idx] - mn[up_idx]
     door_height = max(0.4, height * 0.45)
-    door_z = mn[up_idx] + height * 0.35
+    door_z = mn[up_idx] + height * 0.30
     door_len = max(0.6, length * 0.42)
     door_fwd_center = fwd_min + length * 0.50
-    door_thickness = 0.05
+    # Thick enough to read as a real door slab once detached; we tuck it
+    # entirely INSIDE the body shell on the side axis so the outer face is
+    # roughly coplanar with the body's exterior. The body shell occludes
+    # the door panel while it is still attached.
+    door_thickness = max(0.18, width * 0.12)
 
     def make_door(name: str, side_sign: int) -> bpy.types.Object:
         loc = [0.0, 0.0, 0.0]
-        loc[side_idx] = side_sign * (width / 2 + door_thickness / 2)
+        # Center the door so its OUTER face sits ~1mm inside the body's
+        # edge (width/2). Subtracting door_thickness/2 puts the outer face
+        # exactly at width/2; pull in a tiny bit more so micro float
+        # variance never lets the panel pop through the body.
+        loc[side_idx] = side_sign * (width / 2 - door_thickness / 2 - 0.005)
         loc[fwd_idx] = door_fwd_center
         loc[up_idx] = door_z + door_height / 2
         bpy.ops.mesh.primitive_cube_add(size=1.0, location=tuple(loc))
@@ -391,9 +400,9 @@ def build_door_slabs(
         scale[up_idx] = door_height
         obj.scale = Vector(scale)
         bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
-        # Use the body's first material so the door overlay matches the
-        # car's paint color out of the gate; the runtime tintBody pass
-        # also recolors it per derby slot.
+        # Reuse the body's first material so the door's paint matches once
+        # it detaches and becomes visible debris. The runtime tintBody
+        # pass also recolors it per derby slot.
         if body.data.materials:
             obj.data.materials.append(body.data.materials[0])
         return obj

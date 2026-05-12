@@ -102,7 +102,7 @@ describe('createDamageVisualizer', () => {
     const viz = createDamageVisualizer(asset)
     const result = viz.applyHit(10, 1, 0, 0, () => 0.5)
     expect(result).toBeNull()
-    expect(asset.submeshes.door_l.visible).toBe(true)
+    expect(asset.submeshes.door_l!.visible).toBe(true)
     viz.dispose()
   })
 
