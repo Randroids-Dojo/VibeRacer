@@ -476,14 +476,15 @@ def add_lights(body: bpy.types.Object, variant: SliceVariant) -> list[bpy.types.
     size_long = 0.06
     size_side = max(0.20, width * 0.10)
     size_up = max(0.12, height * 0.10)
-    # The Kenney body has rounded corners so its front fascia is set back
-    # from the bbox max plane. Center the lamp ON the bbox plane: half of
-    # its depth lives inside the shell (hidden by the body's curve), half
-    # protrudes forward (the visible lamp lens). The new size_long (6cm)
-    # means only ~3cm of lamp shows, small enough to read as a lens
-    # rather than a billboard.
-    front_pos = mx[fwd_idx]
-    rear_pos = mn[fwd_idx]
+    # The body shell has rounded corners, so at the lamp's z height the
+    # rear/front face is set INBOARD of the bbox plane. Centering the lamp
+    # on the bbox plane buries it inside the curve and the shell occludes
+    # it. Place the lamp's inner face flush with the bbox plane and let
+    # the whole lamp protrude outward; combined with the tight size (6cm
+    # deep, 20cm × 12cm face) the result reads as a small lens rather
+    # than a billboard.
+    front_pos = mx[fwd_idx] + size_long / 2
+    rear_pos = mn[fwd_idx] - size_long / 2
 
     def place(name: str, mat: bpy.types.Material, fwd_v: float, side_sign: int) -> bpy.types.Object:
         loc = [0.0, 0.0, 0.0]
