@@ -9,7 +9,11 @@
  * math and the reducer.
  */
 
-import { cloneCareer, type WorldTourCareer } from './worldTourCareer'
+import {
+  getActiveCar,
+  withActiveCarState,
+  type WorldTourCareer,
+} from './worldTourCareer'
 import type { Championship } from '@/lib/worldTourChampionship'
 import { findTour } from '@/lib/worldTourChampionship'
 
@@ -74,17 +78,17 @@ export function applyFullRepair(
   career: WorldTourCareer,
   championship: Championship,
 ): RepairResult {
-  if (career.activeCarDamage <= 0) {
+  const active = getActiveCar(career)
+  if (active.damage <= 0) {
     return { ok: false, reason: 'no-damage' }
   }
   const tier = difficultyTierForCareer(championship, career)
-  const cost = repairCost(career.activeCarDamage, tier)
+  const cost = repairCost(active.damage, tier)
   if (career.money < cost) {
     return { ok: false, reason: 'insufficient-funds' }
   }
-  const next = cloneCareer(career)
+  const next = withActiveCarState(career, { damage: 0 })
   next.money = career.money - cost
-  next.activeCarDamage = 0
   return { ok: true, career: next, spent: cost }
 }
 

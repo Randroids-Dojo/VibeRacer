@@ -22,7 +22,7 @@ import {
   readCareer,
   writeCareer,
 } from '@/lib/worldTourCareerStorage'
-import { defaultCareer } from '@/game/worldTourCareer'
+import { defaultCareer, getActiveCar } from '@/game/worldTourCareer'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 
 const FLAT_TRACK: AiTrackView = {
@@ -92,16 +92,20 @@ function TourRacePageInner() {
     if (!tour || !drivers) return
     const career =
       typeof window !== 'undefined' ? readCareer() : defaultCareer()
+    const activeCar = getActiveCar(career)
+    // Two-lane grid for the 4-car MVP; three-lane grid (3 x 4 = 12)
+    // once a tour scales to the full field.
+    const laneCount = tour.fieldSize <= 4 ? 2 : 3
     sessionRef.current = createRaceSession({
       slotCount: tour.fieldSize,
-      laneCount: 2,
+      laneCount,
       aiDrivers: drivers.map((d) => ({ id: d.id })),
       seed: hashSeed(tour.id, raceIndex),
       totalLaps: TOTAL_LAPS,
       lapDistanceMeters: LAP_DISTANCE_METERS,
       playerCarId: career.activeCarId,
-      playerInitialDamage: career.activeCarDamage,
-      playerUpgrades: career.activeCarUpgrades,
+      playerInitialDamage: activeCar.damage,
+      playerUpgrades: activeCar.upgrades,
     })
     setHudPhase('countdown')
     setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)

@@ -66,24 +66,66 @@ export interface ActiveTour {
 }
 
 /**
- * The full career save. Versioned for forward-only migrations. All array
- * fields are deduped and the cursor (`activeTour`) is either a fully
- * populated object or `null`; intermediate states are not representable.
+ * Per-car state stored inside the career. Each owned car carries its
+ * own damage and upgrades so a player can swap between cars without
+ * losing their work.
+ */
+export interface OwnedCarState {
+  damage: number
+  upgrades: CarUpgrades
+}
+
+/**
+ * The full career save. Versioned for forward-only migrations. All
+ * array fields are deduped and the cursor (`activeTour`) is either a
+ * fully populated object or `null`; intermediate states are not
+ * representable.
  *
- * `activeCarDamage` is the post-race damage on the currently active car,
- * in [0, 1]. Phase 5b generalizes this to a `damageByCarId` map; for the
- * MVP we only track the one car so the storage cost is a single number.
+ * `carsById` holds one entry per owned car (per the `ownedCarIds`
+ * list). The active car's state is read via `getActiveCar` so callers
+ * do not have to know the storage shape.
  */
 export interface WorldTourCareer {
   version: typeof CAREER_SCHEMA_VERSION
   money: number
   ownedCarIds: string[]
   activeCarId: string
-  activeCarDamage: number
-  activeCarUpgrades: CarUpgrades
+  carsById: Record<string, OwnedCarState>
   completedTourIds: string[]
   unlockedTourIds: string[]
   activeTour: ActiveTour | null
+}
+
+/**
+ * Read the active car's state from the career save. Returns a stock
+ * placeholder when the active car is somehow missing from `carsById`
+ * (a hand-edited payload). Callers should treat the returned object
+ * as read-only; use `withActiveCarState` to mutate.
+ */
+export function getActiveCar(career: WorldTourCareer): OwnedCarState {
+  const state = career.carsById[career.activeCarId]
+  if (state) return state
+  return { damage: 0, upgrades: stockUpgrades() }
+}
+
+/**
+ * Return a fresh career with the active car's state replaced. Used
+ * by the garage reducers (repair, upgrade purchase) so they do not
+ * have to know the storage shape.
+ */
+export function withActiveCarState(
+  career: WorldTourCareer,
+  patch: Partial<OwnedCarState>,
+): WorldTourCareer {
+  const current = getActiveCar(career)
+  const next = cloneCareer(career)
+  next.carsById[career.activeCarId] = {
+    damage: patch.damage ?? current.damage,
+    upgrades: patch.upgrades
+      ? { ...patch.upgrades }
+      : { ...current.upgrades },
+  }
+  return next
 }
 
 /**
@@ -99,8 +141,9 @@ export function defaultCareer(): WorldTourCareer {
     money: CAREER_STARTING_MONEY,
     ownedCarIds: [CAREER_STARTING_CAR_ID],
     activeCarId: CAREER_STARTING_CAR_ID,
-    activeCarDamage: 0,
-    activeCarUpgrades: stockUpgrades(),
+    carsById: {
+      [CAREER_STARTING_CAR_ID]: { damage: 0, upgrades: stockUpgrades() },
+    },
     completedTourIds: [],
     unlockedTourIds: [CAREER_FIRST_TOUR_ID],
     activeTour: null,
@@ -115,13 +158,17 @@ export function defaultCareer(): WorldTourCareer {
  * mutate the returned value freely.
  */
 export function cloneCareer(career: WorldTourCareer): WorldTourCareer {
+  const carsById: Record<string, OwnedCarState> = {}
+  for (const id of Object.keys(career.carsById)) {
+    const c = career.carsById[id]!
+    carsById[id] = { damage: c.damage, upgrades: { ...c.upgrades } }
+  }
   return {
     version: career.version,
     money: career.money,
     ownedCarIds: [...career.ownedCarIds],
     activeCarId: career.activeCarId,
-    activeCarDamage: career.activeCarDamage,
-    activeCarUpgrades: { ...career.activeCarUpgrades },
+    carsById,
     completedTourIds: [...career.completedTourIds],
     unlockedTourIds: [...career.unlockedTourIds],
     activeTour:
@@ -193,10 +240,13 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   // missing the field is treated as v1 (it could be a hand-edited payload).
   const seed = defaultCareer()
   const money = isFiniteNonNegativeNumber(r.money) ? Math.floor(r.money) : seed.money
-  const activeCarDamage = isFiniteNonNegativeNumber(r.activeCarDamage)
+  // Legacy top-level damage and upgrade fields fold into the active
+  // car's slot inside `carsById`. A modern save provides `carsById`
+  // directly and the legacy fields are absent.
+  const legacyDamage = isFiniteNonNegativeNumber(r.activeCarDamage)
     ? Math.min(1, r.activeCarDamage)
     : 0
-  const activeCarUpgrades = sanitizeUpgrades(r.activeCarUpgrades)
+  const legacyUpgrades = sanitizeUpgrades(r.activeCarUpgrades)
   const ownedCarIds = sanitizeStringArray(r.ownedCarIds)
   const completedTourIds = sanitizeStringArray(r.completedTourIds)
   const unlockedTourIds = sanitizeStringArray(r.unlockedTourIds)
@@ -209,6 +259,38 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   if (!owned.includes(activeCarId)) {
     owned = [activeCarId, ...owned]
   }
+  // Build the per-car state map: read any existing `carsById` entry
+  // (sanitized) and fold the legacy fields into the active car's slot.
+  // Every owned car gets a stock entry if one is missing.
+  const carsById: Record<string, OwnedCarState> = {}
+  const rawCarsById =
+    typeof r.carsById === 'object' && r.carsById !== null
+      ? (r.carsById as Record<string, unknown>)
+      : {}
+  for (const id of owned) {
+    const slot = rawCarsById[id]
+    if (slot && typeof slot === 'object') {
+      const s = slot as Record<string, unknown>
+      carsById[id] = {
+        damage: isFiniteNonNegativeNumber(s.damage)
+          ? Math.min(1, s.damage)
+          : 0,
+        upgrades: sanitizeUpgrades(s.upgrades),
+      }
+    } else {
+      carsById[id] = { damage: 0, upgrades: stockUpgrades() }
+    }
+  }
+  // Fold the legacy fields into the active car's slot if the new shape
+  // did not already supply richer data. This is a one-shot migration:
+  // once a save is written through `writeCareer`, the top-level fields
+  // are dropped and only `carsById` persists.
+  if (!rawCarsById[activeCarId]) {
+    carsById[activeCarId] = {
+      damage: legacyDamage,
+      upgrades: legacyUpgrades,
+    }
+  }
   // The first tour is always unlocked. A save that lost it (corruption or
   // a future migration that dropped the array) gets it back so the player
   // can always at least replay the opener.
@@ -220,12 +302,43 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
     money,
     ownedCarIds: owned,
     activeCarId,
-    activeCarDamage,
-    activeCarUpgrades,
+    carsById,
     completedTourIds,
     unlockedTourIds: unlocked,
     activeTour,
   }
+}
+
+/**
+ * Add a newly-bought car to the career. Returns a fresh career with
+ * the id in `ownedCarIds` and a stock entry in `carsById`. Idempotent:
+ * if the car is already owned, the input is returned unchanged.
+ */
+export function addOwnedCar(
+  career: WorldTourCareer,
+  carId: string,
+): WorldTourCareer {
+  if (career.ownedCarIds.includes(carId)) return career
+  const next = cloneCareer(career)
+  next.ownedCarIds = [...next.ownedCarIds, carId]
+  next.carsById[carId] = { damage: 0, upgrades: stockUpgrades() }
+  return next
+}
+
+/**
+ * Set the active car. Returns a fresh career; no-op when the id is
+ * not owned (defensive: a stale UI cannot switch to a car the player
+ * never bought).
+ */
+export function setActiveCar(
+  career: WorldTourCareer,
+  carId: string,
+): WorldTourCareer {
+  if (!career.ownedCarIds.includes(carId)) return career
+  if (career.activeCarId === carId) return career
+  const next = cloneCareer(career)
+  next.activeCarId = carId
+  return next
 }
 
 /**

@@ -56,8 +56,14 @@ describe('findTour', () => {
 })
 
 describe('nextTourOf', () => {
-  it('returns null for the final tour', () => {
-    expect(nextTourOf(STANDARD_CHAMPIONSHIP, VELVET_COAST_TOUR_ID)).toBeNull()
+  it('returns null past the last tour in the championship', () => {
+    const last =
+      STANDARD_CHAMPIONSHIP.tours[STANDARD_CHAMPIONSHIP.tours.length - 1]!
+    expect(nextTourOf(STANDARD_CHAMPIONSHIP, last.id)).toBeNull()
+  })
+
+  it('returns the tour that follows the opener', () => {
+    expect(nextTourOf(STANDARD_CHAMPIONSHIP, VELVET_COAST_TOUR_ID)).not.toBeNull()
   })
 
   it('returns the next tour when one exists', () => {
@@ -141,7 +147,7 @@ describe('tourDrivers', () => {
     expect(drivers).not.toBeNull()
     expect(drivers!.length).toBe(FIELD_SIZE_MVP - 1)
     for (const d of drivers!) {
-      expect(d.id).toMatch(/^driver-velvet-/)
+      expect(d.id).toMatch(/^driver-/)
     }
   })
 
@@ -161,8 +167,11 @@ describe('getStandardChampionship', () => {
     expect(Object.isFrozen(STANDARD_CHAMPIONSHIP)).toBe(true)
   })
 
-  it('has exactly one tour in the MVP', () => {
-    expect(STANDARD_CHAMPIONSHIP.tours).toHaveLength(1)
+  it('opens with the Velvet Coast tour', () => {
     expect(STANDARD_CHAMPIONSHIP.tours[0]!.id).toBe(VELVET_COAST_TOUR_ID)
+  })
+
+  it('exposes more than one tour from Phase 4 onward', () => {
+    expect(STANDARD_CHAMPIONSHIP.tours.length).toBeGreaterThan(1)
   })
 })

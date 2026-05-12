@@ -113,17 +113,28 @@ export default function TourSelectionPage() {
                 onClick={() => enterTour(card)}
                 style={{
                   ...cardStyle,
+                  background: card.state === 'locked'
+                    ? cardStyle.background
+                    : `linear-gradient(135deg, ${card.tour.theme.secondary}66 0%, ${card.tour.theme.primary}33 100%)`,
+                  borderColor: card.tour.theme.accent + '55',
                   opacity: card.state === 'locked' ? 0.45 : 1,
                   cursor: card.state === 'locked' ? 'not-allowed' : 'pointer',
                 }}
               >
-                <div style={cardTitleStyle}>{card.tour.name}</div>
+                <div
+                  style={{
+                    ...cardTitleStyle,
+                    color: card.tour.theme.accent,
+                  }}
+                >
+                  {card.tour.name}
+                </div>
                 <div style={cardBlurbStyle}>
-                  {card.tour.region} | Weather: {card.tour.weather} |{' '}
-                  {card.tour.trackIds.length} races
+                  {card.tour.region} | {card.tour.trackIds.length} races
                 </div>
                 <div style={pillRowStyle}>
                   <Pill>Top {card.tour.requiredStanding} of {card.tour.fieldSize}</Pill>
+                  <Pill>{weatherLabel(card.tour.weather)}</Pill>
                   <Pill>{stateLabel(card)}</Pill>
                 </div>
               </button>
@@ -136,6 +147,21 @@ export default function TourSelectionPage() {
       </div>
     </main>
   )
+}
+
+function weatherLabel(w: string): string {
+  switch (w) {
+    case 'clear':
+      return 'Clear'
+    case 'cloudy':
+      return 'Cloudy'
+    case 'rainy':
+      return 'Rain'
+    case 'snow':
+      return 'Snow'
+    default:
+      return w
+  }
 }
 
 function stateLabel(card: TourCard): string {

@@ -21,7 +21,11 @@
  * stays available for a retry).
  */
 
-import { cloneCareer, type WorldTourCareer } from './worldTourCareer'
+import {
+  cloneCareer,
+  withActiveCarState,
+  type WorldTourCareer,
+} from './worldTourCareer'
 import type { Championship } from '@/lib/worldTourChampionship'
 import { findTour, nextTourOf } from '@/lib/worldTourChampionship'
 import type { RaceResult } from './worldTourRaceResult'
@@ -90,14 +94,13 @@ export function applyRaceResult(
   })
   career.money = career.money + input.raceResult.cashEarned
   // Post-race damage replaces the prior value (damage does not stack
-  // across races until the player visits the garage). A clean run on a
-  // damaged car still walks away with that damage; the race-session
+  // across races until the player visits the garage). A clean run on
+  // a damaged car still walks away with that damage; the race-session
   // accumulates damage from the carried-over starting value.
   if (Number.isFinite(input.raceResult.playerDamage)) {
-    career.activeCarDamage = Math.min(
-      1,
-      Math.max(0, input.raceResult.playerDamage),
-    )
+    const damage = Math.min(1, Math.max(0, input.raceResult.playerDamage))
+    const patched = withActiveCarState(career, { damage })
+    career.carsById = patched.carsById
   }
 
   // Mid-tour: advance the cursor and exit.

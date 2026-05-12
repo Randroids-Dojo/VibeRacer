@@ -4,6 +4,8 @@ import {
   buildTourCompletionSummary,
 } from '@/game/worldTourProgress'
 import {
+  EMBER_STEPPE_TOUR_ID,
+  IRON_BOROUGH_TOUR_ID,
   STANDARD_CHAMPIONSHIP,
   VELVET_COAST_TOUR_ID,
 } from '@/data/worldTourChampionship'
@@ -123,13 +125,17 @@ describe('applyRaceResult (mid-tour)', () => {
 })
 
 describe('applyRaceResult (damage)', () => {
-  it('writes the post-race damage back to the career', () => {
+  function damageOf(career: WorldTourCareer): number {
+    return career.carsById[career.activeCarId]!.damage
+  }
+
+  it('writes the post-race damage back to the active car', () => {
     const out = applyRaceResult({
       career: defaultCareer(),
       raceResult: midTourResult({ playerDamage: 0.35 }),
       championship: STANDARD_CHAMPIONSHIP,
     })
-    expect(out.career.activeCarDamage).toBeCloseTo(0.35)
+    expect(damageOf(out.career)).toBeCloseTo(0.35)
   })
 
   it('clamps post-race damage into [0, 1]', () => {
@@ -138,14 +144,12 @@ describe('applyRaceResult (damage)', () => {
       raceResult: midTourResult({ playerDamage: 2 }),
       championship: STANDARD_CHAMPIONSHIP,
     })
-    expect(out.career.activeCarDamage).toBe(1)
+    expect(damageOf(out.career)).toBe(1)
   })
 
   it('does not bump damage when the race left the car clean', () => {
-    const seed: WorldTourCareer = {
-      ...defaultCareer(),
-      activeCarDamage: 0.2,
-    }
+    const seed = defaultCareer()
+    seed.carsById[seed.activeCarId]!.damage = 0.2
     const out = applyRaceResult({
       career: seed,
       raceResult: midTourResult({ playerDamage: 0 }),
@@ -153,7 +157,7 @@ describe('applyRaceResult (damage)', () => {
     })
     // The race carried 0.2 damage in; clean run still ends at 0 damage
     // (the race session updates the field continuously while racing).
-    expect(out.career.activeCarDamage).toBe(0)
+    expect(damageOf(out.career)).toBe(0)
   })
 })
 
@@ -273,6 +277,87 @@ describe('applyRaceResult (final race, fail)', () => {
       championship: STANDARD_CHAMPIONSHIP,
     })
     expect(out.career.unlockedTourIds).toContain(VELVET_COAST_TOUR_ID)
+  })
+})
+
+describe('multi-tour progression', () => {
+  function clearTour(
+    career: WorldTourCareer,
+    tourId: string,
+    trackPrefix: string,
+  ): WorldTourCareer {
+    let out = career
+    for (let i = 0; i < 4; i++) {
+      const isFinal = i === 3
+      const result = isFinal
+        ? finalTourResult({
+            trackId: `${trackPrefix}-4`,
+            tourProgress: {
+              tourId,
+              raceIndex: 3,
+              nextRaceIndex: null,
+              completed: true,
+              passed: true,
+              playerStanding: 1,
+            },
+          })
+        : midTourResult({
+            trackId: `${trackPrefix}-${i + 1}`,
+            tourProgress: {
+              tourId,
+              raceIndex: i,
+              nextRaceIndex: i + 1,
+              completed: false,
+              passed: null,
+              playerStanding: null,
+            },
+          })
+      // Seed the cursor so applyRaceResult treats this as a fresh race
+      // (idempotence guard skips when results.length > raceIndex).
+      if (!out.activeTour || out.activeTour.tourId !== tourId) {
+        out = {
+          ...out,
+          activeTour: { tourId, raceIndex: 0, results: [] },
+        }
+      }
+      const applied = applyRaceResult({
+        career: out,
+        raceResult: result,
+        championship: STANDARD_CHAMPIONSHIP,
+      })
+      out = applied.career
+    }
+    return out
+  }
+
+  it('completing Velvet Coast unlocks Iron Borough', () => {
+    const after = clearTour(defaultCareer(), VELVET_COAST_TOUR_ID, 'velvet-coast')
+    expect(after.completedTourIds).toContain(VELVET_COAST_TOUR_ID)
+    expect(after.unlockedTourIds).toContain(IRON_BOROUGH_TOUR_ID)
+  })
+
+  it('completing Iron Borough unlocks Ember Steppe', () => {
+    const afterVelvet = clearTour(
+      defaultCareer(),
+      VELVET_COAST_TOUR_ID,
+      'velvet-coast',
+    )
+    const afterIron = clearTour(
+      afterVelvet,
+      IRON_BOROUGH_TOUR_ID,
+      'iron-borough',
+    )
+    expect(afterIron.completedTourIds).toContain(IRON_BOROUGH_TOUR_ID)
+    expect(afterIron.unlockedTourIds).toContain(EMBER_STEPPE_TOUR_ID)
+  })
+
+  it('re-passing a completed tour is idempotent on completedTourIds', () => {
+    const a = clearTour(defaultCareer(), VELVET_COAST_TOUR_ID, 'velvet-coast')
+    const b = clearTour(a, VELVET_COAST_TOUR_ID, 'velvet-coast')
+    const velvetCount = b.completedTourIds.filter(
+      (id) => id === VELVET_COAST_TOUR_ID,
+    ).length
+    expect(velvetCount).toBe(1)
   })
 })
 

@@ -16,7 +16,18 @@ import {
   nextTierCost,
   type UpgradeZone,
 } from '@/game/worldTourUpgrades'
-import { defaultCareer, type WorldTourCareer } from '@/game/worldTourCareer'
+import {
+  CAR_CATALOG,
+  buyCarPreflight,
+  findCarSpec,
+} from '@/game/worldTourCars'
+import { addOwnedCar, setActiveCar } from '@/game/worldTourCareer'
+import {
+  defaultCareer,
+  getActiveCar,
+  withActiveCarState,
+  type WorldTourCareer,
+} from '@/game/worldTourCareer'
 import {
   WORLD_TOUR_CAREER_EVENT,
   readCareer,
@@ -40,10 +51,11 @@ export default function TourGaragePage() {
     return () => window.removeEventListener(WORLD_TOUR_CAREER_EVENT, onChange)
   }, [])
 
+  const activeCar = getActiveCar(career)
   const tier = difficultyTierForCareer(championship, career)
-  const cost = repairCost(career.activeCarDamage, tier)
-  const damagePercent = Math.round(career.activeCarDamage * 100)
-  const canRepair = career.activeCarDamage > 0 && career.money >= cost
+  const cost = repairCost(activeCar.damage, tier)
+  const damagePercent = Math.round(activeCar.damage * 100)
+  const canRepair = activeCar.damage > 0 && career.money >= cost
   const next = nextRaceFor(championship, career)
 
   function doRepair() {
@@ -69,7 +81,7 @@ export default function TourGaragePage() {
   function buyUpgrade(zone: UpgradeZone) {
     setFeedback(null)
     const result = applyUpgradePurchase(
-      career.activeCarUpgrades,
+      activeCar.upgrades,
       zone,
       career.money,
     )
@@ -81,10 +93,10 @@ export default function TourGaragePage() {
       }
       return
     }
+    const patched = withActiveCarState(career, { upgrades: result.upgrades })
     const next: WorldTourCareer = {
-      ...career,
+      ...patched,
       money: career.money - result.spent,
-      activeCarUpgrades: result.upgrades,
     }
     const written = writeCareer(next)
     if (written.ok) {
@@ -92,6 +104,45 @@ export default function TourGaragePage() {
       setFeedback(`Upgraded ${zone}. -${result.spent}c`)
     } else {
       setFeedback('Could not save the upgrade.')
+    }
+  }
+
+  function buyCar(carId: string) {
+    setFeedback(null)
+    const preflight = buyCarPreflight({
+      carId,
+      ownedCarIds: career.ownedCarIds,
+      walletCredits: career.money,
+    })
+    if (!preflight.ok) {
+      if (preflight.reason === 'insufficient-funds') {
+        setFeedback('Not enough credits.')
+      } else if (preflight.reason === 'already-owned') {
+        setFeedback('Already owned.')
+      } else {
+        setFeedback('Unknown car.')
+      }
+      return
+    }
+    let next = addOwnedCar(career, carId)
+    next = setActiveCar(next, carId)
+    next = { ...next, money: career.money - preflight.spent }
+    const written = writeCareer(next)
+    if (written.ok) {
+      setCareer(written.career)
+      setFeedback(`Bought ${findCarSpec(carId)?.name ?? carId}. -${preflight.spent}c`)
+    } else {
+      setFeedback('Could not save the purchase.')
+    }
+  }
+
+  function switchCar(carId: string) {
+    if (carId === career.activeCarId) return
+    const next = setActiveCar(career, carId)
+    const written = writeCareer(next)
+    if (written.ok) {
+      setCareer(written.career)
+      setFeedback(`Switched to ${findCarSpec(carId)?.name ?? carId}.`)
     }
   }
 
@@ -118,7 +169,10 @@ export default function TourGaragePage() {
         <section style={panelStyle}>
           <h2 style={subheaderStyle}>Status</h2>
           <Row label="Credits" value={`${career.money.toLocaleString()}c`} />
-          <Row label="Active car" value={career.activeCarId} />
+          <Row
+            label="Active car"
+            value={findCarSpec(career.activeCarId)?.name ?? career.activeCarId}
+          />
           <Row label="Damage" value={`${damagePercent}%`} />
           <Row label="Repair cost" value={cost > 0 ? `${cost}c` : '-'} />
         </section>
@@ -135,7 +189,7 @@ export default function TourGaragePage() {
               cursor: canRepair ? 'pointer' : 'not-allowed',
             }}
           >
-            {career.activeCarDamage === 0
+            {activeCar.damage === 0
               ? 'No repairs needed'
               : `Repair fully (${cost}c)`}
           </button>
@@ -147,8 +201,8 @@ export default function TourGaragePage() {
           <div style={upgradeGridStyle}>
             {(['engine', 'tires', 'brakes', 'body'] as UpgradeZone[]).map(
               (zone) => {
-                const tier = career.activeCarUpgrades[zone]
-                const cost = nextTierCost(career.activeCarUpgrades, zone)
+                const tier = activeCar.upgrades[zone]
+                const cost = nextTierCost(activeCar.upgrades, zone)
                 const maxed = tier >= UPGRADE_MAX_TIER
                 const canBuy = !maxed && career.money >= cost
                 return (
@@ -173,6 +227,52 @@ export default function TourGaragePage() {
                 )
               },
             )}
+          </div>
+        </section>
+
+        <section style={panelStyle}>
+          <h2 style={subheaderStyle}>Cars</h2>
+          <div style={upgradeGridStyle}>
+            {CAR_CATALOG.map((spec) => {
+              const owned = career.ownedCarIds.includes(spec.id)
+              const active = spec.id === career.activeCarId
+              const canBuy = !owned && career.money >= spec.price
+              return (
+                <div key={spec.id} style={upgradeRowStyle}>
+                  <div style={upgradeNameStyle}>{spec.name}</div>
+                  <div style={upgradeTierStyle}>
+                    {owned ? (active ? 'Active' : 'Owned') : `${spec.price}c`}
+                  </div>
+                  {owned ? (
+                    <button
+                      type="button"
+                      onClick={() => switchCar(spec.id)}
+                      disabled={active}
+                      style={{
+                        ...upgradeBtnStyle,
+                        background: active ? '#2a2a2a' : '#5b3a8a',
+                        cursor: active ? 'default' : 'pointer',
+                      }}
+                    >
+                      {active ? 'In use' : 'Switch'}
+                    </button>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => buyCar(spec.id)}
+                      disabled={!canBuy}
+                      style={{
+                        ...upgradeBtnStyle,
+                        background: canBuy ? '#3da9fc' : '#2a2a2a',
+                        cursor: canBuy ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      Buy
+                    </button>
+                  )}
+                </div>
+              )
+            })}
           </div>
         </section>
 
