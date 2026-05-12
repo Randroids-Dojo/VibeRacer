@@ -152,9 +152,17 @@ def import_kenney(path: str, scale: float = 1.0) -> None:
             bpy.ops.object.transform_apply(rotation=True, location=False, scale=False)
 
     if abs(scale - 1.0) >= 1e-6:
+        # Scale BOTH the node's location and its mesh data by the same
+        # factor. Without scaling location, the wheel nodes stay at
+        # Kenney's source positions (±0.3, ±0.66) while the body mesh
+        # grows ~3× — leaving the wheels bunched at the body's center.
+        # We update location manually then apply scale (location=False
+        # in apply because we already moved the nodes to their scaled
+        # spot in object space).
         for obj in bpy.context.scene.objects:
             if obj.parent is not None:
                 continue
+            obj.location = obj.location * scale
             obj.scale = Vector((scale, scale, scale))
         bpy.ops.object.select_all(action="SELECT")
         bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
