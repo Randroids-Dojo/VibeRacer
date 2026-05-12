@@ -32,6 +32,7 @@ const FLAT_TRACK: AiTrackView = {
 
 const TOTAL_LAPS = 2
 const LAP_DISTANCE_METERS = 300
+const INTRO_DURATION_MS = 2000
 
 interface KeyState {
   forward: boolean
@@ -85,6 +86,9 @@ function TourRacePageInner() {
   const [hudPhase, setHudPhase] = useState<RaceSessionState['phase']>('countdown')
   const [hudCountdown, setHudCountdown] = useState(COUNTDOWN_SECONDS_DEFAULT)
   const [hudLap, setHudLap] = useState(0)
+  // Brief intro card before the countdown starts. Dismisses on the
+  // first input or after `INTRO_DURATION_MS`.
+  const [showIntro, setShowIntro] = useState(true)
 
   // Reset the run when the route params change.
   useEffect(() => {
@@ -110,7 +114,15 @@ function TourRacePageInner() {
     setHudPhase('countdown')
     setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)
     setHudLap(0)
+    setShowIntro(true)
   }, [tour, drivers, raceIndex])
+
+  // Auto-dismiss the intro card after the documented duration.
+  useEffect(() => {
+    if (!showIntro) return
+    const timer = window.setTimeout(() => setShowIntro(false), INTRO_DURATION_MS)
+    return () => window.clearTimeout(timer)
+  }, [showIntro])
 
   // Keyboard handling.
   useEffect(() => {
@@ -212,7 +224,9 @@ function TourRacePageInner() {
       const dt = prev === null ? 1 / 60 : Math.min(1 / 30, (timestamp - prev) / 1000)
       lastFrameRef.current = timestamp
       const k = keyRef.current
-      if (!k.paused && sessionRef.current) {
+      // Hold the simulation while the intro card is on screen so the
+      // countdown does not burn down behind it.
+      if (!k.paused && !showIntro && sessionRef.current) {
         const playerInput = {
           throttle: (k.forward ? 1 : 0) + (k.backward ? -1 : 0),
           steer: (k.left ? 1 : 0) + (k.right ? -1 : 0),
@@ -248,7 +262,7 @@ function TourRacePageInner() {
       if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current)
       lastFrameRef.current = null
     }
-  }, [tour, submitResult])
+  }, [tour, submitResult, showIntro])
 
   if (!tour) {
     return (
@@ -282,12 +296,34 @@ function TourRacePageInner() {
           </div>
         </header>
 
-        <canvas
-          ref={canvasRef}
-          width={720}
-          height={420}
-          style={canvasStyle}
-        />
+        <div style={{ position: 'relative' }}>
+          <canvas
+            ref={canvasRef}
+            width={720}
+            height={420}
+            style={canvasStyle}
+          />
+          {showIntro ? (
+            <div
+              style={{
+                ...introOverlayStyle,
+                background: `linear-gradient(135deg, ${tour.theme.secondary}cc 0%, ${tour.theme.primary}99 100%)`,
+              }}
+              onClick={() => setShowIntro(false)}
+              role="button"
+              tabIndex={0}
+            >
+              <div style={introTitleStyle}>{tour.name}</div>
+              <div style={introMetaStyle}>
+                {tour.region} | Race {raceIndex + 1} of {tour.trackIds.length}
+                {' '}| {tour.weather}
+              </div>
+              <div style={introMetaStyle}>
+                Top {tour.requiredStanding} of {tour.fieldSize} to clear
+              </div>
+            </div>
+          ) : null}
+        </div>
 
         <footer style={footerStyle}>
           <span>WASD / Arrows: drive | Space: handbrake | Esc: pause</span>
@@ -427,4 +463,25 @@ const footerStyle: React.CSSProperties = {
 const backLinkStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.65)',
   textDecoration: 'none',
+}
+const introOverlayStyle: React.CSSProperties = {
+  position: 'absolute',
+  inset: 0,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
+  borderRadius: 8,
+  cursor: 'pointer',
+  textAlign: 'center',
+}
+const introTitleStyle: React.CSSProperties = {
+  fontSize: 32,
+  fontWeight: 800,
+  letterSpacing: 1,
+}
+const introMetaStyle: React.CSSProperties = {
+  fontSize: 14,
+  opacity: 0.9,
 }

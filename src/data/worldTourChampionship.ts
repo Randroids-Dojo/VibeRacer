@@ -46,6 +46,11 @@ const FULL_DRIVER_IDS = DRIVERS.slice(0, FIELD_SIZE_FULL - 1).map((d) => d.id)
 export const VELVET_COAST_TOUR_ID = 'velvet-coast'
 export const IRON_BOROUGH_TOUR_ID = 'iron-borough'
 export const EMBER_STEPPE_TOUR_ID = 'ember-steppe'
+export const BREAKWATER_ISLES_TOUR_ID = 'breakwater-isles'
+export const GLASS_RIDGE_TOUR_ID = 'glass-ridge'
+export const NEON_MERIDIAN_TOUR_ID = 'neon-meridian'
+export const MOSS_FRONTIER_TOUR_ID = 'moss-frontier'
+export const CROWN_CIRCUIT_TOUR_ID = 'crown-circuit'
 export const STANDARD_CHAMPIONSHIP_ID = 'world-tour-standard'
 
 /**
@@ -116,6 +121,106 @@ export const STANDARD_CHAMPIONSHIP: Championship = Object.freeze({
         'ember-steppe-2',
         'ember-steppe-3',
         'ember-steppe-4',
+      ],
+      aiDriverIds: FULL_DRIVER_IDS,
+    },
+    {
+      id: BREAKWATER_ISLES_TOUR_ID,
+      name: 'Breakwater Isles',
+      region: 'Breakwater Isles',
+      theme: {
+        primary: '#38bdf8',
+        secondary: '#0c4a6e',
+        accent: '#bae6fd',
+      },
+      weather: 'rainy',
+      requiredStanding: 3,
+      fieldSize: FIELD_SIZE_FULL,
+      trackIds: [
+        'breakwater-isles-1',
+        'breakwater-isles-2',
+        'breakwater-isles-3',
+        'breakwater-isles-4',
+      ],
+      aiDriverIds: FULL_DRIVER_IDS,
+    },
+    {
+      id: GLASS_RIDGE_TOUR_ID,
+      name: 'Glass Ridge',
+      region: 'Glass Ridge',
+      theme: {
+        primary: '#e2e8f0',
+        secondary: '#334155',
+        accent: '#f1f5f9',
+      },
+      weather: 'snow',
+      requiredStanding: 2,
+      fieldSize: FIELD_SIZE_FULL,
+      trackIds: [
+        'glass-ridge-1',
+        'glass-ridge-2',
+        'glass-ridge-3',
+        'glass-ridge-4',
+      ],
+      aiDriverIds: FULL_DRIVER_IDS,
+    },
+    {
+      id: NEON_MERIDIAN_TOUR_ID,
+      name: 'Neon Meridian',
+      region: 'Neon Meridian',
+      theme: {
+        primary: '#a855f7',
+        secondary: '#1e1b4b',
+        accent: '#f0abfc',
+      },
+      weather: 'clear',
+      requiredStanding: 2,
+      fieldSize: FIELD_SIZE_FULL,
+      trackIds: [
+        'neon-meridian-1',
+        'neon-meridian-2',
+        'neon-meridian-3',
+        'neon-meridian-4',
+      ],
+      aiDriverIds: FULL_DRIVER_IDS,
+    },
+    {
+      id: MOSS_FRONTIER_TOUR_ID,
+      name: 'Moss Frontier',
+      region: 'Moss Frontier',
+      theme: {
+        primary: '#65a30d',
+        secondary: '#1a2e05',
+        accent: '#d9f99d',
+      },
+      weather: 'cloudy',
+      requiredStanding: 1,
+      fieldSize: FIELD_SIZE_FULL,
+      trackIds: [
+        'moss-frontier-1',
+        'moss-frontier-2',
+        'moss-frontier-3',
+        'moss-frontier-4',
+      ],
+      aiDriverIds: FULL_DRIVER_IDS,
+    },
+    {
+      id: CROWN_CIRCUIT_TOUR_ID,
+      name: 'Crown Circuit',
+      region: 'Crown Circuit',
+      theme: {
+        primary: '#facc15',
+        secondary: '#422006',
+        accent: '#fef9c3',
+      },
+      weather: 'clear',
+      requiredStanding: 1,
+      fieldSize: FIELD_SIZE_FULL,
+      trackIds: [
+        'crown-circuit-1',
+        'crown-circuit-2',
+        'crown-circuit-3',
+        'crown-circuit-4',
       ],
       aiDriverIds: FULL_DRIVER_IDS,
     },

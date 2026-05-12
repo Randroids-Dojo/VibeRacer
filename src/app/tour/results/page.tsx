@@ -6,6 +6,7 @@ import { getStandardChampionship } from '@/data/worldTourChampionship'
 import type { RaceResult } from '@/game/worldTourRaceResult'
 import { buildTourCompletionSummary } from '@/game/worldTourProgress'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
+import { ConfettiOverlay } from '@/components/ConfettiOverlay'
 
 function readLastResult(): RaceResult | null {
   if (typeof window === 'undefined') return null
@@ -44,6 +45,8 @@ export default function TourResultsPage() {
   }
 
   const summary = buildTourCompletionSummary(championship, result)
+  // Fire the celebration once per tour-complete pass.
+  const showConfetti = summary?.passed === true
   // Mid-tour: route through the garage so the player can repair and
   // see the next race card before committing. Final-race: send back to
   // the tour selection screen.
@@ -51,6 +54,7 @@ export default function TourResultsPage() {
 
   return (
     <main style={pageStyle}>
+      {showConfetti ? <ConfettiOverlay kind="record" triggerKey={1} /> : null}
       <div style={stageStyle}>
         <header style={headerWrapStyle}>
           <h1 style={headerStyle}>
