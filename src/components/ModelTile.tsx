@@ -4,31 +4,32 @@ import { useEffect, useRef } from 'react'
 import {
   AmbientLight,
   Box3,
-  Color,
   DirectionalLight,
   Group,
   type Object3D,
   PerspectiveCamera,
   Scene,
   Vector3,
-  WebGLRenderer,
 } from 'three'
+import { useStage } from './SharedModelStage'
 
 interface ModelTileProps {
-  // Object to display. The tile parents it under an internal rotator group,
-  // so the same Object3D should not be passed to two tiles simultaneously.
+  // Object to display. The tile parents a deep clone under an internal
+  // rotator group, so the same Object3D can be handed to multiple tiles.
   object: Object3D | null
   label?: string
   size?: number
   // Rotations per second around the vertical axis. Negative spins clockwise
   // when viewed from above (the user's preference).
   rotationSpeed?: number
-  // Background fill of the canvas. Defaults to a neutral mid-gray that lets
-  // both light and dark cars stand out.
+  // Fill behind the model. Painted by the shared renderer via setClearColor
+  // inside the tile's scissor rect, so the visible color matches a
+  // dedicated canvas even though all tiles share one canvas underneath.
   background?: string
-  // Optional overlay drawn over the canvas. Useful for tagging the
-  // "destroyed" tile with a note like "no damage system" on non-derby cars.
-  overlay?: React.ReactNode
+  // Optional caption rendered below the tile. (Older versions overlaid
+  // text inside the canvas region; a sibling caption avoids the shared
+  // canvas painting over it.)
+  caption?: string
 }
 
 export function ModelTile({
@@ -37,22 +38,16 @@ export function ModelTile({
   size = 280,
   rotationSpeed = -0.8,
   background = '#2a2a32',
-  overlay,
+  caption,
 }: ModelTileProps) {
-  const containerRef = useRef<HTMLDivElement | null>(null)
+  const placeholderRef = useRef<HTMLDivElement | null>(null)
+  const stage = useStage()
 
   useEffect(() => {
-    const container = containerRef.current
-    if (!container) return
-
-    const renderer = new WebGLRenderer({ antialias: true, alpha: true })
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(size, size)
-    container.appendChild(renderer.domElement)
+    const element = placeholderRef.current
+    if (!element) return
 
     const scene = new Scene()
-    scene.background = new Color(background)
-
     const camera = new PerspectiveCamera(35, 1, 0.05, 200)
     const ambient = new AmbientLight(0xffffff, 0.6)
     const sun = new DirectionalLight(0xffffff, 1.1)
@@ -62,17 +57,11 @@ export function ModelTile({
     const rotator = new Group()
     scene.add(rotator)
 
-    // Clone the input so multiple tiles can render the same source group
-    // simultaneously without fighting over .parent. The caller hands us a
-    // long-lived reference; we own the in-tile copy and dispose it on
-    // unmount. clone(true) deep-clones the subtree but shares geometries
-    // and materials, which is exactly what we want here.
+    // Deep-clone the source so two tiles can show the same Object3D
+    // simultaneously without fighting over .parent. clone(true) shares
+    // geometries and materials, which is what we want for this view.
     const display = object ? object.clone(true) : null
     if (display) {
-      // Center the displayed copy on the rotator so it spins around its
-      // own middle rather than around an offset origin from the source
-      // file. Frame the camera against the object's diagonal so a tiny
-      // door panel and a full car both fill the viewport.
       const bbox = new Box3().setFromObject(display)
       const center = bbox.getCenter(new Vector3())
       const sizeVec = bbox.getSize(new Vector3())
@@ -84,40 +73,44 @@ export function ModelTile({
       camera.lookAt(0, 0, 0)
     }
 
-    let raf = 0
-    let prev = performance.now()
-    const tick = (now: number) => {
-      const dt = Math.min((now - prev) / 1000, 0.1)
-      prev = now
-      rotator.rotation.y += rotationSpeed * dt
-      renderer.render(scene, camera)
-      raf = requestAnimationFrame(tick)
-    }
-    raf = requestAnimationFrame(tick)
+    const unregister = stage.register({
+      element,
+      scene,
+      camera,
+      clearColor: background,
+      onTick: (dt) => {
+        rotator.rotation.y += rotationSpeed * dt
+      },
+    })
 
     return () => {
-      cancelAnimationFrame(raf)
+      unregister()
       if (display && display.parent === rotator) rotator.remove(display)
-      renderer.dispose()
-      renderer.domElement.remove()
     }
-  }, [object, size, rotationSpeed, background])
+  }, [object, rotationSpeed, background, stage])
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
+    <div
+      style={{
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center',
+        gap: 6,
+      }}
+    >
       <div
-        ref={containerRef}
+        ref={placeholderRef}
         style={{
-          position: 'relative',
           width: size,
           height: size,
           borderRadius: 12,
-          overflow: 'hidden',
+          // Background is painted by the shared renderer; leaving the div
+          // transparent prevents a brief flash of solid color before the
+          // first frame in case the canvas takes an extra tick to mount.
+          background: 'transparent',
           boxShadow: '0 6px 14px rgba(0,0,0,0.35)',
         }}
-      >
-        {overlay}
-      </div>
+      />
       {label && (
         <div
           style={{
@@ -128,6 +121,18 @@ export function ModelTile({
           }}
         >
           {label}
+        </div>
+      )}
+      {caption && (
+        <div
+          style={{
+            fontSize: 11,
+            color: 'rgba(255,255,255,0.55)',
+            letterSpacing: 1,
+            textTransform: 'uppercase',
+          }}
+        >
+          {caption}
         </div>
       )}
     </div>

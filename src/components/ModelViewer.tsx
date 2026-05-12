@@ -13,6 +13,7 @@ import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
 import type { DerbyVehicleType } from '@/lib/schemas'
 import type { DerbyCarState } from '@/game/derbyVehicleState'
 import { ModelTile } from './ModelTile'
+import { SharedModelStage } from './SharedModelStage'
 
 // One entry per viewable car. `derbyType=null` means use the shared main
 // race / drag car GLB rather than a derby asset; the visualizer is
@@ -254,6 +255,7 @@ export function ModelViewer() {
   const next = () => setIndex((i) => (i + 1) % CATALOG.length)
 
   return (
+    <SharedModelStage>
     <main style={pageStyle}>
       <header style={headerStyle}>
         <Link href="/" style={backLinkStyle}>
@@ -298,11 +300,7 @@ export function ModelViewer() {
               label="Destroyed"
               size={360}
               background={loaded.destroyed ? '#1a1a22' : '#2a2a32'}
-              overlay={
-                loaded.destroyed ? null : (
-                  <div style={overlayNoteStyle}>No damage system</div>
-                )
-              }
+              caption={loaded.destroyed ? undefined : 'No damage system'}
             />
           </section>
 
@@ -323,6 +321,7 @@ export function ModelViewer() {
 
       {!loaded && !error && <div style={loadingStyle}>Loading {entry.label}…</div>}
     </main>
+    </SharedModelStage>
   )
 }
 
@@ -397,19 +396,6 @@ const partsGridStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: 'repeat(auto-fill, minmax(190px, 1fr))',
   gap: 16,
-}
-const overlayNoteStyle: React.CSSProperties = {
-  position: 'absolute',
-  inset: 0,
-  display: 'grid',
-  placeItems: 'end center',
-  paddingBottom: 14,
-  pointerEvents: 'none',
-  fontSize: 12,
-  letterSpacing: 1,
-  textTransform: 'uppercase',
-  color: 'rgba(255,255,255,0.65)',
-  textShadow: '0 2px 4px rgba(0,0,0,0.7)',
 }
 const loadingStyle: React.CSSProperties = {
   textAlign: 'center',
