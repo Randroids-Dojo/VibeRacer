@@ -101,6 +101,7 @@ function TourRacePageInner() {
       lapDistanceMeters: LAP_DISTANCE_METERS,
       playerCarId: career.activeCarId,
       playerInitialDamage: career.activeCarDamage,
+      playerUpgrades: career.activeCarUpgrades,
     })
     setHudPhase('countdown')
     setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)

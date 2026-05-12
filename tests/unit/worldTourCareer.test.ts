@@ -20,6 +20,12 @@ describe('defaultCareer', () => {
     expect(c.ownedCarIds).toEqual([CAREER_STARTING_CAR_ID])
     expect(c.activeCarId).toBe(CAREER_STARTING_CAR_ID)
     expect(c.activeCarDamage).toBe(0)
+    expect(c.activeCarUpgrades).toEqual({
+      engine: 0,
+      tires: 0,
+      brakes: 0,
+      body: 0,
+    })
     expect(c.completedTourIds).toEqual([])
     expect(c.unlockedTourIds).toEqual([CAREER_FIRST_TOUR_ID])
     expect(c.activeTour).toBeNull()
@@ -43,6 +49,7 @@ describe('cloneCareer', () => {
       ownedCarIds: ['starter', 'red'],
       activeCarId: 'red',
       activeCarDamage: 0.4,
+      activeCarUpgrades: { engine: 1, tires: 0, brakes: 2, body: 0 },
       completedTourIds: ['velvet-coast'],
       unlockedTourIds: ['velvet-coast', 'iron-borough'],
       activeTour: {
@@ -95,6 +102,7 @@ describe('migrateCareer', () => {
       ownedCarIds: ['starter', 'speeder'],
       activeCarId: 'speeder',
       activeCarDamage: 0.15,
+      activeCarUpgrades: { engine: 2, tires: 1, brakes: 1, body: 0 },
       completedTourIds: ['velvet-coast'],
       unlockedTourIds: ['velvet-coast', 'iron-borough'],
       activeTour: {
@@ -185,6 +193,26 @@ describe('migrateCareer', () => {
     expect(c.activeCarDamage).toBe(0)
     const d = migrateCareer({ version: 1, activeCarDamage: 'broken' })
     expect(d.activeCarDamage).toBe(0)
+  })
+
+  it('clamps each upgrade zone into [0, 3] and defaults missing fields to 0', () => {
+    const out = migrateCareer({
+      version: 1,
+      activeCarUpgrades: { engine: 9, tires: -1, brakes: 'broken' },
+    })
+    expect(out.activeCarUpgrades.engine).toBe(3)
+    expect(out.activeCarUpgrades.tires).toBe(0)
+    expect(out.activeCarUpgrades.brakes).toBe(0)
+    expect(out.activeCarUpgrades.body).toBe(0)
+  })
+
+  it('floors fractional upgrade tiers', () => {
+    const out = migrateCareer({
+      version: 1,
+      activeCarUpgrades: { engine: 2.7, tires: 1.4, brakes: 0, body: 0 },
+    })
+    expect(out.activeCarUpgrades.engine).toBe(2)
+    expect(out.activeCarUpgrades.tires).toBe(1)
   })
 
   it('dedupes owned, completed, and unlocked id lists', () => {

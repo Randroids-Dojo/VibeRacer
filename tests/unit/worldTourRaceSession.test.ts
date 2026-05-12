@@ -111,6 +111,48 @@ describe('createRaceSession', () => {
   })
 })
 
+describe('createRaceSession (upgrades)', () => {
+  it('resolves the player CarParams from the supplied upgrade tiers', () => {
+    const baseSession = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 100,
+      playerCarId: 'starter',
+    })
+    const upgradedSession = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 100,
+      playerCarId: 'starter',
+      playerUpgrades: { engine: 3, tires: 0, brakes: 0, body: 0 },
+    })
+    expect(upgradedSession.cars[0]!.params.maxSpeed).toBeGreaterThan(
+      baseSession.cars[0]!.params.maxSpeed,
+    )
+  })
+
+  it('keeps AI cars at the supplied AI tiers', () => {
+    const s = createRaceSession({
+      slotCount: 2,
+      laneCount: 1,
+      aiDrivers: [{ id: 'rival' }],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 100,
+      playerCarId: 'starter',
+      playerUpgrades: { engine: 3, tires: 0, brakes: 0, body: 0 },
+      aiUpgrades: { engine: 0, tires: 0, brakes: 0, body: 0 },
+    })
+    expect(s.cars[1]!.params.maxSpeed).toBeLessThan(s.cars[0]!.params.maxSpeed)
+  })
+})
+
 describe('stepRaceSession (countdown)', () => {
   it('counts down without moving cars', () => {
     let s = freshSession()

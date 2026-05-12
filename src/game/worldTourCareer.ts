@@ -16,6 +16,12 @@
  * tour `velvet-coast` is the first unlocked tour.
  */
 
+import {
+  sanitizeUpgrades,
+  stockUpgrades,
+  type CarUpgrades,
+} from './worldTourUpgrades'
+
 export const CAREER_SCHEMA_VERSION = 1 as const
 
 // Starting cash for a fresh career. Tuned to be enough to repair after a
@@ -74,6 +80,7 @@ export interface WorldTourCareer {
   ownedCarIds: string[]
   activeCarId: string
   activeCarDamage: number
+  activeCarUpgrades: CarUpgrades
   completedTourIds: string[]
   unlockedTourIds: string[]
   activeTour: ActiveTour | null
@@ -93,6 +100,7 @@ export function defaultCareer(): WorldTourCareer {
     ownedCarIds: [CAREER_STARTING_CAR_ID],
     activeCarId: CAREER_STARTING_CAR_ID,
     activeCarDamage: 0,
+    activeCarUpgrades: stockUpgrades(),
     completedTourIds: [],
     unlockedTourIds: [CAREER_FIRST_TOUR_ID],
     activeTour: null,
@@ -113,6 +121,7 @@ export function cloneCareer(career: WorldTourCareer): WorldTourCareer {
     ownedCarIds: [...career.ownedCarIds],
     activeCarId: career.activeCarId,
     activeCarDamage: career.activeCarDamage,
+    activeCarUpgrades: { ...career.activeCarUpgrades },
     completedTourIds: [...career.completedTourIds],
     unlockedTourIds: [...career.unlockedTourIds],
     activeTour:
@@ -187,6 +196,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   const activeCarDamage = isFiniteNonNegativeNumber(r.activeCarDamage)
     ? Math.min(1, r.activeCarDamage)
     : 0
+  const activeCarUpgrades = sanitizeUpgrades(r.activeCarUpgrades)
   const ownedCarIds = sanitizeStringArray(r.ownedCarIds)
   const completedTourIds = sanitizeStringArray(r.completedTourIds)
   const unlockedTourIds = sanitizeStringArray(r.unlockedTourIds)
@@ -211,6 +221,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
     ownedCarIds: owned,
     activeCarId,
     activeCarDamage,
+    activeCarUpgrades,
     completedTourIds,
     unlockedTourIds: unlocked,
     activeTour,

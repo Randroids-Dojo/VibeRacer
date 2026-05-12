@@ -14,6 +14,7 @@ import {
 } from '@/data/worldTourChampionship'
 import { defaultCareer, type WorldTourCareer } from '@/game/worldTourCareer'
 import type { RaceSessionState } from '@/game/worldTourRaceSession'
+import { DEFAULT_CAR_PARAMS } from '@/game/physics'
 
 function makeState(
   finishingOrder: number[],
@@ -36,6 +37,8 @@ function makeState(
       isPlayer: c.isPlayer ?? i === 0,
       driverId: c.driverId ?? (i === 0 ? null : `driver-${i}`),
       carId: c.carId ?? (i === 0 ? 'starter' : `ai-${i}`),
+      params: { ...DEFAULT_CAR_PARAMS },
+      damageAbsorb: 1,
       physics: { x: 0, z: 0, heading: 0, speed: 0 },
       aiState: i === 0 ? null : null,
       lap: 1,

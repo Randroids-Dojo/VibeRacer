@@ -10,6 +10,12 @@ import {
   nextRaceFor,
   repairCost,
 } from '@/game/worldTourGarage'
+import {
+  UPGRADE_MAX_TIER,
+  applyUpgradePurchase,
+  nextTierCost,
+  type UpgradeZone,
+} from '@/game/worldTourUpgrades'
 import { defaultCareer, type WorldTourCareer } from '@/game/worldTourCareer'
 import {
   WORLD_TOUR_CAREER_EVENT,
@@ -60,6 +66,35 @@ export default function TourGaragePage() {
     }
   }
 
+  function buyUpgrade(zone: UpgradeZone) {
+    setFeedback(null)
+    const result = applyUpgradePurchase(
+      career.activeCarUpgrades,
+      zone,
+      career.money,
+    )
+    if (!result.ok) {
+      if (result.reason === 'insufficient-funds') {
+        setFeedback('Not enough credits.')
+      } else {
+        setFeedback('Already at max tier.')
+      }
+      return
+    }
+    const next: WorldTourCareer = {
+      ...career,
+      money: career.money - result.spent,
+      activeCarUpgrades: result.upgrades,
+    }
+    const written = writeCareer(next)
+    if (written.ok) {
+      setCareer(written.career)
+      setFeedback(`Upgraded ${zone}. -${result.spent}c`)
+    } else {
+      setFeedback('Could not save the upgrade.')
+    }
+  }
+
   function startNextRace() {
     if (!next) {
       router.push('/tour')
@@ -105,6 +140,40 @@ export default function TourGaragePage() {
               : `Repair fully (${cost}c)`}
           </button>
           {feedback ? <p style={feedbackStyle}>{feedback}</p> : null}
+        </section>
+
+        <section style={panelStyle}>
+          <h2 style={subheaderStyle}>Upgrades</h2>
+          <div style={upgradeGridStyle}>
+            {(['engine', 'tires', 'brakes', 'body'] as UpgradeZone[]).map(
+              (zone) => {
+                const tier = career.activeCarUpgrades[zone]
+                const cost = nextTierCost(career.activeCarUpgrades, zone)
+                const maxed = tier >= UPGRADE_MAX_TIER
+                const canBuy = !maxed && career.money >= cost
+                return (
+                  <div key={zone} style={upgradeRowStyle}>
+                    <div style={upgradeNameStyle}>{zone}</div>
+                    <div style={upgradeTierStyle}>
+                      Tier {tier} / {UPGRADE_MAX_TIER}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => buyUpgrade(zone)}
+                      disabled={!canBuy}
+                      style={{
+                        ...upgradeBtnStyle,
+                        background: canBuy ? '#3da9fc' : '#2a2a2a',
+                        cursor: canBuy ? 'pointer' : 'not-allowed',
+                      }}
+                    >
+                      {maxed ? 'Maxed' : `Buy (${cost}c)`}
+                    </button>
+                  </div>
+                )
+              },
+            )}
+          </div>
         </section>
 
         <section style={panelStyle}>
@@ -213,6 +282,34 @@ const feedbackStyle: React.CSSProperties = {
   margin: 0,
   fontSize: 13,
   opacity: 0.8,
+}
+const upgradeGridStyle: React.CSSProperties = {
+  display: 'grid',
+  gap: 8,
+}
+const upgradeRowStyle: React.CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: '80px 1fr auto',
+  gap: 12,
+  alignItems: 'center',
+  fontSize: 14,
+}
+const upgradeNameStyle: React.CSSProperties = {
+  textTransform: 'capitalize',
+  fontWeight: 600,
+}
+const upgradeTierStyle: React.CSSProperties = {
+  opacity: 0.7,
+}
+const upgradeBtnStyle: React.CSSProperties = {
+  padding: '6px 12px',
+  borderRadius: 8,
+  background: '#3da9fc',
+  color: '#fff',
+  border: 'none',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  fontWeight: 600,
 }
 const backLinkStyle: React.CSSProperties = {
   textAlign: 'center',

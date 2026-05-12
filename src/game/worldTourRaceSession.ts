@@ -38,6 +38,12 @@ import {
   type AiTrackView,
 } from './worldTourAi'
 import { spawnGrid, type GridDriver } from './worldTourGrid'
+import {
+  damageAbsorption,
+  resolveCarParams,
+  stockUpgrades,
+  type CarUpgrades,
+} from './worldTourUpgrades'
 
 // Default countdown length in seconds. 3 seconds matches Time Attack's
 // "ready, set, go" rhythm and gives the launch hold time to anchor.
@@ -75,6 +81,12 @@ export interface RaceCar {
   readonly isPlayer: boolean
   readonly driverId: string | null
   readonly carId: string
+  // Per-car physics params (with upgrade scalars applied) and damage
+  // absorption. The race-session reducer hands these to `stepPhysics`
+  // every tick so the upgrade table is the single source of truth for
+  // a car's chassis feel.
+  readonly params: CarParams
+  readonly damageAbsorb: number
   physics: PhysicsState
   aiState: AiState | null
   lap: number
@@ -135,6 +147,12 @@ export interface CreateRaceSessionInput {
   // previous race left them with. Phase 5 generalizes this to a per-
   // car map.
   readonly playerInitialDamage?: number
+  // Player upgrade tiers. Resolved into per-car physics params at
+  // race start.
+  readonly playerUpgrades?: CarUpgrades
+  // AI upgrade tiers. Phase 3c lets a tour declare an AI tier set so
+  // the field scales with the player's wallet. Defaults to stock.
+  readonly aiUpgrades?: CarUpgrades
 }
 
 /**
@@ -151,11 +169,19 @@ export function createRaceSession(
     aiDrivers: input.aiDrivers,
     seed: input.seed,
   })
+  const playerUpgrades = input.playerUpgrades ?? stockUpgrades()
+  const aiUpgrades = input.aiUpgrades ?? stockUpgrades()
+  const playerParams = resolveCarParams(DEFAULT_CAR_PARAMS, playerUpgrades)
+  const aiParams = resolveCarParams(DEFAULT_CAR_PARAMS, aiUpgrades)
+  const playerAbsorb = damageAbsorption(playerUpgrades)
+  const aiAbsorb = damageAbsorption(aiUpgrades)
   const cars: RaceCar[] = grid.map((slot, idx) => ({
     index: idx,
     isPlayer: idx === 0,
     driverId: slot.driverId,
     carId: idx === 0 ? input.playerCarId : (slot.driverId ?? `slot-${idx}`),
+    params: idx === 0 ? playerParams : aiParams,
+    damageAbsorb: idx === 0 ? playerAbsorb : aiAbsorb,
     physics: {
       x: slot.startX,
       z: slot.startZ,
@@ -251,7 +277,10 @@ export function stepRaceSession(
 
   // Racing phase. Step each car still racing.
   next.elapsedMs += dt * 1000
-  const params = config.carParams ?? DEFAULT_CAR_PARAMS
+  // `config.carParams` overrides every car's params (used by tests
+  // that want a single deterministic chassis); otherwise each car
+  // uses its per-car params resolved at create time.
+  const overrideParams = config.carParams
   const onTrackOf = config.onTrackOf ?? (() => true)
 
   // First pass: build the AI car view for every car (used for follow-
@@ -286,7 +315,13 @@ export function stepRaceSession(
     }
 
     const prev = car.physics
-    car.physics = integrateCarPosition(prev, input, dt, params, onTrack)
+    car.physics = integrateCarPosition(
+      prev,
+      input,
+      dt,
+      overrideParams ?? car.params,
+      onTrack,
+    )
 
     // Accumulate forward distance from the speed magnitude. A
     // reversing car still counts as "moving" so it does not trigger
@@ -352,8 +387,8 @@ export function stepRaceSession(
       const dir = dx >= 0 ? 1 : -1
       a.physics = { ...a.physics, x: a.physics.x - dir * BUMP_KICK_BASE_MPS * dt }
       b.physics = { ...b.physics, x: b.physics.x + dir * BUMP_KICK_BASE_MPS * dt }
-      a.damage = Math.min(1, a.damage + 0.02)
-      b.damage = Math.min(1, b.damage + 0.02)
+      a.damage = Math.min(1, a.damage + 0.02 * a.damageAbsorb)
+      b.damage = Math.min(1, b.damage + 0.02 * b.damageAbsorb)
     }
   }
 
@@ -389,6 +424,8 @@ function cloneCar(c: RaceCar): RaceCar {
     isPlayer: c.isPlayer,
     driverId: c.driverId,
     carId: c.carId,
+    params: c.params,
+    damageAbsorb: c.damageAbsorb,
     physics: { ...c.physics },
     aiState: c.aiState ? { ...c.aiState } : null,
     lap: c.lap,

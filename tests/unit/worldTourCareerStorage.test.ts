@@ -182,6 +182,7 @@ describe('world tour career storage', () => {
         ownedCarIds: [CAREER_STARTING_CAR_ID],
         activeCarId: CAREER_STARTING_CAR_ID,
         activeCarDamage: 0,
+        activeCarUpgrades: { engine: 0, tires: 0, brakes: 0, body: 0 },
         completedTourIds: [],
         unlockedTourIds: [CAREER_FIRST_TOUR_ID],
         activeTour: null,
