@@ -463,15 +463,27 @@ def add_lights(body: bpy.types.Object, variant: SliceVariant) -> list[bpy.types.
     mn, mx = world_bbox(body)
     width = mx[side_idx] - mn[side_idx]
     height = mx[up_idx] - mn[up_idx]
+    # Lights sit at ~30% of width inset from center, so a sedan reads as
+    # a pair of headlights with a license plate gap; smaller cars
+    # collapse to one wide light when the offset would clip the body.
     side_offset = width * 0.30
-    light_z = mn[up_idx] + height * 0.50
-    # Front of the car sits at the +Y end after the import rotation; place
-    # headlights there and taillights at the -Y end.
-    front_pos = mx[fwd_idx] - 0.04
-    rear_pos = mn[fwd_idx] + 0.04
-    size_long = 0.14
-    size_side = width * 0.18
-    size_up = height * 0.18
+    light_z = mn[up_idx] + height * 0.42
+    # Tuned to read as a "lamp" not a "billboard". Forward depth is the
+    # thinnest dimension so the outer face is what the player sees; side
+    # and vertical extents are kept tight so they don't dominate the
+    # front fascia. Real headlights are roughly 15cm wide; with the
+    # variant import_scale baked in, width * 0.08 lands in that range.
+    size_long = 0.06
+    size_side = max(0.20, width * 0.10)
+    size_up = max(0.12, height * 0.10)
+    # The Kenney body has rounded corners so its front fascia is set back
+    # from the bbox max plane. Center the lamp ON the bbox plane: half of
+    # its depth lives inside the shell (hidden by the body's curve), half
+    # protrudes forward (the visible lamp lens). The new size_long (6cm)
+    # means only ~3cm of lamp shows, small enough to read as a lens
+    # rather than a billboard.
+    front_pos = mx[fwd_idx]
+    rear_pos = mn[fwd_idx]
 
     def place(name: str, mat: bpy.types.Material, fwd_v: float, side_sign: int) -> bpy.types.Object:
         loc = [0.0, 0.0, 0.0]

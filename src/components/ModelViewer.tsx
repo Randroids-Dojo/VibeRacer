@@ -170,10 +170,32 @@ async function loadEntry(entry: CatalogEntry): Promise<LoadedEntry> {
   // Pull out individual parts for the bottom grid BEFORE handing the
   // group off to the tile. We clone each part so the pristine group still
   // has every panel attached for the hero tile.
+  // Wheels arrive with the per-side Kenney rotation that mirrors left
+  // wheels relative to right, so without normalization the parts grid
+  // showed wheel_fl/rl from one face and wheel_fr/rr from the other.
+  // For display we zero each wheel clone's local rotation so all four
+  // share one canonical pose and the auto-rotate spins them through the
+  // same view.
+  const WHEEL_NAMES = new Set([
+    'wheel_fl',
+    'wheel_fr',
+    'wheel_rl',
+    'wheel_rr',
+  ])
   const parts: { name: string; node: Object3D }[] = []
   for (const name of PART_ORDER) {
     const node = pristineAsset.submeshes[name]
-    if (node) parts.push({ name, node: node.clone(true) })
+    if (!node) continue
+    const clone = node.clone(true)
+    if (WHEEL_NAMES.has(name)) {
+      clone.rotation.set(0, 0, 0)
+      clone.scale.set(
+        Math.abs(clone.scale.x),
+        Math.abs(clone.scale.y),
+        Math.abs(clone.scale.z),
+      )
+    }
+    parts.push({ name, node: clone })
   }
   return {
     pristine: pristineAsset.group,
