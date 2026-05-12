@@ -63,12 +63,17 @@ export interface ActiveTour {
  * The full career save. Versioned for forward-only migrations. All array
  * fields are deduped and the cursor (`activeTour`) is either a fully
  * populated object or `null`; intermediate states are not representable.
+ *
+ * `activeCarDamage` is the post-race damage on the currently active car,
+ * in [0, 1]. Phase 5b generalizes this to a `damageByCarId` map; for the
+ * MVP we only track the one car so the storage cost is a single number.
  */
 export interface WorldTourCareer {
   version: typeof CAREER_SCHEMA_VERSION
   money: number
   ownedCarIds: string[]
   activeCarId: string
+  activeCarDamage: number
   completedTourIds: string[]
   unlockedTourIds: string[]
   activeTour: ActiveTour | null
@@ -87,6 +92,7 @@ export function defaultCareer(): WorldTourCareer {
     money: CAREER_STARTING_MONEY,
     ownedCarIds: [CAREER_STARTING_CAR_ID],
     activeCarId: CAREER_STARTING_CAR_ID,
+    activeCarDamage: 0,
     completedTourIds: [],
     unlockedTourIds: [CAREER_FIRST_TOUR_ID],
     activeTour: null,
@@ -106,6 +112,7 @@ export function cloneCareer(career: WorldTourCareer): WorldTourCareer {
     money: career.money,
     ownedCarIds: [...career.ownedCarIds],
     activeCarId: career.activeCarId,
+    activeCarDamage: career.activeCarDamage,
     completedTourIds: [...career.completedTourIds],
     unlockedTourIds: [...career.unlockedTourIds],
     activeTour:
@@ -177,6 +184,9 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   // missing the field is treated as v1 (it could be a hand-edited payload).
   const seed = defaultCareer()
   const money = isFiniteNonNegativeNumber(r.money) ? Math.floor(r.money) : seed.money
+  const activeCarDamage = isFiniteNonNegativeNumber(r.activeCarDamage)
+    ? Math.min(1, r.activeCarDamage)
+    : 0
   const ownedCarIds = sanitizeStringArray(r.ownedCarIds)
   const completedTourIds = sanitizeStringArray(r.completedTourIds)
   const unlockedTourIds = sanitizeStringArray(r.unlockedTourIds)
@@ -200,6 +210,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
     money,
     ownedCarIds: owned,
     activeCarId,
+    activeCarDamage,
     completedTourIds,
     unlockedTourIds: unlocked,
     activeTour,

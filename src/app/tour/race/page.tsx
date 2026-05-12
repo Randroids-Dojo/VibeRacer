@@ -22,6 +22,7 @@ import {
   readCareer,
   writeCareer,
 } from '@/lib/worldTourCareerStorage'
+import { defaultCareer } from '@/game/worldTourCareer'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 
 const FLAT_TRACK: AiTrackView = {
@@ -89,6 +90,8 @@ function TourRacePageInner() {
   useEffect(() => {
     submittedRef.current = false
     if (!tour || !drivers) return
+    const career =
+      typeof window !== 'undefined' ? readCareer() : defaultCareer()
     sessionRef.current = createRaceSession({
       slotCount: tour.fieldSize,
       laneCount: 2,
@@ -96,7 +99,8 @@ function TourRacePageInner() {
       seed: hashSeed(tour.id, raceIndex),
       totalLaps: TOTAL_LAPS,
       lapDistanceMeters: LAP_DISTANCE_METERS,
-      playerCarId: 'starter',
+      playerCarId: career.activeCarId,
+      playerInitialDamage: career.activeCarDamage,
     })
     setHudPhase('countdown')
     setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)

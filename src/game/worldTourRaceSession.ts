@@ -130,6 +130,11 @@ export interface CreateRaceSessionInput {
   readonly lapDistanceMeters: number
   readonly playerCarId: string
   readonly countdownSeconds?: number
+  // Initial damage on the player car, in [0, 1]. Carried over from the
+  // career save so the player starts a race with whatever damage the
+  // previous race left them with. Phase 5 generalizes this to a per-
+  // car map.
+  readonly playerInitialDamage?: number
 }
 
 /**
@@ -167,7 +172,7 @@ export function createRaceSession(
     finishedAtMs: null,
     noProgressMs: 0,
     offTrackMs: 0,
-    damage: 0,
+    damage: idx === 0 ? clampDamage(input.playerInitialDamage) : 0,
     lastDistance: 0,
   }))
   return {
@@ -422,6 +427,11 @@ function integrateCarPosition(
   const x = prev.x + next.speed * fwdX * dt
   const z = prev.z + next.speed * fwdZ * dt
   return { x, z, heading, speed: next.speed }
+}
+
+function clampDamage(v: number | undefined): number {
+  if (typeof v !== 'number' || !Number.isFinite(v)) return 0
+  return Math.min(1, Math.max(0, v))
 }
 
 function carsOverlap(a: PhysicsState, b: PhysicsState): boolean {

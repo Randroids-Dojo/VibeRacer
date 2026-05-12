@@ -19,6 +19,7 @@ describe('defaultCareer', () => {
     expect(c.money).toBe(CAREER_STARTING_MONEY)
     expect(c.ownedCarIds).toEqual([CAREER_STARTING_CAR_ID])
     expect(c.activeCarId).toBe(CAREER_STARTING_CAR_ID)
+    expect(c.activeCarDamage).toBe(0)
     expect(c.completedTourIds).toEqual([])
     expect(c.unlockedTourIds).toEqual([CAREER_FIRST_TOUR_ID])
     expect(c.activeTour).toBeNull()
@@ -41,6 +42,7 @@ describe('cloneCareer', () => {
       money: 500,
       ownedCarIds: ['starter', 'red'],
       activeCarId: 'red',
+      activeCarDamage: 0.4,
       completedTourIds: ['velvet-coast'],
       unlockedTourIds: ['velvet-coast', 'iron-borough'],
       activeTour: {
@@ -92,6 +94,7 @@ describe('migrateCareer', () => {
       money: 2500,
       ownedCarIds: ['starter', 'speeder'],
       activeCarId: 'speeder',
+      activeCarDamage: 0.15,
       completedTourIds: ['velvet-coast'],
       unlockedTourIds: ['velvet-coast', 'iron-borough'],
       activeTour: {
@@ -171,6 +174,17 @@ describe('migrateCareer', () => {
     })
     expect(out.activeTour).toBeNull()
     expect(out.money).toBe(100)
+  })
+
+  it('clamps activeCarDamage into [0, 1] and defaults to 0 when missing', () => {
+    const a = migrateCareer({ version: 1, activeCarDamage: 2 })
+    expect(a.activeCarDamage).toBe(1)
+    const b = migrateCareer({ version: 1, activeCarDamage: -0.5 })
+    expect(b.activeCarDamage).toBe(0)
+    const c = migrateCareer({ version: 1 })
+    expect(c.activeCarDamage).toBe(0)
+    const d = migrateCareer({ version: 1, activeCarDamage: 'broken' })
+    expect(d.activeCarDamage).toBe(0)
   })
 
   it('dedupes owned, completed, and unlocked id lists', () => {

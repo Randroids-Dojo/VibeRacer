@@ -44,10 +44,10 @@ export default function TourResultsPage() {
   }
 
   const summary = buildTourCompletionSummary(championship, result)
-  const continueHref =
-    result.nextRace !== null
-      ? `/tour/race?tour=${encodeURIComponent(result.nextRace.tourId)}&raceIndex=${result.nextRace.raceIndex}`
-      : '/tour'
+  // Mid-tour: route through the garage so the player can repair and
+  // see the next race card before committing. Final-race: send back to
+  // the tour selection screen.
+  const continueHref = result.nextRace !== null ? '/tour/garage' : '/tour'
 
   return (
     <main style={pageStyle}>
@@ -112,7 +112,7 @@ export default function TourResultsPage() {
         ) : null}
 
         <Link href={continueHref} style={ctaStyle}>
-          {result.nextRace ? 'Continue tour' : 'Back to tours'}
+          {result.nextRace ? 'To the garage' : 'Back to tours'}
         </Link>
       </div>
     </main>

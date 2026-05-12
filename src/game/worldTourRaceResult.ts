@@ -111,6 +111,10 @@ export interface RaceResult {
   cashBaseEarned: number
   bonusEarned: number
   cashEarned: number
+  // Player's car damage at the end of the race, in [0, 1]. The tour-
+  // progress reducer writes this back to the career so the garage page
+  // can show the right repair cost.
+  playerDamage: number
   tourProgress: TourProgressPayload
   // The next race in the tour, or null on the final race. Lets the
   // results-page CTA route straight to the next race without re-
@@ -177,6 +181,15 @@ export function buildRaceResult(
 
   const cashEarned = cashBaseEarned + bonusEarned
 
+  // Surface the player's post-race damage so the tour-progress reducer
+  // can write it back to the career. The race-session always carries
+  // the player at car index 0.
+  const playerCar = input.finalState.cars[0]
+  const playerDamage =
+    playerCar && Number.isFinite(playerCar.damage)
+      ? Math.min(1, Math.max(0, playerCar.damage))
+      : 0
+
   const next = nextTourOf(input.championship, tour.id)
   const nextRaceIndex = isFinalRace ? null : input.trackIndex + 1
   const nextRace =
@@ -202,6 +215,7 @@ export function buildRaceResult(
     cashBaseEarned,
     bonusEarned,
     cashEarned,
+    playerDamage,
     tourProgress: {
       tourId: tour.id,
       raceIndex: input.trackIndex,

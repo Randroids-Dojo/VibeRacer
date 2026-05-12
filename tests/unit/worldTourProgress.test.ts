@@ -24,6 +24,7 @@ function midTourResult(overrides: Partial<RaceResult> = {}): RaceResult {
     cashBaseEarned: 500,
     bonusEarned: 0,
     cashEarned: 500,
+    playerDamage: 0,
     tourProgress: {
       tourId: VELVET_COAST_TOUR_ID,
       raceIndex: 0,
@@ -52,6 +53,7 @@ function finalTourResult(overrides: Partial<RaceResult> = {}): RaceResult {
     cashBaseEarned: 500,
     bonusEarned: 1000,
     cashEarned: 1500,
+    playerDamage: 0,
     tourProgress: {
       tourId: VELVET_COAST_TOUR_ID,
       raceIndex: 3,
@@ -117,6 +119,41 @@ describe('applyRaceResult (mid-tour)', () => {
     })
     expect(repeat.career).toEqual(seed.career)
     expect(repeat.career.money).toBe(seed.career.money)
+  })
+})
+
+describe('applyRaceResult (damage)', () => {
+  it('writes the post-race damage back to the career', () => {
+    const out = applyRaceResult({
+      career: defaultCareer(),
+      raceResult: midTourResult({ playerDamage: 0.35 }),
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out.career.activeCarDamage).toBeCloseTo(0.35)
+  })
+
+  it('clamps post-race damage into [0, 1]', () => {
+    const out = applyRaceResult({
+      career: defaultCareer(),
+      raceResult: midTourResult({ playerDamage: 2 }),
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out.career.activeCarDamage).toBe(1)
+  })
+
+  it('does not bump damage when the race left the car clean', () => {
+    const seed: WorldTourCareer = {
+      ...defaultCareer(),
+      activeCarDamage: 0.2,
+    }
+    const out = applyRaceResult({
+      career: seed,
+      raceResult: midTourResult({ playerDamage: 0 }),
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    // The race carried 0.2 damage in; clean run still ends at 0 damage
+    // (the race session updates the field continuously while racing).
+    expect(out.career.activeCarDamage).toBe(0)
   })
 })
 

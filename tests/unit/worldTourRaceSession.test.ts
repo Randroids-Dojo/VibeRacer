@@ -70,6 +70,45 @@ describe('createRaceSession', () => {
       expect(car.physics.heading).toBe(0)
     }
   })
+
+  it('carries the playerInitialDamage onto the player car', () => {
+    const s = createRaceSession({
+      slotCount: 2,
+      laneCount: 1,
+      aiDrivers: [{ id: 'a' }],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 200,
+      playerCarId: 'starter',
+      playerInitialDamage: 0.4,
+    })
+    expect(s.cars[0]!.damage).toBeCloseTo(0.4)
+    expect(s.cars[1]!.damage).toBe(0)
+  })
+
+  it('clamps an out-of-range playerInitialDamage and defaults to 0', () => {
+    const a = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 200,
+      playerCarId: 'starter',
+      playerInitialDamage: 2,
+    })
+    expect(a.cars[0]!.damage).toBe(1)
+    const b = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 200,
+      playerCarId: 'starter',
+    })
+    expect(b.cars[0]!.damage).toBe(0)
+  })
 })
 
 describe('stepRaceSession (countdown)', () => {
