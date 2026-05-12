@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { MeshStandardMaterial } from 'three'
+import { Mesh, MeshStandardMaterial } from 'three'
 import {
   createDamageVisualizer,
   tierFromFraction,
@@ -39,7 +39,8 @@ describe('createDamageVisualizer', () => {
     const car = initCarState(0, DERBY_VEHICLES.car, {
       x: 0, z: 0, heading: 0, speed: 0,
     })
-    const bodyMat = asset.submeshes.body.material as MeshStandardMaterial
+    const bodyMesh = asset.submeshes.body as Mesh
+    const bodyMat = bodyMesh.material as MeshStandardMaterial
     const r0 = bodyMat.color.r
     car.health = car.maxHealth * 0.5 // moderate tier
     viz.update(car)
@@ -54,10 +55,11 @@ describe('createDamageVisualizer', () => {
     const car = initCarState(0, DERBY_VEHICLES.car, {
       x: 0, z: 0, heading: 0, speed: 0,
     })
-    const originalMat = asset.submeshes.headlight_l.material
+    const headlightMesh = asset.submeshes.headlight_l as Mesh
+    const originalMat = headlightMesh.material
     car.health = car.maxHealth * 0.5
     viz.update(car)
-    expect(asset.submeshes.headlight_l.material).not.toBe(originalMat)
+    expect(headlightMesh.material).not.toBe(originalMat)
     viz.dispose()
   })
 
@@ -67,13 +69,14 @@ describe('createDamageVisualizer', () => {
     const car = initCarState(0, DERBY_VEHICLES.car, {
       x: 0, z: 0, heading: 0, speed: 0,
     })
-    const originalMat = asset.submeshes.taillight_l.material
+    const taillightMesh = asset.submeshes.taillight_l as Mesh
+    const originalMat = taillightMesh.material
     car.health = car.maxHealth * 0.5 // moderate tier (0.4..0.6)
     viz.update(car)
-    expect(asset.submeshes.taillight_l.material).toBe(originalMat)
+    expect(taillightMesh.material).toBe(originalMat)
     car.health = car.maxHealth * 0.15 // heavy tier (0.0..0.2 dropping into critical)
     viz.update(car)
-    expect(asset.submeshes.taillight_l.material).not.toBe(originalMat)
+    expect(taillightMesh.material).not.toBe(originalMat)
     viz.dispose()
   })
 

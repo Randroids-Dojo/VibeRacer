@@ -354,66 +354,52 @@ def build_door_slabs(
     length: float,
     interior_mat: bpy.types.Material,
 ) -> tuple[bpy.types.Object, bpy.types.Object]:
-    """Cut a left and right "door" piece off the body. We duplicate the
-    chassis body and bisect along a plane just inside each side face so
-    the door slab carries the body's side curve."""
+    """Build small "door" overlay boxes positioned flush against the body's
+    side panels. Truly slicing a door piece out of Kenney's shell bodies
+    risks leaving zero-vertex meshes (the shell is thin so multi-axis
+    bisect can over-eat). Overlays are reliable: every variant always
+    ships a real, non-empty mesh for both doors so assertVehicleContract
+    can never reject the GLB on door grounds. The cost is a small visible
+    decal sitting on the door region; on detach, the overlay flies off
+    and the chassis remains. The Kenney source for ambulance ships
+    doors as separate Nodes and the rename_source_doors path uses those
+    directly — this overlay code is only the fallback for variants that
+    do not."""
     mn, mx = world_bbox(body)
     side_idx = ("x", "y", "z").index(axes["side"])
-    up_idx = ("x", "y", "z").index("z")
-    side_min = mn[side_idx]
-    side_max = mx[side_idx]
-    up_min = mn[up_idx]
-    up_max = mx[up_idx]
-    door_height = (up_max - up_min) * variant.door_slab_height_frac
-    door_z_min = up_min + (up_max - up_min) * 0.20
-
-    # door_l: keep only the -side half of the body slab.
-    door_l = duplicate(body, "door_l")
-    plane_co = mn.copy()
-    plane_co[side_idx] = side_min + variant.door_slab_inset
-    bisect_in_place(door_l, plane_co, side, clear_outer=True, clear_inner=False)
-    add_interior_material_to_caps(door_l, interior_mat, side)
-
-    door_r = duplicate(body, "door_r")
-    plane_co2 = mx.copy()
-    plane_co2[side_idx] = side_max - variant.door_slab_inset
-    bisect_in_place(door_r, plane_co2, -side, clear_outer=True, clear_inner=False)
-    add_interior_material_to_caps(door_r, interior_mat, -side)
-
-    # Clip door slabs along the forward axis to a window centered on the
-    # door region (~40% of length around mid).
-    fwd = axis_vec(axes["forward"])
     fwd_idx = ("x", "y", "z").index(axes["forward"])
-    door_len = length * variant.door_slab_len_frac
-    door_center = (fwd_min + length / 2)
-    door_fwd_min = door_center - door_len / 2
-    door_fwd_max = door_center + door_len / 2
-    for obj in (door_l, door_r):
-        # Trim front.
-        plane = mn.copy()
-        plane[fwd_idx] = door_fwd_min
-        bisect_in_place(obj, plane, fwd, clear_outer=True, clear_inner=False)
-        add_interior_material_to_caps(obj, interior_mat, fwd)
-        # Trim back.
-        plane = mx.copy()
-        plane[fwd_idx] = door_fwd_max
-        bisect_in_place(obj, plane, -fwd, clear_outer=True, clear_inner=False)
-        add_interior_material_to_caps(obj, interior_mat, -fwd)
-        # Clip top of door so it does not include the roof.
-        plane = mx.copy()
-        plane[up_idx] = door_z_min + door_height
-        bisect_in_place(obj, plane, -axis_vec("z"), clear_outer=True, clear_inner=False)
-        add_interior_material_to_caps(obj, interior_mat, -axis_vec("z"))
+    up_idx = ("x", "y", "z").index("z")
+    width = mx[side_idx] - mn[side_idx]
+    height = mx[up_idx] - mn[up_idx]
+    door_height = max(0.4, height * 0.45)
+    door_z = mn[up_idx] + height * 0.35
+    door_len = max(0.6, length * 0.42)
+    door_fwd_center = fwd_min + length * 0.50
+    door_thickness = 0.05
 
-    # Subtract the door volume from the body so the chassis no longer
-    # carries those slabs.
-    # NOTE: real boolean subtraction is expensive and Kenney's bodies tend
-    # to be shells, not solids, so a simple bisect leaves clean cuts. We
-    # leave the body's side panels intact; on detach, the door slab fly
-    # off and the slab area remains visible (a real future polish would
-    # paint a dark interior strip behind the door region). The slab is
-    # thin enough that the visual mismatch is acceptable for v1.
+    def make_door(name: str, side_sign: int) -> bpy.types.Object:
+        loc = [0.0, 0.0, 0.0]
+        loc[side_idx] = side_sign * (width / 2 + door_thickness / 2)
+        loc[fwd_idx] = door_fwd_center
+        loc[up_idx] = door_z + door_height / 2
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=tuple(loc))
+        obj = bpy.context.active_object
+        obj.name = name
+        scale = [0.0, 0.0, 0.0]
+        scale[side_idx] = door_thickness
+        scale[fwd_idx] = door_len
+        scale[up_idx] = door_height
+        obj.scale = Vector(scale)
+        bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
+        # Use the body's first material so the door overlay matches the
+        # car's paint color out of the gate; the runtime tintBody pass
+        # also recolors it per derby slot.
+        if body.data.materials:
+            obj.data.materials.append(body.data.materials[0])
+        return obj
 
+    door_l = make_door("door_l", -1)
+    door_r = make_door("door_r", +1)
     return door_l, door_r
 
 

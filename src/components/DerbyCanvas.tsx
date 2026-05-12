@@ -23,6 +23,7 @@ import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
 import {
   FRONT_WHEEL_NAMES,
   WHEEL_NAMES,
+  firstMeshOf,
   loadDerbyVehicleAsset,
   type DerbyVehicleAsset,
 } from '@/game/derbyVehicleLoader'
@@ -473,7 +474,8 @@ function clamp(n: number, lo: number, hi: number): number {
 // equals the wheel diameter; halving gives the radius. Cached on the
 // asset via userData so we only measure once per car.
 function measureWheelRadius(asset: DerbyVehicleAsset): number {
-  const wheel = asset.submeshes.wheel_fl
+  const wheel = firstMeshOf(asset.submeshes.wheel_fl)
+  if (!wheel) return 0.36
   wheel.geometry.computeBoundingBox()
   const box = wheel.geometry.boundingBox
   if (!box) return 0.36

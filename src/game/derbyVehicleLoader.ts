@@ -57,7 +57,13 @@ export interface WheelPivot {
 
 export interface DerbyVehicleAsset {
   group: Group
-  submeshes: Record<RequiredSubmeshName, Mesh>
+  // The contract-named meshes / groups. Authored GLBs can have a body /
+  // hood / trunk node with multiple primitives (paint + glass), in which
+  // case Three.js's GLTFLoader wraps the primitives under a Group named
+  // for the node and gives the child meshes auto-numbered names. We
+  // accept Object3D here and resolve to the underlying Mesh(es) on a
+  // case-by-case basis (see firstMeshOf / meshesOf below).
+  submeshes: Record<RequiredSubmeshName, Object3D>
   // Per-wheel pivot groups for steering and rolling. Wired up by
   // attachWheelPivots() so DerbyCanvas can drive them each frame.
   wheelPivots: Record<WheelName, WheelPivot>
@@ -65,6 +71,31 @@ export interface DerbyVehicleAsset {
   // round ends. Procedural assets register everything; GLB loaders should
   // register textures and material clones the same way.
   dispose: () => void
+}
+
+// First Mesh descendant of `node` (or `node` itself when it's a Mesh).
+// Used by the visualizer when it needs a `.material` reference: for a
+// multi-primitive node, any one of the underlying primitives is good
+// enough as the "primary paint" mesh.
+export function firstMeshOf(node: Object3D): Mesh | null {
+  if (node instanceof Mesh) return node
+  let found: Mesh | null = null
+  node.traverse((child) => {
+    if (found) return
+    if (child instanceof Mesh) found = child
+  })
+  return found
+}
+
+// All Mesh descendants of `node` (or `[node]` when it's a Mesh). Used for
+// operations that should apply uniformly across every primitive — paint
+// tinting, broken-light material swap.
+export function meshesOf(node: Object3D): Mesh[] {
+  const out: Mesh[] = []
+  node.traverse((child) => {
+    if (child instanceof Mesh) out.push(child)
+  })
+  return out
 }
 
 const VEHICLE_BODY_HEIGHT = 1.0
@@ -79,11 +110,18 @@ const LIGHT_SIZE = 0.25
 // nest required parts under intermediate empties or transform nodes
 // (Blender's exporter sometimes does this).
 export function assertVehicleContract(group: Group): DerbyVehicleAsset {
-  const found: Partial<Record<RequiredSubmeshName, Mesh>> = {}
+  const found: Partial<Record<RequiredSubmeshName, Object3D>> = {}
   group.traverse((node) => {
-    if (!(node instanceof Mesh)) return
-    if ((REQUIRED_SUBMESHES as readonly string[]).includes(node.name)) {
-      found[node.name as RequiredSubmeshName] = node
+    // Accept either a Mesh or any Object3D that has at least one Mesh
+    // descendant. glTF nodes with multiple primitives come through as a
+    // Group named after the source node and Mesh children with
+    // auto-numbered names; we match on the parent's name and let the
+    // visualizer drill into the children when it needs Mesh references.
+    if (!(REQUIRED_SUBMESHES as readonly string[]).includes(node.name)) return
+    if (node instanceof Mesh || firstMeshOf(node) !== null) {
+      if (!found[node.name as RequiredSubmeshName]) {
+        found[node.name as RequiredSubmeshName] = node
+      }
     }
   })
   const missing: RequiredSubmeshName[] = []
@@ -95,7 +133,7 @@ export function assertVehicleContract(group: Group): DerbyVehicleAsset {
       `derby vehicle asset is missing required submeshes: ${missing.join(', ')}`,
     )
   }
-  const submeshes = found as Record<RequiredSubmeshName, Mesh>
+  const submeshes = found as Record<RequiredSubmeshName, Object3D>
   const wheelPivots = attachWheelPivots(group, submeshes)
   return {
     group,
@@ -112,7 +150,7 @@ export function assertVehicleContract(group: Group): DerbyVehicleAsset {
 // wheel's original world location so the wheel does not visually shift.
 function attachWheelPivots(
   parent: Group,
-  submeshes: Record<RequiredSubmeshName, Mesh>,
+  submeshes: Record<RequiredSubmeshName, Object3D>,
 ): Record<WheelName, WheelPivot> {
   parent.updateMatrixWorld(true)
   const pivots = {} as Record<WheelName, WheelPivot>
@@ -207,18 +245,30 @@ export async function loadDerbyVehicleAsset(
   return assertVehicleContract(group)
 }
 
-// Tint the body mesh's material so each vehicle reads as a distinct color
-// without re-baking the GLB. Clones the material so the tint does not bleed
-// between cars that share the same source material instance.
+// Tint the painted submeshes so each vehicle reads as a distinct color
+// without re-baking the GLB. The contract names (body, hood, trunk,
+// door_l, door_r) may resolve to either a single Mesh or a parent Group
+// of multiple Mesh primitives (paint + glass on the Kenney source). We
+// recolor every Mesh descendant of those nodes. Materials are cloned so
+// the tint does not bleed across cars that share a source material.
+const PAINT_NODE_NAMES: ReadonlySet<string> = new Set([
+  'body',
+  'hood',
+  'trunk',
+  'door_l',
+  'door_r',
+])
+
 function tintBody(group: Group, paintColor: number): void {
   group.traverse((node) => {
-    if (!(node instanceof Mesh)) return
-    if (node.name !== 'body' && node.name !== 'hood' && node.name !== 'trunk' && !node.name.startsWith('door_')) return
-    const mat = node.material
-    if (Array.isArray(mat)) {
-      node.material = mat.map((m) => recolorMaterial(m, paintColor))
-    } else if (mat) {
-      node.material = recolorMaterial(mat, paintColor)
+    if (!PAINT_NODE_NAMES.has(node.name)) return
+    for (const mesh of meshesOf(node)) {
+      const mat = mesh.material
+      if (Array.isArray(mat)) {
+        mesh.material = mat.map((m) => recolorMaterial(m, paintColor))
+      } else if (mat) {
+        mesh.material = recolorMaterial(mat, paintColor)
+      }
     }
   })
 }

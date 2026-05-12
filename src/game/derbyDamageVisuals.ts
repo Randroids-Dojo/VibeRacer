@@ -4,12 +4,14 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  type Object3D,
   Quaternion,
   Vector3,
 } from 'three'
-import type {
-  DerbyVehicleAsset,
-  RequiredSubmeshName,
+import {
+  meshesOf,
+  type DerbyVehicleAsset,
+  type RequiredSubmeshName,
 } from './derbyVehicleLoader'
 import type { DerbyCarState } from './derbyVehicleState'
 
@@ -76,7 +78,7 @@ export interface DerbyDamageVisualizer {
     worldNz: number,
     victimHeading: number,
     rng: () => number,
-  ): Mesh | null
+  ): Object3D | null
   // Free any allocations the visualizer added to the asset. Restores the
   // original paint and light materials so the asset can be reused for a
   // future round (not used in v1; round end disposes the asset entirely).
@@ -100,11 +102,17 @@ export function createDamageVisualizer(
 ): DerbyDamageVisualizer {
   // Capture original paint colors. We work against material color rather
   // than swapping materials so the renderer can keep the same instance
-  // across tier changes.
-  const paintEntries: PaintEntry[] = PAINT_TARGET_NAMES.map((name) => {
-    const mesh = asset.submeshes[name]
-    const mat = mesh.material as MeshStandardMaterial
-    return { mesh, originalColor: mat.color.clone() }
+  // across tier changes. A multi-primitive node (e.g. body with paint +
+  // glass slots from the Kenney source) becomes one PaintEntry per Mesh
+  // descendant; tier changes apply uniformly to every primitive so the
+  // whole panel reads as one paint surface.
+  const paintEntries: PaintEntry[] = PAINT_TARGET_NAMES.flatMap((name) => {
+    const node = asset.submeshes[name]
+    if (!node) return []
+    return meshesOf(node).map((mesh) => {
+      const mat = mesh.material as MeshStandardMaterial
+      return { mesh, originalColor: mat.color.clone() }
+    })
   })
 
   const lightEntries: LightEntry[] = (
@@ -114,16 +122,19 @@ export function createDamageVisualizer(
       'taillight_l',
       'taillight_r',
     ] as RequiredSubmeshName[]
-  ).map((name) => {
-    const mesh = asset.submeshes[name]
-    const mat = mesh.material as MeshStandardMaterial
-    const broken = new MeshStandardMaterial({
-      color: 0x222222,
-      emissive: 0x000000,
-      roughness: 0.7,
-      metalness: 0.0,
+  ).flatMap((name) => {
+    const node = asset.submeshes[name]
+    if (!node) return []
+    return meshesOf(node).map((mesh) => {
+      const mat = mesh.material as MeshStandardMaterial
+      const broken = new MeshStandardMaterial({
+        color: 0x222222,
+        emissive: 0x000000,
+        roughness: 0.7,
+        metalness: 0.0,
+      })
+      return { mesh, originalMaterial: mat, brokenMaterial: broken, broken: false }
     })
-    return { mesh, originalMaterial: mat, brokenMaterial: broken, broken: false }
   })
 
   // Smoke / fire markers: parented to the asset group so they follow the
