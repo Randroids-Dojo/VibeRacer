@@ -136,58 +136,61 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     health: 200,
     baseDamage: 14,
     mass: 1300,
-    // collisionRadius pads the broad phase so it never misses an OBB
-    // overlap. Set to half the bounding-box diagonal of the GLB plus a
-    // small safety margin; tools/blender/build_derby_vehicle.py builds the
-    // sedan at width 1.85 / length 4.20, half-diagonal ~2.30.
-    collisionRadius: 2.35,
-    obbHalfWidth: 0.95,
-    obbHalfLength: 2.15,
+    // Kenney CC0 sedan, sliced into named submeshes in
+    // tools/blender/slice_kenney_vehicle.py. GLB bbox: W 4.50 x L 3.67.
+    // Half-diagonal = 2.91; bump to 3.0 so the broad phase always wraps
+    // any OBB overlap.
+    collisionRadius: 3.00,
+    obbHalfWidth: 2.25,
+    obbHalfLength: 1.83,
     theoreticalMinWinMs: theoreticalMinWinMs(14),
     blurb: 'Balanced ride. Enough speed to chase, enough HP to trade hits.',
   },
   schoolBus: {
+    // 'schoolBus' is the internal type id (kept stable so the leaderboard
+    // schemas keep parsing existing entries); the displayName / GLB ship
+    // the Kenney CC0 ambulance.
     type: 'schoolBus',
-    displayName: 'School Bus',
+    displayName: 'Ambulance',
     modelUrl: '/models/derby/schoolBus.glb',
     carParams: SCHOOL_BUS_PARAMS,
     health: 400,
     baseDamage: 16,
     mass: 2800,
-    // GLB is width 2.40 / length 7.80; half-diagonal ~4.07.
-    collisionRadius: 4.10,
-    obbHalfWidth: 1.25,
-    obbHalfLength: 3.95,
+    // GLB bbox: W 4.80 x L 6.45. Half-diagonal ~4.04.
+    collisionRadius: 4.20,
+    obbHalfWidth: 2.40,
+    obbHalfLength: 3.22,
     theoreticalMinWinMs: theoreticalMinWinMs(16),
-    blurb: 'Massive rolling tank. Soaks dozens of hits and shoves anything sideways.',
+    blurb: 'Long-wheelbase tank. Soaks dozens of hits and shoves anything sideways.',
   },
   bigTruck: {
     type: 'bigTruck',
-    displayName: 'Big Truck',
+    displayName: 'Pickup Truck',
     modelUrl: '/models/derby/bigTruck.glb',
     carParams: BIG_TRUCK_PARAMS,
     health: 320,
     baseDamage: 24,
     mass: 2400,
-    // GLB is width 2.30 / length 5.40; half-diagonal ~2.94.
-    collisionRadius: 3.00,
-    obbHalfWidth: 1.20,
-    obbHalfLength: 2.75,
+    // GLB bbox: W 5.10 x L 4.81. Half-diagonal ~3.51.
+    collisionRadius: 3.60,
+    obbHalfWidth: 2.55,
+    obbHalfLength: 2.40,
     theoreticalMinWinMs: theoreticalMinWinMs(24),
     blurb: 'Heavy hitter. The hardest single hit in the field; chews through lighter cars.',
   },
   racecar: {
     type: 'racecar',
-    displayName: 'Racecar',
+    displayName: 'Race Car',
     modelUrl: '/models/derby/racecar.glb',
     carParams: RACECAR_PARAMS,
     health: 130,
     baseDamage: 12,
     mass: 900,
-    // GLB is width 1.95 / length 4.55; half-diagonal ~2.47.
-    collisionRadius: 2.55,
-    obbHalfWidth: 1.00,
-    obbHalfLength: 2.30,
+    // GLB bbox: W 4.20 x L 3.76. Half-diagonal ~2.82.
+    collisionRadius: 2.95,
+    obbHalfWidth: 2.10,
+    obbHalfLength: 1.88,
     theoreticalMinWinMs: theoreticalMinWinMs(12),
     blurb: 'Glass cannon on wheels. Outmaneuver heavies or you melt in a handful of hits.',
   },
