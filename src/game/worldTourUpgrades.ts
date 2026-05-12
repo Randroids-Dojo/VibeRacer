@@ -1,8 +1,7 @@
 /**
  * World Tour car upgrades. Per-zone tier integers on the career save
- * scale the player's physics parameters. Phase 3 ships four zones
- * (engine, tires, brakes, body); each zone has four tiers (0 = stock,
- * 3 = top spec).
+ * scale the player's physics parameters. Four zones (engine, tires,
+ * brakes, body); each zone has four tiers (0 = stock, 3 = top spec).
  *
  * Pure: no IO, no Date.now, no Math.random. Idempotent purchase
  * helpers; price curve is a closed form so the UI and the reducer

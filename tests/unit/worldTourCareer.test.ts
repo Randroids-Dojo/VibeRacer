@@ -6,9 +6,11 @@ import {
   CAREER_STARTING_MONEY,
   cloneCareer,
   defaultCareer,
+  getActiveCar,
   hasActiveTour,
   isCareerComplete,
   migrateCareer,
+  withActiveCarState,
   type WorldTourCareer,
 } from '@/game/worldTourCareer'
 
@@ -264,6 +266,54 @@ describe('migrateCareer', () => {
     expect(out.ownedCarIds).toEqual(['a', 'b'])
     expect(out.completedTourIds).toEqual(['t1'])
     expect(out.unlockedTourIds).toEqual(['velvet-coast', 't2'])
+  })
+})
+
+describe('getActiveCar', () => {
+  it('returns the active car slot from carsById', () => {
+    const career = defaultCareer()
+    career.carsById[CAREER_STARTING_CAR_ID]!.damage = 0.6
+    const active = getActiveCar(career)
+    expect(active.damage).toBe(0.6)
+  })
+
+  it('returns a stock placeholder when the active car is missing from carsById', () => {
+    const career = defaultCareer()
+    career.activeCarId = 'ghost-id'
+    const active = getActiveCar(career)
+    expect(active.damage).toBe(0)
+    expect(active.upgrades).toEqual({
+      engine: 0,
+      tires: 0,
+      brakes: 0,
+      body: 0,
+    })
+  })
+})
+
+describe('withActiveCarState', () => {
+  it('patches damage without touching upgrades', () => {
+    const career = defaultCareer()
+    career.carsById[CAREER_STARTING_CAR_ID]!.upgrades = {
+      engine: 2,
+      tires: 0,
+      brakes: 0,
+      body: 0,
+    }
+    const next = withActiveCarState(career, {
+      damage: 0.3,
+    })
+    expect(next.carsById[CAREER_STARTING_CAR_ID]!.damage).toBe(0.3)
+    expect(next.carsById[CAREER_STARTING_CAR_ID]!.upgrades.engine).toBe(2)
+  })
+
+  it('returns a fresh career and does not mutate the input', () => {
+    const career = defaultCareer()
+    const next = withActiveCarState(career, {
+      damage: 0.5,
+    })
+    expect(next).not.toBe(career)
+    expect(career.carsById[CAREER_STARTING_CAR_ID]!.damage).toBe(0)
   })
 })
 

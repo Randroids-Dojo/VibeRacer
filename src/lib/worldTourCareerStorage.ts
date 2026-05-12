@@ -5,10 +5,10 @@
  * that subscribes (home-page tile, garage panel, tour-selection screen)
  * can refresh live without a polling timer.
  *
- * Single global key. The career is intentionally not per-track and not
- * per-slug; it tracks the player's progression through the championship.
- * The optional KV mirror under `worldTour:career:{initials}` (Phase 6e in
- * the World Tour plan) is opt-in and not handled here.
+ * Single global key. The career is intentionally not per-track and
+ * not per-slug; it tracks the player's progression through the
+ * championship. A KV mirror keyed by initials for cross-device resume
+ * is a known followup and lives outside this module.
  */
 
 import { z } from 'zod'
@@ -99,17 +99,3 @@ export function writeCareer(next: WorldTourCareer): CareerWriteResult {
   return { ok: true, career: out }
 }
 
-/**
- * Test-only helper. Wipes the stored career so a unit test can reset the
- * world between cases. Real flows should never call this; the career
- * intentionally has no built-in reset button so a player cannot
- * accidentally undo their progression.
- */
-export function _clearCareerForTesting(): void {
-  if (typeof window === 'undefined') return
-  try {
-    window.localStorage.removeItem(WORLD_TOUR_CAREER_STORAGE_KEY)
-  } catch {
-    // ignore
-  }
-}

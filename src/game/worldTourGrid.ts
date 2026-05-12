@@ -38,11 +38,12 @@ export interface GridDriver {
 }
 
 export interface SpawnGridInput {
-  // Number of grid slots, including the player's pole slot. For the MVP
-  // (player plus three AI) this is 4. The output array always has
-  // exactly `slotCount` entries.
+  // Number of grid slots, including the player's pole slot. Velvet
+  // Coast (player plus three AI) uses 4; later tours use 12. The
+  // output array always has exactly `slotCount` entries.
   readonly slotCount: number
-  // Lane count across the grid. The MVP uses 2; Phase 4 scales to 3.
+  // Lane count across the grid. Velvet Coast (4-car field) uses 2;
+  // 12-car tours use 3 so the grid is 3 lanes by 4 rows.
   readonly laneCount: number
   // Effective track width at the start segment, used to space lanes
   // across the full road. Defaults to `DEFAULT_TRACK_WIDTH`.

@@ -29,8 +29,9 @@ export const CAREER_SCHEMA_VERSION = 1 as const
 // player has to earn purse money before progressing the car.
 export const CAREER_STARTING_MONEY = 1000
 
-// The seed car every player starts with. The car-spec table lives in the
-// championship data module; this constant is the id contract.
+// The seed car every player starts with. The full car catalog lives
+// in `src/game/worldTourCars.ts`; this constant is the id contract
+// for the starter.
 export const CAREER_STARTING_CAR_ID = 'starter'
 
 // The first unlocked tour. A fresh career has exactly this id in both

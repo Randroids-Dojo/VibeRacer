@@ -3,26 +3,27 @@
  * championship constants (one bundled championship `world-tour-standard`
  * with one tour `velvet-coast`) live in `src/data/worldTourChampionship.ts`.
  *
- * A `Championship` is an ordered list of `Tour`s; the tour order is the
- * unlock order. A `Tour` declares its four track ids (the four races the
- * player runs in order), an aggregate `requiredStanding` the player must
- * meet across the four races to pass and unlock the next tour, an
- * `aiDriverIds` roster (length must equal `tour.fieldSize - 1`), and a
- * `region` color theme. The MVP runs at `FIELD_SIZE_MVP = 4` (player plus
- * three AI); Phase 4 in the World Tour plan scales the field to 12.
+ * A `Championship` is an ordered list of `Tour`s; the tour order is
+ * the unlock order. A `Tour` declares its four track ids (the four
+ * races the player runs in order), an aggregate `requiredStanding`
+ * the player must meet across the four races to pass and unlock the
+ * next tour, an `aiDriverIds` roster (length must equal
+ * `tour.fieldSize - 1`), and a `region` color theme. Velvet Coast
+ * (the opener) runs at `FIELD_SIZE_MVP = 4`; the rest of the tours
+ * run at `FIELD_SIZE_FULL = 12` (3 lanes by 4 rows).
  *
  * Pure functions only. No localStorage, no IO, no Date.now, no
  * Math.random. Same inputs always produce deep-equal outputs.
  */
 
-// MVP field size: player plus three AI opponents. Phase 4 of the World
-// Tour plan scales this to 12. Keep the constant in this module so the
-// race-session and grid-spawn code can size their arrays without hard-
-// coding a literal.
+// MVP field size: player plus three AI opponents. Velvet Coast (the
+// opener) ships at this size to keep the launch tutorial mellow.
+// Keep the constant in this module so the race-session and grid-spawn
+// code can size their arrays without hard-coding a literal.
 export const FIELD_SIZE_MVP = 4
 
-// Long-term target field size from the World Tour plan. Currently unused
-// at runtime, exported for documentation and forward planning.
+// Full grid: player plus eleven AI opponents (3 lanes by 4 rows).
+// Tours 2 and onward use this size.
 export const FIELD_SIZE_FULL = 12
 
 /**
@@ -38,10 +39,10 @@ export interface AiDriver {
 }
 
 /**
- * Weather tag the tour applies to every race. The MVP keeps this fixed
- * per tour (Velvet Coast is "clear"). Phase 4 of the plan introduces
- * per-tour variation (cloudy, rainy, snow). The value is a free-form
- * string here; the renderer resolves it via the existing weather table.
+ * Weather tag the tour applies to every race. Each tour pins one
+ * per tour. Velvet Coast is clear; later tours pick from cloudy,
+ * rainy, and snow. The value is a free-form string here; the
+ * renderer resolves it via the existing weather table.
  */
 export type TourWeather = 'clear' | 'cloudy' | 'rainy' | 'snow'
 

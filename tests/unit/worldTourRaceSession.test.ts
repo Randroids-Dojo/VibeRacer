@@ -137,6 +137,30 @@ describe('createRaceSession (upgrades)', () => {
     )
   })
 
+  it('uses the catalog base params for the player carId', () => {
+    const onStarter = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 100,
+      playerCarId: 'starter',
+    })
+    const onApex = createRaceSession({
+      slotCount: 1,
+      laneCount: 1,
+      aiDrivers: [],
+      seed: 1,
+      totalLaps: 1,
+      lapDistanceMeters: 100,
+      playerCarId: 'apex',
+    })
+    expect(onApex.cars[0]!.params.maxSpeed).toBeGreaterThan(
+      onStarter.cars[0]!.params.maxSpeed,
+    )
+  })
+
   it('keeps AI cars at the supplied AI tiers', () => {
     const s = createRaceSession({
       slotCount: 2,

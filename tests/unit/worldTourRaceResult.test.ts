@@ -221,6 +221,51 @@ describe('buildRaceResult (errors)', () => {
   })
 })
 
+describe('full race -> result pipeline', () => {
+  it('produces a deterministic result under identical inputs', async () => {
+    const session = await import('@/game/worldTourRaceSession')
+    const flat = { centerXAt: () => 0, curveAt: () => 0 }
+    function run() {
+      let s = session.createRaceSession({
+        slotCount: 4,
+        laneCount: 2,
+        aiDrivers: [{ id: 'a' }, { id: 'b' }, { id: 'c' }],
+        seed: 99,
+        totalLaps: 1,
+        lapDistanceMeters: 60,
+        playerCarId: 'starter',
+      })
+      const fullThrottle = { throttle: 1, steer: 0, handbrake: false }
+      for (let i = 0; i < 60 * 12; i++) {
+        s = session.stepRaceSession(
+          s,
+          {
+            playerInput: fullThrottle,
+            dt: 1 / 60,
+            track: flat,
+            aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+          },
+          { totalLaps: 1, lapDistanceMeters: 60 },
+        )
+        if (s.phase === 'finished') break
+      }
+      return buildRaceResult({
+        finalState: s,
+        career: defaultCareer(),
+        championship: STANDARD_CHAMPIONSHIP,
+        tourId: VELVET_COAST_TOUR_ID,
+        trackIndex: 0,
+        playerCarId: 'starter',
+      })
+    }
+    const a = run()
+    const b = run()
+    expect(a.finishingOrder).toEqual(b.finishingOrder)
+    expect(a.playerPlacement).toBe(b.playerPlacement)
+    expect(a.pointsEarned).toBe(b.pointsEarned)
+  })
+})
+
 describe('aggregatePoints', () => {
   it('returns playerStanding 1 when the player has more points than every other car', () => {
     const career: WorldTourCareer = {

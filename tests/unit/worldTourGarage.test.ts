@@ -54,7 +54,21 @@ describe('difficultyTierForCareer', () => {
     ).toBe(0)
   })
 
-  it('returns the index of the active tour inside the championship order', () => {
+  it('returns the tour position when a later tour is active', () => {
+    const career: WorldTourCareer = {
+      ...defaultCareer(),
+      activeTour: {
+        tourId: STANDARD_CHAMPIONSHIP.tours[1]!.id,
+        raceIndex: 0,
+        results: [],
+      },
+    }
+    expect(
+      difficultyTierForCareer(STANDARD_CHAMPIONSHIP, career),
+    ).toBe(1)
+  })
+
+  it('returns the index of the opener (0) when Velvet Coast is active', () => {
     const career: WorldTourCareer = {
       ...defaultCareer(),
       activeTour: {

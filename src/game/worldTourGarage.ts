@@ -1,8 +1,8 @@
 /**
  * World Tour garage. Pure helpers for the repair flow between races.
- * Phase 2 ships a single "Repair fully" button at a flat per-percent
- * rate. Phase 4 layers a small per-tour difficulty markup; Phase 5
- * adds the upgrade and car-buy flows.
+ * The garage UI also exposes upgrade purchases (`worldTourUpgrades.ts`)
+ * and the car-buy market (`worldTourCars.ts`); the math here is just
+ * the repair side.
  *
  * Pure: no IO, no Date.now, no Math.random. The storage layer is the
  * existing `worldTourCareerStorage.ts`; this module only exposes the
@@ -23,10 +23,9 @@ import { findTour } from '@/lib/worldTourChampionship'
 // under a single race's earnings.
 export const REPAIR_COST_PER_PERCENT = 5
 
-// Extra cost markup per tour-completed difficulty step, in absolute
+// Extra cost markup per tour-position difficulty step, in absolute
 // credits per percent. Velvet Coast (the opener) adds nothing; later
-// tours scale up. Currently a flat schedule; Phase 4 may key off the
-// championship's tour ordering.
+// tours scale up linearly with the tour's index in the championship.
 export const REPAIR_COST_DIFFICULTY_MARKUP_PER_PERCENT = 1
 
 /**

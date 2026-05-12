@@ -24,8 +24,9 @@ import type { TourRaceResult, WorldTourCareer } from './worldTourCareer'
 
 /**
  * Placement points by 0-indexed finishing position. Index 0 (winner)
- * gets 10, then 7, 5, 3, etc. A car outside the array scores 0 (so the
- * 12-car expansion in Phase 4 only requires extending the table).
+ * gets 10, then 7, 5, 3, etc. A car outside the array scores 0; the
+ * table currently runs to 8 places, which covers the 12-car grid for
+ * scoring even though the bottom four cars earn nothing.
  */
 export const PLACEMENT_POINTS: number[] = [10, 7, 5, 3, 2, 1, 1, 1]
 
@@ -38,8 +39,8 @@ export const PLACEMENT_PURSE: number[] = [500, 350, 250, 150, 100, 75, 50, 25]
 
 /**
  * Tour-completion bonus paid when the player passes a tour on the
- * final race. Currently a flat amount; Phase 6 may scale it per tour
- * difficulty.
+ * final race. Flat across every tour today; a future balancing pass
+ * may scale this per tour difficulty.
  */
 export const TOUR_COMPLETION_BONUS = 1000
 
@@ -153,7 +154,7 @@ export function buildRaceResult(
     })()
   const standings = buildStandings(input.finalState)
   const playerEntry = standings.find((e) => e.isPlayer) ?? null
-  // The player is always car index 0 in this MVP. The defensive
+  // The player is always car index 0 in the grid. The defensive
   // fallback to a synthetic DNF entry keeps the downstream payload
   // valid even if a corrupt state lost the player.
   const playerPlacement = playerEntry?.placement ?? standings.length
@@ -264,9 +265,9 @@ function buildStandings(state: RaceSessionState): RaceStandingEntry[] {
  *
  * Each AI driver's per-race placement is approximated by their final
  * standing in the just-finished race for any race the career did not
- * record (the MVP only stores the player's per-race result, not the
- * full grid history). Phase 4 will record the full per-race grid so
- * the aggregate standings reflect mid-tour swings.
+ * record (the career save only stores the player's per-race result,
+ * not the full grid history). Recording the full per-race grid is a
+ * known followup so the aggregate standings reflect mid-tour swings.
  */
 export function aggregatePoints(args: {
   career: WorldTourCareer
@@ -292,8 +293,8 @@ export function aggregatePoints(args: {
   pointsByCar.set(playerKey, playerPoints)
 
   // AI cars: only the final race is known per-car. Approximate every
-  // prior race as identical to the final standings (Phase 4 will
-  // record real per-race standings).
+  // prior race as identical to the final standings; recording real
+  // per-race AI standings is a known followup.
   for (const entry of args.finalRaceStandings) {
     if (entry.isPlayer) continue
     const key = entry.driverId ?? entry.carId

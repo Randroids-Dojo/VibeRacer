@@ -1,15 +1,16 @@
 /**
- * Bundled championship data for the World Tour. Read-only at runtime.
- * The shape and helpers live in `src/lib/worldTourChampionship.ts`; this
- * file owns the actual constants the game ships with.
+ * Bundled championship data for the World Tour. Read-only at
+ * runtime. The shape and helpers live in
+ * `src/lib/worldTourChampionship.ts`; this file owns the actual
+ * constants the game ships with.
  *
- * Three tours ship from Phase 4 (`velvet-coast`, `iron-borough`,
- * `ember-steppe`). The first is the gentle opener at the 4-car MVP
- * field; tours 2 and onward run the full 12-car grid (3 lanes by 4
- * rows). Phase 6 fills out the remaining five tours.
+ * Eight tours total. `velvet-coast` is the opener at the 4-car field
+ * (a gentle on-ramp). Tours 2 through 8 run the full 12-car grid
+ * (3 lanes by 4 rows). Required standing tightens through the back
+ * half: top 3, top 2, then top 1 by the final tour.
  *
  * Every tour declares placeholder `trackIds` that resolve to authored
- * tracks under `public/tours/{tour-id}/`; the manifest extension that
+ * tracks under `public/tours/{tour-id}/`. The manifest extension that
  * lets a track advertise its tour membership lives in `schemas.ts`.
  */
 
@@ -21,11 +22,11 @@ import {
   type Championship,
 } from '@/lib/worldTourChampionship'
 
-// AI driver registry. Eleven named opponents so every 12-car tour can
-// fill the grid without recycling ids inside a single race. The MVP
-// (Velvet Coast) only picks three; later tours draw the full roster.
-// Names are deliberately neutral so a future re-theme does not have
-// to rewrite the registry.
+// AI driver registry. Eleven named opponents so every 12-car tour
+// can fill the grid without recycling ids inside a single race.
+// Velvet Coast only picks three of them; later tours draw the full
+// roster. Names are deliberately neutral so a future re-theme does
+// not have to rewrite the registry.
 const DRIVERS: AiDriver[] = [
   { id: 'driver-rook-vance', name: 'Rook Vance', color: '#ff5470' },
   { id: 'driver-iris-quill', name: 'Iris Quill', color: '#3da9fc' },

@@ -1,8 +1,8 @@
 /**
- * World Tour AI driver tick. Ported from VibeGear2's `ai.ts` and adapted
- * for VibeRacer's `PhysicsInput` shape and 3D track frame. One archetype
- * for the MVP: `clean_line`. Per-archetype variation lands in a follow-up
- * once the four-car race loop is shipped.
+ * World Tour AI driver tick. Ported from VibeGear2's `ai.ts` and
+ * adapted for VibeRacer's `PhysicsInput` shape and 3D track frame.
+ * One archetype today (`clean_line`); per-archetype variation is a
+ * known followup.
  *
  * The function is pure: never mutates inputs, returns a fresh state and a
  * fresh `PhysicsInput`. The deterministic mistake/brilliant decorators
@@ -12,8 +12,9 @@
  *
  * The track is consumed through a narrow `AiTrackView` interface so this
  * module can be exercised in unit tests without compiling a real
- * VibeRacer track. The Phase 1a `worldTourRaceSession` will wire a real
- * `AiTrackView` over the existing `trackPath` helpers.
+ * VibeRacer track. The race-session reducer wires a real
+ * `AiTrackView` over the project's `trackPath` helpers when the 3D
+ * renderer port lands; the MVP race uses a flat-straight stub.
  *
  * Constants are tuned for VibeRacer's `stepPhysics` units (meters and
  * meters per second). Steer convention follows `playerInput.ts`:
@@ -163,8 +164,8 @@ export interface AiCarStats {
  *   means the road bends to the right (matching VibeRacer's piece-set
  *   convention).
  *
- * The Phase 1a integration builds this from the existing
- * `trackPath`/`orderedPieces` helpers. Tests construct it directly.
+ * The 3D renderer port builds this from the existing `trackPath` and
+ * `orderedPieces` helpers. Tests construct it directly.
  */
 export interface AiTrackView {
   // Centerline world x (m) at the AI's progress. The AI steers toward

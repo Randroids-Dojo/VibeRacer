@@ -14,12 +14,12 @@
  * unordered pair in (i, j) ascending order so a deterministic replay
  * applies the same kicks in the same order.
  *
- * Lap accounting is intentionally simplified for the MVP: each car
- * carries a `distanceTraveled` accumulator and a `lap` counter that
- * advances every `lapDistance` meters. The Phase 1e renderer integration
- * replaces this with the canonical finish-line cross check from
- * `src/game/finishLine.ts`. This module keeps the API stable so the
- * Phase 1e swap is a one-file change.
+ * Lap accounting is intentionally simplified for the MVP top-down 2D
+ * race canvas: each car carries a `distanceTraveled` accumulator and
+ * a `lap` counter that advances every `lapDistance` meters. When the
+ * 3D renderer port lands, swap this for the canonical finish-line
+ * cross check from `src/game/finishLine.ts`. This module keeps the
+ * API stable so that swap is a one-file change.
  */
 
 import {
@@ -44,6 +44,7 @@ import {
   stockUpgrades,
   type CarUpgrades,
 } from './worldTourUpgrades'
+import { baseParamsFor } from './worldTourCars'
 
 // Default countdown length in seconds. 3 seconds matches Time Attack's
 // "ready, set, go" rhythm and gives the launch hold time to anchor.
@@ -91,8 +92,8 @@ export interface RaceCar {
   aiState: AiState | null
   lap: number
   // Total forward distance traveled in meters. Drives the simplified
-  // lap rollover. Replaced by the canonical finish-line cross check in
-  // Phase 1e.
+  // lap rollover. Replaced by the canonical finish-line cross check
+  // when the 3D renderer port lands.
   distanceTraveled: number
   status: CarStatus
   finishedAtMs: number | null
@@ -111,15 +112,14 @@ export interface RaceSessionConfig {
   // Total laps for the race. Must be at least 1.
   readonly totalLaps: number
   // Distance per lap in meters. Used by the simplified lap rollover.
-  // The Phase 1e renderer integration swaps this for the canonical
-  // track length.
+  // The 3D renderer port swaps this for the canonical track length.
   readonly lapDistanceMeters: number
   // Countdown length in seconds. Defaults to COUNTDOWN_SECONDS_DEFAULT.
   readonly countdownSeconds?: number
   // Per-car shared physics parameters. Defaults to DEFAULT_CAR_PARAMS.
   readonly carParams?: CarParams
   // Whether a car is currently on track. Defaults to true for every
-  // car. The Phase 1e integration plumbs the real track surface check.
+  // car. The 3D renderer port plumbs the real track surface check.
   readonly onTrackOf?: (carIndex: number, physics: PhysicsState) => boolean
 }
 
@@ -142,16 +142,15 @@ export interface CreateRaceSessionInput {
   readonly lapDistanceMeters: number
   readonly playerCarId: string
   readonly countdownSeconds?: number
-  // Initial damage on the player car, in [0, 1]. Carried over from the
-  // career save so the player starts a race with whatever damage the
-  // previous race left them with. Phase 5 generalizes this to a per-
-  // car map.
+  // Initial damage on the player car, in [0, 1]. Carried over from
+  // the career's `carsById[activeCarId].damage` so the player starts
+  // a race with whatever damage the previous race left them with.
   readonly playerInitialDamage?: number
   // Player upgrade tiers. Resolved into per-car physics params at
   // race start.
   readonly playerUpgrades?: CarUpgrades
-  // AI upgrade tiers. Phase 3c lets a tour declare an AI tier set so
-  // the field scales with the player's wallet. Defaults to stock.
+  // AI upgrade tiers. A tour can declare an AI tier set so the field
+  // scales with the player's wallet. Defaults to stock.
   readonly aiUpgrades?: CarUpgrades
 }
 
@@ -171,7 +170,12 @@ export function createRaceSession(
   })
   const playerUpgrades = input.playerUpgrades ?? stockUpgrades()
   const aiUpgrades = input.aiUpgrades ?? stockUpgrades()
-  const playerParams = resolveCarParams(DEFAULT_CAR_PARAMS, playerUpgrades)
+  // The player's chassis base depends on which car they own; AI cars
+  // share the starter chassis as a baseline. Upgrades scale on top.
+  const playerParams = resolveCarParams(
+    baseParamsFor(input.playerCarId),
+    playerUpgrades,
+  )
   const aiParams = resolveCarParams(DEFAULT_CAR_PARAMS, aiUpgrades)
   const playerAbsorb = damageAbsorption(playerUpgrades)
   const aiAbsorb = damageAbsorption(aiUpgrades)
@@ -223,9 +227,9 @@ export interface StepInput {
   readonly dt: number
   // Track view for the AI. Same shape the `tickAi` controller reads.
   readonly track: AiTrackView
-  // Stats consumed by the AI throttle/brake controller. Provided once
-  // for the AI roster (all AI cars share the same `topSpeed` for the
-  // MVP).
+  // Stats consumed by the AI throttle/brake controller. Provided
+  // once for the whole AI roster: all AI cars share the same
+  // `topSpeed` today.
   readonly aiStats: AiCarStats
 }
 
