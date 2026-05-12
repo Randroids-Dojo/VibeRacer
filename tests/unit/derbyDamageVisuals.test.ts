@@ -110,7 +110,9 @@ describe('createDamageVisualizer', () => {
     // front-on hit so the hood pops first.
     const result = viz.applyHit(40, 1, 0, 0, () => 0.5)
     expect(result?.name).toBe('hood')
-    expect(asset.submeshes.hood.visible).toBe(false)
+    // Real detach: panel is removed from its parent group entirely so it
+    // disappears from the car and becomes free-standing debris.
+    expect(asset.submeshes.hood.parent).toBeNull()
     viz.dispose()
   })
 

@@ -6,6 +6,7 @@ import {
   MeshStandardMaterial,
   type Object3D,
 } from 'three'
+import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
 
 // Vehicle asset loader for Derby. Contract: every loaded asset is a
@@ -36,9 +37,30 @@ export const REQUIRED_SUBMESHES = [
 ] as const
 export type RequiredSubmeshName = (typeof REQUIRED_SUBMESHES)[number]
 
+export type WheelName = 'wheel_fl' | 'wheel_fr' | 'wheel_rl' | 'wheel_rr'
+export const WHEEL_NAMES: WheelName[] = [
+  'wheel_fl',
+  'wheel_fr',
+  'wheel_rl',
+  'wheel_rr',
+]
+export const FRONT_WHEEL_NAMES: WheelName[] = ['wheel_fl', 'wheel_fr']
+
+// Pivot groups for wheel animation. `steer` is the outer node that rotates
+// around the car's vertical axis for the front-wheel steering angle; `spin`
+// is its child and rotates around its local rolling axis as the wheel rolls
+// over the ground. The original wheel mesh becomes a child of `spin`.
+export interface WheelPivot {
+  steer: Group
+  spin: Group
+}
+
 export interface DerbyVehicleAsset {
   group: Group
   submeshes: Record<RequiredSubmeshName, Mesh>
+  // Per-wheel pivot groups for steering and rolling. Wired up by
+  // attachWheelPivots() so DerbyCanvas can drive them each frame.
+  wheelPivots: Record<WheelName, WheelPivot>
   // Bookkeeping for the visualizer to dispose geometry/materials when the
   // round ends. Procedural assets register everything; GLB loaders should
   // register textures and material clones the same way.
@@ -50,18 +72,20 @@ const VEHICLE_WHEEL_RADIUS = 0.35
 const PANEL_THICKNESS = 0.12
 const LIGHT_SIZE = 0.25
 
-// Walk a group's direct children and collect the meshes that match a
-// required submesh name. Throws when any required name is missing. Allows
-// extra unnamed children (decorative geometry, debug helpers, etc.) so a
-// future GLB authored with more detail can still pass.
+// Walk a group's full subtree and collect the meshes that match a required
+// submesh name. Throws when any required name is missing. Allows extra
+// unnamed meshes (decorative geometry, debug helpers, wheel rims) so a GLB
+// authored with more detail can still pass. Subtree walk lets the GLB host
+// nest required parts under intermediate empties or transform nodes
+// (Blender's exporter sometimes does this).
 export function assertVehicleContract(group: Group): DerbyVehicleAsset {
   const found: Partial<Record<RequiredSubmeshName, Mesh>> = {}
-  for (const child of group.children) {
-    if (!(child instanceof Mesh)) continue
-    if ((REQUIRED_SUBMESHES as readonly string[]).includes(child.name)) {
-      found[child.name as RequiredSubmeshName] = child
+  group.traverse((node) => {
+    if (!(node instanceof Mesh)) return
+    if ((REQUIRED_SUBMESHES as readonly string[]).includes(node.name)) {
+      found[node.name as RequiredSubmeshName] = node
     }
-  }
+  })
   const missing: RequiredSubmeshName[] = []
   for (const name of REQUIRED_SUBMESHES) {
     if (!found[name]) missing.push(name)
@@ -71,11 +95,51 @@ export function assertVehicleContract(group: Group): DerbyVehicleAsset {
       `derby vehicle asset is missing required submeshes: ${missing.join(', ')}`,
     )
   }
+  const submeshes = found as Record<RequiredSubmeshName, Mesh>
+  const wheelPivots = attachWheelPivots(group, submeshes)
   return {
     group,
-    submeshes: found as Record<RequiredSubmeshName, Mesh>,
+    submeshes,
+    wheelPivots,
     dispose: () => disposeAll(group),
   }
+}
+
+// Wrap each wheel mesh in a steer pivot (outer Group) and a spin pivot
+// (inner Group, child of steer). The wheel mesh moves under the spin pivot
+// so a Y rotation on `steer` turns the wheel and an X rotation on `spin`
+// rolls it without those two interacting. Pivot is positioned at the
+// wheel's original world location so the wheel does not visually shift.
+function attachWheelPivots(
+  parent: Group,
+  submeshes: Record<RequiredSubmeshName, Mesh>,
+): Record<WheelName, WheelPivot> {
+  parent.updateMatrixWorld(true)
+  const pivots = {} as Record<WheelName, WheelPivot>
+  for (const name of WHEEL_NAMES) {
+    const wheel = submeshes[name]
+    // Capture the wheel's position relative to `parent` before reparenting.
+    // GLB imports usually place required meshes as direct children of
+    // `parent` so wheel.position already is parent-local; if a future
+    // exporter introduces an intermediate node we walk the matrices up to
+    // parent so the wheel does not visually shift after the wrap.
+    const local = wheel.position.clone()
+    if (wheel.parent && wheel.parent !== parent) {
+      wheel.getWorldPosition(local)
+      parent.worldToLocal(local)
+    }
+    const steer = new Group()
+    steer.name = `${name}_steer`
+    steer.position.copy(local)
+    const spin = new Group()
+    spin.name = `${name}_spin`
+    steer.add(spin)
+    spin.add(wheel)
+    wheel.position.set(0, 0, 0)
+    parent.add(steer)
+    pivots[name] = { steer, spin }
+  }
+  return pivots
 }
 
 // Free every disposable geometry / material under the group. Walks the
@@ -95,14 +159,74 @@ function disposeAll(root: Object3D): void {
   })
 }
 
-// Async to mirror the future GLBLoader path. v1 returns immediately with
-// procedural geometry built from the vehicle config dimensions.
+// Module-level promise cache so the GLB fetch + parse runs at most once per
+// modelUrl across an entire session. Without this, every car in a round
+// would trigger its own network fetch.
+const glbCache: Map<string, Promise<GLTF>> = new Map()
+function fetchGltf(url: string): Promise<GLTF> {
+  let p = glbCache.get(url)
+  if (!p) {
+    p = new GLTFLoader().loadAsync(url).catch((err) => {
+      glbCache.delete(url)
+      throw err
+    })
+    glbCache.set(url, p)
+  }
+  return p
+}
+
+// Load a derby vehicle asset. Prefers the authored GLB at config.modelUrl;
+// on any load / contract failure falls back to the procedural placeholder
+// so a missing or malformed asset never blocks the round from starting.
+// paintColor is applied to the GLB's body material by name so the four
+// shipping vehicles still get distinct hues in v1 without re-baking GLBs.
 export async function loadDerbyVehicleAsset(
   config: DerbyVehicleConfig,
   paintColor: number = 0xfff7b0,
 ): Promise<DerbyVehicleAsset> {
+  if (config.modelUrl) {
+    try {
+      const gltf = await fetchGltf(config.modelUrl)
+      const root = gltf.scene.clone(true)
+      // Some GLB exporters wrap the model in a single empty; if so, hoist
+      // its children up so assertVehicleContract finds named meshes at the
+      // top of the asset hierarchy.
+      const group = new Group()
+      group.name = `derbyVehicle:${config.type}`
+      for (const child of [...root.children]) group.add(child)
+      tintBody(group, paintColor)
+      return assertVehicleContract(group)
+    } catch (err) {
+      console.error(
+        `[derby] GLB load failed for ${config.type} (${config.modelUrl}); falling back to procedural placeholder`,
+        err,
+      )
+    }
+  }
   const group = buildPlaceholderVehicleGroup(config, paintColor)
   return assertVehicleContract(group)
+}
+
+// Tint the body mesh's material so each vehicle reads as a distinct color
+// without re-baking the GLB. Clones the material so the tint does not bleed
+// between cars that share the same source material instance.
+function tintBody(group: Group, paintColor: number): void {
+  group.traverse((node) => {
+    if (!(node instanceof Mesh)) return
+    if (node.name !== 'body' && node.name !== 'hood' && node.name !== 'trunk' && !node.name.startsWith('door_')) return
+    const mat = node.material
+    if (Array.isArray(mat)) {
+      node.material = mat.map((m) => recolorMaterial(m, paintColor))
+    } else if (mat) {
+      node.material = recolorMaterial(mat, paintColor)
+    }
+  })
+}
+
+function recolorMaterial(mat: unknown, paintColor: number): MeshStandardMaterial {
+  const clone = (mat as MeshStandardMaterial).clone()
+  clone.color.setHex(paintColor)
+  return clone
 }
 
 export function buildPlaceholderVehicleGroup(

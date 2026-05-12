@@ -4,6 +4,7 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  Quaternion,
   Vector3,
 } from 'three'
 import type {
@@ -238,20 +239,19 @@ export function createDamageVisualizer(
       if (choice === null) return null
       detachedPanels.add(choice)
       const panel = asset.submeshes[choice]
-      panel.visible = false
-      // Return a clone of the panel mesh as a free-standing world object.
-      // We do not detach the original from the parent group because that
-      // would shift the bounds of the parent every detach; instead the
-      // caller spawns its own debris using the cloned geometry. The world
-      // transform of the panel is baked into the clone so the spawn
-      // position matches the panel's pixel location a frame ago.
+      // Real detach: capture the panel's world transform, remove it from
+      // its parent in the car asset, then return it so the caller can add
+      // it to the scene as free-standing debris. The panel literally
+      // disappears from the car (no more visibility hack) and re-appears
+      // in world space at its previous on-car location.
       asset.group.updateWorldMatrix(true, true)
       const worldPos = panel.getWorldPosition(new Vector3())
-      const clone = panel.clone() as Mesh
-      clone.visible = true
-      clone.position.copy(worldPos)
-      clone.rotation.copy(asset.group.rotation)
-      return clone
+      const worldQuat = panel.getWorldQuaternion(new Quaternion())
+      panel.removeFromParent()
+      panel.position.copy(worldPos)
+      panel.quaternion.copy(worldQuat)
+      panel.visible = true
+      return panel
     },
     dispose() {
       smokeGeo.dispose()

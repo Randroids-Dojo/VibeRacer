@@ -21,6 +21,8 @@ import {
 } from '@/game/derbyScenery'
 import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
 import {
+  FRONT_WHEEL_NAMES,
+  WHEEL_NAMES,
   loadDerbyVehicleAsset,
   type DerbyVehicleAsset,
 } from '@/game/derbyVehicleLoader'
@@ -223,6 +225,52 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     let lastHudPushMs = 0
     let endedReported = false
 
+    // Accumulated rolling angle per wheel per car. Indexed [carIdx][wheelIdx
+    // in FRONT_WHEEL_NAMES then REAR order], in radians. Sized lazily so
+    // the asset-load promise can populate it once the carAssets are ready.
+    const wheelSpinAngle: number[][] = vehicleConfigs.map(() => [0, 0, 0, 0])
+    // Smoothed steer angle per car (front wheels) so a hard left-right key
+    // tap eases instead of snapping.
+    const steerAngleSmoothed: number[] = vehicleConfigs.map(() => 0)
+    const STEER_MAX_RAD = Math.PI / 6 // 30 degrees at the front wheels
+    const STEER_LERP_PER_SEC = 12
+    function animateWheels(inputs: PhysicsInput[], dt: number): void {
+      for (let i = 0; i < round.cars.length; i++) {
+        const asset = carAssets[i]
+        if (!asset) continue
+        const car = round.cars[i]
+        const input = inputs[i]
+        // Smooth the steer target so visual response feels mechanical, not
+        // instantaneous. clamp dt for the lerp so a frame stall does not
+        // overshoot past the target.
+        const target = clamp(input.steer ?? 0, -1, 1) * STEER_MAX_RAD
+        const lerp = 1 - Math.exp(-STEER_LERP_PER_SEC * Math.min(dt, 0.05))
+        steerAngleSmoothed[i] += (target - steerAngleSmoothed[i]) * lerp
+        // Rolling speed: angular = linear / radius. Approximate the visual
+        // wheel radius from the wheel mesh's bounding cylinder; the same
+        // value is used for every wheel of a given car so we cache it on
+        // first use as `asset.group.userData.wheelRadius`.
+        const r =
+          (asset.group.userData.wheelRadius as number | undefined) ??
+          measureWheelRadius(asset)
+        asset.group.userData.wheelRadius = r
+        const angularDelta = (car.physics.speed * dt) / Math.max(0.01, r)
+        for (let w = 0; w < WHEEL_NAMES.length; w++) {
+          const name = WHEEL_NAMES[w]
+          const pivot = asset.wheelPivots[name]
+          if (FRONT_WHEEL_NAMES.includes(name)) {
+            pivot.steer.rotation.y = steerAngleSmoothed[i]
+          }
+          wheelSpinAngle[i][w] += angularDelta
+          // Spin axis is the wheel mesh's local rolling axis. The GLB build
+          // script orients each wheel cylinder so its rotation axis is the
+          // model-local X (width direction), so a Three.js X-axis rotation
+          // on the spin pivot rolls the wheel forward.
+          pivot.spin.rotation.x = wheelSpinAngle[i][w]
+        }
+      }
+    }
+
     function syncVisuals() {
       for (let i = 0; i < round.cars.length; i++) {
         const car = round.cars[i]
@@ -301,6 +349,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
       const result = derbyTick(round, { perCar: inputs }, dtSec)
       syncVisuals()
+      animateWheels(inputs, dtSec)
 
       // Camera rig: same chase behavior as the loop mode (smoothed lerp,
       // look-ahead, default height/distance/fov).
@@ -412,6 +461,25 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
   }, [arena, vehicleConfigs, keysRef])
 
   return <div ref={containerRef} style={canvasContainerStyle} />
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n))
+}
+
+// Approximate the visual wheel radius from a wheel mesh's bounding-box
+// extent. Wheel cylinders authored in the GLB sit with their rolling axis
+// along the model's X axis, so the height of the bounding box (Y extent)
+// equals the wheel diameter; halving gives the radius. Cached on the
+// asset via userData so we only measure once per car.
+function measureWheelRadius(asset: DerbyVehicleAsset): number {
+  const wheel = asset.submeshes.wheel_fl
+  wheel.geometry.computeBoundingBox()
+  const box = wheel.geometry.boundingBox
+  if (!box) return 0.36
+  const yExtent = box.max.y - box.min.y
+  const zExtent = box.max.z - box.min.z
+  return Math.max(yExtent, zExtent) / 2
 }
 
 function pickEnemyColor(type: string): number {
