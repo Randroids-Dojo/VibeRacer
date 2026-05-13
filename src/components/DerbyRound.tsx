@@ -12,6 +12,7 @@ import { submitDerbyRun } from '@/lib/derbySubmit'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import {
   DerbyHUD,
   POPUP_LIFETIME_MS,
@@ -233,11 +234,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 }
 
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   background: '#000',
   color: '#fff',
-  overflow: 'hidden',
 }
 const resultsOverlay: React.CSSProperties = {
   position: 'absolute',

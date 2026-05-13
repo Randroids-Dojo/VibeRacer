@@ -35,6 +35,7 @@ import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import type { TimeOfDay } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
 import { shouldHeadlightsBeOn } from '@/lib/headlights'
@@ -882,11 +883,8 @@ const shell: CSSProperties = {
   alignItems: 'stretch',
 }
 const driveLayer: CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   background: '#9ad8ff',
-  touchAction: 'none',
-  userSelect: 'none',
   zIndex: 5,
 }
 const canvasStyle: CSSProperties = {

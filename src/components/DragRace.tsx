@@ -83,6 +83,7 @@ import {
 } from './DragChristmasTree'
 import { TouchControls } from './TouchControls'
 import { getTrackBiomePreset } from '@/lib/biomes'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 
 type Phase = 'garage' | 'staging' | 'countdown' | 'racing' | 'finished'
 
@@ -98,6 +99,12 @@ const SKIRT_HALF_WIDTH = 24
 // Drag mode reuses the closed-loop camera rig from sceneBuilder so the
 // framing matches the rest of the game. The rig handles position /
 // quaternion lerp internally; we only feed the car's pose each frame.
+
+const dragRootStyle: React.CSSProperties = {
+  ...MOBILE_GAME_SURFACE_STYLES,
+  background: '#000',
+  color: '#fff',
+}
 
 const raceHeaderStyle: React.CSSProperties = {
   position: 'absolute',
@@ -718,7 +725,7 @@ export function DragRace({ slug }: DragRaceProps) {
   }, [ghost.nonce, slug, versionHash])
 
   return (
-    <div style={{ position: 'fixed', inset: 0, background: '#000', color: '#fff' }}>
+    <div style={dragRootStyle}>
       <div ref={containerRef} style={{ position: 'absolute', inset: 0 }} />
 
       {/* Strip name + back chip. Matches the project's HUD chip look:
