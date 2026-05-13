@@ -55,6 +55,7 @@ import {
   writeDragLoadout,
 } from '@/lib/dragLoadoutStorage'
 import { deriveDragCarParams } from '@/game/dragTuning'
+import { readPlayerInput } from '@/game/playerInput'
 import {
   dragTick,
   handlePreCountdownInput,
@@ -409,10 +410,13 @@ export function DragRace({ slug }: DragRaceProps) {
       const dtMs = Math.max(0, Math.min(50, now - lastNow))
       lastNow = now
 
-      const k = keys.current
-      const throttle = k.axes ? k.axes.throttle : k.forward ? 1 : k.backward ? -1 : 0
-      const steer = k.axes ? k.axes.steer : (k.right ? 1 : 0) - (k.left ? 1 : 0)
-      const input = { throttle, steer, handbrake: k.handbrake }
+      // Use the shared keyboard / gamepad / touch translator so drag stays
+      // in lockstep with the closed-loop game and derby on steer / throttle
+      // conventions. Drag's old inline derivation flipped the steer sign,
+      // which read as inverted on the touch joystick (push joystick right
+      // -> car turned left). The helper's "+steer turns CCW" convention
+      // matches the physics module.
+      const input = readPlayerInput(keys.current)
 
       let state = stateRef.current
       const ph = phaseRef.current
