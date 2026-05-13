@@ -67,16 +67,25 @@ const PLAYER_IDX = 0
 export const PAIR_DAMAGE_COOLDOWN_MS = 350
 
 // Linear damping applied to a destroyed car's signed speed each tick. The
-// wreck still receives kinetic pushes from live cars via pushWreck(); this
-// just bleeds momentum off so a coasting wreck slows quickly instead of
-// drifting across the arena under its own residual velocity.
+// wreck still receives kinetic pushes from live cars via applyWreckImpulse;
+// this just bleeds momentum off so a coasting wreck slows quickly instead
+// of drifting across the arena under its own residual velocity.
 const WRECK_FRICTION_PER_SEC = 4
 
-// Inelastic transfer coefficient when a live car shoves a destroyed wreck.
-// 0 = wreck never gains velocity (only positional separation). 1 = wreck
-// inherits the full closing-component of the pusher's velocity. The split
-// is also mass-weighted so a sedan barely budges a school bus wreck.
-const WRECK_PUSH_TRANSFER = 0.7
+// Coefficient of restitution for live-car-vs-wreck collisions. The
+// impulse is mostly inelastic (energy lost on impact) but a small bounce
+// pulls the wreck slightly ahead of the pusher so the pair separates
+// instead of locking together at a steady-state contact speed.
+const WRECK_RESTITUTION = 0.2
+// Per-pair cooldown between wreck impulses. Without this gate, a sustained
+// touch fires the impulse every frame and drains the pusher's speed to
+// zero in a few frames. Positional separation still runs every frame, so
+// the cars don't clip; only the velocity exchange is gated.
+export const PAIR_WRECK_IMPULSE_COOLDOWN_MS = 220
+// Minimum closing rate (m/s) required to trigger the impulse. Below this
+// the contact is a graze and applying the impulse would jitter both cars'
+// velocities every cooldown window without producing visible motion.
+const WRECK_MIN_CLOSING_MPS = 0.5
 
 function pairKey(i: number, j: number): string {
   return i < j ? `${i}:${j}` : `${j}:${i}`
@@ -145,8 +154,9 @@ export function derbyTick(
   // per frame; repeat hits between the same pair are gated by a per-pair
   // damage cooldown so a sustained ram cannot stack hits every frame.
   // Destroyed cars participate in the contact pass — separate() keeps a
-  // wreck from being driven through, and pushWreck() lets a live car shove
-  // it around — but neither side takes damage when one of the pair is dead.
+  // wreck from being driven through, and applyWreckImpulse lets a live car
+  // shove it around — but neither side takes damage when one of the pair
+  // is dead.
   for (let i = 0; i < round.cars.length; i++) {
     const a = round.cars[i]
     for (let j = i + 1; j < round.cars.length; j++) {
@@ -166,13 +176,23 @@ export function derbyTick(
       if (aDead || bDead) {
         // Live car shoves a wreck. The MTV normal (nx, nz) points a -> b,
         // so the wreck is on the side opposite its pusher: separate() has
-        // already moved the wreck in that direction; pushWreck transfers a
-        // fraction of the pusher's closing velocity so the wreck coasts a
-        // bit instead of sticking.
-        if (aDead) {
-          pushWreck(a, b, round.configs[j].mass, round.configs[i].mass, -contact.nx, -contact.nz)
-        } else {
-          pushWreck(b, a, round.configs[i].mass, round.configs[j].mass, contact.nx, contact.nz)
+        // already pushed it in that direction; applyWreckImpulse exchanges
+        // momentum across the pair so the wreck coasts forward and the
+        // pusher loses some speed — without the pusher slowdown, the
+        // wreck reaches a steady-state ~88% of pusher speed and rides
+        // along on the bumper forever.
+        const key = pairKey(i, j)
+        const impulseUntil = round.pairWreckImpulseUntilMs.get(key) ?? 0
+        if (round.elapsedMs >= impulseUntil) {
+          const applied = aDead
+            ? applyWreckImpulse(a, b, round.configs[i].mass, round.configs[j].mass, -contact.nx, -contact.nz)
+            : applyWreckImpulse(b, a, round.configs[j].mass, round.configs[i].mass, contact.nx, contact.nz)
+          if (applied) {
+            round.pairWreckImpulseUntilMs.set(
+              key,
+              round.elapsedMs + PAIR_WRECK_IMPULSE_COOLDOWN_MS,
+            )
+          }
         }
         continue
       }
@@ -197,6 +217,16 @@ export function derbyTick(
       }
       applyAndEmit(round, events, a, b, damage, contact.x, contact.z)
     }
+  }
+
+  // 3b. Re-clamp every car after contact resolution. separate() and the
+  // wreck impulse can shove a car a fraction of a unit past the arena
+  // perimeter on a hard collision; without this second clamp the test
+  // invariant "every car ends the frame inside (radius - collisionRadius)"
+  // fails on the last frame before the round ends, because the up-front
+  // clamp in step 2 already ran before contact pushed the car out.
+  for (let i = 0; i < round.cars.length; i++) {
+    clampToArena(round.cars[i], round)
   }
 
   // 4. Round-end check.
@@ -395,20 +425,20 @@ function obbContact(
   return { nx: mtvAx, nz: mtvAz, overlap: minOverlap, x: cx, z: cz }
 }
 
-// Transfer a fraction of the pusher's closing-velocity component into the
-// wreck so it scoots along the push direction instead of sitting glued to
-// the live car. dirNx,dirNz is the unit vector along which the wreck is
-// being pushed (pointing AWAY from the pusher). The transfer is mass-
-// weighted so a sedan barely budges a bus wreck and a truck flings a
-// race-car wreck.
-function pushWreck(
+// Momentum-conserving impulse for a live-car-vs-wreck contact. dirNx,dirNz
+// is the unit vector along which the wreck is being pushed (pointing
+// AWAY from the pusher). The wreck gains speed along +dir; the pusher
+// loses speed along +dir. With a small restitution > 0 the wreck pulls
+// slightly faster than the pusher and the pair separates instead of
+// locking together. Returns true when the impulse was applied.
+function applyWreckImpulse(
   wreck: DerbyCarState,
   pusher: DerbyCarState,
-  massPusher: number,
   massWreck: number,
+  massPusher: number,
   dirNx: number,
   dirNz: number,
-): void {
+): boolean {
   const ws = wreck.physics.speed
   const wh = wreck.physics.heading
   const wreckVx = Math.cos(wh) * ws
@@ -417,24 +447,38 @@ function pushWreck(
   const ph = pusher.physics.heading
   const pusherVx = Math.cos(ph) * ps
   const pusherVz = -Math.sin(ph) * ps
-  // Closing along dir = how much faster the pusher is moving along the
-  // push direction than the wreck. Negative means already separating; skip.
-  const pusherAlongDir = pusherVx * dirNx + pusherVz * dirNz
-  const wreckAlongDir = wreckVx * dirNx + wreckVz * dirNz
-  const closing = pusherAlongDir - wreckAlongDir
-  if (closing <= 0) return
-  const massRatio = massPusher / Math.max(1, massPusher + massWreck)
-  const transferred = closing * massRatio * WRECK_PUSH_TRANSFER
-  if (transferred <= 0) return
-  const newVx = wreckVx + transferred * dirNx
-  const newVz = wreckVz + transferred * dirNz
-  const newSpeed = Math.hypot(newVx, newVz)
-  if (newSpeed < 1e-4) {
+  const closing =
+    (pusherVx - wreckVx) * dirNx + (pusherVz - wreckVz) * dirNz
+  if (closing < WRECK_MIN_CLOSING_MPS) return false
+  const invMp = 1 / Math.max(1, massPusher)
+  const invMw = 1 / Math.max(1, massWreck)
+  const J = ((1 + WRECK_RESTITUTION) * closing) / (invMp + invMw)
+  const wreckDelta = J * invMw
+  const pusherDelta = J * invMp
+  // Apply to wreck along +dir.
+  const newWVx = wreckVx + wreckDelta * dirNx
+  const newWVz = wreckVz + wreckDelta * dirNz
+  const newWSpeed = Math.hypot(newWVx, newWVz)
+  if (newWSpeed < 1e-4) {
     wreck.physics.speed = 0
-    return
+  } else {
+    wreck.physics.speed = newWSpeed
+    wreck.physics.heading = Math.atan2(-newWVz, newWVx)
   }
-  wreck.physics.speed = newSpeed
-  wreck.physics.heading = Math.atan2(-newVz, newVx)
+  // Apply to pusher along -dir (Newton's third law). Note the pusher's
+  // heading may rotate slightly if the contact normal isn't aligned with
+  // its forward axis; that's intentional and matches how a real side-
+  // swipe would kick the pusher off-line.
+  const newPVx = pusherVx - pusherDelta * dirNx
+  const newPVz = pusherVz - pusherDelta * dirNz
+  const newPSpeed = Math.hypot(newPVx, newPVz)
+  if (newPSpeed < 1e-4) {
+    pusher.physics.speed = 0
+  } else {
+    pusher.physics.speed = newPSpeed
+    pusher.physics.heading = Math.atan2(-newPVz, newPVx)
+  }
+  return true
 }
 
 function separate(

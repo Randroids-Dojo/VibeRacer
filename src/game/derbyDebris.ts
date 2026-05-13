@@ -1,4 +1,4 @@
-import type { Object3D } from 'three'
+import { Box3, Mesh, type Object3D } from 'three'
 
 // Tiny ballistic integrator for detached vehicle panels in derby mode. A
 // piece of debris is a Three.js Object3D plus a position/velocity/spin
@@ -19,6 +19,11 @@ export interface DerbyDebrisItem {
   rotX: number
   rotY: number
   rotZ: number
+  // World-space Y at which the item rests on the ground. Equals the
+  // panel's smallest half-extent so a flat panel does not clip below the
+  // dirt; falls back to a small floor (0.05) when the mesh has no usable
+  // bounding box.
+  groundY: number
   // Reset to false on cull so the host can drop it from the active list.
   alive: boolean
 }
@@ -26,6 +31,36 @@ export interface DerbyDebrisItem {
 export const DEBRIS_GRAVITY = -16
 export const DEBRIS_GROUND_RESTITUTION = 0.35
 export const DEBRIS_GROUND_FRICTION = 0.7
+// Multiplier applied to angular velocity on every bounce. Each ground
+// impact bleeds rotational energy so panels don't keep spinning forever
+// after they settle.
+export const DEBRIS_ANGULAR_BOUNCE_DAMP = 0.55
+// Linear-velocity threshold under which we consider the panel settled and
+// snap its angular velocity to zero. Without this, a panel that bounced
+// flat still spins about its vertical axis indefinitely.
+const DEBRIS_REST_SPEED = 0.4
+
+// Compute the smallest half-extent of the object's bounding box. A flat
+// panel rests on its thin side so its center sits at half the thickness
+// above the ground plane — using min half-extent avoids the panel
+// floating high (max half-extent) or clipping deep (zero).
+function computeGroundY(object: Object3D): number {
+  const box = new Box3()
+  let hasGeometry = false
+  object.traverse((node) => {
+    if (node instanceof Mesh && node.geometry) {
+      hasGeometry = true
+    }
+  })
+  if (!hasGeometry) return 0.05
+  box.setFromObject(object)
+  if (!isFinite(box.min.x) || !isFinite(box.max.x)) return 0.05
+  const halfX = (box.max.x - box.min.x) / 2
+  const halfY = (box.max.y - box.min.y) / 2
+  const halfZ = (box.max.z - box.min.z) / 2
+  const minHalf = Math.min(halfX, halfY, halfZ)
+  return Math.max(0.05, minHalf)
+}
 
 // Spawn a piece of debris at the given world position with an outward
 // initial velocity and a random spin. Reuses the supplied Mesh as-is so
@@ -48,6 +83,7 @@ export function spawnDebris(
     rotX: (rng() - 0.5) * 6,
     rotY: (rng() - 0.5) * 6,
     rotZ: (rng() - 0.5) * 6,
+    groundY: computeGroundY(object),
     alive: true,
   }
 }
@@ -71,8 +107,8 @@ export function tickDebris(
     item.object.rotation.x += item.rotX * dtSec
     item.object.rotation.y += item.rotY * dtSec
     item.object.rotation.z += item.rotZ * dtSec
-    if (item.object.position.y <= 0) {
-      item.object.position.y = 0
+    if (item.object.position.y <= item.groundY) {
+      item.object.position.y = item.groundY
       if (Math.abs(item.vy) < 0.5) {
         item.vy = 0
         // Clamp the friction multiplier above zero so a frame drop or tab
@@ -80,10 +116,28 @@ export function tickDebris(
         const damp = Math.max(0, 1 - DEBRIS_GROUND_FRICTION * dtSec * 4)
         item.vx *= damp
         item.vz *= damp
+        // Once linear motion has settled to a crawl, zero angular velocity
+        // so the panel stops spinning. Without this the panel pirouettes
+        // forever after it stops sliding because nothing in the integrator
+        // damps rotational energy.
+        if (Math.hypot(item.vx, item.vz) < DEBRIS_REST_SPEED) {
+          item.rotX = 0
+          item.rotY = 0
+          item.rotZ = 0
+        } else {
+          item.rotX *= damp
+          item.rotY *= damp
+          item.rotZ *= damp
+        }
       } else {
         item.vy = -item.vy * DEBRIS_GROUND_RESTITUTION
         item.vx *= 1 - DEBRIS_GROUND_FRICTION * 0.5
         item.vz *= 1 - DEBRIS_GROUND_FRICTION * 0.5
+        // Drop rotational energy on every bounce so the panel doesn't
+        // tumble forever even before vy settles.
+        item.rotX *= DEBRIS_ANGULAR_BOUNCE_DAMP
+        item.rotY *= DEBRIS_ANGULAR_BOUNCE_DAMP
+        item.rotZ *= DEBRIS_ANGULAR_BOUNCE_DAMP
       }
     }
     const r = Math.hypot(item.object.position.x, item.object.position.z)

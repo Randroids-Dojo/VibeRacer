@@ -41,6 +41,11 @@ export interface DerbyRoundState {
   // for cars in contact, but skips damage emission while the cooldown is
   // active so a sustained pile-up cannot stack three hits per frame.
   pairDamageCooldownUntilMs: Map<string, number>
+  // Per-car-pair wreck-impulse cooldown. Same shape and motivation as the
+  // damage cooldown, but gates the momentum transfer applied when a live
+  // car contacts a destroyed wreck. Without the gate the pusher loses
+  // velocity every frame and stalls after a few frames of contact.
+  pairWreckImpulseUntilMs: Map<string, number>
 }
 
 export interface InitDerbyRoundInput {
@@ -78,6 +83,7 @@ export function initDerbyRound(input: InitDerbyRoundInput): DerbyRoundState {
     ranking: [],
     rngSeed: input.rngSeed ?? DEFAULT_RNG_SEED,
     pairDamageCooldownUntilMs: new Map(),
+    pairWreckImpulseUntilMs: new Map(),
   }
 }
 

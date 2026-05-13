@@ -69,9 +69,9 @@ describe('tickDebris', () => {
 
 describe('pruneDebris', () => {
   it('drops dead items and keeps alive ones in order', () => {
-    const a: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, alive: true }
-    const b: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, alive: false }
-    const c: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, alive: true }
+    const a: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, groundY: 0.25, alive: true }
+    const b: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, groundY: 0.25, alive: false }
+    const c: DerbyDebrisItem = { object: makeMesh(), vx: 0, vy: 0, vz: 0, rotX: 0, rotY: 0, rotZ: 0, groundY: 0.25, alive: true }
     const items: DerbyDebrisItem[] = [a, b, c]
     expect(pruneDebris(items)).toBe(1)
     expect(items).toHaveLength(2)
