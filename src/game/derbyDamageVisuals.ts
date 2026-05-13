@@ -53,8 +53,25 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
 }
 
 // Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
-// Tuned so a hard ram detaches a panel, while mild side-bumps do not.
+// Tuned so a hard ram pops an extra panel on top of the tier-based
+// progressive detach below; mild side-bumps stay below the threshold.
 const PANEL_DETACH_DAMAGE_THRESHOLD = 12
+// Number of detachable panels that should still be attached when the car
+// is at each damage tier. update() walks the panel sequence and detaches
+// extras whenever the car's tier drops past a transition. Critical = 0
+// means the wreck sheds anything still on it; destroyed cars hand their
+// remainder to detachAllRemaining() after dropping to critical here.
+const PANELS_ATTACHED_BY_TIER: Record<DamageTier, number> = {
+  pristine: 4,
+  light: 3,
+  moderate: 2,
+  heavy: 1,
+  critical: 0,
+}
+// Canonical panel detach sequence. Front-most parts come off first (a
+// car typically loses its hood before its trunk in a derby) so the
+// player sees recognizable wear progression.
+const PANEL_DETACH_SEQUENCE: SubmeshName[] = ['hood', 'door_r', 'door_l', 'trunk']
 // Paint and detach lists include doors as candidates. Variants whose
 // asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
 // simply do not contribute door entries to the visualizer's working sets.
@@ -66,7 +83,11 @@ const FIRE_COLOR = new Color(0xff5022)
 
 export interface DerbyDamageVisualizer {
   // Update visuals from the current car state. Idempotent and cheap.
-  update(state: DerbyCarState): void
+  // Returns the panels that just got detached as a result of this call
+  // (a damage-tier transition may detach one or more panels so the car
+  // visibly sheds parts as it takes wear). Returns an empty array when
+  // nothing changed.
+  update(state: DerbyCarState): Object3D[]
   // Roll a panel detach for this hit. amount is the clamped damage;
   // worldNx/worldNz is the contact normal in world XZ pointing toward the
   // attacker; victimHeading is the victim's heading in radians (0 = +X).
@@ -268,12 +289,38 @@ export function createDamageVisualizer(
     return panel
   }
 
+  function detachToTargetCount(targetAttached: number): Object3D[] {
+    const out: Object3D[] = []
+    // Walk the canonical sequence and detach until the number of still-
+    // attached panels matches the tier's target. availableDetachables is
+    // filtered against absent door variants, so a Kenney sliced sedan
+    // simply has fewer panels to lose — the loop just runs out earlier.
+    for (const name of PANEL_DETACH_SEQUENCE) {
+      const attached = availableDetachables.filter(
+        (p) => !detachedPanels.has(p),
+      ).length
+      if (attached <= targetAttached) break
+      if (!availableDetachables.includes(name)) continue
+      if (detachedPanels.has(name)) continue
+      const panel = detachPanel(name)
+      if (panel) out.push(panel)
+    }
+    return out
+  }
+
   return {
     update(state: DerbyCarState) {
       const fraction =
         state.maxHealth > 0 ? state.health / state.maxHealth : 0
       const tier = tierFromFraction(fraction)
-      if (tier !== lastTier) setTier(tier)
+      const tierChanged = tier !== lastTier
+      if (tierChanged) setTier(tier)
+      // Progressive panel loss: each tier drop pops one or more panels off
+      // so the wear is visible mid-battle, not just at destruction. Only
+      // runs on a tier change so a steady-state idle frame doesn't keep
+      // re-checking detach state.
+      if (!tierChanged) return []
+      return detachToTargetCount(PANELS_ATTACHED_BY_TIER[tier])
     },
     applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null

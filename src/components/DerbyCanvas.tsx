@@ -473,9 +473,32 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         }
       }
 
-      // Update damage visuals from current state.
+      // Update damage visuals from current state. Tier transitions drop
+      // panels here — the visualizer returns any freshly detached ones so
+      // the canvas can register them with the debris integrator and they
+      // arc out instead of vanishing.
       for (let i = 0; i < round.cars.length; i++) {
-        carVisualizers[i]?.update(round.cars[i])
+        const viz = carVisualizers[i]
+        if (!viz) continue
+        const popped = viz.update(round.cars[i])
+        if (popped.length === 0) continue
+        const car = round.cars[i]
+        for (const panel of popped) {
+          scene.add(panel)
+          const dx = panel.position.x - car.physics.x
+          const dz = panel.position.z - car.physics.z
+          const len = Math.hypot(dx, dz)
+          const inv = len > 1e-6 ? 1 / len : 0
+          debrisItems.push(
+            spawnDebris(
+              panel,
+              panel.position,
+              { nx: dx * inv, nz: dz * inv },
+              3 + debrisRng() * 3,
+              debrisRng,
+            ),
+          )
+        }
       }
 
       // Advance debris. Removing dead meshes inline avoids the per-frame

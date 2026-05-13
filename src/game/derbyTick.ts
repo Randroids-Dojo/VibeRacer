@@ -166,7 +166,18 @@ export function derbyTick(
       }
       const contact = obbContact(a, b, round.configs[i], round.configs[j])
       if (!contact) continue
-      separate(a, b, round.configs[i].mass, round.configs[j].mass, contact.overlap, contact.nx, contact.nz)
+      separate(
+        a,
+        b,
+        round.configs[i].mass,
+        round.configs[j].mass,
+        contact.overlap,
+        contact.nx,
+        contact.nz,
+        round.arena.radius,
+        round.configs[i].collisionRadius,
+        round.configs[j].collisionRadius,
+      )
       const aDead = isDestroyed(a)
       const bDead = isDestroyed(b)
       if (aDead && bDead) {
@@ -489,12 +500,38 @@ function separate(
   overlap: number,
   nx: number,
   nz: number,
+  arenaRadius: number,
+  aCollisionRadius: number,
+  bCollisionRadius: number,
 ): void {
   // Move each car along the normal in inverse proportion to its mass so
   // the heavier car barely budges and the lighter car gets shoved away.
   const totalMass = Math.max(1, ma + mb)
-  const aShare = mb / totalMass
-  const bShare = ma / totalMass
+  let aShare = mb / totalMass
+  let bShare = ma / totalMass
+  // Wall-pin override: when a car is already pressed against the arena
+  // wall AND the separation would push it further outward, the next
+  // arena-clamp pass undoes that motion — leaving the OTHER car overlapping
+  // by the heavy car's share of the overlap. To resolve cleanly, transfer
+  // the full overlap onto the unpinned car along the contact normal. This
+  // also fixes the "lighter car clips into the heavier one" feel a player
+  // sees when they ram a school-bus pinned against the wall.
+  const ar = Math.hypot(a.physics.x, a.physics.z)
+  const br = Math.hypot(b.physics.x, b.physics.z)
+  const aAtWall = ar >= arenaRadius - aCollisionRadius - 0.05
+  const bAtWall = br >= arenaRadius - bCollisionRadius - 0.05
+  // Outward = radial direction from origin. If the proposed displacement
+  // for a (-n) has a positive component along a's outward direction, a
+  // would be pushed further into the wall.
+  const aPushOutward = ar > 1e-3 ? (-nx) * (a.physics.x / ar) + (-nz) * (a.physics.z / ar) > 0 : false
+  const bPushOutward = br > 1e-3 ? nx * (b.physics.x / br) + nz * (b.physics.z / br) > 0 : false
+  if (aAtWall && aPushOutward && !(bAtWall && bPushOutward)) {
+    aShare = 0
+    bShare = 1
+  } else if (bAtWall && bPushOutward && !(aAtWall && aPushOutward)) {
+    aShare = 1
+    bShare = 0
+  }
   a.physics.x -= nx * overlap * aShare
   a.physics.z -= nz * overlap * aShare
   b.physics.x += nx * overlap * bShare
