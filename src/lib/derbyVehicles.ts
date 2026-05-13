@@ -134,7 +134,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     modelUrl: '/models/derby/car.glb',
     carParams: CAR_PARAMS,
     health: 200,
-    baseDamage: 14,
+    baseDamage: 7,
     mass: 1300,
     // Kenney CC0 sedan, sliced into named submeshes in
     // tools/blender/slice_kenney_vehicle.py. GLB bbox: W 4.50 x L 3.67.
@@ -155,7 +155,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     modelUrl: '/models/derby/schoolBus.glb',
     carParams: SCHOOL_BUS_PARAMS,
     health: 400,
-    baseDamage: 16,
+    baseDamage: 8,
     mass: 2800,
     // GLB bbox: W 4.80 x L 6.45. Half-diagonal ~4.04.
     collisionRadius: 4.20,
@@ -170,7 +170,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     modelUrl: '/models/derby/bigTruck.glb',
     carParams: BIG_TRUCK_PARAMS,
     health: 320,
-    baseDamage: 24,
+    baseDamage: 12,
     mass: 2400,
     // GLB bbox: W 5.10 x L 4.81. Half-diagonal ~3.51.
     collisionRadius: 3.60,
@@ -185,7 +185,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     modelUrl: '/models/derby/racecar.glb',
     carParams: RACECAR_PARAMS,
     health: 130,
-    baseDamage: 12,
+    baseDamage: 6,
     mass: 900,
     // GLB bbox: W 4.20 x L 3.76. Half-diagonal ~2.82.
     collisionRadius: 2.95,

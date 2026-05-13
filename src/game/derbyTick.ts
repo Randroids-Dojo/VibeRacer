@@ -59,6 +59,29 @@ export interface DerbyTickResult {
 
 const PLAYER_IDX = 0
 
+// Minimum elapsedMs between damage hits within the same car pair. Position
+// separation still runs every frame (so cars don't clip), but only the
+// first hit per cooldown window applies damage. Without this, a sustained
+// pile-up or a head-on pin against a wreck stacks the same hit every frame
+// and tears through HP in under a second.
+export const PAIR_DAMAGE_COOLDOWN_MS = 350
+
+// Linear damping applied to a destroyed car's signed speed each tick. The
+// wreck still receives kinetic pushes from live cars via pushWreck(); this
+// just bleeds momentum off so a coasting wreck slows quickly instead of
+// drifting across the arena under its own residual velocity.
+const WRECK_FRICTION_PER_SEC = 4
+
+// Inelastic transfer coefficient when a live car shoves a destroyed wreck.
+// 0 = wreck never gains velocity (only positional separation). 1 = wreck
+// inherits the full closing-component of the pusher's velocity. The split
+// is also mass-weighted so a sedan barely budges a school bus wreck.
+const WRECK_PUSH_TRANSFER = 0.7
+
+function pairKey(i: number, j: number): string {
+  return i < j ? `${i}:${j}` : `${j}:${i}`
+}
+
 export function derbyTick(
   round: DerbyRoundState,
   inputs: DerbyTickInputs,
@@ -81,25 +104,37 @@ export function derbyTick(
 
   // 1. Physics integration. Derby v1 has no off-track concept (the arena is
   // one open dirt disk), so onTrack is always true; off-track tuning would
-  // throttle the cars artificially.
+  // throttle the cars artificially. Destroyed cars still step physics so a
+  // wreck pushed by a live car coasts the rest of the way out; their input
+  // is forced to zero (no thrust, no steering, no handbrake) and an extra
+  // damping term bleeds their residual speed so wrecks don't drift forever.
   for (let i = 0; i < round.cars.length; i++) {
     const car = round.cars[i]
-    if (isDestroyed(car)) continue
-    const input = inputs.perCar[i] ?? { throttle: 0, steer: 0, handbrake: false }
+    const dead = isDestroyed(car)
+    const input = dead
+      ? { throttle: 0, steer: 0, handbrake: false }
+      : inputs.perCar[i] ?? { throttle: 0, steer: 0, handbrake: false }
     const params = round.configs[i].carParams
     // Derby opts out of the road-mode quartic taper (final arg = 1). Vehicle
     // catalog accel/maxSpeed values were tuned against a linear curve, and
     // closing speeds drive derbyDamage.resolveCollision — a hidden top-end
     // taper would mute every ram. Drag mode opts out the same way.
     car.physics = stepPhysics(car.physics, input, dtSec, true, params, 1, 1, 0, 1)
-    car.aliveMs += dtMs
+    if (dead) {
+      const damp = Math.max(0, 1 - WRECK_FRICTION_PER_SEC * dtSec)
+      car.physics.speed *= damp
+      car.physics.angularVelocity = 0
+    } else {
+      car.aliveMs += dtMs
+    }
   }
 
   // 2. Arena containment. Clamp position and zero the outward radial speed
   // component so the wall feels solid. v1 wall contact does not damage.
+  // Destroyed cars get clamped too so a wreck shoved by a heavy truck can't
+  // pile up outside the perimeter.
   for (let i = 0; i < round.cars.length; i++) {
     const car = round.cars[i]
-    if (isDestroyed(car)) continue
     clampToArena(car, round)
   }
 
@@ -107,23 +142,46 @@ export function derbyTick(
   // (cheap early-out so SAT does not run on every pair every frame); narrow
   // phase = OBB-vs-OBB SAT so a long vehicle (school bus) cannot be clipped
   // through its front or rear by a smaller car. Each contact resolves once
-  // per frame; repeat hits between the same pair are OK because separate()
-  // pushes the cars apart and they have to re-close.
+  // per frame; repeat hits between the same pair are gated by a per-pair
+  // damage cooldown so a sustained ram cannot stack hits every frame.
+  // Destroyed cars participate in the contact pass — separate() keeps a
+  // wreck from being driven through, and pushWreck() lets a live car shove
+  // it around — but neither side takes damage when one of the pair is dead.
   for (let i = 0; i < round.cars.length; i++) {
     const a = round.cars[i]
-    if (isDestroyed(a)) continue
     for (let j = i + 1; j < round.cars.length; j++) {
-      // Re-check `a` each pass: applyAndEmit may have destroyed it during
-      // a prior pair this frame, in which case it should not collide again.
-      if (isDestroyed(a)) break
       const b = round.cars[j]
-      if (isDestroyed(b)) continue
       if (!circleBroadPhase(a, b, round.configs[i].collisionRadius, round.configs[j].collisionRadius)) {
         continue
       }
       const contact = obbContact(a, b, round.configs[i], round.configs[j])
       if (!contact) continue
       separate(a, b, round.configs[i].mass, round.configs[j].mass, contact.overlap, contact.nx, contact.nz)
+      const aDead = isDestroyed(a)
+      const bDead = isDestroyed(b)
+      if (aDead && bDead) {
+        // Two wrecks bumping into each other: positional separation only.
+        continue
+      }
+      if (aDead || bDead) {
+        // Live car shoves a wreck. The MTV normal (nx, nz) points a -> b,
+        // so the wreck is on the side opposite its pusher: separate() has
+        // already moved the wreck in that direction; pushWreck transfers a
+        // fraction of the pusher's closing velocity so the wreck coasts a
+        // bit instead of sticking.
+        if (aDead) {
+          pushWreck(a, b, round.configs[j].mass, round.configs[i].mass, -contact.nx, -contact.nz)
+        } else {
+          pushWreck(b, a, round.configs[i].mass, round.configs[j].mass, contact.nx, contact.nz)
+        }
+        continue
+      }
+      // Per-pair damage cooldown. separate() already ran above so the cars
+      // are not clipped; we just skip damage emission while a hit between
+      // this pair is on cooldown.
+      const key = pairKey(i, j)
+      const cooldownUntil = round.pairDamageCooldownUntilMs.get(key) ?? 0
+      if (round.elapsedMs < cooldownUntil) continue
       const damage = resolveCollision(
         a,
         b,
@@ -131,6 +189,12 @@ export function derbyTick(
         round.configs[j],
         { nx: contact.nx, nz: contact.nz },
       )
+      if (damage.aDelta > 0 || damage.bDelta > 0) {
+        round.pairDamageCooldownUntilMs.set(
+          key,
+          round.elapsedMs + PAIR_DAMAGE_COOLDOWN_MS,
+        )
+      }
       applyAndEmit(round, events, a, b, damage, contact.x, contact.z)
     }
   }
@@ -329,6 +393,48 @@ function obbContact(
   const cx = (aCorners.cx + bCorners.cx) * 0.5
   const cz = (aCorners.cz + bCorners.cz) * 0.5
   return { nx: mtvAx, nz: mtvAz, overlap: minOverlap, x: cx, z: cz }
+}
+
+// Transfer a fraction of the pusher's closing-velocity component into the
+// wreck so it scoots along the push direction instead of sitting glued to
+// the live car. dirNx,dirNz is the unit vector along which the wreck is
+// being pushed (pointing AWAY from the pusher). The transfer is mass-
+// weighted so a sedan barely budges a bus wreck and a truck flings a
+// race-car wreck.
+function pushWreck(
+  wreck: DerbyCarState,
+  pusher: DerbyCarState,
+  massPusher: number,
+  massWreck: number,
+  dirNx: number,
+  dirNz: number,
+): void {
+  const ws = wreck.physics.speed
+  const wh = wreck.physics.heading
+  const wreckVx = Math.cos(wh) * ws
+  const wreckVz = -Math.sin(wh) * ws
+  const ps = pusher.physics.speed
+  const ph = pusher.physics.heading
+  const pusherVx = Math.cos(ph) * ps
+  const pusherVz = -Math.sin(ph) * ps
+  // Closing along dir = how much faster the pusher is moving along the
+  // push direction than the wreck. Negative means already separating; skip.
+  const pusherAlongDir = pusherVx * dirNx + pusherVz * dirNz
+  const wreckAlongDir = wreckVx * dirNx + wreckVz * dirNz
+  const closing = pusherAlongDir - wreckAlongDir
+  if (closing <= 0) return
+  const massRatio = massPusher / Math.max(1, massPusher + massWreck)
+  const transferred = closing * massRatio * WRECK_PUSH_TRANSFER
+  if (transferred <= 0) return
+  const newVx = wreckVx + transferred * dirNx
+  const newVz = wreckVz + transferred * dirNz
+  const newSpeed = Math.hypot(newVx, newVz)
+  if (newSpeed < 1e-4) {
+    wreck.physics.speed = 0
+    return
+  }
+  wreck.physics.speed = newSpeed
+  wreck.physics.heading = Math.atan2(-newVz, newVx)
 }
 
 function separate(

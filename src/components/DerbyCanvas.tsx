@@ -219,6 +219,18 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
     const debrisItems: DerbyDebrisItem[] = []
     const debrisRng = mulberry32(round.rngSeed ^ 0x9e3779b9)
+    // Per-car permanent crumple tilt applied when a car is destroyed. Roll
+    // (rotation.z) and pitch (rotation.x) values stay zero while alive and
+    // get a one-shot random offset on destruction so the wreck reads as
+    // visibly bent. Keyed by carIdx; entries stay set across the rest of
+    // the round so syncVisuals does not have to recompute them.
+    const carCrumple: ({ roll: number; pitch: number } | null)[] =
+      vehicleConfigs.map(() => null)
+    // Tracks which cars we've already played the destruction effect for
+    // (panel blow-off + tilt) so re-emitting the destroyed event won't
+    // detach again. derbyTick only emits 'destroyed' once per car, but a
+    // belt-and-suspenders guard keeps the visuals robust.
+    const destroyedHandled: boolean[] = vehicleConfigs.map(() => false)
 
     let lastTimeMs = performance.now()
     let rafId = 0
@@ -289,7 +301,57 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         // negated h, which mirrored every steering input visually and made
         // the chase camera spin the wrong way around the car.
         asset.group.rotation.y = car.physics.heading - Math.PI / 2
-        asset.group.visible = !isDestroyed(car)
+        // Wrecks keep their permanent crumple tilt; alive cars stay level.
+        // The crumple is set once in handleDestruction so we don't
+        // randomize the lean every frame.
+        const crumple = carCrumple[i]
+        asset.group.rotation.x = crumple ? crumple.pitch : 0
+        asset.group.rotation.z = crumple ? crumple.roll : 0
+        // Destroyed cars stay in the scene as inert wrecks; they're still
+        // collidable and visible (smoke + fire + crumple tilt + missing
+        // panels). Only hide cars that haven't loaded an asset yet — that
+        // path is impossible here since carAssets[i] is gated above.
+        asset.group.visible = true
+      }
+    }
+
+    function handleDestruction(victimIdx: number) {
+      if (destroyedHandled[victimIdx]) return
+      destroyedHandled[victimIdx] = true
+      const asset = carAssets[victimIdx]
+      const viz = carVisualizers[victimIdx]
+      if (!asset || !viz) return
+      // Permanent crumple tilt: small roll/pitch in [-0.22, 0.22] rad so
+      // the wreck reads as bent without looking flipped over. Sign is
+      // randomized per-axis so the same roll value can lean either side.
+      const roll = (debrisRng() - 0.5) * 0.44
+      const pitch = (debrisRng() - 0.5) * 0.3
+      carCrumple[victimIdx] = { roll, pitch }
+      // Force the visualizer down to its critical tier (smoke + fire +
+      // dark paint + broken lights) regardless of how the last hit landed.
+      // Calling update with health=0 maps to 'critical' through
+      // tierFromFraction so the visuals match the wreck state.
+      viz.update(round.cars[victimIdx])
+      // Blow off every still-attached panel as outward debris. Pick
+      // outward velocities along the car's local lateral and forward axes
+      // so the panels arc away from the wreck instead of landing through
+      // each other.
+      const detached = viz.detachAllRemaining()
+      for (const panel of detached) {
+        scene.add(panel)
+        const dx = panel.position.x - round.cars[victimIdx].physics.x
+        const dz = panel.position.z - round.cars[victimIdx].physics.z
+        const len = Math.hypot(dx, dz)
+        const inv = len > 1e-6 ? 1 / len : 0
+        debrisItems.push(
+          spawnDebris(
+            panel,
+            panel.position,
+            { nx: dx * inv, nz: dz * inv },
+            3 + debrisRng() * 3,
+            debrisRng,
+          ),
+        )
       }
     }
 
@@ -370,7 +432,14 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       }
 
       // Forward hit events as HUD popup spawns plus drive damage visuals.
+      // Process 'destroyed' events here too: blow off every remaining
+      // panel and stamp a permanent crumple tilt so the wreck reads
+      // visibly broken for the rest of the round.
       for (const e of result.events) {
+        if (e.kind === 'destroyed') {
+          handleDestruction(e.victimIdx)
+          continue
+        }
         if (e.kind !== 'hit') continue
         if (e.victimIdx === PLAYER_IDX) {
           const p = projectToScreen(e.x, e.z)

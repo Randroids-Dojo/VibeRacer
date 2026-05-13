@@ -82,6 +82,11 @@ export interface DerbyDamageVisualizer {
     victimHeading: number,
     rng: () => number,
   ): Object3D | null
+  // Blow off every still-attached detachable panel. Called once when a car
+  // is destroyed so the wreck sheds the rest of its panels into the world
+  // (regardless of how few hits got it to zero). Returns the list of
+  // detached panels in world-space so the caller can hand them to debris.
+  detachAllRemaining(): Object3D[]
   // Free any allocations the visualizer added to the asset. Restores the
   // original paint and light materials so the asset can be reused for a
   // future round (not used in v1; round end disposes the asset entirely).
@@ -242,6 +247,27 @@ export function createDamageVisualizer(
     return candidates[0]
   }
 
+  function detachPanel(choice: SubmeshName): Object3D | null {
+    const panel = asset.submeshes[choice]
+    // pickPanelByAngle only chooses from availableDetachables, which is
+    // filtered against undefined entries, so this is true by construction
+    // for the hit path; the explicit check keeps the type checker happy
+    // and covers the detachAllRemaining path on optional doors.
+    if (!panel) return null
+    detachedPanels.add(choice)
+    // Real detach: capture the panel's world transform, remove it from its
+    // parent in the car asset, then return it so the caller can add it to
+    // the scene as free-standing debris.
+    asset.group.updateWorldMatrix(true, true)
+    const worldPos = panel.getWorldPosition(new Vector3())
+    const worldQuat = panel.getWorldQuaternion(new Quaternion())
+    panel.removeFromParent()
+    panel.position.copy(worldPos)
+    panel.quaternion.copy(worldQuat)
+    panel.visible = true
+    return panel
+  }
+
   return {
     update(state: DerbyCarState) {
       const fraction =
@@ -256,25 +282,20 @@ export function createDamageVisualizer(
       void rng
       const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
       if (choice === null) return null
-      detachedPanels.add(choice)
-      const panel = asset.submeshes[choice]
-      // pickPanelByAngle only chooses from availableDetachables, which is
-      // filtered against undefined entries, so this assert is true by
-      // construction; the explicit check keeps the type checker happy.
-      if (!panel) return null
-      // Real detach: capture the panel's world transform, remove it from
-      // its parent in the car asset, then return it so the caller can add
-      // it to the scene as free-standing debris. The panel literally
-      // disappears from the car (no more visibility hack) and re-appears
-      // in world space at its previous on-car location.
-      asset.group.updateWorldMatrix(true, true)
-      const worldPos = panel.getWorldPosition(new Vector3())
-      const worldQuat = panel.getWorldQuaternion(new Quaternion())
-      panel.removeFromParent()
-      panel.position.copy(worldPos)
-      panel.quaternion.copy(worldQuat)
-      panel.visible = true
-      return panel
+      return detachPanel(choice)
+    },
+    detachAllRemaining() {
+      const out: Object3D[] = []
+      // Snapshot the remaining list before mutation; detachPanel adds to
+      // detachedPanels which would otherwise filter mid-iteration.
+      const remaining = availableDetachables.filter(
+        (p) => !detachedPanels.has(p),
+      )
+      for (const name of remaining) {
+        const panel = detachPanel(name)
+        if (panel) out.push(panel)
+      }
+      return out
     },
     dispose() {
       smokeGeo.dispose()
