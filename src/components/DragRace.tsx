@@ -106,34 +106,48 @@ const dragRootStyle: React.CSSProperties = {
   color: '#fff',
 }
 
+// Top-left strip chip. Kept compact (12px font, 4/8 padding) so it does
+// not crowd the centered hero timer below it. Max-width caps it short of
+// half the screen so very-long strip names truncate rather than push into
+// the timer band on narrow phones.
 const raceHeaderStyle: React.CSSProperties = {
   position: 'absolute',
   top: 12,
   left: 12,
-  padding: '6px 12px',
+  padding: '4px 10px',
   background: '#161616cc',
   border: '1px solid #2a2a2a',
   borderRadius: 8,
-  fontSize: 13,
+  fontSize: 12,
   pointerEvents: 'auto',
   display: 'flex',
-  gap: 12,
+  gap: 8,
   alignItems: 'center',
   fontFamily: 'system-ui, sans-serif',
   color: '#fff',
   boxShadow: '0 4px 14px rgba(0,0,0,0.4)',
+  maxWidth: 'calc(50vw - 24px)',
+  whiteSpace: 'nowrap',
+  overflow: 'hidden',
 }
 const raceHeaderBackStyle: React.CSSProperties = {
   color: '#ff6b35',
   textDecoration: 'none',
   fontWeight: 700,
   letterSpacing: 0.5,
+  flexShrink: 0,
+}
+const raceHeaderTitleStyle: React.CSSProperties = {
+  letterSpacing: 0.5,
+  overflow: 'hidden',
+  textOverflow: 'ellipsis',
 }
 const raceHeaderTagsStyle: React.CSSProperties = {
-  fontSize: 11,
+  fontSize: 10,
   opacity: 0.7,
   textTransform: 'capitalize',
   letterSpacing: 0.5,
+  flexShrink: 0,
 }
 
 export function DragRace({ slug }: DragRaceProps) {
@@ -734,7 +748,7 @@ export function DragRace({ slug }: DragRaceProps) {
         <Link href="/drag" style={raceHeaderBackStyle}>
           ‹ back
         </Link>
-        <strong style={{ letterSpacing: 0.5 }}>{strip.displayName}</strong>
+        <strong style={raceHeaderTitleStyle}>{strip.displayName}</strong>
         <span style={raceHeaderTagsStyle}>
           {strip.biome} · {strip.weather}
         </span>

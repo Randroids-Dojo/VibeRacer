@@ -21,19 +21,20 @@ const overlayWrapStyle: React.CSSProperties = {
 
 const heroTimerStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 12,
+  top: 44,
   left: '50%',
   transform: 'translateX(-50%)',
-  fontSize: 56,
+  fontSize: 'clamp(32px, 10vw, 56px)',
   fontWeight: 800,
-  letterSpacing: 2,
+  letterSpacing: 1,
   textShadow: '0 2px 6px rgba(0,0,0,0.6)',
   fontVariantNumeric: 'tabular-nums',
+  whiteSpace: 'nowrap',
 }
 
 const reactionRowStyle: React.CSSProperties = {
   position: 'absolute',
-  top: 78,
+  top: 108,
   left: '50%',
   transform: 'translateX(-50%)',
   display: 'flex',
@@ -72,7 +73,7 @@ const labelStyle: React.CSSProperties = {
 const splitsPanelStyle: React.CSSProperties = {
   position: 'absolute',
   right: 12,
-  top: 56,
+  top: 148,
   padding: '8px 12px',
   background: '#161616cc',
   border: '1px solid #2a2a2a',
