@@ -14,17 +14,18 @@ test('derby hub lists the dust bowl arena', async ({ page }) => {
 test('arena page shows the four vehicle cards', async ({ page }) => {
   await page.goto('/derby/dust-bowl')
   await expect(page.getByRole('heading', { name: 'Dust Bowl' })).toBeVisible()
-  await expect(page.getByText('Sedan')).toBeVisible()
-  await expect(page.getByText('School Bus')).toBeVisible()
-  await expect(page.getByText('Big Truck')).toBeVisible()
-  await expect(page.getByText('Racecar')).toBeVisible()
+  const vehicleCards = page.locator('button[aria-pressed]')
+  await expect(vehicleCards.filter({ hasText: 'Sedan' })).toBeVisible()
+  await expect(vehicleCards.filter({ hasText: 'Ambulance' })).toBeVisible()
+  await expect(vehicleCards.filter({ hasText: 'Pickup Truck' })).toBeVisible()
+  await expect(vehicleCards.filter({ hasText: 'Race Car' })).toBeVisible()
 })
 
 test('selecting a vehicle and starting mounts the round HUD', async ({
   page,
 }) => {
   await page.goto('/derby/dust-bowl')
-  await page.getByRole('button', { name: /Big Truck/ }).click()
+  await page.getByRole('button', { name: /Pickup Truck/ }).click()
   await page.getByTestId('derby-start-button').click()
   await expect(page.locator('[data-derby-place-chip="true"]')).toBeVisible()
   await expect(page.locator('[data-derby-cars-left-chip="true"]')).toBeVisible()

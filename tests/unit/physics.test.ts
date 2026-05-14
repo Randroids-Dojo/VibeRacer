@@ -45,7 +45,7 @@ describe('stepPhysics', () => {
   })
 
   it('linear taper exponent recovers the legacy curve', () => {
-    // Pass exponent=1 (or 0) to opt out — drag mode does this. Per-tick
+    // Pass exponent=1 (or 0) to opt out - drag mode does this. Per-tick
     // gain should match the pre-taper formula speed += accel * throttle * dt.
     const dt = 0.5
     const result = stepPhysics(

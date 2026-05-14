@@ -119,7 +119,7 @@ describe('tick', () => {
   })
 
   it('enhanced auto applies gear maxSpeedFactor so accel tapers within each gear', () => {
-    // Hold the car at speed 5 in gear 1 — below the 95% upshift trigger
+    // Hold the car at speed 5 in gear 1 - below the 95% upshift trigger
     // (0.28 * 0.95 = 0.266 → trigger at speed 6.92, ratio 0.192 here). One
     // tick at full throttle. With the gear cap applied the quartic taper
     // bites hard against the 7.28 cap and the per-tick gain is small;
@@ -194,7 +194,7 @@ describe('tick', () => {
     //   18 * 0.978 * 0.016 = ~0.282 m/s.
     // Compare two single-tick runs at v=40 (above legacy cap of 26, in
     // the extended-only tapered band):
-    //   Baseline clamps to 26 then friction acts — speed drops to ~26.
+    //   Baseline clamps to 26 then friction acts - speed drops to ~26.
     //   Extended is uncapped and tapered: gain at 40 = 18*(1-(40/52)^4)*
     //   0.016 = 18 * 0.65 * 0.016 = ~0.187 m/s, new speed ~40.19.
     // The divergence at v=40 unambiguously demonstrates both effects of
@@ -228,7 +228,7 @@ describe('tick', () => {
     // Baseline must clamp back down (or be in the process of clamping)
     // because the legacy cap is 26 and speed=40 starts above it.
     expect(baseline.state.speed).toBeLessThan(27)
-    // Extended must continue rising but only slightly — the quartic taper
+    // Extended must continue rising but only slightly - the quartic taper
     // is pulling accel down hard at 77% of cap.
     expect(extended.state.speed).toBeGreaterThan(40)
     expect(extended.state.speed).toBeLessThan(40.4)

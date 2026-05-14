@@ -133,8 +133,11 @@ describe('derbyTick', () => {
     round.cars[3].physics.x = 50
     round.cars[3].physics.z = 0
     const before = round.cars[1].health
+    const truckSpeedBefore = round.cars[0].physics.speed
     const out = derbyTick(round, neutralInputs(4), 1 / 60)
     expect(round.cars[1].health).toBeLessThan(before)
+    expect(round.cars[0].physics.speed).toBeLessThan(truckSpeedBefore)
+    expect(round.cars[1].physics.speed).toBeGreaterThan(20)
     const hit = out.events.find((e) => e.kind === 'hit' && e.victimIdx === 1)
     expect(hit).toBeDefined()
     if (hit && hit.kind === 'hit') {

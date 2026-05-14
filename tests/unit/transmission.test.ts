@@ -129,7 +129,7 @@ describe('autoShiftGear', () => {
   })
 
   it('handles a multi-band jump (paused-frame catchup) in one call', () => {
-    // Speed 90% of base from a standstill in gear 1 — the while loop should
+    // Speed 90% of base from a standstill in gear 1 - the while loop should
     // walk all the way up, not stop after one step.
     expect(autoShiftGear(26 * 0.9, 26, 1)).toBe(MANUAL_GEAR_MAX)
   })

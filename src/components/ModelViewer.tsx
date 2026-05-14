@@ -32,22 +32,22 @@ const CATALOG: CatalogEntry[] = [
     derbyType: null,
     paintColor: 0xfff7b0,
   },
-  { id: 'car', label: 'Derby — Sedan', derbyType: 'car', paintColor: 0xff5544 },
+  { id: 'car', label: 'Derby - Sedan', derbyType: 'car', paintColor: 0xff5544 },
   {
     id: 'schoolBus',
-    label: 'Derby — Ambulance',
+    label: 'Derby - Ambulance',
     derbyType: 'schoolBus',
     paintColor: 0xffffff,
   },
   {
     id: 'bigTruck',
-    label: 'Derby — Pickup Truck',
+    label: 'Derby - Pickup Truck',
     derbyType: 'bigTruck',
     paintColor: 0x4488ff,
   },
   {
     id: 'racecar',
-    label: 'Derby — Race Car',
+    label: 'Derby - Race Car',
     derbyType: 'racecar',
     paintColor: 0xff8822,
   },
@@ -100,7 +100,7 @@ function buildDerbyDestroyed(
       const state: DerbyCarState = {
         carIdx: 0,
         type,
-        // physics is unused by the visualizer — `as never` keeps the
+        // physics is unused by the visualizer - `as never` keeps the
         // interface compile while signaling "do not read this field".
         physics: undefined as never,
         maxHealth: DERBY_VEHICLES[type].health,
@@ -167,7 +167,13 @@ async function loadEntry(entry: CatalogEntry): Promise<LoadedEntry> {
     DERBY_VEHICLES[entry.derbyType],
     entry.paintColor,
   )
-  const destroyed = await buildDerbyDestroyed(entry.derbyType, entry.paintColor)
+  let destroyed: Awaited<ReturnType<typeof buildDerbyDestroyed>>
+  try {
+    destroyed = await buildDerbyDestroyed(entry.derbyType, entry.paintColor)
+  } catch (err) {
+    pristineAsset.dispose()
+    throw err
+  }
   // Pull out individual parts for the bottom grid BEFORE handing the
   // group off to the tile. We clone each part so the pristine group still
   // has every panel attached for the hero tile.
@@ -278,6 +284,7 @@ export function ModelViewer() {
             key={c.id}
             type="button"
             onClick={c.onClick}
+            aria-pressed={c.isActive}
             style={{
               ...chipStyle,
               background: c.isActive ? '#e84a5f' : 'rgba(255,255,255,0.08)',
