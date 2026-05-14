@@ -87,58 +87,63 @@ async function loadMainRaceCar(): Promise<Group> {
   return group
 }
 
-function buildDerbyDestroyed(
+async function buildDerbyDestroyed(
   type: DerbyVehicleType,
   paintColor: number,
 ): Promise<{ group: Group; dispose: () => void }> {
-  return loadDerbyVehicleAsset(DERBY_VEHICLES[type], paintColor).then(
-    (asset) => {
-      const visualizer = createDamageVisualizer(asset)
-      // Force critical tier (paint darkening, smoke + fire, broken lights)
-      // by routing a state with health=0 through the visualizer's public
-      // update API. Avoids exposing setTier just for this page.
-      const state: DerbyCarState = {
-        carIdx: 0,
-        type,
-        // physics is unused by the visualizer. `as never` keeps the
-        // interface compile while signaling "do not read this field".
-        physics: undefined as never,
-        maxHealth: DERBY_VEHICLES[type].health,
-        health: 0,
-        status: 'destroyed',
-        aliveMs: 0,
-        kills: 0,
-        lastHitAtMs: 0,
-        destroyedByIdx: null,
+  const asset = await loadDerbyVehicleAsset(DERBY_VEHICLES[type], paintColor)
+  let visualizer: ReturnType<typeof createDamageVisualizer> | null = null
+  try {
+    visualizer = createDamageVisualizer(asset)
+    // Force critical tier (paint darkening, smoke + fire, broken lights)
+    // by routing a state with health=0 through the visualizer's public
+    // update API. Avoids exposing setTier just for this page.
+    const state: DerbyCarState = {
+      carIdx: 0,
+      type,
+      // physics is unused by the visualizer. `as never` keeps the
+      // interface compile while signaling "do not read this field".
+      physics: undefined as never,
+      maxHealth: DERBY_VEHICLES[type].health,
+      health: 0,
+      status: 'destroyed',
+      aliveMs: 0,
+      kills: 0,
+      lastHitAtMs: 0,
+      destroyedByIdx: null,
+    }
+    visualizer.update(state)
+    // Try every panel direction so hood + trunk + (when present) doors
+    // all detach. The visualizer skips panels not on the asset, so the
+    // four-call sweep is safe for variants without overlay doors.
+    // In gameplay the freshly detached panel sits at its on-car position
+    // and then physics carries it away; the viewer is a single static
+    // frame so we push each piece out in the direction it was hit and
+    // tilt it so destruction reads at a glance.
+    for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
+      const debris = visualizer.applyHit(30, nx, nz, 0, Math.random)
+      if (debris) {
+        debris.position.x += nx * 1.4
+        debris.position.z += nz * 1.4
+        debris.position.y += 0.4
+        debris.rotation.x += 0.4 * (nz === 0 ? 1 : 0)
+        debris.rotation.z += 0.4 * (nx === 0 ? 1 : 0)
+        asset.group.add(debris)
       }
-      visualizer.update(state)
-      // Try every panel direction so hood + trunk + (when present) doors
-      // all detach. The visualizer skips panels not on the asset, so the
-      // four-call sweep is safe for variants without overlay doors.
-      // In gameplay the freshly detached panel sits at its on-car position
-      // and then physics carries it away; the viewer is a single static
-      // frame so we push each piece out in the direction it was hit and
-      // tilt it so destruction reads at a glance.
-      for (const [nx, nz] of [[1, 0], [-1, 0], [0, 1], [0, -1]] as const) {
-        const debris = visualizer.applyHit(30, nx, nz, 0, Math.random)
-        if (debris) {
-          debris.position.x += nx * 1.4
-          debris.position.z += nz * 1.4
-          debris.position.y += 0.4
-          debris.rotation.x += 0.4 * (nz === 0 ? 1 : 0)
-          debris.rotation.z += 0.4 * (nx === 0 ? 1 : 0)
-          asset.group.add(debris)
-        }
-      }
-      return {
-        group: asset.group,
-        dispose: () => {
-          visualizer.dispose()
-          asset.dispose()
-        },
-      }
-    },
-  )
+    }
+    const readyVisualizer = visualizer
+    return {
+      group: asset.group,
+      dispose: () => {
+        readyVisualizer.dispose()
+        asset.dispose()
+      },
+    }
+  } catch (err) {
+    visualizer?.dispose()
+    asset.dispose()
+    throw err
+  }
 }
 
 async function loadEntry(entry: CatalogEntry): Promise<LoadedEntry> {
