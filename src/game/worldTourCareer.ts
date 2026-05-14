@@ -264,6 +264,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   // (sanitized) and fold the legacy fields into the active car's slot.
   // Every owned car gets a stock entry if one is missing.
   const carsById: Record<string, OwnedCarState> = {}
+  let hasActiveCarSlotFromCarsById = false
   const rawCarsById =
     typeof r.carsById === 'object' && r.carsById !== null
       ? (r.carsById as Record<string, unknown>)
@@ -278,6 +279,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
           : 0,
         upgrades: sanitizeUpgrades(s.upgrades),
       }
+      if (id === activeCarId) hasActiveCarSlotFromCarsById = true
     } else {
       carsById[id] = { damage: 0, upgrades: stockUpgrades() }
     }
@@ -286,7 +288,7 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   // did not already supply richer data. This is a one-shot migration:
   // once a save is written through `writeCareer`, the top-level fields
   // are dropped and only `carsById` persists.
-  if (!rawCarsById[activeCarId]) {
+  if (!hasActiveCarSlotFromCarsById) {
     carsById[activeCarId] = {
       damage: legacyDamage,
       upgrades: legacyUpgrades,

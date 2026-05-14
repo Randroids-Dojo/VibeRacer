@@ -230,6 +230,23 @@ describe('migrateCareer', () => {
     expect(active.upgrades.tires).toBe(1)
   })
 
+  it('uses legacy fields when the active carsById slot is malformed', () => {
+    const out = migrateCareer({
+      version: 1,
+      ownedCarIds: ['starter'],
+      activeCarId: 'starter',
+      activeCarDamage: 0.8,
+      activeCarUpgrades: { engine: 2, tires: 1, brakes: 0, body: 0 },
+      carsById: {
+        starter: 'bad-slot',
+      },
+    })
+    const active = out.carsById[out.activeCarId]!
+    expect(active.damage).toBe(0.8)
+    expect(active.upgrades.engine).toBe(2)
+    expect(active.upgrades.tires).toBe(1)
+  })
+
   it('floors fractional upgrade tiers folded from the legacy field', () => {
     const out = migrateCareer({
       version: 1,
