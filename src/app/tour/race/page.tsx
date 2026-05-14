@@ -310,6 +310,7 @@ function TourRacePageInner() {
             type="button"
             onClick={() => setPaused((v) => !v)}
             aria-label={paused ? 'Resume World Tour race' : 'Pause World Tour race'}
+            aria-pressed={paused}
             style={pauseButtonStyle}
           >
             {paused ? 'GO' : 'II'}
