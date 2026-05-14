@@ -22,11 +22,18 @@ async function pixelDelta(
 
       const firstImage = await decodePng(first)
       const secondImage = await decodePng(second)
-      const width = Math.min(firstImage.width, secondImage.width)
-      const height = Math.min(firstImage.height, secondImage.height)
+      if (
+        firstImage.width !== secondImage.width ||
+        firstImage.height !== secondImage.height
+      ) {
+        throw new Error(
+          `Screenshot sizes differ: ${firstImage.width}x${firstImage.height} ` +
+            `versus ${secondImage.width}x${secondImage.height}`,
+        )
+      }
       let changed = 0
-      for (let y = 0; y < height; y++) {
-        for (let x = 0; x < width; x++) {
+      for (let y = 0; y < firstImage.height; y++) {
+        for (let x = 0; x < firstImage.width; x++) {
           const firstOffset = (y * firstImage.width + x) * 4
           const secondOffset = (y * secondImage.width + x) * 4
           const dr = Math.abs(
