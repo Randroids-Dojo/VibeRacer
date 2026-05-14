@@ -56,12 +56,11 @@ export default function TourSelectionPage() {
 
   function enterTour(card: TourCard) {
     if (card.state === 'locked') return
-    let nextCareer: WorldTourCareer = career
     let raceIndex = 0
     if (card.state === 'in-progress' && career.activeTour) {
       raceIndex = career.activeTour.raceIndex
     } else {
-      nextCareer = {
+      const nextCareer: WorldTourCareer = {
         ...career,
         activeTour: {
           tourId: card.tour.id,
@@ -69,8 +68,7 @@ export default function TourSelectionPage() {
           results: [],
         },
       }
-      const result = writeCareer(nextCareer)
-      if (result.ok) nextCareer = result.career
+      writeCareer(nextCareer)
     }
     router.push(
       `/tour/race?tour=${encodeURIComponent(card.tour.id)}&raceIndex=${raceIndex}`,
