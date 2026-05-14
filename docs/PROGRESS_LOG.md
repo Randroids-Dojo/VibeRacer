@@ -2,6 +2,16 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, Security Dependency Patch
+
+- Branch: `chore/security-next-15-5-18`
+- Changed: bumped `next` from `15.5.15` to `15.5.18`, upgraded `vitest` from `2.1.9` to `3.2.4`, and added npm overrides for `postcss@8.5.14`, `vite@6.4.2`, and `esbuild@0.28.0`. The resolved dependency graph now clears both production and dev audit findings while keeping the app on Next 15.
+- Security review: addressed the reported Next advisory set, the PostCSS stringify XSS advisory, Vite optimized-deps path traversal advisory, and esbuild dev-server advisory. `npm audit` now reports zero vulnerabilities.
+- Test maintenance: updated the music-editor Playwright smoke to match the current Roll and save-confirmation UI instead of asserting stale copy that is no longer rendered.
+- Verification: `npm audit`, `npm ls next postcss vitest vite esbuild`, dash checks, `git diff --check`, `npm run type-check`, `npm test`, `npm run build`, and `PORT=3108 npx playwright test tests/e2e/smoke.spec.ts tests/e2e/world-tour.spec.ts tests/e2e/derby.spec.ts` passed. Build still reports the existing Upstash Edge Runtime warning and the existing ESLint plugin conflict message, but exits successfully. Playwright still logs expected missing local KV env errors for routes that are intentionally smoke-tested without KV credentials.
+- Assumptions: stayed on the patched Next 15 line to avoid a major framework migration inside a security patch. Vitest 3 keeps Node 18 compatibility and allows the patched Vite 6 line.
+- GDD coverage: no core GDD status change. This is dependency hygiene and smoke-test maintenance.
+
 ## 2026-05-14, Bump @randroids-dojo/vibekit to v0.2.0
 
 - Branch: `chore/deps/vibekit-0.1.0-to-0.2.0`
