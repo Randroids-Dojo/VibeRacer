@@ -98,4 +98,3 @@ export function writeCareer(next: WorldTourCareer): CareerWriteResult {
   }
   return { ok: true, career: out }
 }
-

@@ -67,7 +67,7 @@ function TourRacePageInner() {
   const params = useSearchParams()
   const championship = useMemo(() => getStandardChampionship(), [])
   const tourId = params.get('tour') ?? ''
-  const raceIndex = Number(params.get('raceIndex') ?? '0')
+  const rawRaceIndex = params.get('raceIndex')
   const tour = useMemo<Tour | null>(
     () => findTour(championship, tourId),
     [championship, tourId],
@@ -76,6 +76,7 @@ function TourRacePageInner() {
     () => (tour ? tourDrivers(championship, tour) : null),
     [championship, tour],
   )
+  const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
 
   const sessionRef = useRef<RaceSessionState | null>(null)
   const keyRef = useRef<KeyState>(createKeyState())
@@ -131,24 +132,30 @@ function TourRacePageInner() {
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':
+          setShowIntro(false)
           k.forward = true
           break
         case 'KeyS':
         case 'ArrowDown':
+          setShowIntro(false)
           k.backward = true
           break
         case 'KeyA':
         case 'ArrowLeft':
+          setShowIntro(false)
           k.left = true
           break
         case 'KeyD':
         case 'ArrowRight':
+          setShowIntro(false)
           k.right = true
           break
         case 'Space':
+          setShowIntro(false)
           k.handbrake = true
           break
         case 'Escape':
+          setShowIntro(false)
           k.paused = !k.paused
           break
       }
@@ -197,7 +204,7 @@ function TourRacePageInner() {
       championship: STANDARD_CHAMPIONSHIP,
       tourId: tour.id,
       trackIndex: raceIndex,
-      playerCarId: 'starter',
+      playerCarId: career.activeCarId,
     })
     const applied = applyRaceResult({
       career,
@@ -304,14 +311,19 @@ function TourRacePageInner() {
             style={canvasStyle}
           />
           {showIntro ? (
-            <div
+            <button
+              type="button"
               style={{
                 ...introOverlayStyle,
                 background: `linear-gradient(135deg, ${tour.theme.secondary}cc 0%, ${tour.theme.primary}99 100%)`,
               }}
               onClick={() => setShowIntro(false)}
-              role="button"
-              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return
+                e.preventDefault()
+                e.stopPropagation()
+                setShowIntro(false)
+              }}
             >
               <div style={introTitleStyle}>{tour.name}</div>
               <div style={introMetaStyle}>
@@ -321,7 +333,7 @@ function TourRacePageInner() {
               <div style={introMetaStyle}>
                 Top {tour.requiredStanding} of {tour.fieldSize} to clear
               </div>
-            </div>
+            </button>
           ) : null}
         </div>
 
@@ -342,6 +354,13 @@ function hashSeed(tourId: string, raceIndex: number): number {
     h = Math.imul(h, 0x01000193)
   }
   return h >>> 0
+}
+
+function clampRaceIndex(raw: string | null, trackCount: number): number {
+  const parsed = Number(raw ?? '0')
+  if (!Number.isFinite(parsed)) return 0
+  const max = Math.max(0, Math.floor(trackCount) - 1)
+  return Math.min(max, Math.max(0, Math.floor(parsed)))
 }
 
 function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
@@ -467,6 +486,8 @@ const backLinkStyle: React.CSSProperties = {
 const introOverlayStyle: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
+  width: '100%',
+  border: 0,
   display: 'flex',
   flexDirection: 'column',
   alignItems: 'center',
@@ -475,6 +496,8 @@ const introOverlayStyle: React.CSSProperties = {
   borderRadius: 8,
   cursor: 'pointer',
   textAlign: 'center',
+  color: '#fff',
+  font: 'inherit',
 }
 const introTitleStyle: React.CSSProperties = {
   fontSize: 32,
