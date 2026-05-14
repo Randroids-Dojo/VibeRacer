@@ -175,6 +175,7 @@ export function Speedometer({
               recorded a positive peak (controlled in the rAF loop above). */}
           <line
             ref={peakTickRef}
+            data-testid="speedometer-peak"
             x1="60"
             y1="8"
             x2="60"
@@ -188,6 +189,7 @@ export function Speedometer({
           {/* Needle. Rotated each frame around the hub at (60, 56). */}
           <line
             ref={needleRef}
+            data-testid="speedometer-needle"
             x1="60"
             y1="56"
             x2="60"

@@ -8,7 +8,7 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Medium Priority
 
-- None recorded.
+- Lift `MOBILE_GAME_SURFACE_STYLES` (currently at `src/lib/mobileGameSurface.ts`) into `@randroids-dojo/vibekit`. The contract is just a `CSSProperties` object that disables touch gestures, text selection, and the iOS long-press callout inside a full-screen game surface; vibekit already owns the virtual-joystick math, and a mobile-safe surface helper is the obvious neighbor. Action: open a vibekit PR adding the const, bump its version, then swap the four VibeRacer call sites (`Game.tsx`, `DragRace.tsx`, `DerbyRound.tsx`, `TuningSession.tsx`) to import from the kit and delete the local module.
 
 ## Low Priority
 

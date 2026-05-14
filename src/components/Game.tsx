@@ -8,6 +8,7 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import type { TimeOfDay } from '@/lib/lighting'
 import { TIME_OF_DAY_LABELS } from '@/lib/lighting'
 import type { Weather } from '@/lib/weather'
@@ -3007,14 +3008,8 @@ function GameSession({
 }
 
 const root: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   background: '#9ad8ff',
-  overflow: 'hidden',
-  touchAction: 'none',
-  userSelect: 'none',
-  WebkitUserSelect: 'none',
-  WebkitTouchCallout: 'none',
 }
 // Achievement toast lane. Sits below the HUD's top row so a "lap saved" toast
 // and an "Achievement unlocked" toast read as two independent messages rather

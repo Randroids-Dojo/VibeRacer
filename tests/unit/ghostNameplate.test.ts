@@ -28,6 +28,11 @@ describe('ghostNameplate constants', () => {
     }
   })
 
+  it('defines drag-specific ghost source tags', () => {
+    expect(NAMEPLATE_SOURCE_TAGS.nextFaster).toBe('NEXT')
+    expect(NAMEPLATE_SOURCE_TAGS.ownPb).toBe('PB')
+  })
+
   it('uses non-empty unique source tags', () => {
     const tags = GHOST_SOURCES.map((s) => NAMEPLATE_SOURCE_TAGS[s])
     const unique = new Set(tags)

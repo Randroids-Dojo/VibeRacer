@@ -12,6 +12,7 @@ import { submitDerbyRun } from '@/lib/derbySubmit'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import { cameraLerpsFor } from '@/lib/controlSettings'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import {
@@ -255,15 +256,9 @@ function Stat({ label, value }: { label: string; value: string }) {
 // the joystick, no iOS long-press callout interrupting a held throttle,
 // and no accidental text selection when a tap lands on a HUD label.
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   background: '#000',
   color: '#fff',
-  overflow: 'hidden',
-  touchAction: 'none',
-  userSelect: 'none',
-  WebkitUserSelect: 'none',
-  WebkitTouchCallout: 'none',
 }
 const resultsOverlay: React.CSSProperties = {
   position: 'absolute',

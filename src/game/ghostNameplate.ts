@@ -18,15 +18,19 @@
 import { formatLapTime } from '@/lib/share'
 import type { GhostSource } from '@/lib/ghostSource'
 
+export type NameplateSource = GhostSource | 'nextFaster' | 'ownPb'
+
 // Per-source visual tunables. Reads "GHOST" / "TOP" / "PB" / "LAST" so the
 // player can tell at a glance whose lap the ghost is replaying without
 // having to read the initials. Kept as plain strings so the Canvas renderer
 // can draw them directly without an extra mapping step.
-export const NAMEPLATE_SOURCE_TAGS: Record<GhostSource, string> = {
+export const NAMEPLATE_SOURCE_TAGS: Record<NameplateSource, string> = {
   auto: 'GHOST',
   top: 'TOP',
   pb: 'PB',
   lastLap: 'LAST',
+  nextFaster: 'NEXT',
+  ownPb: 'PB',
 }
 
 // Color palette (hex strings, NOT 0xRRGGBB ints, so the Canvas renderer can
@@ -93,7 +97,7 @@ export function formatNameplateLapTime(value: unknown): string {
 // loop polls every frame, so a string compare per frame is the right cost.
 export function nameplateCacheKey(
   meta: GhostMeta | null,
-  source: GhostSource,
+  source: NameplateSource,
 ): string {
   if (meta === null) return `${source}|<none>`
   const ini = formatNameplateInitials(meta.initials)
