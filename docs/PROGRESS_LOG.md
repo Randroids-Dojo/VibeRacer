@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, Derby Camera Parity
+
+- Branch: `fix/derby-camera-parity`
+- Changed: wired Derby rounds to the same persisted camera settings path as the main race mode. Derby now builds a live `CameraRigParams` ref from `useControlSettings`, applies camera height, distance, look-ahead, follow speed, camera-forward, target-height, and FOV changes inside the running Three.js loop, and listens to `visualViewport` resize events so phone browser chrome changes do not leave the canvas at a stale size. The Derby canvas now has a stable Playwright selector for mobile viewport coverage.
+- Verification: `grep -rn $'\u2014' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `grep -rn $'\u2013' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `git diff --check`, `npm run type-check`, `npm test -- tests/unit/controlSettings.test.ts tests/unit/cameraPresets.test.ts tests/unit/derbyTick.test.ts`, `PORT=3107 npx playwright test tests/e2e/derby.spec.ts`, `npm test`, and `npm run build` passed. Build still reports the existing React hook lint warnings in `RaceCanvas.tsx`, `TrackEditor.tsx`, and `useGamepad.ts`.
+- Assumptions: this keeps Derby's arena renderer and vehicle visuals separate from the main race renderer while sharing the camera-settings contract. Derby already uses the shared touch joystick and gamepad hook, so this slice removes the stale followup that said those controls were missing.
+- GDD coverage: no core GDD status change. This is mobile and camera polish for an already shipped optional mode.
+- Followups: the dependency gate still reports VibeKit `v0.2.0` while `docs/DEPENDENCY_LEDGER.md` pins `v0.1.0`; the user-requested Derby camera fix takes precedence for this branch, so the dependency bump remains the next dependency slice.
+
 ## 2026-05-14, World Tour Mobile Race Parity
 
 - Branch: `feature/world-tour-mobile-parity`

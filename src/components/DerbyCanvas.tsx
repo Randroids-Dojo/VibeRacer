@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 import {
   AmbientLight,
   Color,
@@ -51,8 +51,10 @@ import {
 import { isDestroyed } from '@/game/derbyVehicleState'
 import {
   applyCameraRig,
+  DEFAULT_CAMERA_RIG,
   initCameraRig,
   updateCameraRig,
+  type CameraRigParams,
 } from '@/game/sceneBuilder'
 import { readPlayerInput } from '@/game/playerInput'
 import type { KeyInput } from '@/hooks/useKeyboard'
@@ -75,6 +77,10 @@ export interface DerbyCanvasProps {
   // Index 0 is the player; CPU brains are initialized for indices >= 1.
   // The same array order drives carIdx in the round.
   keysRef: { current: KeyInput }
+  // Live camera-rig overrides from Settings. Matches RaceCanvas behavior:
+  // Derby reads the ref each frame so camera preset and slider changes apply
+  // without rebuilding the WebGL scene.
+  cameraRigRef?: MutableRefObject<CameraRigParams | null>
   // Called whenever the HUD-relevant snapshot changes. The canvas decides
   // when to call it (typically every few frames, on hits, and on round
   // end) so React renders only when there is something to update.
@@ -119,7 +125,7 @@ const VEHICLE_BODY_HEIGHT = 1.0
 const VEHICLE_WHEEL_RADIUS = 0.35
 
 export function DerbyCanvas(props: DerbyCanvasProps) {
-  const { arena, vehicleConfigs, keysRef } = props
+  const { arena, vehicleConfigs, keysRef, cameraRigRef } = props
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Callbacks live in refs so the rAF loop sees the latest closures
   // without forcing the canvas to re-mount on every parent render.
@@ -137,6 +143,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     const renderer = new WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
+    renderer.domElement.dataset.testid = 'derby-canvas'
     renderer.shadowMap.enabled = false
     container.appendChild(renderer.domElement)
 
@@ -149,8 +156,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     scene.add(ambient)
     scene.add(sun)
 
+    const initialCameraParams = cameraRigRef?.current ?? DEFAULT_CAMERA_RIG
     const camera = new PerspectiveCamera(
-      70,
+      initialCameraParams.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70,
       container.clientWidth / container.clientHeight,
       0.1,
       2000,
@@ -174,16 +182,17 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       vehicleTypes: vehicleConfigs.map((v) => v.type),
     })
 
-    // Camera rig matches the loop's chase camera (DEFAULT_CAMERA_RIG):
-    // smoothed position + look-target lerp, height 6, distance 14, fov 70.
+    // Camera rig uses the same live player settings as the loop mode.
     // initCameraRig seeds it at the player's spawn so the first frame is
     // already in pose; updateCameraRig+applyCameraRig run inside step().
     const cameraRig = initCameraRig(
       round.cars[PLAYER_IDX].physics.x,
       round.cars[PLAYER_IDX].physics.z,
       round.cars[PLAYER_IDX].physics.heading,
+      initialCameraParams,
     )
     applyCameraRig(camera, cameraRig)
+    let lastAppliedFov = camera.fov
 
     const brains: DerbyAiBrain[] = vehicleConfigs.map(() => initBrain())
 
@@ -352,14 +361,21 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       syncVisuals()
       animateWheels(inputs, dtSec)
 
-      // Camera rig: same chase behavior as the loop mode (smoothed lerp,
-      // look-ahead, default height/distance/fov).
+      // Camera rig: same live camera settings contract as the loop mode.
       const player = round.cars[PLAYER_IDX]
+      const cameraParams = cameraRigRef?.current ?? DEFAULT_CAMERA_RIG
+      const nextFov = cameraParams.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70
+      if (nextFov !== lastAppliedFov) {
+        camera.fov = nextFov
+        camera.updateProjectionMatrix()
+        lastAppliedFov = nextFov
+      }
       updateCameraRig(
         cameraRig,
         player.physics.x,
         player.physics.z,
         player.physics.heading,
+        cameraParams,
       )
       applyCameraRig(camera, cameraRig)
 
@@ -443,11 +459,13 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       camera.updateProjectionMatrix()
     }
     window.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
 
     return () => {
       stopped = true
       cancelAnimationFrame(rafId)
       window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
       for (const v of carVisualizers) v?.dispose()
       for (const a of carAssets) a?.dispose()
       for (const d of debrisItems) scene.remove(d.object)
@@ -459,7 +477,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         container.removeChild(renderer.domElement)
       }
     }
-  }, [arena, vehicleConfigs, keysRef])
+  }, [arena, vehicleConfigs, keysRef, cameraRigRef])
 
   return <div ref={containerRef} style={canvasContainerStyle} />
 }
