@@ -35,6 +35,17 @@ export interface DerbyRoundState {
   // Seed used by the round's deterministic RNG. Surfaced so a tick driver
   // can fork a private RNG for AI choices without touching round state.
   rngSeed: number
+  // Per-car-pair damage cooldown. Key is `${min(i,j)}:${max(i,j)}`; value is
+  // the earliest elapsedMs at which the next damage hit between that pair
+  // may be applied. derbyTick still runs positional separation every frame
+  // for cars in contact, but skips damage emission while the cooldown is
+  // active so a sustained pile-up cannot stack three hits per frame.
+  pairDamageCooldownUntilMs: Map<string, number>
+  // Per-car-pair wreck-impulse cooldown. Same shape and motivation as the
+  // damage cooldown, but gates the momentum transfer applied when a live
+  // car contacts a destroyed wreck. Without the gate the pusher loses
+  // velocity every frame and stalls after a few frames of contact.
+  pairWreckImpulseUntilMs: Map<string, number>
 }
 
 export interface InitDerbyRoundInput {
@@ -71,6 +82,8 @@ export function initDerbyRound(input: InitDerbyRoundInput): DerbyRoundState {
     endOutcome: null,
     ranking: [],
     rngSeed: input.rngSeed ?? DEFAULT_RNG_SEED,
+    pairDamageCooldownUntilMs: new Map(),
+    pairWreckImpulseUntilMs: new Map(),
   }
 }
 

@@ -36,8 +36,11 @@ export const SPEED_DIFF_THRESHOLD = 6
 export const VELOCITY_INTO_CONTACT_THRESHOLD = 3
 // Damage formula: baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
 export const DAMAGE_SCALE = 30
-// Per-hit cap, kept below the weakest vehicle's HP so no clean hit one-shots.
-export const MAX_HIT_DAMAGE = 48
+// Per-hit cap, kept low so derby TTK comes from repeated clean hits while
+// the collision impulse still makes hard rams feel heavy. derbyTick pairs
+// this with a 350 ms per-pair damage cooldown so multi-frame pile-ups
+// cannot stack hits inside a single contact window.
+export const MAX_HIT_DAMAGE = 15
 
 // World-frame velocity of a car given its physics state. Heading 0 = +X,
 // PI/2 = -Z, matching stepPhysics. Speed is signed; a negative speed means
@@ -128,7 +131,7 @@ export function resolveCollision(
       (aConfig.baseDamage * impactComponent * massFactor) / DAMAGE_SCALE
     return {
       aDelta: 0,
-      bDelta: clampHit(Math.round(raw)),
+      bDelta: clampHit(raw),
       attacker: verdict,
       relativeSpeed,
     }
@@ -139,7 +142,7 @@ export function resolveCollision(
     const raw =
       (bConfig.baseDamage * impactComponent * massFactor) / DAMAGE_SCALE
     return {
-      aDelta: clampHit(Math.round(raw)),
+      aDelta: clampHit(raw),
       bDelta: 0,
       attacker: verdict,
       relativeSpeed,
@@ -147,7 +150,9 @@ export function resolveCollision(
   }
   // Split case: both take damage. Each car's incoming damage scales with
   // the OTHER car's baseDamage and mass fraction so the lighter car takes
-  // more from the heavier one.
+  // more from the heavier one. Fractional deltas are intentional: the per-
+  // pair damage cooldown gates how often a contact emits damage, so the
+  // raw magnitude can be small without disappearing under integer rounding.
   const totalMass = Math.max(1, aConfig.mass + bConfig.mass)
   const aShare = (2 * bConfig.mass) / totalMass
   const bShare = (2 * aConfig.mass) / totalMass
@@ -156,8 +161,8 @@ export function resolveCollision(
   const halfB =
     (0.5 * aConfig.baseDamage * impactComponent * bShare) / DAMAGE_SCALE
   return {
-    aDelta: clampHit(Math.round(halfA)),
-    bDelta: clampHit(Math.round(halfB)),
+    aDelta: clampHit(halfA),
+    bDelta: clampHit(halfB),
     attacker: 'split',
     relativeSpeed,
   }

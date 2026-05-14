@@ -53,8 +53,25 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
 }
 
 // Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
-// Tuned so a hard ram detaches a panel, while mild side-bumps do not.
+// Tuned so a hard ram pops an extra panel on top of the tier-based
+// progressive detach below; mild side-bumps stay below the threshold.
 const PANEL_DETACH_DAMAGE_THRESHOLD = 12
+// Number of detachable panels that should still be attached when the car
+// is at each damage tier. update() walks the panel sequence and detaches
+// extras whenever the car's tier drops past a transition. Critical = 0
+// means the wreck sheds anything still on it; destroyed cars hand their
+// remainder to detachAllRemaining() after dropping to critical here.
+const PANELS_ATTACHED_BY_TIER: Record<DamageTier, number> = {
+  pristine: 4,
+  light: 3,
+  moderate: 2,
+  heavy: 1,
+  critical: 0,
+}
+// Canonical panel detach sequence. Front-most parts come off first (a
+// car typically loses its hood before its trunk in a derby) so the
+// player sees recognizable wear progression.
+const PANEL_DETACH_SEQUENCE: SubmeshName[] = ['hood', 'door_r', 'door_l', 'trunk']
 // Paint and detach lists include doors as candidates. Variants whose
 // asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
 // simply do not contribute door entries to the visualizer's working sets.
@@ -66,7 +83,11 @@ const FIRE_COLOR = new Color(0xff5022)
 
 export interface DerbyDamageVisualizer {
   // Update visuals from the current car state. Idempotent and cheap.
-  update(state: DerbyCarState): void
+  // Returns the panels that just got detached as a result of this call
+  // (a damage-tier transition may detach one or more panels so the car
+  // visibly sheds parts as it takes wear). Returns an empty array when
+  // nothing changed.
+  update(state: DerbyCarState): Object3D[]
   // Roll a panel detach for this hit. amount is the clamped damage;
   // worldNx/worldNz is the contact normal in world XZ pointing toward the
   // attacker; victimHeading is the victim's heading in radians (0 = +X).
@@ -82,6 +103,11 @@ export interface DerbyDamageVisualizer {
     victimHeading: number,
     rng: () => number,
   ): Object3D | null
+  // Blow off every still-attached detachable panel. Called once when a car
+  // is destroyed so the wreck sheds the rest of its panels into the world
+  // (regardless of how few hits got it to zero). Returns the list of
+  // detached panels in world-space so the caller can hand them to debris.
+  detachAllRemaining(): Object3D[]
   // Free any allocations the visualizer added to the asset. Restores the
   // original paint and light materials so the asset can be reused for a
   // future round (not used in v1; round end disposes the asset entirely).
@@ -242,12 +268,61 @@ export function createDamageVisualizer(
     return candidates[0]
   }
 
+  function detachPanel(choice: SubmeshName): Object3D | null {
+    const panel = asset.submeshes[choice]
+    // pickPanelByAngle only chooses from availableDetachables, which is
+    // filtered against undefined entries, so this is true by construction
+    // for the hit path; the explicit check keeps the type checker happy
+    // and covers the detachAllRemaining path on optional doors.
+    if (!panel) return null
+    detachedPanels.add(choice)
+    // Real detach: capture the panel's world transform, remove it from its
+    // parent in the car asset, then return it so the caller can add it to
+    // the scene as free-standing debris.
+    asset.group.updateWorldMatrix(true, true)
+    const worldPos = panel.getWorldPosition(new Vector3())
+    const worldQuat = panel.getWorldQuaternion(new Quaternion())
+    const worldScale = panel.getWorldScale(new Vector3())
+    panel.removeFromParent()
+    panel.position.copy(worldPos)
+    panel.quaternion.copy(worldQuat)
+    panel.scale.copy(worldScale)
+    panel.visible = true
+    return panel
+  }
+
+  function detachToTargetCount(targetAttached: number): Object3D[] {
+    const out: Object3D[] = []
+    // Walk the canonical sequence and detach until the number of still-
+    // attached panels matches the tier's target. availableDetachables is
+    // filtered against absent door variants, so a Kenney sliced sedan
+    // simply has fewer panels to lose, so the loop just runs out earlier.
+    for (const name of PANEL_DETACH_SEQUENCE) {
+      const attached = availableDetachables.filter(
+        (p) => !detachedPanels.has(p),
+      ).length
+      if (attached <= targetAttached) break
+      if (!availableDetachables.includes(name)) continue
+      if (detachedPanels.has(name)) continue
+      const panel = detachPanel(name)
+      if (panel) out.push(panel)
+    }
+    return out
+  }
+
   return {
     update(state: DerbyCarState) {
       const fraction =
         state.maxHealth > 0 ? state.health / state.maxHealth : 0
       const tier = tierFromFraction(fraction)
-      if (tier !== lastTier) setTier(tier)
+      const tierChanged = tier !== lastTier
+      if (tierChanged) setTier(tier)
+      // Progressive panel loss: each tier drop pops one or more panels off
+      // so the wear is visible mid-battle, not just at destruction. Only
+      // runs on a tier change so a steady-state idle frame doesn't keep
+      // re-checking detach state.
+      if (!tierChanged) return []
+      return detachToTargetCount(PANELS_ATTACHED_BY_TIER[tier])
     },
     applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null
@@ -256,25 +331,20 @@ export function createDamageVisualizer(
       void rng
       const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
       if (choice === null) return null
-      detachedPanels.add(choice)
-      const panel = asset.submeshes[choice]
-      // pickPanelByAngle only chooses from availableDetachables, which is
-      // filtered against undefined entries, so this assert is true by
-      // construction; the explicit check keeps the type checker happy.
-      if (!panel) return null
-      // Real detach: capture the panel's world transform, remove it from
-      // its parent in the car asset, then return it so the caller can add
-      // it to the scene as free-standing debris. The panel literally
-      // disappears from the car (no more visibility hack) and re-appears
-      // in world space at its previous on-car location.
-      asset.group.updateWorldMatrix(true, true)
-      const worldPos = panel.getWorldPosition(new Vector3())
-      const worldQuat = panel.getWorldQuaternion(new Quaternion())
-      panel.removeFromParent()
-      panel.position.copy(worldPos)
-      panel.quaternion.copy(worldQuat)
-      panel.visible = true
-      return panel
+      return detachPanel(choice)
+    },
+    detachAllRemaining() {
+      const out: Object3D[] = []
+      // Snapshot the remaining list before mutation; detachPanel adds to
+      // detachedPanels which would otherwise filter mid-iteration.
+      const remaining = availableDetachables.filter(
+        (p) => !detachedPanels.has(p),
+      )
+      for (const name of remaining) {
+        const panel = detachPanel(name)
+        if (panel) out.push(panel)
+      }
+      return out
     },
     dispose() {
       smokeGeo.dispose()

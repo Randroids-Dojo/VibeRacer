@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { derbyTick, type DerbyTickInputs } from '@/game/derbyTick'
+import {
+  derbyTick,
+  pairKey,
+  PAIR_DAMAGE_COOLDOWN_MS,
+  type DerbyTickInputs,
+} from '@/game/derbyTick'
 import { initDerbyRound } from '@/game/derbyRoundState'
 import { isDestroyed } from '@/game/derbyVehicleState'
 import { DERBY_ARENAS } from '@/lib/derbyArenas'
@@ -23,7 +28,34 @@ function fullThrottleInputs(n: number): DerbyTickInputs {
   }
 }
 
+function parkAway(round: ReturnType<typeof initDerbyRound>): void {
+  round.cars[2].physics.x = -50
+  round.cars[2].physics.z = 0
+  round.cars[3].physics.x = 50
+  round.cars[3].physics.z = 0
+}
+
+function placeHeadOnOverlap(
+  round: ReturnType<typeof initDerbyRound>,
+  aIdx: number,
+  bIdx: number,
+): void {
+  round.cars[aIdx].physics.x = 0
+  round.cars[aIdx].physics.z = 0
+  round.cars[aIdx].physics.heading = 0
+  round.cars[bIdx].physics.x =
+    round.configs[aIdx].obbHalfLength + round.configs[bIdx].obbHalfLength - 0.1
+  round.cars[bIdx].physics.z = 0
+  round.cars[bIdx].physics.heading = 0
+}
+
 describe('derbyTick', () => {
+  it('uses canonical pair keys regardless of input order', () => {
+    expect(pairKey(1, 3)).toBe('1:3')
+    expect(pairKey(3, 1)).toBe('1:3')
+    expect(pairKey(2, 2)).toBe('2:2')
+  })
+
   it('flips status from pre to running on the first tick', () => {
     const round = initDerbyRound({
       arena: ARENA,
@@ -144,6 +176,114 @@ describe('derbyTick', () => {
       expect(hit.attackerIdx).toBe(0)
       expect(hit.amount).toBeGreaterThan(0)
     }
+  })
+
+  it('gates repeated pair damage while cooldown is active', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].physics.speed = 20
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const key = pairKey(0, 1)
+    round.pairDamageCooldownUntilMs.set(key, PAIR_DAMAGE_COOLDOWN_MS)
+    const before = round.cars[1].health
+    const out = derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.cars[1].health).toBe(before)
+    expect(out.events.some((e) => e.kind === 'hit')).toBe(false)
+  })
+
+  it('does not let a destroyed car damage a live car', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 20
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const before = round.cars[1].health
+    const out = derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.cars[1].health).toBe(before)
+    expect(out.events.some((e) => e.kind === 'hit')).toBe(false)
+  })
+
+  it('only applies wreck impulse above the closing-speed threshold', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['racecar', 'bigTruck', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 0
+    round.cars[1].physics.speed = 0.1
+    parkAway(round)
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.pairWreckImpulseUntilMs.has(pairKey(0, 1))).toBe(false)
+  })
+
+  it('transfers more wreck impulse speed to the lighter wreck', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['racecar', 'bigTruck', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 0
+    round.cars[1].physics.heading = Math.PI
+    round.cars[1].physics.speed = 18
+    parkAway(round)
+    const pusherBefore = round.cars[1].physics.speed
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    const pusherLoss = pusherBefore - round.cars[1].physics.speed
+    expect(round.cars[0].physics.speed).toBeGreaterThan(pusherLoss)
+    expect(round.pairWreckImpulseUntilMs.has(pairKey(0, 1))).toBe(true)
+  })
+
+  it('pushes the unpinned car away when the other car is wall pinned', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['schoolBus', 'car', 'car', 'car'],
+    })
+    const busLimit = ARENA.radius - round.configs[0].collisionRadius
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.heading = 0
+    round.cars[0].physics.speed = 0
+    round.cars[0].physics.x = busLimit
+    round.cars[1].physics.x =
+      busLimit - round.configs[0].obbHalfLength - round.configs[1].obbHalfLength + 0.1
+    round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const busBefore = round.cars[0].physics.x
+    const carBefore = round.cars[1].physics.x
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(Math.abs(round.cars[1].physics.x - carBefore)).toBeGreaterThan(
+      Math.abs(round.cars[0].physics.x - busBefore),
+    )
+    expect(round.cars[0].physics.x).toBeLessThanOrEqual(busLimit + 1e-3)
+  })
+
+  it('applies friction decay to destroyed cars', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['car', 'car', 'car', 'car'],
+    })
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.x = 0
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.speed = 10
+    parkAway(round)
+    derbyTick(round, neutralInputs(4), 0.1)
+    expect(round.cars[0].physics.speed).toBeLessThan(10)
   })
 
   it('credits a kill to the attacker when a hit destroys the victim', () => {

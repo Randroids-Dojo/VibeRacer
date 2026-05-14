@@ -84,8 +84,8 @@ describe('resolveCollision', () => {
     expect(out.bDelta).toBeGreaterThan(0)
   })
 
-  it('lands a hard truck hit from a normal closing speed', () => {
-    const a = makeCar(0, 'bigTruck', { speed: 20, heading: 0 })
+  it('lands a visible truck hit from a high closing speed', () => {
+    const a = makeCar(0, 'bigTruck', { speed: 40, heading: 0 })
     const b = makeCar(1, 'car', { speed: 0 })
     const out = resolveCollision(
       a,
@@ -95,7 +95,7 @@ describe('resolveCollision', () => {
       NORMAL_PLUS_X,
     )
     expect(DAMAGE_SCALE).toBe(30)
-    expect(out.bDelta).toBeGreaterThanOrEqual(20)
+    expect(out.bDelta).toBeGreaterThanOrEqual(10)
   })
 
   it('faster car wins by speed even when the slow car is heavier', () => {
@@ -134,6 +134,37 @@ describe('resolveCollision', () => {
     expect(out.attacker).toBe('split')
     // Lighter racecar takes more damage than the heavier bigTruck.
     expect(out.aDelta).toBeGreaterThan(out.bDelta)
+  })
+
+  it('preserves tiny non-zero hit damage', () => {
+    const a = makeCar(0, 'car', { speed: 0.05, heading: 0 })
+    const b = makeCar(1, 'car', { speed: 0, heading: 0 })
+    const out = resolveCollision(
+      a,
+      b,
+      DERBY_VEHICLES.car,
+      DERBY_VEHICLES.car,
+      NORMAL_PLUS_X,
+    )
+    expect(out.aDelta + out.bDelta).toBeGreaterThan(0)
+    expect(out.aDelta + out.bDelta).toBeLessThan(1)
+  })
+
+  it('keeps fractional split damage instead of rounding it away', () => {
+    const a = makeCar(0, 'racecar', { speed: 1, heading: 0 })
+    const b = makeCar(1, 'bigTruck', { speed: 1, heading: Math.PI })
+    const out = resolveCollision(
+      a,
+      b,
+      DERBY_VEHICLES.racecar,
+      DERBY_VEHICLES.bigTruck,
+      NORMAL_PLUS_X,
+    )
+    expect(out.attacker).toBe('split')
+    expect(out.aDelta).toBeGreaterThan(0)
+    expect(Number.isInteger(out.aDelta)).toBe(false)
+    expect(out.bDelta).toBeGreaterThan(0)
+    expect(Number.isInteger(out.bDelta)).toBe(false)
   })
 
   it('zero relative speed produces zero damage regardless of verdict', () => {
