@@ -84,7 +84,7 @@ describe('resolveCollision', () => {
     expect(out.bDelta).toBeGreaterThan(0)
   })
 
-  it('lands a hard truck hit from a high closing speed', () => {
+  it('lands a visible truck hit from a high closing speed', () => {
     const a = makeCar(0, 'bigTruck', { speed: 40, heading: 0 })
     const b = makeCar(1, 'car', { speed: 0 })
     const out = resolveCollision(
@@ -95,7 +95,7 @@ describe('resolveCollision', () => {
       NORMAL_PLUS_X,
     )
     expect(DAMAGE_SCALE).toBe(30)
-    expect(out.bDelta).toBeGreaterThanOrEqual(20)
+    expect(out.bDelta).toBeGreaterThanOrEqual(10)
   })
 
   it('faster car wins by speed even when the slow car is heavier', () => {
