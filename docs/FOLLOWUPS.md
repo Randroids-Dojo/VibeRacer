@@ -16,11 +16,11 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 ## Derby mode followups
 
-- Replace placeholder vehicle GLBs with sourced open-source destructible models. The `derbyVehicleLoader` named-submesh contract is in place (`body`, `door_l/r`, `hood`, `trunk`, `headlight_l/r`, `taillight_l/r`, `wheel_*`). Drop GLBs into `public/models/derby/` and add a GLB-aware code path in `loadDerbyVehicleAsset`; `assertVehicleContract` will catch missing submeshes at load time.
+- Improve the current authored Derby GLBs with richer destructible model variants. The `derbyVehicleLoader` named-submesh contract is in place (`body`, `door_l/r`, `hood`, `trunk`, `headlight_l/r`, `taillight_l/r`, `wheel_*`), authored GLBs already ship under `public/models/derby/`, and `assertVehicleContract` catches missing submeshes at load time. A future art pass can swap in higher-fidelity sourced models while preserving the contract.
 - Difficulty knob for the CPU AI. v1 is single-difficulty seek-then-ram with no track-circling tactic. Add a difficulty enum to the start route and key the AI tuning constants (target weighting, recover threshold, lead seconds) off it.
 - Dent decals as alpha-mapped sprites parented to the body. Held off in v1; the paint-darkening multiplier already conveys progressive damage. Real decals require pre-baked alpha PNGs under `public/models/derby/decals/`.
 - Particle-based smoke and fire. v1 uses scaled translucent boxes for the markers so the visualizer ships without a particle system. Swap to instanced point sprites with a per-instance lifetime ramp once a shared particle module exists; the slot above the hood is already named (`derbyDamageSmoke`, `derbyDamageFire`) so the swap is local.
-- Broader vehicle balance tuning pass. v1 now has harder hit damage and mass-aware collision impulse, but a balance pass before broad release should still reduce the chance of one vehicle dominating the per-arena fastest-win board.
+- Broader vehicle balance tuning pass. v1 now has harder physical impact, capped per-hit damage, a damage cooldown, and mass-aware collision impulse, but a balance pass before broad release should still reduce the chance of one vehicle dominating the per-arena fastest-win board.
 - Derby leaderboard pagination plus initials editor. The slice ships only the top 50 readout and falls back to `readStoredInitials() ?? 'YOU'`. Add a dedicated leaderboard panel and a post-round initials prompt to close out the loop / drag parity gap.
 - Per-vehicle leaderboard tabs if a single vehicle ends up dominating the single board. The data is already stored on each entry's `vehicle` field, so post-hoc slicing is a UI change with no schema migration.
 

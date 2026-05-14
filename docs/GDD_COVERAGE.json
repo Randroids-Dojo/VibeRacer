@@ -486,15 +486,58 @@
       "remainingGaps": []
     },
     {
+      "id": "19",
+      "title": "Drag Racing Mode",
+      "status": "done",
+      "implemented": [
+        "reserved drag routes and four fixed strips",
+        "parts-based garage loadouts",
+        "strip version hashing",
+        "vertical-profile slope physics",
+        "jump-start dampening",
+        "drag leaderboard submit and read paths",
+        "top speed, foul flag, reaction time, and loadout persistence",
+        "ghost rotation for top, next faster, own PB, and none",
+        "selected ghost-source nameplate tags",
+        "gauge speedometer with live needle and peak marker",
+        "visible speedometer movement Playwright coverage"
+      ],
+      "evidence": [
+        "src/app/drag/page.tsx",
+        "src/app/drag/[name]/page.tsx",
+        "src/components/DragRace.tsx",
+        "src/components/DragGarage.tsx",
+        "src/components/DragHUD.tsx",
+        "src/components/DragSessionSummary.tsx",
+        "src/components/Speedometer.tsx",
+        "src/lib/dragStrips.ts",
+        "src/lib/dragParts.ts",
+        "src/lib/dragGhost.ts",
+        "src/lib/dragSubmit.ts",
+        "src/game/dragTick.ts",
+        "src/game/dragTuning.ts",
+        "src/game/dragVerticalProfile.ts",
+        "src/game/ghostNameplate.ts",
+        "src/game/ghostPresentation.ts",
+        "tests/unit/dragGhost.test.ts",
+        "tests/unit/speedometer.test.ts",
+        "tests/unit/ghostNameplate.test.ts",
+        "tests/unit/ghostPresentation.test.ts",
+        "tests/e2e/drag.spec.ts"
+      ],
+      "remainingGaps": []
+    },
+    {
       "id": "20",
       "title": "Derby Mode",
       "status": "partial",
       "implemented": [
         "arena and vehicle catalogs",
         "schemas and KV keys",
-        "damage model with attacker attribution, proportional split, and hard-hit tuning",
+        "damage model with attacker attribution, proportional split, stronger impact scale, capped per-hit damage, and pair cooldown",
         "multi-vehicle tick and round-end conditions",
         "mass-aware collision impulse and rebound",
+        "destroyed cars remain as pushable wrecks with friction",
         "seek-then-ram AI controller with recover state",
         "circle dirt arena with perimeter wall",
         "dirt surface key",
@@ -554,7 +597,6 @@
       "remainingGaps": [
         "AI difficulty knob",
         "Dent decals and particle-based smoke / fire",
-        "Touch and gamepad parity for the derby canvas",
         "Broader vehicle balance tuning pass",
         "Leaderboard pagination panel and post-round initials editor",
         "Per-vehicle leaderboard tabs (only if single-board metrics show one vehicle dominating)"
