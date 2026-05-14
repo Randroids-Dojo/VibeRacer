@@ -4,12 +4,14 @@ import {
   CAREER_SCHEMA_VERSION,
   CAREER_STARTING_CAR_ID,
   CAREER_STARTING_MONEY,
+  addOwnedCar,
   cloneCareer,
   defaultCareer,
   getActiveCar,
   hasActiveTour,
   isCareerComplete,
   migrateCareer,
+  setActiveCar,
   withActiveCarState,
   type WorldTourCareer,
 } from '@/game/worldTourCareer'
@@ -247,6 +249,23 @@ describe('migrateCareer', () => {
     expect(active.upgrades.tires).toBe(1)
   })
 
+  it('uses legacy fields when the active carsById slot is an array', () => {
+    const out = migrateCareer({
+      version: 1,
+      ownedCarIds: ['starter'],
+      activeCarId: 'starter',
+      activeCarDamage: 0.7,
+      activeCarUpgrades: { engine: 1, tires: 2, brakes: 0, body: 0 },
+      carsById: {
+        starter: [{ damage: 0.2 }],
+      },
+    })
+    const active = out.carsById[out.activeCarId]!
+    expect(active.damage).toBe(0.7)
+    expect(active.upgrades.engine).toBe(1)
+    expect(active.upgrades.tires).toBe(2)
+  })
+
   it('floors fractional upgrade tiers folded from the legacy field', () => {
     const out = migrateCareer({
       version: 1,
@@ -283,6 +302,48 @@ describe('migrateCareer', () => {
     expect(out.ownedCarIds).toEqual(['a', 'b'])
     expect(out.completedTourIds).toEqual(['t1'])
     expect(out.unlockedTourIds).toEqual(['velvet-coast', 't2'])
+  })
+})
+
+describe('addOwnedCar', () => {
+  it('adds a new owned car with stock state', () => {
+    const career = defaultCareer()
+    const next = addOwnedCar(career, 'red')
+    expect(next).not.toBe(career)
+    expect(next.ownedCarIds).toEqual([CAREER_STARTING_CAR_ID, 'red'])
+    expect(next.carsById.red).toEqual({
+      damage: 0,
+      upgrades: { engine: 0, tires: 0, brakes: 0, body: 0 },
+    })
+  })
+
+  it('returns the input career when the car is already owned', () => {
+    const career = addOwnedCar(defaultCareer(), 'red')
+    expect(addOwnedCar(career, 'red')).toBe(career)
+  })
+
+  it('returns the input career when the car id is empty', () => {
+    const career = defaultCareer()
+    expect(addOwnedCar(career, '')).toBe(career)
+  })
+})
+
+describe('setActiveCar', () => {
+  it('switches to an owned car', () => {
+    const career = addOwnedCar(defaultCareer(), 'red')
+    const next = setActiveCar(career, 'red')
+    expect(next).not.toBe(career)
+    expect(next.activeCarId).toBe('red')
+  })
+
+  it('returns the input career when the car is already active', () => {
+    const career = defaultCareer()
+    expect(setActiveCar(career, CAREER_STARTING_CAR_ID)).toBe(career)
+  })
+
+  it('returns the input career when the car is not owned', () => {
+    const career = defaultCareer()
+    expect(setActiveCar(career, 'red')).toBe(career)
   })
 })
 

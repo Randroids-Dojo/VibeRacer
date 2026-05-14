@@ -191,6 +191,10 @@ function isNonEmptyString(v: unknown): v is string {
   return typeof v === 'string' && v.length > 0
 }
 
+function isPlainRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === 'object' && v !== null && !Array.isArray(v)
+}
+
 function sanitizeStringArray(raw: unknown): string[] {
   if (!Array.isArray(raw)) return []
   const seen = new Set<string>()
@@ -265,19 +269,15 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   // Every owned car gets a stock entry if one is missing.
   const carsById: Record<string, OwnedCarState> = {}
   let hasActiveCarSlotFromCarsById = false
-  const rawCarsById =
-    typeof r.carsById === 'object' && r.carsById !== null
-      ? (r.carsById as Record<string, unknown>)
-      : {}
+  const rawCarsById = isPlainRecord(r.carsById) ? r.carsById : {}
   for (const id of owned) {
     const slot = rawCarsById[id]
-    if (slot && typeof slot === 'object') {
-      const s = slot as Record<string, unknown>
+    if (isPlainRecord(slot)) {
       carsById[id] = {
-        damage: isFiniteNonNegativeNumber(s.damage)
-          ? Math.min(1, s.damage)
+        damage: isFiniteNonNegativeNumber(slot.damage)
+          ? Math.min(1, slot.damage)
           : 0,
-        upgrades: sanitizeUpgrades(s.upgrades),
+        upgrades: sanitizeUpgrades(slot.upgrades),
       }
       if (id === activeCarId) hasActiveCarSlotFromCarsById = true
     } else {
@@ -321,6 +321,7 @@ export function addOwnedCar(
   career: WorldTourCareer,
   carId: string,
 ): WorldTourCareer {
+  if (!carId) return career
   if (career.ownedCarIds.includes(carId)) return career
   const next = cloneCareer(career)
   next.ownedCarIds = [...next.ownedCarIds, carId]
