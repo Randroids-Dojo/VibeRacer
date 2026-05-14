@@ -54,6 +54,7 @@ test('model viewer tile visibly animates over time', async ({ page }) => {
   await page.goto('/model-viewer')
   const tile = page.getByTestId('model-tile-Assembled').first()
   await expect(tile).toBeVisible({ timeout: 20_000 })
+  await page.waitForTimeout(300)
 
   const first = await tile.screenshot()
   await page.waitForTimeout(900)
