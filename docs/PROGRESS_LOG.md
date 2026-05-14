@@ -2,6 +2,52 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, Derby Impact Pass
+
+- Branch: `fix/derby-impact-docs-current`
+- Changed: made derby car-car collisions hit harder. `derbyDamage.ts` now uses a stronger impact scale and a higher per-hit cap, while `derbyTick.ts` applies a mass-aware velocity impulse after OBB contact so the attacker slows and the victim gets shoved away instead of only taking health damage. Also carried the model-viewer review cleanup from the merged GLB branch: transparent shared renderer tiles, cached renderer resizing, toggle state, model-tile animation coverage, the Blender bisect cap fix, and current Derby vehicle labels.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `pnpm type-check`, `pnpm test --run tests/unit/derbyDamage.test.ts tests/unit/derbyTick.test.ts tests/unit/derbyVehicleLoader.test.ts tests/unit/derbyVehicles.test.ts`, `PORT=3107 pnpm exec playwright test tests/e2e/model-viewer.spec.ts tests/e2e/derby.spec.ts`, `pnpm build`.
+- Assumptions: this is a focused feel pass for real impact plus post-merge review cleanup, not a full vehicle-balance pass. The remaining balance followup now points at broader per-vehicle dominance tuning.
+- GDD coverage: Section 20 and `docs/GDD_COVERAGE.json` record the hard-hit tuning, collision impulse behavior, current displayed vehicle names, and shipped GLB loader status.
+- Followups: broader derby vehicle balance remains tracked.
+
+## 2026-05-14, Security Dependency Patch
+
+- Branch: `chore/security-next-15-5-18`
+- Changed: bumped `next` from `15.5.15` to `15.5.18`, upgraded `vitest` from `2.1.9` to `3.2.4`, and added npm overrides for `postcss@8.5.14`, `vite@6.4.2`, and `esbuild@0.28.0`. The resolved dependency graph now clears both production and dev audit findings while keeping the app on Next 15.
+- Security review: addressed the reported Next advisory set, the PostCSS stringify XSS advisory, Vite optimized-deps path traversal advisory, and esbuild dev-server advisory. `npm audit` now reports zero vulnerabilities.
+- Test maintenance: updated the music-editor Playwright smoke to match the current Roll and save-confirmation UI instead of asserting stale copy that is no longer rendered.
+- Verification: `npm audit`, `npm ls next postcss vitest vite esbuild`, dash checks, `git diff --check`, `npm run type-check`, `npm test`, `npm run build`, and `PORT=3108 npx playwright test tests/e2e/smoke.spec.ts tests/e2e/world-tour.spec.ts tests/e2e/derby.spec.ts` passed. Build still reports the existing Upstash Edge Runtime warning and the existing ESLint plugin conflict message, but exits successfully. Playwright still logs expected missing local KV env errors for routes that are intentionally smoke-tested without KV credentials.
+- Assumptions: stayed on the patched Next 15 line to avoid a major framework migration inside a security patch. Vitest 3 keeps Node 18 compatibility and allows the patched Vite 6 line.
+- GDD coverage: no core GDD status change. This is dependency hygiene and smoke-test maintenance.
+
+## 2026-05-14, Bump @randroids-dojo/vibekit to v0.2.0
+
+- Branch: `chore/deps/vibekit-0.1.0-to-0.2.0`
+- Changed: bumped `@randroids-dojo/vibekit` from `github:Randroids-Dojo/VibeKit#v0.1.0` to `github:Randroids-Dojo/VibeKit#v0.2.0` in `package.json` and `package-lock.json`, and updated `docs/DEPENDENCY_LEDGER.md` to the new pinned release.
+- Changelog review: upstream `v0.2.0` adds the `Rng` object form with split, serialize, and deserialize helpers, plus a `KvLike` interface and `adaptUpstashRedis` adapter under the server package. No removals or required VibeRacer migrations were listed, and the existing joystick, editor-history, and confetti imports stay on their prior public APIs.
+- Verification: `grep -rn $'\u2014' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `grep -rn $'\u2013' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `git diff --check`, `npm test -- tests/unit/virtual-joystick.test.ts tests/unit/editorHistory.test.ts tests/unit/confetti.test.ts`, `npm run type-check`, `npm test`, `PORT=3107 npx playwright test tests/e2e/world-tour.spec.ts tests/e2e/derby.spec.ts`, and `npm run build` passed. Build still reports the existing worktree ESLint plugin conflict and the existing Upstash Edge Runtime warning, but exits successfully. `npm audit --omit=dev --json` reports existing production advisories through `next` and `postcss`; that is separate from this VibeKit bump and should be handled in its own framework/security slice.
+- Assumptions: this is a compatibility bump only. The new RNG and server KV APIs are available for later migration dots, but this PR does not adopt them to keep the dependency slice narrow.
+- GDD coverage: no core GDD status change. This is dependency hygiene for already shipped shared modules.
+
+## 2026-05-14, Derby Camera Parity
+
+- Branch: `fix/derby-camera-parity`
+- Changed: wired Derby rounds to the same persisted camera settings path as the main race mode. Derby now builds a live `CameraRigParams` ref from `useControlSettings`, applies camera height, distance, look-ahead, follow speed, camera-forward, target-height, and FOV changes inside the running Three.js loop, and listens to `visualViewport` resize events so phone browser chrome changes do not leave the canvas at a stale size. The Derby canvas now has a stable Playwright selector for mobile viewport coverage.
+- Verification: `grep -rn $'\u2014' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `grep -rn $'\u2013' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `git diff --check`, `npm run type-check`, `npm test -- tests/unit/controlSettings.test.ts tests/unit/cameraPresets.test.ts tests/unit/derbyTick.test.ts`, `PORT=3107 npx playwright test tests/e2e/derby.spec.ts`, `npm test`, and `npm run build` passed. Build still reports the existing React hook lint warnings in `RaceCanvas.tsx`, `TrackEditor.tsx`, and `useGamepad.ts`.
+- Assumptions: this keeps Derby's arena renderer and vehicle visuals separate from the main race renderer while sharing the camera-settings contract. Derby already uses the shared touch joystick and gamepad hook, so this slice removes the stale followup that said those controls were missing.
+- GDD coverage: no core GDD status change. This is mobile and camera polish for an already shipped optional mode.
+- Followups: the dependency gate still reports VibeKit `v0.2.0` while `docs/DEPENDENCY_LEDGER.md` pins `v0.1.0`; the user-requested Derby camera fix takes precedence for this branch, so the dependency bump remains the next dependency slice.
+
+## 2026-05-14, World Tour Mobile Race Parity
+
+- Branch: `feature/world-tour-mobile-parity`
+- Changed: updated `/tour/race` to use the same control stack as the main race mode. World Tour now reads persisted key bindings and touch-mode settings through `useControlSettings`, drives through the shared `useKeyboard` ref, renders the shared `TouchControls` joystick, and provides a coarse-pointer-sized pause button. The race canvas is now a fixed full-viewport surface sized from its rendered CSS box and device pixel ratio instead of a hardcoded 720x420 canvas. The 2D tour camera now follows the main game's camera settings for distance, look-ahead, and FOV so phone players keep the same framing intent they use in the main mode.
+- Verification: `npm run type-check`, `npm test -- tests/unit/worldTourRaceSession.test.ts tests/unit/controlSettings.test.ts`, and `PORT=3107 npx playwright test tests/e2e/world-tour.spec.ts` passed. The Playwright file now includes a mobile viewport check that verifies the World Tour canvas fills an iPhone-class viewport and that a touch pointer activates the shared joystick overlay.
+- Assumptions: this keeps the current 2D World Tour race renderer for a small parity slice. The later 3D renderer port should reuse `RaceCanvas` or a shared race-canvas adapter directly, but this patch removes the immediate mobile usability mismatch without waiting for that larger renderer change.
+- GDD coverage: no core GDD status change. This is World Tour mode polish on top of the already shipped controls and camera systems.
+- Followups: the dependency gate still reports VibeKit `v0.2.0` while `docs/DEPENDENCY_LEDGER.md` pins `v0.1.0`; that remains the next dependency slice unless a higher-priority user-directed slice takes precedence.
+
 ## 2026-05-10, Derby Mode
 
 - Branch: `claude/add-derby-game-mode-fu5ca`

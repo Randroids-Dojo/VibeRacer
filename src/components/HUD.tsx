@@ -168,12 +168,12 @@ interface HudProps {
   gear?: number
   // 0..1 progress through the current gear's speed band. Drives the redline
   // color tint on the gear chip so the player can read when an upshift is due
-  // without staring at the speedometer. Only meaningful when enhancedShifting
-  // is on; otherwise it stays at 0 and the chip stays the legacy amber.
+  // without staring at the speedometer.
   gearProgress?: number
-  // Gates the gear chip's auto-mode visibility and the redline tint. When
-  // false (default), the chip behaves the way it did before the gear-feel
-  // rework: visible in manual only, no color shift.
+  // Gates the gear chip's auto-mode visibility. When false (default), the
+  // chip is only shown for manual transmission (the pre-rework behavior).
+  // The redline tint is driven by gearProgress and fires in both modes
+  // whenever the player crosses the visible thresholds.
   enhancedShifting?: boolean
   compact?: boolean
 }
@@ -578,16 +578,15 @@ function GearChip({
     ...gearChipValue,
     color: valueColor,
   }
+  // Intentionally no aria-live: the gear chip changes value on every
+  // upshift mid-race, and a polite live region queues a "GEAR 3"
+  // announcement that races against the player's attention. role="status"
+  // lets a screen reader find the chip on demand without auto-announcing.
   return (
-    <div
-      style={dynamicChip}
-      role="status"
-      aria-live="polite"
-      data-testid="hud-gear-chip"
-    >
+    <div style={dynamicChip} role="status" data-testid="hud-gear-chip">
       <span style={gearChipLabel}>GEAR</span>
       <span style={dynamicValue}>{gear}</span>
-      <span style={gearChipHint}>{isManual ? 'Q / E' : 'AUTO'}</span>
+      <span style={gearChipHint}>{isManual ? 'MANUAL' : 'AUTO'}</span>
     </div>
   )
 }
@@ -602,28 +601,6 @@ function hexWithAlpha(hex: string, alpha: number): string {
 }
 
 // Theoretical-best lap block. Sums the player's best ever per-sector
-// durations so the HUD can show "what you could do if you nailed every
-// corner". Tints gold when the optimal lap is complete (all sectors have a
-// best on file), dims the value when the player is still building a full
-// reference set (so it never feels like a stale lie).
-function OptimalBlock({
-  optimalLapMs,
-  complete,
-}: {
-  optimalLapMs: number | null
-  complete: boolean
-}) {
-  const valueText = optimalLapMs !== null && complete ? formatLapTime(optimalLapMs) : '--'
-  return (
-    <div style={block} aria-live="polite">
-      <div style={labelStyle}>OPTIMAL</div>
-      <div style={complete ? optimalValueComplete : optimalValuePending}>
-        {valueText}
-      </div>
-    </div>
-  )
-}
-
 function DriftPanel({
   active,
   score,
@@ -983,7 +960,7 @@ export function HUD(props: HudProps) {
       (props.enhancedShifting || props.transmission === 'manual') ? (
         <GearChip
           gear={props.gear ?? 1}
-          gearProgress={props.enhancedShifting ? props.gearProgress ?? 0 : 0}
+          gearProgress={props.gearProgress ?? 0}
           transmission={props.transmission}
           compact={compact}
         />
@@ -1127,7 +1104,11 @@ const gearChip: React.CSSProperties = {
 }
 const compactGearChip: React.CSSProperties = {
   ...gearChip,
-  bottom: 'calc(206px + env(safe-area-inset-bottom, 0px))',
+  // Sit clearly above the touch shifter (TouchControls.shifterWrap is at
+  // bottom 150 + 54 tall = up to 204), with a small gap. 268 puts the chip
+  // bottom edge ~10px above the shifter top edge so a player thumb on the
+  // shifter does not reach the chip.
+  bottom: 'calc(268px + env(safe-area-inset-bottom, 0px))',
 }
 const gearChipLabel: React.CSSProperties = {
   fontSize: 10,
@@ -1292,16 +1273,6 @@ const livePillNeutral: React.CSSProperties = {
   textTransform: 'uppercase',
   letterSpacing: 1,
 }
-const offTrack: React.CSSProperties = {
-  position: 'absolute',
-  top: '18%',
-  left: 0,
-  right: 0,
-  textAlign: 'center',
-  fontSize: 32,
-  fontWeight: 800,
-  color: '#ffb34d',
-}
 const topCenterAlertWarning: React.CSSProperties = {
   padding: '6px 18px',
   borderRadius: 999,
@@ -1348,74 +1319,10 @@ const wrongWayArrow: React.CSSProperties = {
 }
 // Friend-challenge banner. Anchored just below the rear-view mirror inset so
 // it does not collide with the top stat row or the wrong-way alert. Cyan
-// accent matches the ghost car's color so the player intuitively links the
-// two: "the cyan ghost is the challenge target".
-const challengeBanner: React.CSSProperties = {
-  position: 'absolute',
-  top: 92,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  padding: '6px 16px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 10,
-  borderRadius: 999,
-  background: 'rgba(8, 32, 48, 0.78)',
-  border: '1.5px solid rgba(120, 220, 255, 0.6)',
-  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
-  color: '#cdf2ff',
-  fontSize: 14,
-  fontWeight: 700,
-  letterSpacing: 1.4,
-  pointerEvents: 'none',
-  textTransform: 'uppercase',
-}
 const challengeBannerInitials: React.CSSProperties = {
   color: '#fff',
   fontWeight: 900,
   letterSpacing: 2,
-}
-const challengeBannerTime: React.CSSProperties = {
-  color: '#7fe6ff',
-  fontFamily: 'monospace',
-  fontVariantNumeric: 'tabular-nums',
-  letterSpacing: 0,
-}
-// Rival banner. Same cyan color family as the friend-challenge banner so the
-// player understands "the cyan ghost is the picked rival", but slightly
-// brighter and with a tabular-numerals time so the rank + initials + lap
-// time read as a single compact row.
-const rivalBanner: React.CSSProperties = {
-  position: 'absolute',
-  left: '50%',
-  transform: 'translateX(-50%)',
-  padding: '6px 16px',
-  display: 'flex',
-  alignItems: 'center',
-  gap: 6,
-  borderRadius: 999,
-  background: 'rgba(8, 32, 48, 0.78)',
-  border: '1.5px solid rgba(120, 220, 255, 0.7)',
-  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
-  color: '#cdf2ff',
-  fontSize: 13,
-  fontWeight: 800,
-  letterSpacing: 1.4,
-  pointerEvents: 'none',
-  textTransform: 'uppercase',
-  fontFamily: 'monospace',
-  fontVariantNumeric: 'tabular-nums',
-}
-const toastStyle: React.CSSProperties = {
-  position: 'absolute',
-  top: '30%',
-  left: 0,
-  right: 0,
-  textAlign: 'center',
-  fontSize: 28,
-  fontWeight: 700,
-  color: '#5fe08a',
-  animation: 'viberacer-fade 1.6s linear',
 }
 const burstBase: React.CSSProperties = {
   position: 'absolute',
@@ -1516,18 +1423,6 @@ const ghostGapChipBase: React.CSSProperties = {
   fontVariantNumeric: 'tabular-nums',
   minWidth: 110,
   justifyContent: 'center',
-}
-const ghostGapChipAhead: React.CSSProperties = {
-  ...ghostGapChipBase,
-  color: '#5fe08a',
-  borderColor: 'rgba(95, 224, 138, 0.5)',
-  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35), 0 0 8px rgba(95, 224, 138, 0.3)',
-}
-const ghostGapChipBehind: React.CSSProperties = {
-  ...ghostGapChipBase,
-  color: '#ff7b6e',
-  borderColor: 'rgba(255, 123, 110, 0.5)',
-  boxShadow: '0 3px 10px rgba(0, 0, 0, 0.35), 0 0 8px rgba(255, 123, 110, 0.3)',
 }
 const ghostGapChipLabelStyle: React.CSSProperties = {
   fontSize: 9,
@@ -1728,18 +1623,6 @@ const predictionDeltaCaption: React.CSSProperties = {
 const predictionAhead: React.CSSProperties = { color: '#5fe08a' }
 const predictionBehind: React.CSSProperties = { color: '#ff7b6e' }
 const predictionNeutral: React.CSSProperties = { color: '#f4d774' }
-// OPTIMAL block. Gold reads as aspirational but achievable; the dim style
-// for an in-progress reference set keeps the slot non-shouty until the
-// player has driven every sector at least once.
-const optimalValueComplete: React.CSSProperties = {
-  ...timeSm,
-  color: '#f4d774',
-  textShadow: '0 1px 4px rgba(0,0,0,0.6), 0 0 6px rgba(244, 215, 116, 0.35)',
-}
-const optimalValuePending: React.CSSProperties = {
-  ...timeSm,
-  color: 'rgba(244, 215, 116, 0.45)',
-}
 // Drift score panel. Sits on the left edge below the top stat row so it
 // reads at a glance without competing with the centered split delta tile or
 // the OFF TRACK / WRONG WAY warnings (further down the screen). Uses a
@@ -1870,12 +1753,6 @@ const sectorPbTime: React.CSSProperties = {
 // Medal badge container. Sits flush to the BEST (ALL TIME) tile so the medal
 // reads as a property OF that lap time. Uses a column flex so the badge can
 // drop to a second row on narrow viewports if the row would otherwise wrap.
-const bestBlockGroup: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'flex-start',
-  gap: 4,
-}
 const medalBadgeStyle: React.CSSProperties = {
   display: 'inline-flex',
   alignItems: 'center',

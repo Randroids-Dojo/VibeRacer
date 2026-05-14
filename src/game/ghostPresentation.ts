@@ -29,9 +29,9 @@ import {
   nameplateCacheKey,
   nameplateOpacityForDistance,
   type GhostMeta,
+  type NameplateSource,
 } from './ghostNameplate'
 import type { GhostNameplate } from './sceneBuilder'
-import type { GhostSource } from '@/lib/ghostSource'
 
 export interface GhostPresentationState {
   // The (meta, source) cache key the nameplate texture was last drawn
@@ -74,7 +74,7 @@ export interface GhostPresentationInput {
   meta: GhostMeta | null
   // Which ghost source picked this rival; rendered as the small TAG
   // (TOP / PB / LAST / GHOST) on the plate.
-  source: GhostSource
+  source: NameplateSource
   // Player position used to compute the distance-to-player fade for the
   // nameplate.
   playerX: number

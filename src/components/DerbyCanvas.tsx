@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type MutableRefObject } from 'react'
 import {
   AmbientLight,
   Color,
@@ -15,6 +15,15 @@ import {
   type DerbyArenaMesh,
 } from '@/game/derbyArena'
 import {
+  buildDerbyScenery,
+  SKIRT_OUTER_RADIUS,
+  type DerbyScenery,
+} from '@/game/derbyScenery'
+import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
+import {
+  FRONT_WHEEL_NAMES,
+  WHEEL_NAMES,
+  firstMeshOf,
   loadDerbyVehicleAsset,
   type DerbyVehicleAsset,
 } from '@/game/derbyVehicleLoader'
@@ -42,8 +51,10 @@ import {
 import { isDestroyed } from '@/game/derbyVehicleState'
 import {
   applyCameraRig,
+  DEFAULT_CAMERA_RIG,
   initCameraRig,
   updateCameraRig,
+  type CameraRigParams,
 } from '@/game/sceneBuilder'
 import { readPlayerInput } from '@/game/playerInput'
 import type { KeyInput } from '@/hooks/useKeyboard'
@@ -56,9 +67,9 @@ import type { PhysicsInput } from '@/game/physics'
 // derbyTick every frame, and updates car meshes from the resulting state.
 // Player input comes from a keyboard ref; CPU inputs come from derbyAi.
 //
-// Vehicle visuals here are procedural box geometry (slice 7) so the
-// integration is testable end to end before slice 8 swaps in real GLBs
-// against the named-submesh contract.
+// Vehicle visuals are still procedural box / cylinder geometry. The async
+// signature on loadDerbyVehicleAsset lets a future GLB code path slot in
+// against the named-submesh contract without touching this loop.
 
 export interface DerbyCanvasProps {
   arena: DerbyArenaConfig
@@ -66,6 +77,10 @@ export interface DerbyCanvasProps {
   // Index 0 is the player; CPU brains are initialized for indices >= 1.
   // The same array order drives carIdx in the round.
   keysRef: { current: KeyInput }
+  // Live camera-rig overrides from Settings. Matches RaceCanvas behavior:
+  // Derby reads the ref each frame so camera preset and slider changes apply
+  // without rebuilding the WebGL scene.
+  cameraRigRef?: MutableRefObject<CameraRigParams | null>
   // Called whenever the HUD-relevant snapshot changes. The canvas decides
   // when to call it (typically every few frames, on hits, and on round
   // end) so React renders only when there is something to update.
@@ -110,7 +125,7 @@ const VEHICLE_BODY_HEIGHT = 1.0
 const VEHICLE_WHEEL_RADIUS = 0.35
 
 export function DerbyCanvas(props: DerbyCanvasProps) {
-  const { arena, vehicleConfigs, keysRef } = props
+  const { arena, vehicleConfigs, keysRef, cameraRigRef } = props
   const containerRef = useRef<HTMLDivElement | null>(null)
   // Callbacks live in refs so the rAF loop sees the latest closures
   // without forcing the canvas to re-mount on every parent render.
@@ -128,6 +143,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     const renderer = new WebGLRenderer({ antialias: true, alpha: false })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
     renderer.setSize(container.clientWidth, container.clientHeight)
+    renderer.domElement.dataset.testid = 'derby-canvas'
     renderer.shadowMap.enabled = false
     container.appendChild(renderer.domElement)
 
@@ -140,8 +156,9 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     scene.add(ambient)
     scene.add(sun)
 
+    const initialCameraParams = cameraRigRef?.current ?? DEFAULT_CAMERA_RIG
     const camera = new PerspectiveCamera(
-      70,
+      initialCameraParams.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70,
       container.clientWidth / container.clientHeight,
       0.1,
       2000,
@@ -149,22 +166,33 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
     const arenaMesh: DerbyArenaMesh = buildArenaMesh(arena)
     scene.add(arenaMesh.group)
+    // Decorative skirt around the arena: rocks, dirt piles, dead trees,
+    // tires, drums, concrete chunks. Purely cosmetic; sits outside the
+    // wall so cars never reach it.
+    const scenery: DerbyScenery = buildDerbyScenery(arena)
+    scene.add(scenery.group)
+    // Stadium ring beyond the scenery: stepped concrete bowl, instanced
+    // crowd, light poles. Inner radius derived from the scenery skirt's
+    // outer extent so the venue stays correctly nested for any arena radius.
+    const stadium: DerbyStadium = buildDerbyStadium(arena, SKIRT_OUTER_RADIUS)
+    scene.add(stadium.group)
 
     const round: DerbyRoundState = initDerbyRound({
       arena,
       vehicleTypes: vehicleConfigs.map((v) => v.type),
     })
 
-    // Camera rig matches the loop's chase camera (DEFAULT_CAMERA_RIG):
-    // smoothed position + look-target lerp, height 6, distance 14, fov 70.
+    // Camera rig uses the same live player settings as the loop mode.
     // initCameraRig seeds it at the player's spawn so the first frame is
     // already in pose; updateCameraRig+applyCameraRig run inside step().
     const cameraRig = initCameraRig(
       round.cars[PLAYER_IDX].physics.x,
       round.cars[PLAYER_IDX].physics.z,
       round.cars[PLAYER_IDX].physics.heading,
+      initialCameraParams,
     )
     applyCameraRig(camera, cameraRig)
+    let lastAppliedFov = camera.fov
 
     const brains: DerbyAiBrain[] = vehicleConfigs.map(() => initBrain())
 
@@ -200,12 +228,71 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
     const debrisItems: DerbyDebrisItem[] = []
     const debrisRng = mulberry32(round.rngSeed ^ 0x9e3779b9)
+    // Per-car permanent crumple tilt applied when a car is destroyed. Roll
+    // (rotation.z) and pitch (rotation.x) values stay zero while alive and
+    // get a one-shot random offset on destruction so the wreck reads as
+    // visibly bent. Keyed by carIdx; entries stay set across the rest of
+    // the round so syncVisuals does not have to recompute them.
+    const carCrumple: ({ roll: number; pitch: number } | null)[] =
+      vehicleConfigs.map(() => null)
+    // Tracks which cars we've already played the destruction effect for
+    // (panel blow-off + tilt) so re-emitting the destroyed event won't
+    // detach again. derbyTick only emits 'destroyed' once per car, but a
+    // belt-and-suspenders guard keeps the visuals robust.
+    const destroyedHandled: boolean[] = vehicleConfigs.map(() => false)
 
     let lastTimeMs = performance.now()
     let rafId = 0
     let stopped = false
     let lastHudPushMs = 0
     let endedReported = false
+
+    // Accumulated rolling angle per wheel per car. Indexed [carIdx][wheelIdx
+    // in FRONT_WHEEL_NAMES then REAR order], in radians. Sized lazily so
+    // the asset-load promise can populate it once the carAssets are ready.
+    const wheelSpinAngle: number[][] = vehicleConfigs.map(() => [0, 0, 0, 0])
+    // Smoothed steer angle per car (front wheels) so a hard left-right key
+    // tap eases instead of snapping.
+    const steerAngleSmoothed: number[] = vehicleConfigs.map(() => 0)
+    const STEER_MAX_RAD = Math.PI / 6 // 30 degrees at the front wheels
+    const STEER_LERP_PER_SEC = 12
+    function animateWheels(inputs: PhysicsInput[], dt: number): void {
+      for (let i = 0; i < round.cars.length; i++) {
+        const asset = carAssets[i]
+        if (!asset) continue
+        const car = round.cars[i]
+        if (isDestroyed(car)) continue
+        const input = inputs[i]
+        // Smooth the steer target so visual response feels mechanical, not
+        // instantaneous. clamp dt for the lerp so a frame stall does not
+        // overshoot past the target.
+        const target = clamp(input.steer ?? 0, -1, 1) * STEER_MAX_RAD
+        const lerp = 1 - Math.exp(-STEER_LERP_PER_SEC * Math.min(dt, 0.05))
+        steerAngleSmoothed[i] += (target - steerAngleSmoothed[i]) * lerp
+        // Rolling speed: angular = linear / radius. Approximate the visual
+        // wheel radius from the wheel mesh's bounding cylinder; the same
+        // value is used for every wheel of a given car so we cache it on
+        // first use as `asset.group.userData.wheelRadius`.
+        const r =
+          (asset.group.userData.wheelRadius as number | undefined) ??
+          measureWheelRadius(asset)
+        asset.group.userData.wheelRadius = r
+        const angularDelta = (car.physics.speed * dt) / Math.max(0.01, r)
+        for (let w = 0; w < WHEEL_NAMES.length; w++) {
+          const name = WHEEL_NAMES[w]
+          const pivot = asset.wheelPivots[name]
+          if (FRONT_WHEEL_NAMES.includes(name)) {
+            pivot.steer.rotation.y = steerAngleSmoothed[i]
+          }
+          wheelSpinAngle[i][w] += angularDelta
+          // Spin axis is the wheel mesh's local rolling axis. The GLB build
+          // script orients each wheel cylinder so its rotation axis is the
+          // model-local X (width direction), so a Three.js X-axis rotation
+          // on the spin pivot rolls the wheel forward.
+          pivot.spin.rotation.x = wheelSpinAngle[i][w]
+        }
+      }
+    }
 
     function syncVisuals() {
       for (let i = 0; i < round.cars.length; i++) {
@@ -224,7 +311,57 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         // negated h, which mirrored every steering input visually and made
         // the chase camera spin the wrong way around the car.
         asset.group.rotation.y = car.physics.heading - Math.PI / 2
-        asset.group.visible = !isDestroyed(car)
+        // Wrecks keep their permanent crumple tilt; alive cars stay level.
+        // The crumple is set once in handleDestruction so we don't
+        // randomize the lean every frame.
+        const crumple = carCrumple[i]
+        asset.group.rotation.x = crumple ? crumple.pitch : 0
+        asset.group.rotation.z = crumple ? crumple.roll : 0
+        // Destroyed cars stay in the scene as inert wrecks; they're still
+        // collidable and visible (smoke + fire + crumple tilt + missing
+        // panels). Only hide cars that haven't loaded an asset yet. That
+        // path is impossible here since carAssets[i] is gated above.
+        asset.group.visible = true
+      }
+    }
+
+    function handleDestruction(victimIdx: number) {
+      if (destroyedHandled[victimIdx]) return
+      const asset = carAssets[victimIdx]
+      const viz = carVisualizers[victimIdx]
+      if (!asset || !viz) return
+      destroyedHandled[victimIdx] = true
+      // Permanent crumple tilt: small roll/pitch in [-0.22, 0.22] rad so
+      // the wreck reads as bent without looking flipped over. Sign is
+      // randomized per-axis so the same roll value can lean either side.
+      const roll = (debrisRng() - 0.5) * 0.44
+      const pitch = (debrisRng() - 0.5) * 0.3
+      carCrumple[victimIdx] = { roll, pitch }
+      // Force the visualizer down to its critical tier (smoke + fire +
+      // dark paint + broken lights) regardless of how the last hit landed.
+      // Calling update with health=0 maps to 'critical' through
+      // tierFromFraction so the visuals match the wreck state.
+      viz.update(round.cars[victimIdx])
+      // Blow off every still-attached panel as outward debris. Pick
+      // outward velocities along the car's local lateral and forward axes
+      // so the panels arc away from the wreck instead of landing through
+      // each other.
+      const detached = viz.detachAllRemaining()
+      for (const panel of detached) {
+        scene.add(panel)
+        const dx = panel.position.x - round.cars[victimIdx].physics.x
+        const dz = panel.position.z - round.cars[victimIdx].physics.z
+        const len = Math.hypot(dx, dz)
+        const inv = len > 1e-6 ? 1 / len : 0
+        debrisItems.push(
+          spawnDebris(
+            panel,
+            panel.position,
+            { nx: dx * inv, nz: dz * inv },
+            3 + debrisRng() * 3,
+            debrisRng,
+          ),
+        )
       }
     }
 
@@ -246,10 +383,14 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       })
     }
 
+    // Reused across every hit-projection call so a multi-car pileup that
+    // fires dozens of hit events in a frame does not allocate a fresh
+    // Vector3 each time.
+    const projectScratch = new Vector3()
     function projectToScreen(x: number, z: number): { sx: number; sy: number } {
-      const v = new Vector3(x, VEHICLE_BODY_HEIGHT, z).project(camera)
-      const sx = (v.x * 0.5 + 0.5) * container!.clientWidth
-      const sy = (1 - (v.y * 0.5 + 0.5)) * container!.clientHeight
+      projectScratch.set(x, VEHICLE_BODY_HEIGHT, z).project(camera)
+      const sx = (projectScratch.x * 0.5 + 0.5) * container!.clientWidth
+      const sy = (1 - (projectScratch.y * 0.5 + 0.5)) * container!.clientHeight
       return { sx, sy }
     }
 
@@ -281,15 +422,23 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
 
       const result = derbyTick(round, { perCar: inputs }, dtSec)
       syncVisuals()
+      animateWheels(inputs, dtSec)
 
-      // Camera rig: same chase behavior as the loop mode (smoothed lerp,
-      // look-ahead, default height/distance/fov).
+      // Camera rig: same live camera settings contract as the loop mode.
       const player = round.cars[PLAYER_IDX]
+      const cameraParams = cameraRigRef?.current ?? DEFAULT_CAMERA_RIG
+      const nextFov = cameraParams.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70
+      if (nextFov !== lastAppliedFov) {
+        camera.fov = nextFov
+        camera.updateProjectionMatrix()
+        lastAppliedFov = nextFov
+      }
       updateCameraRig(
         cameraRig,
         player.physics.x,
         player.physics.z,
         player.physics.heading,
+        cameraParams,
       )
       applyCameraRig(camera, cameraRig)
 
@@ -300,7 +449,14 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       }
 
       // Forward hit events as HUD popup spawns plus drive damage visuals.
+      // Process 'destroyed' events here too: blow off every remaining
+      // panel and stamp a permanent crumple tilt so the wreck reads
+      // visibly broken for the rest of the round.
       for (const e of result.events) {
+        if (e.kind === 'destroyed') {
+          handleDestruction(e.victimIdx)
+          continue
+        }
         if (e.kind !== 'hit') continue
         if (e.victimIdx === PLAYER_IDX) {
           const p = projectToScreen(e.x, e.z)
@@ -334,15 +490,40 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         }
       }
 
-      // Update damage visuals from current state.
+      // Update damage visuals from current state. Tier transitions drop
+      // panels here. The visualizer returns any freshly detached ones so
+      // the canvas can register them with the debris integrator and they
+      // arc out instead of vanishing.
       for (let i = 0; i < round.cars.length; i++) {
-        carVisualizers[i]?.update(round.cars[i])
+        const viz = carVisualizers[i]
+        if (!viz) continue
+        const popped = viz.update(round.cars[i])
+        if (popped.length === 0) continue
+        const car = round.cars[i]
+        for (const panel of popped) {
+          scene.add(panel)
+          const dx = panel.position.x - car.physics.x
+          const dz = panel.position.z - car.physics.z
+          const len = Math.hypot(dx, dz)
+          const inv = len > 1e-6 ? 1 / len : 0
+          debrisItems.push(
+            spawnDebris(
+              panel,
+              panel.position,
+              { nx: dx * inv, nz: dz * inv },
+              3 + debrisRng() * 3,
+              debrisRng,
+            ),
+          )
+        }
       }
 
-      // Advance debris.
+      // Advance debris. Removing dead meshes inline avoids the per-frame
+      // filter() allocation; pruneDebris compacts the array afterward.
       tickDebris(debrisItems, dtSec, arena.radius)
-      const dead = debrisItems.filter((d) => !d.alive)
-      for (const d of dead) scene.remove(d.object)
+      for (let i = 0; i < debrisItems.length; i++) {
+        if (!debrisItems[i].alive) scene.remove(debrisItems[i].object)
+      }
       pruneDebris(debrisItems)
 
       if (round.status === 'ended' && !endedReported) {
@@ -371,23 +552,47 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       camera.updateProjectionMatrix()
     }
     window.addEventListener('resize', onResize)
+    window.visualViewport?.addEventListener('resize', onResize)
 
     return () => {
       stopped = true
       cancelAnimationFrame(rafId)
       window.removeEventListener('resize', onResize)
+      window.visualViewport?.removeEventListener('resize', onResize)
       for (const v of carVisualizers) v?.dispose()
       for (const a of carAssets) a?.dispose()
       for (const d of debrisItems) scene.remove(d.object)
+      stadium.dispose()
+      scenery.dispose()
       arenaMesh.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement)
       }
     }
-  }, [arena, vehicleConfigs, keysRef])
+  }, [arena, vehicleConfigs, keysRef, cameraRigRef])
 
   return <div ref={containerRef} style={canvasContainerStyle} />
+}
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n))
+}
+
+// Approximate the visual wheel radius from a wheel mesh's bounding-box
+// extent. Wheel cylinders authored in the GLB sit with their rolling axis
+// along the model's X axis, so the height of the bounding box (Y extent)
+// equals the wheel diameter; halving gives the radius. Cached on the
+// asset via userData so we only measure once per car.
+function measureWheelRadius(asset: DerbyVehicleAsset): number {
+  const wheel = firstMeshOf(asset.submeshes.wheel_fl)
+  if (!wheel) return 0.36
+  wheel.geometry.computeBoundingBox()
+  const box = wheel.geometry.boundingBox
+  if (!box) return 0.36
+  const yExtent = box.max.y - box.min.y
+  const zExtent = box.max.z - box.min.z
+  return Math.max(yExtent, zExtent) / 2
 }
 
 function pickEnemyColor(type: string): number {

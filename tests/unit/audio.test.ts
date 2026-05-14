@@ -213,16 +213,16 @@ describe('engineToneTargetsForGear', () => {
 })
 
 describe('shift one-shots', () => {
-  it('upshift pop schedules at least one oscillator and one buffer source', () => {
+  it('upshift pop schedules exactly one oscillator (sweep) and one buffer source (crackle)', () => {
     playUpshiftPop('classic')
-    expect(oscillators.length).toBeGreaterThanOrEqual(1)
-    expect(bufferSources.length).toBeGreaterThanOrEqual(1)
+    expect(oscillators).toHaveLength(1)
+    expect(bufferSources).toHaveLength(1)
   })
 
-  it('downshift blip schedules an oscillator that stops within ~170ms', () => {
+  it('downshift blip schedules exactly one oscillator that stops within ~170ms', () => {
     playDownshiftBlip('classic')
-    expect(oscillators.length).toBeGreaterThanOrEqual(1)
-    const stop = Math.max(...oscillators.map((o) => o.stoppedAt ?? 0))
+    expect(oscillators).toHaveLength(1)
+    const stop = oscillators[0].stoppedAt ?? 0
     expect(stop).toBeLessThan(0.18)
   })
 })
@@ -670,6 +670,87 @@ describe('updateDriveSfx', () => {
       racing: true,
     })
     expect(bufferSources.length).toBe(beforeSources)
+  })
+
+  it('fires the upshift pop one-shot when enhancedShifting and shiftEvent up', () => {
+    startEngineDrone()
+    startSkid()
+    const beforeOsc = oscillators.length
+    const beforeSrc = bufferSources.length
+    updateDriveSfx({
+      speedAbs: 20,
+      maxSpeed: 26,
+      throttle: 1,
+      steerAbs: 0,
+      onTrack: true,
+      prevOnTrack: true,
+      racing: true,
+      gear: 2,
+      shiftEvent: 'up',
+      enhancedShifting: true,
+    })
+    // playUpshiftPop schedules 1 oscillator (sweep) + 1 buffer source (crackle).
+    expect(oscillators.length).toBe(beforeOsc + 1)
+    expect(bufferSources.length).toBe(beforeSrc + 1)
+  })
+
+  it('fires the downshift blip one-shot when enhancedShifting and shiftEvent down', () => {
+    startEngineDrone()
+    startSkid()
+    const beforeOsc = oscillators.length
+    updateDriveSfx({
+      speedAbs: 12,
+      maxSpeed: 26,
+      throttle: 0,
+      steerAbs: 0,
+      onTrack: true,
+      prevOnTrack: true,
+      racing: true,
+      gear: 1,
+      shiftEvent: 'down',
+      enhancedShifting: true,
+    })
+    expect(oscillators.length).toBe(beforeOsc + 1)
+  })
+
+  it('does not fire any shift one-shot when enhancedShifting is false even with shiftEvent', () => {
+    startEngineDrone()
+    startSkid()
+    const beforeOsc = oscillators.length
+    const beforeSrc = bufferSources.length
+    updateDriveSfx({
+      speedAbs: 20,
+      maxSpeed: 26,
+      throttle: 1,
+      steerAbs: 0,
+      onTrack: true,
+      prevOnTrack: true,
+      racing: true,
+      gear: 2,
+      shiftEvent: 'up',
+      enhancedShifting: false,
+    })
+    expect(oscillators.length).toBe(beforeOsc)
+    expect(bufferSources.length).toBe(beforeSrc)
+  })
+
+  it('does not fire shift one-shots when racing is false', () => {
+    startEngineDrone()
+    startSkid()
+    const beforeOsc = oscillators.length
+    updateDriveSfx({
+      speedAbs: 20,
+      maxSpeed: 26,
+      throttle: 1,
+      steerAbs: 0,
+      onTrack: true,
+      prevOnTrack: true,
+      racing: false,
+      gear: 2,
+      shiftEvent: 'up',
+      enhancedShifting: true,
+    })
+    expect(oscillators.length).toBe(beforeOsc)
   })
 })
 

@@ -45,7 +45,7 @@ describe('stepPhysics', () => {
   })
 
   it('linear taper exponent recovers the legacy curve', () => {
-    // Pass exponent=1 (or 0) to opt out — drag mode does this. Per-tick
+    // Pass exponent=1 (or 0) to opt out. Drag mode does this. Per-tick
     // gain should match the pre-taper formula speed += accel * throttle * dt.
     const dt = 0.5
     const result = stepPhysics(
@@ -122,6 +122,55 @@ describe('stepPhysics', () => {
       s = stepPhysics(s, { throttle: 0, steer: 0, handbrake: false }, 1 / 60, false)
     }
     expect(s.speed).toBeCloseTo(0, 1)
+  })
+
+  it('handbrake bleeds speed faster than coasting at the same starting speed', () => {
+    const moving = { x: 0, z: 0, heading: 0, speed: 15 }
+    const coasted = stepPhysics(
+      moving,
+      { throttle: 0, steer: 0, handbrake: false },
+      0.1,
+      true,
+    )
+    const handbraked = stepPhysics(
+      moving,
+      { throttle: 0, steer: 0, handbrake: true },
+      0.1,
+      true,
+    )
+    expect(handbraked.speed).toBeLessThan(coasted.speed)
+    expect(handbraked.speed).toBeGreaterThanOrEqual(0)
+  })
+
+  it('handbrake produces a snappier yaw response than coasting at the same input', () => {
+    const dt = 0.1
+    const moving = { x: 0, z: 0, heading: 0, speed: 15 }
+    const coasted = stepPhysics(
+      moving,
+      { throttle: 0, steer: 1, handbrake: false },
+      dt,
+      true,
+    )
+    const handbraked = stepPhysics(
+      moving,
+      { throttle: 0, steer: 1, handbrake: true },
+      dt,
+      true,
+    )
+    // HANDBRAKE_ANGULAR_VELOCITY_RESPONSE > ANGULAR_VELOCITY_RESPONSE so the
+    // exponential blend reaches the target faster on the handbrake tick.
+    expect(handbraked.angularVelocity).toBeGreaterThan(coasted.angularVelocity ?? 0)
+  })
+
+  it('handbrake clamps speed to 0 once the drag exceeds the remaining velocity', () => {
+    const slow = { x: 0, z: 0, heading: 0, speed: 0.05 }
+    const r = stepPhysics(
+      slow,
+      { throttle: 0, steer: 0, handbrake: true },
+      0.1,
+      true,
+    )
+    expect(r.speed).toBe(0)
   })
 
   it('brake while moving slows the car', () => {

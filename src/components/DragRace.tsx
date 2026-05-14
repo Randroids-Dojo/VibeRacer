@@ -73,6 +73,7 @@ import {
 import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { selectDragGhost } from '@/lib/dragGhost'
 import { submitDragRun } from '@/lib/dragSubmit'
+import type { NameplateSource } from '@/game/ghostNameplate'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
@@ -301,6 +302,7 @@ export function DragRace({ slug }: DragRaceProps) {
     typeof buildGhostNameplate
   > | null>(null)
   const ghostMetaRef = useRef<GhostMeta | null>(null)
+  const ghostSourceRef = useRef<NameplateSource>('top')
 
   // Live speed values surfaced to the bottom-center Speedometer overlay.
   // The overlay drives its own rAF loop, so writing into refs lets the
@@ -499,7 +501,7 @@ export function DragRace({ slug }: DragRaceProps) {
           active: ph === 'racing' || ph === 'finished',
           showNameplate: true,
           meta: ghostMetaRef.current,
-          source: 'top',
+          source: ghostSourceRef.current,
           playerX: state.x,
           playerZ: state.z,
           resolveTerrain: (x, z) => {
@@ -684,6 +686,10 @@ export function DragRace({ slug }: DragRaceProps) {
     () => selectDragGhost(leaderboard, playerPbMs),
     [leaderboard, playerPbMs],
   )
+
+  useEffect(() => {
+    ghostSourceRef.current = ghost.source === 'none' ? 'auto' : ghost.source
+  }, [ghost.source])
 
   // Push the active ghost's "WHO + TIME" tuple into a ref so the rAF loop
   // can drive the floating nameplate without re-rendering. The matching

@@ -43,9 +43,10 @@ export function TouchControls({
 
 function TouchShifter({ keys }: { keys: { current: KeyInput } }) {
   useEffect(() => {
+    const keyState = keys.current
     return () => {
-      keys.current.shiftDown = false
-      keys.current.shiftUp = false
+      keyState.shiftDown = false
+      keyState.shiftUp = false
     }
   }, [keys])
 
@@ -106,6 +107,7 @@ function JoystickVisual({ js, tint }: { js: JoystickState; tint: string }) {
   return (
     <>
       <div
+        data-testid="touch-joystick-ring"
         style={{
           position: 'fixed',
           left: js.originX - JOYSTICK_RADIUS,
@@ -120,6 +122,7 @@ function JoystickVisual({ js, tint }: { js: JoystickState; tint: string }) {
         }}
       />
       <div
+        data-testid="touch-joystick-knob"
         style={{
           position: 'fixed',
           left: knobX - KNOB_RADIUS,

@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest'
-import { derbyTick, type DerbyTickInputs } from '@/game/derbyTick'
+import {
+  derbyTick,
+  pairKey,
+  PAIR_DAMAGE_COOLDOWN_MS,
+  type DerbyTickInputs,
+} from '@/game/derbyTick'
 import { initDerbyRound } from '@/game/derbyRoundState'
 import { isDestroyed } from '@/game/derbyVehicleState'
 import { DERBY_ARENAS } from '@/lib/derbyArenas'
@@ -23,7 +28,34 @@ function fullThrottleInputs(n: number): DerbyTickInputs {
   }
 }
 
+function parkAway(round: ReturnType<typeof initDerbyRound>): void {
+  round.cars[2].physics.x = -50
+  round.cars[2].physics.z = 0
+  round.cars[3].physics.x = 50
+  round.cars[3].physics.z = 0
+}
+
+function placeHeadOnOverlap(
+  round: ReturnType<typeof initDerbyRound>,
+  aIdx: number,
+  bIdx: number,
+): void {
+  round.cars[aIdx].physics.x = 0
+  round.cars[aIdx].physics.z = 0
+  round.cars[aIdx].physics.heading = 0
+  round.cars[bIdx].physics.x =
+    round.configs[aIdx].obbHalfLength + round.configs[bIdx].obbHalfLength - 0.1
+  round.cars[bIdx].physics.z = 0
+  round.cars[bIdx].physics.heading = 0
+}
+
 describe('derbyTick', () => {
+  it('uses canonical pair keys regardless of input order', () => {
+    expect(pairKey(1, 3)).toBe('1:3')
+    expect(pairKey(3, 1)).toBe('1:3')
+    expect(pairKey(2, 2)).toBe('2:2')
+  })
+
   it('flips status from pre to running on the first tick', () => {
     const round = initDerbyRound({
       arena: ARENA,
@@ -120,7 +152,10 @@ describe('derbyTick', () => {
     round.cars[0].physics.z = 0
     round.cars[0].physics.heading = 0
     round.cars[0].physics.speed = 20
-    round.cars[1].physics.x = round.configs[0].collisionRadius + round.configs[1].collisionRadius - 0.1
+    // Head-on along X: OBB touching distance is the sum of the two cars'
+    // half-lengths along the forward axis. Pull the second car 0.1 m inside
+    // that boundary so the SAT pass finds a small overlap.
+    round.cars[1].physics.x = round.configs[0].obbHalfLength + round.configs[1].obbHalfLength - 0.1
     round.cars[1].physics.z = 0
     round.cars[1].physics.heading = 0
     round.cars[1].physics.speed = 0
@@ -130,14 +165,125 @@ describe('derbyTick', () => {
     round.cars[3].physics.x = 50
     round.cars[3].physics.z = 0
     const before = round.cars[1].health
+    const truckSpeedBefore = round.cars[0].physics.speed
     const out = derbyTick(round, neutralInputs(4), 1 / 60)
     expect(round.cars[1].health).toBeLessThan(before)
+    expect(round.cars[0].physics.speed).toBeLessThan(truckSpeedBefore)
+    expect(round.cars[1].physics.speed).toBeGreaterThan(20)
     const hit = out.events.find((e) => e.kind === 'hit' && e.victimIdx === 1)
     expect(hit).toBeDefined()
     if (hit && hit.kind === 'hit') {
       expect(hit.attackerIdx).toBe(0)
       expect(hit.amount).toBeGreaterThan(0)
     }
+  })
+
+  it('gates repeated pair damage while cooldown is active', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].physics.speed = 20
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const key = pairKey(0, 1)
+    round.pairDamageCooldownUntilMs.set(key, PAIR_DAMAGE_COOLDOWN_MS)
+    const before = round.cars[1].health
+    const out = derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.cars[1].health).toBe(before)
+    expect(out.events.some((e) => e.kind === 'hit')).toBe(false)
+  })
+
+  it('does not let a destroyed car damage a live car', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 20
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const before = round.cars[1].health
+    const out = derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.cars[1].health).toBe(before)
+    expect(out.events.some((e) => e.kind === 'hit')).toBe(false)
+  })
+
+  it('only applies wreck impulse above the closing-speed threshold', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['racecar', 'bigTruck', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 0
+    round.cars[1].physics.speed = 0.1
+    parkAway(round)
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(round.pairWreckImpulseUntilMs.has(pairKey(0, 1))).toBe(false)
+  })
+
+  it('transfers more wreck impulse speed to the lighter wreck', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['racecar', 'bigTruck', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.speed = 0
+    round.cars[1].physics.heading = Math.PI
+    round.cars[1].physics.speed = 18
+    parkAway(round)
+    const pusherBefore = round.cars[1].physics.speed
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    const pusherLoss = pusherBefore - round.cars[1].physics.speed
+    expect(round.cars[0].physics.speed).toBeGreaterThan(pusherLoss)
+    expect(round.pairWreckImpulseUntilMs.has(pairKey(0, 1))).toBe(true)
+  })
+
+  it('pushes the unpinned car away when the other car is wall pinned', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['schoolBus', 'car', 'car', 'car'],
+    })
+    const busLimit = ARENA.radius - round.configs[0].collisionRadius
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.heading = 0
+    round.cars[0].physics.speed = 0
+    round.cars[0].physics.x = busLimit
+    round.cars[1].physics.x =
+      busLimit - round.configs[0].obbHalfLength - round.configs[1].obbHalfLength + 0.1
+    round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    const busBefore = round.cars[0].physics.x
+    const carBefore = round.cars[1].physics.x
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(Math.abs(round.cars[1].physics.x - carBefore)).toBeGreaterThan(
+      Math.abs(round.cars[0].physics.x - busBefore),
+    )
+    expect(round.cars[0].physics.x).toBeLessThanOrEqual(busLimit + 1e-3)
+  })
+
+  it('applies friction decay to destroyed cars', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['car', 'car', 'car', 'car'],
+    })
+    round.cars[0].status = 'destroyed'
+    round.cars[0].health = 0
+    round.cars[0].physics.x = 0
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.speed = 10
+    parkAway(round)
+    derbyTick(round, neutralInputs(4), 0.1)
+    expect(round.cars[0].physics.speed).toBeLessThan(10)
   })
 
   it('credits a kill to the attacker when a hit destroys the victim', () => {
@@ -151,8 +297,14 @@ describe('derbyTick', () => {
     round.cars[0].physics.z = 0
     round.cars[0].physics.heading = 0
     round.cars[0].physics.speed = 20
-    round.cars[1].physics.x = round.configs[0].collisionRadius + round.configs[1].collisionRadius - 0.1
+    // Head-on along X: OBB touching distance is the sum of the two cars'
+    // half-lengths along the forward axis. Pull the second car 0.1 m inside
+    // that boundary so the SAT pass finds a small overlap. Heading must
+    // match the first car's so both forward axes are +X; otherwise the
+    // racecar inherits the starting-ring heading and faces sideways.
+    round.cars[1].physics.x = round.configs[0].obbHalfLength + round.configs[1].obbHalfLength - 0.1
     round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
     round.cars[1].health = 1
     round.cars[2].physics.x = -50
     round.cars[3].physics.x = 50
@@ -161,6 +313,51 @@ describe('derbyTick', () => {
     expect(round.cars[1].status).toBe('destroyed')
     expect(round.cars[0].kills).toBe(before + 1)
     expect(out.events.some((e) => e.kind === 'destroyed' && e.victimIdx === 1)).toBe(true)
+  })
+
+  it('OBB pass: a sedan parked inside the school bus length-wise gap gets pushed out', () => {
+    // Regression for "I clip through the back of the bus". The legacy
+    // circle test enforced only ~4.10m around the bus center, so a sedan
+    // parked at ~1.30m on the bus's local +X axis was completely inside
+    // the bus rectangle yet outside both circles. After the OBB switch
+    // the SAT pass detects this overlap and separate() pushes the cars
+    // apart along the smallest-overlap axis (the bus's local Z = sides).
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['schoolBus', 'car', 'car', 'racecar'],
+    })
+    round.cars[0].physics.x = 0
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.heading = 0
+    round.cars[0].physics.speed = 0
+    const cfgBus = round.configs[0]
+    const cfgSedan = round.configs[1]
+    // Park the sedan well inside the bus rectangle but outside both
+    // legacy collision circles.
+    round.cars[1].physics.x = cfgBus.obbHalfLength - cfgSedan.obbHalfLength - 0.5
+    round.cars[1].physics.z = 0
+    round.cars[1].physics.heading = 0
+    round.cars[1].physics.speed = 0
+    round.cars[2].physics.x = -50
+    round.cars[3].physics.x = 50
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    // Verify the cars no longer overlap on every SAT axis. The shared
+    // forward axis at heading=0 is X and side axis is Z; both intervals
+    // must be disjoint or just touching.
+    const bus = round.cars[0]
+    const sedan = round.cars[1]
+    const busHl = cfgBus.obbHalfLength
+    const busHw = cfgBus.obbHalfWidth
+    const sedanHl = cfgSedan.obbHalfLength
+    const sedanHw = cfgSedan.obbHalfWidth
+    const busXLo = bus.physics.x - busHl, busXHi = bus.physics.x + busHl
+    const busZLo = bus.physics.z - busHw, busZHi = bus.physics.z + busHw
+    const sedanXLo = sedan.physics.x - sedanHl, sedanXHi = sedan.physics.x + sedanHl
+    const sedanZLo = sedan.physics.z - sedanHw, sedanZHi = sedan.physics.z + sedanHw
+    const xOverlap = Math.min(busXHi, sedanXHi) - Math.max(busXLo, sedanXLo)
+    const zOverlap = Math.min(busZHi, sedanZHi) - Math.max(busZLo, sedanZLo)
+    // At least one axis must be a separating axis (no overlap, modulo eps).
+    expect(xOverlap < 1e-3 || zOverlap < 1e-3).toBe(true)
   })
 
   it('is a no-op once the round has ended', () => {

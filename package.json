@@ -13,9 +13,9 @@
     "test:e2e": "playwright test"
   },
   "dependencies": {
-    "@randroids-dojo/vibekit": "github:Randroids-Dojo/VibeKit#v0.1.0",
+    "@randroids-dojo/vibekit": "github:Randroids-Dojo/VibeKit#v0.2.0",
     "@upstash/redis": "^1.37.0",
-    "next": "^15.0.0",
+    "next": "^15.5.18",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "three": "^0.183.2",
@@ -30,6 +30,11 @@
     "eslint": "^9.0.0",
     "eslint-config-next": "^15.0.0",
     "typescript": "^5.7.3",
-    "vitest": "^2.1.0"
+    "vitest": "^3.2.4"
+  },
+  "overrides": {
+    "esbuild": "0.28.0",
+    "postcss": "8.5.14",
+    "vite": "6.4.2"
   }
 }

@@ -155,8 +155,8 @@ import {
   formatNameplateLapTime,
   nameplateCacheKey,
   type GhostMeta,
+  type NameplateSource,
 } from './ghostNameplate'
-import type { GhostSource } from '@/lib/ghostSource'
 import {
   HEADLIGHT_LAMP_COLOR_HEX,
   HEADLIGHT_LAMP_OFFSET_X,
@@ -2130,7 +2130,7 @@ export function buildGhostCar(): { ghost: Group; dispose: () => void } {
 // plate sits `NAMEPLATE_Y_OFFSET` units above the ghost origin.
 export interface GhostNameplate {
   group: Group
-  apply: (meta: GhostMeta | null, source: GhostSource) => void
+  apply: (meta: GhostMeta | null, source: NameplateSource) => void
   setOpacity: (value: number) => void
   setVisible: (value: boolean) => void
   dispose: () => void
@@ -2179,7 +2179,7 @@ export function buildGhostNameplate(): GhostNameplate {
     group.add(sprite)
   }
 
-  function drawPlate(meta: GhostMeta, source: GhostSource) {
+  function drawPlate(meta: GhostMeta, source: NameplateSource) {
     if (!ctx) return
     const w = NAMEPLATE_TEXTURE_WIDTH
     const h = NAMEPLATE_TEXTURE_HEIGHT
@@ -2223,7 +2223,7 @@ export function buildGhostNameplate(): GhostNameplate {
     ctx.fillText(formatNameplateLapTime(meta.lapTimeMs), w / 2, 104)
   }
 
-  function apply(meta: GhostMeta | null, source: GhostSource) {
+  function apply(meta: GhostMeta | null, source: NameplateSource) {
     if (meta === null) {
       group.visible = false
       lastKey = null

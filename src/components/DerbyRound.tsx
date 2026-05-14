@@ -13,6 +13,8 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { CameraRigParams } from '@/game/sceneBuilder'
 import {
   DerbyHUD,
   POPUP_LIFETIME_MS,
@@ -69,6 +71,21 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
   // axes override; readPlayerInput (called by DerbyCanvas every frame)
   // prefers the analog axes whenever the pad is active.
   useGamepad(keysRef, undefined, settings.gamepadBindings)
+
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  useEffect(() => {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+      cameraForward: settings.camera.cameraForward,
+      targetHeight: settings.camera.targetHeight,
+      fov: settings.camera.fov,
+    }
+  }, [settings.camera])
 
   const [snapshot, setSnapshot] = useState<DerbyHudSnapshot>({
     place: 1,
@@ -162,6 +179,7 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
         arena={arena}
         vehicleConfigs={vehicleConfigs}
         keysRef={keysRef}
+        cameraRigRef={cameraRigRef}
         onHud={onHud}
         onHit={onHit}
         onRoundEnd={onRoundEnd}
@@ -233,6 +251,10 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Match the main-game `root` container so the round shares the same
+// mobile behavior: no native scroll or zoom gestures stealing touches from
+// the joystick, no iOS long-press callout interrupting a held throttle,
+// and no accidental text selection when a tap lands on a HUD label.
 const pageStyle: React.CSSProperties = {
   ...MOBILE_GAME_SURFACE_STYLES,
   background: '#000',

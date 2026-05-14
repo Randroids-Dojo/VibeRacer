@@ -7,7 +7,6 @@ import {
   MANUAL_GEAR_MIN,
   TRANSMISSION_MODES,
   autoShiftGear,
-  carParamsForTransmission,
   clampManualGear,
   gearProgress01,
   gearSpeedBand,
@@ -48,20 +47,6 @@ describe('transmission helpers', () => {
     const fifth = manualGearSpec(5)
     expect(first.maxSpeedFactor).toBeLessThan(fifth.maxSpeedFactor)
     expect(first.accelFactor).toBeGreaterThan(fifth.accelFactor)
-  })
-
-  it('leaves car params untouched in automatic mode', () => {
-    expect(carParamsForTransmission(DEFAULT_CAR_PARAMS, 'automatic', 1)).toBe(
-      DEFAULT_CAR_PARAMS,
-    )
-  })
-
-  it('derives manual gear params from the base tuning', () => {
-    const first = carParamsForTransmission(DEFAULT_CAR_PARAMS, 'manual', 1)
-    const fifth = carParamsForTransmission(DEFAULT_CAR_PARAMS, 'manual', 5)
-    expect(first.maxSpeed).toBeLessThan(fifth.maxSpeed)
-    expect(first.accel).toBeGreaterThan(fifth.accel)
-    expect(fifth.maxSpeed).toBeCloseTo(DEFAULT_CAR_PARAMS.maxSpeed)
   })
 
   it('dynamic specs use geometric ratio spacing (each gear roughly 1.3-1.5x the last)', () => {
@@ -134,8 +119,17 @@ describe('autoShiftGear', () => {
     expect(g).toBe(MANUAL_GEAR_MAX)
   })
 
+  it('upshifts at 95% of the gear cap so the asymptotic taper does not strand the car', () => {
+    const baseMax = 26
+    // Just below 95% of gear 1 cap: no upshift.
+    const gear1Cap = manualGearSpec(1).maxSpeedFactor * baseMax
+    expect(autoShiftGear(gear1Cap * 0.94, baseMax, 1)).toBe(1)
+    // Just above the 95% trigger: upshift.
+    expect(autoShiftGear(gear1Cap * 0.96, baseMax, 1)).toBe(2)
+  })
+
   it('handles a multi-band jump (paused-frame catchup) in one call', () => {
-    // Speed 90% of base from a standstill in gear 1 — the while loop should
+    // Speed 90% of base from a standstill in gear 1. The while loop should
     // walk all the way up, not stop after one step.
     expect(autoShiftGear(26 * 0.9, 26, 1)).toBe(MANUAL_GEAR_MAX)
   })
@@ -144,10 +138,10 @@ describe('autoShiftGear', () => {
     expect(autoShiftGear(40, 26, 3)).toBe(MANUAL_GEAR_MAX)
   })
 
-  it('uses absolute speed so reverse motion still picks gear 1', () => {
-    // Caller is responsible for passing |speed| but verify negative input
-    // does not yield a negative or out-of-range gear.
-    expect(autoShiftGear(0, 26, 1)).toBe(1)
+  it('handles a zero-baseMaxSpeed input by clamping to gear 1', () => {
+    // Degenerate case: a car with no top speed should not produce a
+    // negative or out-of-range gear from autoShiftGear.
+    expect(autoShiftGear(10, 0, 3)).toBe(MANUAL_GEAR_MIN)
   })
 
   it('clamps a bogus prevGear before walking', () => {

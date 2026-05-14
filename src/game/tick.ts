@@ -17,6 +17,18 @@ import {
 } from './transmission'
 import { vehicleTrackContact } from './wheelContact'
 
+// Multiplier applied to base maxSpeed when extendedTopSpeed is on. 2.0
+// puts top at ~52 m/s (~116 mph) which lands comfortably in the
+// arcade-fast range without breaking turning-radius behavior at the top
+// of the speed window. Because we also force the quartic taper on, the
+// car asymptotes against the new top. The practical effect is "you only
+// see true top speed on long straightaways."
+//
+// Manual-mode players: gear caps multiply with this too, so a manual run
+// with extendedTopSpeed on has every gear's wall at 2x its old absolute
+// speed. The gear-feel ratios stay intact; the absolute speeds just shift.
+export const EXTENDED_TOP_SPEED_MUL = 2.0
+
 // Brief torque cut on every shift. ~110ms gives the upshift a perceptible
 // "click" without feeling like input lag during a 30-second drag run that
 // may chain four upshifts (4 * 110ms = 440ms of cut total).
@@ -104,6 +116,11 @@ export function tick(
   // pre-rework tick: legacy gear ratios, no torque cut, no shift events,
   // automatic mode locked to gear 1, linear acceleration curve.
   enhancedShifting = false,
+  // Opts the player into the higher-top-speed / longer-pull preset. When
+  // true, the effective maxSpeed doubles and the quartic taper is forced
+  // on, so reaching true top is asymptotic. Default false so the baseline
+  // car behaves exactly as it did before this preset shipped.
+  extendedTopSpeed = false,
 ): TickResult {
   const dtSec = dtMs / 1000
   let gear = state.gear
@@ -124,17 +141,37 @@ export function tick(
       // Auto: always recompute the gear from current speed so a manual->auto
       // toggle (or paused-frame catchup that crossed multiple bands) lands on
       // the correct gear without waiting for hysteresis to drag it back.
+      // When extendedTopSpeed is on the effective cap is 2x, so we feed the
+      // doubled base into autoShiftGear, otherwise the upshift triggers
+      // (ratio > maxSpeedFactor * 0.95) fire at half the new speed window
+      // and the car pegs gear 5 for the entire upper half of the pull.
       const speedAbs = Math.abs(state.speed)
-      const nextGear = autoShiftGear(speedAbs, params.maxSpeed, gear, true)
+      const autoShiftBase = extendedTopSpeed
+        ? params.maxSpeed * EXTENDED_TOP_SPEED_MUL
+        : params.maxSpeed
+      const nextGear = autoShiftGear(
+        speedAbs,
+        autoShiftBase,
+        gear,
+        enhancedShifting,
+      )
       if (nextGear !== gear) {
-        // Multi-gear deltas come from transmission-mode toggles or large dt
-        // catchups, not from racing. Treat as a silent snap (no rev blip, no
-        // torque cut) so the player isn't punished for changing a setting.
-        // A normal racing upshift only ever crosses one boundary per tick.
+        // Multi-gear deltas don't happen during normal racing: the rAF loop
+        // clamps dt to 50ms (RaceCanvas) so a 2+ gear walk in one tick is
+        // structurally impossible from acceleration alone. The branch fires
+        // for transmission-mode toggles mid-race and for externally pinned
+        // speed (replay scrub, dev tools, tests). Treat as a silent snap
+        // (no rev blip) so the player isn't punished for changing a setting.
         const isCascade = Math.abs(nextGear - gear) > 1
         if (!isCascade) {
+          // Audio + visual feedback still fires (pitch reset, exhaust pop,
+          // chassis bob) but the physics torque cut is skipped in auto. The
+          // shift now happens at low accel (engine bogging into the gear
+          // cap thanks to maxSpeedFactor in auto), so layering a half-thrust
+          // window on top of an already-tapered pull turned into noticeable
+          // jank during chained early-gear shifts. Manual keeps the cut
+          // because the player chose the shift timing.
           shiftEvent = nextGear > gear ? 'up' : 'down'
-          if (torqueCutSec <= 0) torqueCutSec = SHIFT_TORQUE_CUT_SEC
         }
         gear = nextGear
       }
@@ -155,9 +192,20 @@ export function tick(
   // Gear factor selection. Enhanced mode applies the new geometric specs and
   // its accelFactor in both transmissions; legacy mode applies the legacy
   // specs only in manual (auto runs at 1x like before the rework).
+  // Enhanced auto also applies maxSpeedFactor so the taper inside stepPhysics
+  // kicks in within each gear's band. The upshift then fires when the
+  // engine is already bogging into the cap, which is what auto-shift logic
+  // expects and what makes shifts feel like transitions instead of cuts.
   const gearSpec = manualGearSpec(gear, enhancedShifting)
-  const baseMaxFactor =
-    transmission === 'manual' ? gearSpec.maxSpeedFactor : 1
+  const gearMaxFactor =
+    transmission === 'manual' || enhancedShifting ? gearSpec.maxSpeedFactor : 1
+  // Extended top speed multiplies the per-tick maxSpeed cap so every gear
+  // (and the auto-mode base) can reach a higher absolute speed. Composes
+  // with manual gear caps so a manual run still feels gear-limited, just
+  // against a higher ceiling.
+  const baseMaxFactor = extendedTopSpeed
+    ? gearMaxFactor * EXTENDED_TOP_SPEED_MUL
+    : gearMaxFactor
   let baseAccelFactor: number
   if (enhancedShifting) {
     baseAccelFactor = gearSpec.accelFactor
@@ -194,10 +242,10 @@ export function tick(
         finalAccelFactor,
         baseMaxFactor,
         0,
-        // Legacy mode keeps the linear acceleration curve. Enhanced mode uses
-        // the default quartic taper inside stepPhysics for the asymptotic
-        // top-end pull.
-        enhancedShifting ? undefined : 1,
+        // Linear curve in legacy mode. Quartic taper kicks in for either
+        // enhanced shifting (intentional gear feel) or extended top speed
+        // (so the doubled cap is asymptotic, not a linear sprint).
+        enhancedShifting || extendedTopSpeed ? undefined : 1,
       )
 
   let hits = state.hits
