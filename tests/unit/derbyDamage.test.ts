@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest'
 import {
   classifyAttacker,
   resolveCollision,
+  DAMAGE_SCALE,
+  MAX_HIT_DAMAGE,
   SPEED_DIFF_THRESHOLD,
   type ContactInfo,
 } from '@/game/derbyDamage'
@@ -82,6 +84,20 @@ describe('resolveCollision', () => {
     expect(out.bDelta).toBeGreaterThan(0)
   })
 
+  it('lands a hard truck hit from a normal closing speed', () => {
+    const a = makeCar(0, 'bigTruck', { speed: 20, heading: 0 })
+    const b = makeCar(1, 'car', { speed: 0 })
+    const out = resolveCollision(
+      a,
+      b,
+      DERBY_VEHICLES.bigTruck,
+      DERBY_VEHICLES.car,
+      NORMAL_PLUS_X,
+    )
+    expect(DAMAGE_SCALE).toBe(30)
+    expect(out.bDelta).toBeGreaterThanOrEqual(20)
+  })
+
   it('faster car wins by speed even when the slow car is heavier', () => {
     // Racecar at high speed into a stationary big truck. The racecar's
     // speed advantage is well above SPEED_DIFF_THRESHOLD so it is the
@@ -147,7 +163,7 @@ describe('resolveCollision', () => {
       DERBY_VEHICLES.racecar,
       NORMAL_PLUS_X,
     )
-    expect(out.bDelta).toBeLessThanOrEqual(80)
+    expect(out.bDelta).toBe(MAX_HIT_DAMAGE)
   })
 
   it('reports a non-zero relativeSpeed for a clear hit', () => {

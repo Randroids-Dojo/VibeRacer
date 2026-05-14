@@ -58,6 +58,8 @@ export interface DerbyTickResult {
 }
 
 const PLAYER_IDX = 0
+const IMPACT_RESTITUTION = 0.72
+const IMPACT_MIN_CLOSING_SPEED = 0.5
 
 export function derbyTick(
   round: DerbyRoundState,
@@ -130,6 +132,14 @@ export function derbyTick(
         round.configs[i],
         round.configs[j],
         { nx: contact.nx, nz: contact.nz },
+      )
+      applyImpactImpulse(
+        a,
+        b,
+        round.configs[i].mass,
+        round.configs[j].mass,
+        contact.nx,
+        contact.nz,
       )
       applyAndEmit(round, events, a, b, damage, contact.x, contact.z)
     }
@@ -349,6 +359,51 @@ function separate(
   a.physics.z -= nz * overlap * aShare
   b.physics.x += nx * overlap * bShare
   b.physics.z += nz * overlap * bShare
+}
+
+function velocityOf(car: DerbyCarState): { vx: number; vz: number } {
+  return {
+    vx: Math.cos(car.physics.heading) * car.physics.speed,
+    vz: -Math.sin(car.physics.heading) * car.physics.speed,
+  }
+}
+
+function writeVelocity(
+  car: DerbyCarState,
+  vx: number,
+  vz: number,
+): void {
+  const speed = Math.hypot(vx, vz)
+  if (speed < 1e-4) {
+    car.physics.speed = 0
+    return
+  }
+  car.physics.speed = speed
+  car.physics.heading = Math.atan2(-vz, vx)
+}
+
+function applyImpactImpulse(
+  a: DerbyCarState,
+  b: DerbyCarState,
+  ma: number,
+  mb: number,
+  nx: number,
+  nz: number,
+): void {
+  const va = velocityOf(a)
+  const vb = velocityOf(b)
+  const closingSpeed = (va.vx - vb.vx) * nx + (va.vz - vb.vz) * nz
+  if (closingSpeed <= IMPACT_MIN_CLOSING_SPEED) return
+
+  const invMassA = 1 / Math.max(1, ma)
+  const invMassB = 1 / Math.max(1, mb)
+  const impulse =
+    ((1 + IMPACT_RESTITUTION) * closingSpeed) / (invMassA + invMassB)
+  const impulseX = impulse * nx
+  const impulseZ = impulse * nz
+
+  writeVelocity(a, va.vx - impulseX * invMassA, va.vz - impulseZ * invMassA)
+  writeVelocity(b, vb.vx + impulseX * invMassB, vb.vz + impulseZ * invMassB)
 }
 
 function applyAndEmit(
