@@ -4,11 +4,14 @@ import {
   Mesh,
   MeshBasicMaterial,
   MeshStandardMaterial,
+  type Object3D,
+  Quaternion,
   Vector3,
 } from 'three'
-import type {
-  DerbyVehicleAsset,
-  RequiredSubmeshName,
+import {
+  meshesOf,
+  type DerbyVehicleAsset,
+  type SubmeshName,
 } from './derbyVehicleLoader'
 import type { DerbyCarState } from './derbyVehicleState'
 
@@ -52,8 +55,11 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
 // Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
 // Tuned so a hard ram detaches a panel, while mild side-bumps do not.
 const PANEL_DETACH_DAMAGE_THRESHOLD = 12
-const PAINT_TARGET_NAMES: RequiredSubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
-const DETACHABLE_PANELS: RequiredSubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
+// Paint and detach lists include doors as candidates. Variants whose
+// asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
+// simply do not contribute door entries to the visualizer's working sets.
+const PAINT_TARGET_NAMES: SubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
+const DETACHABLE_PANELS: SubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
 
 const SMOKE_COLOR = new Color(0x444444)
 const FIRE_COLOR = new Color(0xff5022)
@@ -75,7 +81,7 @@ export interface DerbyDamageVisualizer {
     worldNz: number,
     victimHeading: number,
     rng: () => number,
-  ): Mesh | null
+  ): Object3D | null
   // Free any allocations the visualizer added to the asset. Restores the
   // original paint and light materials so the asset can be reused for a
   // future round (not used in v1; round end disposes the asset entirely).
@@ -99,11 +105,17 @@ export function createDamageVisualizer(
 ): DerbyDamageVisualizer {
   // Capture original paint colors. We work against material color rather
   // than swapping materials so the renderer can keep the same instance
-  // across tier changes.
-  const paintEntries: PaintEntry[] = PAINT_TARGET_NAMES.map((name) => {
-    const mesh = asset.submeshes[name]
-    const mat = mesh.material as MeshStandardMaterial
-    return { mesh, originalColor: mat.color.clone() }
+  // across tier changes. A multi-primitive node (e.g. body with paint +
+  // glass slots from the Kenney source) becomes one PaintEntry per Mesh
+  // descendant; tier changes apply uniformly to every primitive so the
+  // whole panel reads as one paint surface.
+  const paintEntries: PaintEntry[] = PAINT_TARGET_NAMES.flatMap((name) => {
+    const node = asset.submeshes[name]
+    if (!node) return []
+    return meshesOf(node).map((mesh) => {
+      const mat = mesh.material as MeshStandardMaterial
+      return { mesh, originalColor: mat.color.clone() }
+    })
   })
 
   const lightEntries: LightEntry[] = (
@@ -112,17 +124,20 @@ export function createDamageVisualizer(
       'headlight_r',
       'taillight_l',
       'taillight_r',
-    ] as RequiredSubmeshName[]
-  ).map((name) => {
-    const mesh = asset.submeshes[name]
-    const mat = mesh.material as MeshStandardMaterial
-    const broken = new MeshStandardMaterial({
-      color: 0x222222,
-      emissive: 0x000000,
-      roughness: 0.7,
-      metalness: 0.0,
+    ] as SubmeshName[]
+  ).flatMap((name) => {
+    const node = asset.submeshes[name]
+    if (!node) return []
+    return meshesOf(node).map((mesh) => {
+      const mat = mesh.material as MeshStandardMaterial
+      const broken = new MeshStandardMaterial({
+        color: 0x222222,
+        emissive: 0x000000,
+        roughness: 0.7,
+        metalness: 0.0,
+      })
+      return { mesh, originalMaterial: mat, brokenMaterial: broken, broken: false }
     })
-    return { mesh, originalMaterial: mat, brokenMaterial: broken, broken: false }
   })
 
   // Smoke / fire markers: parented to the asset group so they follow the
@@ -151,7 +166,12 @@ export function createDamageVisualizer(
   fire.visible = false
   asset.group.add(fire)
 
-  const detachedPanels = new Set<RequiredSubmeshName>()
+  const detachedPanels = new Set<SubmeshName>()
+  // Filter the static DETACHABLE list to panels actually present on this
+  // asset; doors are optional on Kenney sliced variants.
+  const availableDetachables: SubmeshName[] = DETACHABLE_PANELS.filter(
+    (p) => asset.submeshes[p] !== undefined,
+  )
   let lastTier: DamageTier = 'pristine'
 
   function setTier(tier: DamageTier): void {
@@ -196,8 +216,8 @@ export function createDamageVisualizer(
     worldNx: number,
     worldNz: number,
     victimHeading: number,
-  ): RequiredSubmeshName | null {
-    const candidates = DETACHABLE_PANELS.filter((p) => !detachedPanels.has(p))
+  ): SubmeshName | null {
+    const candidates = availableDetachables.filter((p) => !detachedPanels.has(p))
     if (candidates.length === 0) return null
     // Rotate the world-space hit normal into the victim's local frame.
     // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
@@ -213,10 +233,10 @@ export function createDamageVisualizer(
     // Front-on hits (positive forward component) prefer hood; rear-on
     // prefer trunk; side hits prefer the door on the impact side.
     if (absFwd > absRight) {
-      const preferred: RequiredSubmeshName = localFwd > 0 ? 'hood' : 'trunk'
+      const preferred: SubmeshName = localFwd > 0 ? 'hood' : 'trunk'
       if (candidates.includes(preferred)) return preferred
     } else {
-      const preferred: RequiredSubmeshName = localRight > 0 ? 'door_r' : 'door_l'
+      const preferred: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
       if (candidates.includes(preferred)) return preferred
     }
     return candidates[0]
@@ -238,20 +258,23 @@ export function createDamageVisualizer(
       if (choice === null) return null
       detachedPanels.add(choice)
       const panel = asset.submeshes[choice]
-      panel.visible = false
-      // Return a clone of the panel mesh as a free-standing world object.
-      // We do not detach the original from the parent group because that
-      // would shift the bounds of the parent every detach; instead the
-      // caller spawns its own debris using the cloned geometry. The world
-      // transform of the panel is baked into the clone so the spawn
-      // position matches the panel's pixel location a frame ago.
+      // pickPanelByAngle only chooses from availableDetachables, which is
+      // filtered against undefined entries, so this assert is true by
+      // construction; the explicit check keeps the type checker happy.
+      if (!panel) return null
+      // Real detach: capture the panel's world transform, remove it from
+      // its parent in the car asset, then return it so the caller can add
+      // it to the scene as free-standing debris. The panel literally
+      // disappears from the car (no more visibility hack) and re-appears
+      // in world space at its previous on-car location.
       asset.group.updateWorldMatrix(true, true)
       const worldPos = panel.getWorldPosition(new Vector3())
-      const clone = panel.clone() as Mesh
-      clone.visible = true
-      clone.position.copy(worldPos)
-      clone.rotation.copy(asset.group.rotation)
-      return clone
+      const worldQuat = panel.getWorldQuaternion(new Quaternion())
+      panel.removeFromParent()
+      panel.position.copy(worldPos)
+      panel.quaternion.copy(worldQuat)
+      panel.visible = true
+      return panel
     },
     dispose() {
       smokeGeo.dispose()

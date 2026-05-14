@@ -66,6 +66,10 @@ export default async function HomePage() {
 
           <WorldTourTile buttonStyle={primaryBtnStyle} />
 
+          <Link href="/model-viewer" style={primaryBtnStyle}>
+            Model Viewer
+          </Link>
+
           <DailyChallenge />
 
           <DailyStreak />

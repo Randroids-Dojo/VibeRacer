@@ -9,8 +9,8 @@ import {
 import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
 
 describe('derbyVehicleLoader contract', () => {
-  it('REQUIRED_SUBMESHES enumerates 13 named meshes', () => {
-    expect(REQUIRED_SUBMESHES).toHaveLength(13)
+  it('REQUIRED_SUBMESHES enumerates 11 named meshes (doors are optional)', () => {
+    expect(REQUIRED_SUBMESHES).toHaveLength(11)
     expect(new Set(REQUIRED_SUBMESHES).size).toBe(REQUIRED_SUBMESHES.length)
   })
 

@@ -232,12 +232,20 @@ function Stat({ label, value }: { label: string; value: string }) {
   )
 }
 
+// Match the main-game `root` container so the round shares the same
+// mobile behavior: no native scroll or zoom gestures stealing touches from
+// the joystick, no iOS long-press callout interrupting a held throttle,
+// and no accidental text selection when a tap lands on a HUD label.
 const pageStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
   background: '#000',
   color: '#fff',
   overflow: 'hidden',
+  touchAction: 'none',
+  userSelect: 'none',
+  WebkitUserSelect: 'none',
+  WebkitTouchCallout: 'none',
 }
 const resultsOverlay: React.CSSProperties = {
   position: 'absolute',
