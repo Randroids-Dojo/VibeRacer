@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, Bump @randroids-dojo/vibekit to v0.2.0
+
+- Branch: `chore/deps/vibekit-0.1.0-to-0.2.0`
+- Changed: bumped `@randroids-dojo/vibekit` from `github:Randroids-Dojo/VibeKit#v0.1.0` to `github:Randroids-Dojo/VibeKit#v0.2.0` in `package.json` and `package-lock.json`, and updated `docs/DEPENDENCY_LEDGER.md` to the new pinned release.
+- Changelog review: upstream `v0.2.0` adds the `Rng` object form with split, serialize, and deserialize helpers, plus a `KvLike` interface and `adaptUpstashRedis` adapter under the server package. No removals or required VibeRacer migrations were listed, and the existing joystick, editor-history, and confetti imports stay on their prior public APIs.
+- Verification: `grep -rn $'\u2014' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `grep -rn $'\u2013' . --exclude-dir=.git --exclude-dir=node_modules --exclude-dir=.next --exclude-dir=test-results`, `git diff --check`, `npm test -- tests/unit/virtual-joystick.test.ts tests/unit/editorHistory.test.ts tests/unit/confetti.test.ts`, `npm run type-check`, `npm test`, `PORT=3107 npx playwright test tests/e2e/world-tour.spec.ts tests/e2e/derby.spec.ts`, and `npm run build` passed. Build still reports the existing worktree ESLint plugin conflict and the existing Upstash Edge Runtime warning, but exits successfully. `npm audit --omit=dev --json` reports existing production advisories through `next` and `postcss`; that is separate from this VibeKit bump and should be handled in its own framework/security slice.
+- Assumptions: this is a compatibility bump only. The new RNG and server KV APIs are available for later migration dots, but this PR does not adopt them to keep the dependency slice narrow.
+- GDD coverage: no core GDD status change. This is dependency hygiene for already shipped shared modules.
+
 ## 2026-05-14, Derby Camera Parity
 
 - Branch: `fix/derby-camera-parity`
