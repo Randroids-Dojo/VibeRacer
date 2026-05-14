@@ -167,7 +167,13 @@ async function loadEntry(entry: CatalogEntry): Promise<LoadedEntry> {
     DERBY_VEHICLES[entry.derbyType],
     entry.paintColor,
   )
-  const destroyed = await buildDerbyDestroyed(entry.derbyType, entry.paintColor)
+  let destroyed: Awaited<ReturnType<typeof buildDerbyDestroyed>>
+  try {
+    destroyed = await buildDerbyDestroyed(entry.derbyType, entry.paintColor)
+  } catch (err) {
+    pristineAsset.dispose()
+    throw err
+  }
   // Pull out individual parts for the bottom grid BEFORE handing the
   // group off to the tile. We clone each part so the pristine group still
   // has every panel attached for the hero tile.
@@ -278,6 +284,7 @@ export function ModelViewer() {
             key={c.id}
             type="button"
             onClick={c.onClick}
+            aria-pressed={c.isActive}
             style={{
               ...chipStyle,
               background: c.isActive ? '#e84a5f' : 'rgba(255,255,255,0.08)',

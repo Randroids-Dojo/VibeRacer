@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, Derby Impact Pass
+
+- Branch: `fix/derby-impact-docs-current`
+- Changed: made derby car-car collisions hit harder. `derbyDamage.ts` now uses a stronger impact scale and a higher per-hit cap, while `derbyTick.ts` applies a mass-aware velocity impulse after OBB contact so the attacker slows and the victim gets shoved away instead of only taking health damage. Also carried the model-viewer review cleanup from the merged GLB branch: transparent shared renderer tiles, cached renderer resizing, toggle state, model-tile animation coverage, the Blender bisect cap fix, and current Derby vehicle labels.
+- Verification: dash checks, `git diff --check`, JSON parse for `docs/GDD_COVERAGE.json`, `pnpm type-check`, `pnpm test --run tests/unit/derbyDamage.test.ts tests/unit/derbyTick.test.ts tests/unit/derbyVehicleLoader.test.ts tests/unit/derbyVehicles.test.ts`, `PORT=3107 pnpm exec playwright test tests/e2e/model-viewer.spec.ts tests/e2e/derby.spec.ts`, `pnpm build`.
+- Assumptions: this is a focused feel pass for real impact plus post-merge review cleanup, not a full vehicle-balance pass. The remaining balance followup now points at broader per-vehicle dominance tuning.
+- GDD coverage: Section 20 and `docs/GDD_COVERAGE.json` record the hard-hit tuning, collision impulse behavior, current displayed vehicle names, and shipped GLB loader status.
+- Followups: broader derby vehicle balance remains tracked.
+
 ## 2026-05-14, Bump @randroids-dojo/vibekit to v0.2.0
 
 - Branch: `chore/deps/vibekit-0.1.0-to-0.2.0`

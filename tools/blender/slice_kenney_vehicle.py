@@ -234,7 +234,7 @@ def bisect_in_place(
     bpy.ops.object.mode_set(mode="EDIT")
     bm = bmesh.from_edit_mesh(obj.data)
     geom = list(bm.verts) + list(bm.edges) + list(bm.faces)
-    bmesh.ops.bisect_plane(
+    cut = bmesh.ops.bisect_plane(
         bm,
         geom=geom,
         plane_co=local_co,
@@ -245,7 +245,13 @@ def bisect_in_place(
     )
     # Fill the resulting hole with a planar n-gon so the piece stays a
     # closed solid.
-    bmesh.ops.holes_fill(bm, edges=bm.edges)
+    cut_edges = [
+        item
+        for item in cut.get("geom_cut", [])
+        if isinstance(item, bmesh.types.BMEdge) and item.is_valid
+    ]
+    if cut_edges:
+        bmesh.ops.holes_fill(bm, edges=cut_edges)
     bmesh.update_edit_mesh(obj.data)
     bpy.ops.object.mode_set(mode="OBJECT")
 

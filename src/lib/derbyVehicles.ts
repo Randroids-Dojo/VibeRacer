@@ -34,7 +34,7 @@ export interface DerbyVehicleConfig {
   // Oriented-bounding-box half-extents, in metres. width = half the
   // dimension along the car's local X axis (door-to-door); length = half
   // the dimension along the local forward axis. Used by derbyTick's OBB
-  // SAT contact pass so a long vehicle (school bus) cannot be clipped
+  // SAT contact pass so a long vehicle cannot be clipped
   // through its front or rear by a smaller car.
   obbHalfWidth: number
   obbHalfLength: number
@@ -110,8 +110,8 @@ const RACECAR_PARAMS: CarParams = {
   offTrackDrag: 7,
 }
 
-// The schoolBus has the highest health among shipping vehicles; the worst
-// case for time-to-win is destroying three school buses. Multiply by an
+// The ambulance has the highest health among shipping vehicles; the worst
+// case for time-to-win is destroying three ambulances. Multiply by an
 // inverse efficiency floor so the anti-cheat floor stays generous: a real
 // player landing every hit at peak closing speed will still clear it.
 const WORST_CASE_TARGET_HEALTH = 400 * 3
@@ -147,9 +147,8 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     blurb: 'Balanced ride. Enough speed to chase, enough HP to trade hits.',
   },
   schoolBus: {
-    // 'schoolBus' is the internal type id (kept stable so the leaderboard
-    // schemas keep parsing existing entries); the displayName / GLB ship
-    // the Kenney CC0 ambulance.
+    // 'schoolBus' is the stable internal type id so existing leaderboards
+    // keep parsing. The player-facing vehicle is the Kenney CC0 ambulance.
     type: 'schoolBus',
     displayName: 'Ambulance',
     modelUrl: '/models/derby/schoolBus.glb',

@@ -35,9 +35,9 @@ export interface CollisionDamage {
 export const SPEED_DIFF_THRESHOLD = 6
 export const VELOCITY_INTO_CONTACT_THRESHOLD = 3
 // Damage formula: baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
-export const DAMAGE_SCALE = 50
+export const DAMAGE_SCALE = 30
 // Per-hit cap, kept below the weakest vehicle's HP so no clean hit one-shots.
-export const MAX_HIT_DAMAGE = 30
+export const MAX_HIT_DAMAGE = 48
 
 // World-frame velocity of a car given its physics state. Heading 0 = +X,
 // PI/2 = -Z, matching stepPhysics. Speed is signed; a negative speed means
