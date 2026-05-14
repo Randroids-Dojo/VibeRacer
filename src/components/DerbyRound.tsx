@@ -12,6 +12,8 @@ import { submitDerbyRun } from '@/lib/derbySubmit'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useGamepad } from '@/hooks/useGamepad'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { CameraRigParams } from '@/game/sceneBuilder'
 import {
   DerbyHUD,
   POPUP_LIFETIME_MS,
@@ -68,6 +70,21 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
   // axes override; readPlayerInput (called by DerbyCanvas every frame)
   // prefers the analog axes whenever the pad is active.
   useGamepad(keysRef, undefined, settings.gamepadBindings)
+
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  useEffect(() => {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+      cameraForward: settings.camera.cameraForward,
+      targetHeight: settings.camera.targetHeight,
+      fov: settings.camera.fov,
+    }
+  }, [settings.camera])
 
   const [snapshot, setSnapshot] = useState<DerbyHudSnapshot>({
     place: 1,
@@ -161,6 +178,7 @@ export function DerbyRound({ arenaSlug, vehicle, onRetry }: DerbyRoundProps) {
         arena={arena}
         vehicleConfigs={vehicleConfigs}
         keysRef={keysRef}
+        cameraRigRef={cameraRigRef}
         onHud={onHud}
         onHit={onHit}
         onRoundEnd={onRoundEnd}
