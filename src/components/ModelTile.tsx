@@ -91,6 +91,7 @@ export function ModelTile({
 
   return (
     <div
+      data-testid={label ? `model-tile-${label}` : 'model-tile'}
       style={{
         display: 'flex',
         flexDirection: 'column',
@@ -104,10 +105,8 @@ export function ModelTile({
           width: size,
           height: size,
           borderRadius: 12,
-          // Background is painted by the shared renderer; leaving the div
-          // transparent prevents a brief flash of solid color before the
-          // first frame in case the canvas takes an extra tick to mount.
-          background: 'transparent',
+          background,
+          overflow: 'hidden',
           boxShadow: '0 6px 14px rgba(0,0,0,0.35)',
         }}
       />

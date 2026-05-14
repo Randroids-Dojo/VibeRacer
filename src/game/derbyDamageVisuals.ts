@@ -282,9 +282,11 @@ export function createDamageVisualizer(
     asset.group.updateWorldMatrix(true, true)
     const worldPos = panel.getWorldPosition(new Vector3())
     const worldQuat = panel.getWorldQuaternion(new Quaternion())
+    const worldScale = panel.getWorldScale(new Vector3())
     panel.removeFromParent()
     panel.position.copy(worldPos)
     panel.quaternion.copy(worldQuat)
+    panel.scale.copy(worldScale)
     panel.visible = true
     return panel
   }
@@ -294,7 +296,7 @@ export function createDamageVisualizer(
     // Walk the canonical sequence and detach until the number of still-
     // attached panels matches the tier's target. availableDetachables is
     // filtered against absent door variants, so a Kenney sliced sedan
-    // simply has fewer panels to lose — the loop just runs out earlier.
+    // simply has fewer panels to lose, so the loop just runs out earlier.
     for (const name of PANEL_DETACH_SEQUENCE) {
       const attached = availableDetachables.filter(
         (p) => !detachedPanels.has(p),

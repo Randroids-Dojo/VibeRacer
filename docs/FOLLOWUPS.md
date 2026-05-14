@@ -20,8 +20,7 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 - Difficulty knob for the CPU AI. v1 is single-difficulty seek-then-ram with no track-circling tactic. Add a difficulty enum to the start route and key the AI tuning constants (target weighting, recover threshold, lead seconds) off it.
 - Dent decals as alpha-mapped sprites parented to the body. Held off in v1; the paint-darkening multiplier already conveys progressive damage. Real decals require pre-baked alpha PNGs under `public/models/derby/decals/`.
 - Particle-based smoke and fire. v1 uses scaled translucent boxes for the markers so the visualizer ships without a particle system. Swap to instanced point sprites with a per-instance lifetime ramp once a shared particle module exists; the slot above the hood is already named (`derbyDamageSmoke`, `derbyDamageFire`) so the swap is local.
-- Touch and gamepad parity for the derby canvas. v1 only consumes `useKeyboard`. Wire `useTouchControls` and `useGamepad` (already in the codebase) into `DerbyCanvas.playerInputFromKeys` so phone players can run a round.
-- Mass and damage scalar tuning pass. v1 ships first-pass numbers in `derbyVehicles.ts`; a tuning pass before broad release would reduce the chance of one vehicle dominating the per-arena fastest-win board.
+- Broader vehicle balance tuning pass. v1 now has harder hit damage and mass-aware collision impulse, but a balance pass before broad release should still reduce the chance of one vehicle dominating the per-arena fastest-win board.
 - Derby leaderboard pagination plus initials editor. The slice ships only the top 50 readout and falls back to `readStoredInitials() ?? 'YOU'`. Add a dedicated leaderboard panel and a post-round initials prompt to close out the loop / drag parity gap.
 - Per-vehicle leaderboard tabs if a single vehicle ends up dominating the single board. The data is already stored on each entry's `vehicle` field, so post-hoc slicing is a UI change with no schema migration.
 
@@ -33,4 +32,3 @@ and the slice 6 cascading-reconciliation and slice 7 OBB
 false-positives followups have closed. See
 `docs/CONTINUOUS_ANGLE_PLAN.md` for the authoritative status and
 the contracts that pinned each stage.
-

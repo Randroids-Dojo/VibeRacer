@@ -42,9 +42,9 @@ const DEBRIS_REST_SPEED = 0.4
 
 // Compute the smallest half-extent of the object's bounding box. A flat
 // panel rests on its thin side so its center sits at half the thickness
-// above the ground plane — using min half-extent avoids the panel
+// above the ground plane. Using min half-extent avoids the panel
 // floating high (max half-extent) or clipping deep (zero).
-function computeGroundY(object: Object3D): number {
+export function computeGroundY(object: Object3D): number {
   const box = new Box3()
   let hasGeometry = false
   object.traverse((node) => {
@@ -54,7 +54,16 @@ function computeGroundY(object: Object3D): number {
   })
   if (!hasGeometry) return 0.05
   box.setFromObject(object)
-  if (!isFinite(box.min.x) || !isFinite(box.max.x)) return 0.05
+  if (
+    !Number.isFinite(box.min.x) ||
+    !Number.isFinite(box.min.y) ||
+    !Number.isFinite(box.min.z) ||
+    !Number.isFinite(box.max.x) ||
+    !Number.isFinite(box.max.y) ||
+    !Number.isFinite(box.max.z)
+  ) {
+    return 0.05
+  }
   const halfX = (box.max.x - box.min.x) / 2
   const halfY = (box.max.y - box.min.y) / 2
   const halfZ = (box.max.z - box.min.z) / 2
@@ -163,4 +172,3 @@ export function pruneDebris(items: DerbyDebrisItem[]): number {
   items.length = writeIdx
   return removed
 }
-

@@ -73,7 +73,7 @@ export function DerbyHUD({ state }: { state: DerbyHudState }) {
                 opacity: alpha,
               }}
             >
-              -{Math.max(1, Math.round(p.amount))}
+              -{Math.max(1, Math.floor(p.amount))}
             </div>
           )
         })}

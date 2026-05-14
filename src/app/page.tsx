@@ -22,6 +22,7 @@ import { MedalCabinet } from '@/components/MedalCabinet'
 import { TrophyCase } from '@/components/TrophyCase'
 import { DailyChallenge } from '@/components/DailyChallenge'
 import { DailyStreak } from '@/components/DailyStreak'
+import { WorldTourTile } from '@/components/WorldTourTile'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -62,6 +63,8 @@ export default async function HomePage() {
           <Link href="/derby" style={primaryBtnStyle}>
             Derby
           </Link>
+
+          <WorldTourTile buttonStyle={primaryBtnStyle} />
 
           <Link href="/model-viewer" style={primaryBtnStyle}>
             Model Viewer

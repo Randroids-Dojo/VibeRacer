@@ -18,7 +18,7 @@ Update the **Currently pinned** line in the same PR that bumps the version.
 - **Why watched**: internally maintained, pre-1.0, breaking changes possible on every release. VibeRacer consumes the kit's portable + server modules.
 - **Source**: https://github.com/Randroids-Dojo/VibeKit/releases
 - **Pin format**: `github:Randroids-Dojo/VibeKit#vX.Y.Z` (tag-pinned).
-- **Currently pinned**: `v0.1.0`
+- **Currently pinned**: `v0.2.0`
 - **Detect-new**: `gh api repos/Randroids-Dojo/VibeKit/releases/latest --jq .tag_name`
 - **Migration notes**:
   - Pre-1.0 means any release may break callers (release-please uses `bump-patch-for-minor-pre-major`, so feat-level changes still ship as patches and may carry signature changes).

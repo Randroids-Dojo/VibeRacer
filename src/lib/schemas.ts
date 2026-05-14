@@ -183,6 +183,20 @@ export type TrackMood = z.infer<typeof TrackMoodSchema>
 export type TrackBiome = z.infer<typeof TrackBiomeSchema>
 export type TrackDecoration = z.infer<typeof TrackDecorationSchema>
 
+// Optional World Tour membership tag. A track tagged with a tour id and
+// a non-negative index is the race at that index of that tour. The field
+// is purely advisory at the storage layer: the World Tour mode reads it
+// to assemble its race list, while every other mode (Time Attack, Derby,
+// Drag, editor) ignores it entirely. The field is intentionally omitted
+// from the canonical bytes the hash function consumes (see
+// `src/lib/hashTrack.ts`, which only hashes pieces and checkpoints) so
+// adding or removing the tag does NOT change a track's hash.
+export const TrackTourMembershipSchema = z.object({
+  id: z.string().min(1),
+  index: z.number().int().min(0),
+})
+export type TrackTourMembership = z.infer<typeof TrackTourMembershipSchema>
+
 export const TrackSchema = z
   .object({
     pieces: z.array(PieceSchema).min(1).max(MAX_PIECES_PER_TRACK),
@@ -197,6 +211,7 @@ export const TrackSchema = z
       .max(MAX_DECORATIONS_PER_TRACK)
       .optional(),
     creatorTuning: CarParamsSchema.optional(),
+    tour: TrackTourMembershipSchema.optional(),
   })
   .superRefine((track, ctx) => {
     if (
@@ -300,6 +315,10 @@ export const TrackVersionSchema = z.object({
   // way the author intended. Optional so versions saved before this field was
   // introduced still parse.
   creatorTuning: CarParamsSchema.optional(),
+  // Optional World Tour membership; see `TrackTourMembershipSchema` above.
+  // Round-tripped through the persisted snapshot but ignored by everything
+  // outside `/tour`.
+  tour: TrackTourMembershipSchema.optional(),
   createdByRacerId: z.string().uuid(),
   createdAt: z.string().datetime(),
   // Persisted schema version. Missing or 1 means v1 (cell-aligned only); 2

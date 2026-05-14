@@ -34,7 +34,7 @@ export interface DerbyVehicleConfig {
   // Oriented-bounding-box half-extents, in metres. width = half the
   // dimension along the car's local X axis (door-to-door); length = half
   // the dimension along the local forward axis. Used by derbyTick's OBB
-  // SAT contact pass so a long vehicle (school bus) cannot be clipped
+  // SAT contact pass so a long vehicle cannot be clipped
   // through its front or rear by a smaller car.
   obbHalfWidth: number
   obbHalfLength: number
@@ -110,8 +110,8 @@ const RACECAR_PARAMS: CarParams = {
   offTrackDrag: 7,
 }
 
-// The schoolBus has the highest health among shipping vehicles; the worst
-// case for time-to-win is destroying three school buses. Multiply by an
+// The ambulance has the highest health among shipping vehicles; the worst
+// case for time-to-win is destroying three ambulances. Multiply by an
 // inverse efficiency floor so the anti-cheat floor stays generous: a real
 // player landing every hit at peak closing speed will still clear it.
 const WORST_CASE_TARGET_HEALTH = 400 * 3
@@ -143,13 +143,12 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     collisionRadius: 3.00,
     obbHalfWidth: 2.25,
     obbHalfLength: 1.83,
-    theoreticalMinWinMs: theoreticalMinWinMs(14),
+    theoreticalMinWinMs: theoreticalMinWinMs(7),
     blurb: 'Balanced ride. Enough speed to chase, enough HP to trade hits.',
   },
   schoolBus: {
-    // 'schoolBus' is the internal type id (kept stable so the leaderboard
-    // schemas keep parsing existing entries); the displayName / GLB ship
-    // the Kenney CC0 ambulance.
+    // 'schoolBus' is the stable internal type id so existing leaderboards
+    // keep parsing. The player-facing vehicle is the Kenney CC0 ambulance.
     type: 'schoolBus',
     displayName: 'Ambulance',
     modelUrl: '/models/derby/schoolBus.glb',
@@ -161,7 +160,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     collisionRadius: 4.20,
     obbHalfWidth: 2.40,
     obbHalfLength: 3.22,
-    theoreticalMinWinMs: theoreticalMinWinMs(16),
+    theoreticalMinWinMs: theoreticalMinWinMs(8),
     blurb: 'Long-wheelbase tank. Soaks dozens of hits and shoves anything sideways.',
   },
   bigTruck: {
@@ -176,7 +175,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     collisionRadius: 3.60,
     obbHalfWidth: 2.55,
     obbHalfLength: 2.40,
-    theoreticalMinWinMs: theoreticalMinWinMs(24),
+    theoreticalMinWinMs: theoreticalMinWinMs(12),
     blurb: 'Heavy hitter. The hardest single hit in the field; chews through lighter cars.',
   },
   racecar: {
@@ -191,7 +190,7 @@ export const DERBY_VEHICLES: Record<DerbyVehicleType, DerbyVehicleConfig> = {
     collisionRadius: 2.95,
     obbHalfWidth: 2.10,
     obbHalfLength: 1.88,
-    theoreticalMinWinMs: theoreticalMinWinMs(12),
+    theoreticalMinWinMs: theoreticalMinWinMs(6),
     blurb: 'Glass cannon on wheels. Outmaneuver heavies or you melt in a handful of hits.',
   },
 }

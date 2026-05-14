@@ -35,13 +35,12 @@ export interface CollisionDamage {
 export const SPEED_DIFF_THRESHOLD = 6
 export const VELOCITY_INTO_CONTACT_THRESHOLD = 3
 // Damage formula: baseDamage * impactSpeed * massFactor / DAMAGE_SCALE.
-export const DAMAGE_SCALE = 50
-// Per-hit cap. Tuned well below the weakest vehicle's HP (racecar at 130)
-// so even a perfect cap-bound ram only chips 12% off a glass-cannon — a
-// full derby battle takes a dozen-plus clean hits, not two. derbyTick
-// pairs this with a 350 ms per-pair damage cooldown so multi-frame
-// pile-ups can't stack hits inside a single contact window.
-export const MAX_HIT_DAMAGE = 15
+export const DAMAGE_SCALE = 30
+// Per-hit cap, kept below the weakest vehicle's HP so hard hits land
+// clearly without one-shotting. derbyTick pairs this with a 350 ms
+// per-pair damage cooldown so multi-frame pile-ups cannot stack hits
+// inside a single contact window.
+export const MAX_HIT_DAMAGE = 48
 
 // World-frame velocity of a car given its physics state. Heading 0 = +X,
 // PI/2 = -Z, matching stepPhysics. Speed is signed; a negative speed means

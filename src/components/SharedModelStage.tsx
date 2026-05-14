@@ -74,6 +74,9 @@ export function SharedModelStage({ children }: { children: ReactNode }) {
     const tmpColor = new Color()
     let raf = 0
     let prev = performance.now()
+    let canvasW = 0
+    let canvasH = 0
+    let canvasDpr = 0
 
     const tick = (now: number) => {
       raf = requestAnimationFrame(tick)
@@ -82,7 +85,14 @@ export function SharedModelStage({ children }: { children: ReactNode }) {
 
       const w = window.innerWidth
       const h = window.innerHeight
-      renderer.setSize(w, h, false)
+      const dpr = Math.min(window.devicePixelRatio, 2)
+      if (w !== canvasW || h !== canvasH || dpr !== canvasDpr) {
+        renderer.setPixelRatio(dpr)
+        renderer.setSize(w, h, false)
+        canvasW = w
+        canvasH = h
+        canvasDpr = dpr
+      }
 
       // Clear everything once with full transparency before any scissor is
       // applied. Tiles below paint their own backgrounds via clearColor.
@@ -101,7 +111,7 @@ export function SharedModelStage({ children }: { children: ReactNode }) {
           rect.width <= 0 ||
           rect.height <= 0
         ) {
-          // Still tick so rotation accumulates while offscreen — otherwise
+          // Still tick so rotation accumulates while offscreen. Otherwise
           // scrolling back snaps a quarter-rotation in.
           tile.onTick(dt)
           continue
@@ -111,7 +121,7 @@ export function SharedModelStage({ children }: { children: ReactNode }) {
         renderer.setScissor(rect.left, yUp, rect.width, rect.height)
         renderer.setViewport(rect.left, yUp, rect.width, rect.height)
         tmpColor.set(tile.clearColor)
-        renderer.setClearColor(tmpColor, 1)
+        renderer.setClearColor(tmpColor, 0)
         renderer.clear()
 
         tile.camera.aspect = rect.width / rect.height
