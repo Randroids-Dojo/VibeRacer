@@ -101,7 +101,7 @@ export function SharedModelStage({ children }: { children: ReactNode }) {
           rect.width <= 0 ||
           rect.height <= 0
         ) {
-          // Still tick so rotation accumulates while offscreen — otherwise
+          // Still tick so rotation accumulates while offscreen. Otherwise
           // scrolling back snaps a quarter-rotation in.
           tile.onTick(dt)
           continue

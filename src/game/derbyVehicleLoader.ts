@@ -101,7 +101,7 @@ export function firstMeshOf(node: Object3D): Mesh | null {
 }
 
 // All Mesh descendants of `node` (or `[node]` when it's a Mesh). Used for
-// operations that should apply uniformly across every primitive — paint
+// operations that should apply uniformly across every primitive: paint
 // tinting, broken-light material swap.
 export function meshesOf(node: Object3D): Mesh[] {
   const out: Mesh[] = []

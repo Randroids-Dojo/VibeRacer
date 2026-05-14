@@ -32,22 +32,22 @@ const CATALOG: CatalogEntry[] = [
     derbyType: null,
     paintColor: 0xfff7b0,
   },
-  { id: 'car', label: 'Derby — Sedan', derbyType: 'car', paintColor: 0xff5544 },
+  { id: 'car', label: 'Derby: Sedan', derbyType: 'car', paintColor: 0xff5544 },
   {
     id: 'schoolBus',
-    label: 'Derby — Ambulance',
+    label: 'Derby: Ambulance',
     derbyType: 'schoolBus',
     paintColor: 0xffffff,
   },
   {
     id: 'bigTruck',
-    label: 'Derby — Pickup Truck',
+    label: 'Derby: Pickup Truck',
     derbyType: 'bigTruck',
     paintColor: 0x4488ff,
   },
   {
     id: 'racecar',
-    label: 'Derby — Race Car',
+    label: 'Derby: Race Car',
     derbyType: 'racecar',
     paintColor: 0xff8822,
   },
@@ -100,7 +100,7 @@ function buildDerbyDestroyed(
       const state: DerbyCarState = {
         carIdx: 0,
         type,
-        // physics is unused by the visualizer — `as never` keeps the
+        // physics is unused by the visualizer. `as never` keeps the
         // interface compile while signaling "do not read this field".
         physics: undefined as never,
         maxHealth: DERBY_VEHICLES[type].health,

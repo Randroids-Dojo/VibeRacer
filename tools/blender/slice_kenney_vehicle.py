@@ -155,7 +155,7 @@ def import_kenney(path: str, scale: float = 1.0) -> None:
         # Scale BOTH the node's location and its mesh data by the same
         # factor. Without scaling location, the wheel nodes stay at
         # Kenney's source positions (±0.3, ±0.66) while the body mesh
-        # grows ~3× — leaving the wheels bunched at the body's center.
+        # grows ~3x, leaving the wheels bunched at the body's center.
         # We update location manually then apply scale (location=False
         # in apply because we already moved the nodes to their scaled
         # spot in object space).
@@ -294,7 +294,7 @@ def slice_body_into_parts(
 ) -> dict[str, bpy.types.Object]:
     """Cut hood (front cap) and trunk (rear cap) off the body. Returns a
     dict with keys 'body', 'hood', 'trunk' and (when applicable) door_l /
-    door_r — the body entry is the original mutated to be the chassis-only
+    door_r. The body entry is the original mutated to be the chassis-only
     remainder."""
     axes = detect_axes(body)
     fwd = axis_vec(axes["forward"])
@@ -372,7 +372,7 @@ def build_door_slabs(
     as free-standing debris, so the visual reads as "a chunk popped off
     that side of the car" rather than "a thin flag detached from outside
     the car". The Kenney source for ambulance ships doors as separate
-    Nodes and the rename_source_doors path uses those directly — this
+    Nodes and the rename_source_doors path uses those directly. This
     overlay code is only the fallback for variants that do not."""
     mn, mx = world_bbox(body)
     side_idx = ("x", "y", "z").index(axes["side"])
