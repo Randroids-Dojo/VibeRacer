@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-14, World Tour Mobile Race Parity
+
+- Branch: `feature/world-tour-mobile-parity`
+- Changed: updated `/tour/race` to use the same control stack as the main race mode. World Tour now reads persisted key bindings and touch-mode settings through `useControlSettings`, drives through the shared `useKeyboard` ref, renders the shared `TouchControls` joystick, and provides a coarse-pointer-sized pause button. The race canvas is now a fixed full-viewport surface sized from its rendered CSS box and device pixel ratio instead of a hardcoded 720x420 canvas. The 2D tour camera now follows the main game's camera settings for distance, look-ahead, and FOV so phone players keep the same framing intent they use in the main mode.
+- Verification: `npm run type-check`, `npm test -- tests/unit/worldTourRaceSession.test.ts tests/unit/controlSettings.test.ts`, and `PORT=3107 npx playwright test tests/e2e/world-tour.spec.ts` passed. The Playwright file now includes a mobile viewport check that verifies the World Tour canvas fills an iPhone-class viewport and that a touch pointer activates the shared joystick overlay.
+- Assumptions: this keeps the current 2D World Tour race renderer for a small parity slice. The later 3D renderer port should reuse `RaceCanvas` or a shared race-canvas adapter directly, but this patch removes the immediate mobile usability mismatch without waiting for that larger renderer change.
+- GDD coverage: no core GDD status change. This is World Tour mode polish on top of the already shipped controls and camera systems.
+- Followups: the dependency gate still reports VibeKit `v0.2.0` while `docs/DEPENDENCY_LEDGER.md` pins `v0.1.0`; that remains the next dependency slice unless a higher-priority user-directed slice takes precedence.
+
 ## 2026-05-10, Derby Mode
 
 - Branch: `claude/add-derby-game-mode-fu5ca`

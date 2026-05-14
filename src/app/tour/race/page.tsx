@@ -18,12 +18,15 @@ import type { AiTrackView } from '@/game/worldTourAi'
 import { DEFAULT_CAR_PARAMS } from '@/game/physics'
 import { buildRaceResult } from '@/game/worldTourRaceResult'
 import { applyRaceResult } from '@/game/worldTourProgress'
+import { useKeyboard, type KeyInput } from '@/hooks/useKeyboard'
+import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   readCareer,
   writeCareer,
 } from '@/lib/worldTourCareerStorage'
 import { defaultCareer, getActiveCar } from '@/game/worldTourCareer'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
+import { TouchControls } from '@/components/TouchControls'
 
 const FLAT_TRACK: AiTrackView = {
   centerXAt: () => 0,
@@ -33,26 +36,6 @@ const FLAT_TRACK: AiTrackView = {
 const TOTAL_LAPS = 2
 const LAP_DISTANCE_METERS = 300
 const INTRO_DURATION_MS = 2000
-
-interface KeyState {
-  forward: boolean
-  backward: boolean
-  left: boolean
-  right: boolean
-  handbrake: boolean
-  paused: boolean
-}
-
-function createKeyState(): KeyState {
-  return {
-    forward: false,
-    backward: false,
-    left: false,
-    right: false,
-    handbrake: false,
-    paused: false,
-  }
-}
 
 export default function TourRacePage() {
   return (
@@ -77,9 +60,10 @@ function TourRacePageInner() {
     [championship, tour],
   )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
+  const { settings } = useControlSettings()
+  const keys = useKeyboard(settings.keyBindings)
 
   const sessionRef = useRef<RaceSessionState | null>(null)
-  const keyRef = useRef<KeyState>(createKeyState())
   const rafRef = useRef<number | null>(null)
   const lastFrameRef = useRef<number | null>(null)
   const canvasRef = useRef<HTMLCanvasElement | null>(null)
@@ -87,6 +71,7 @@ function TourRacePageInner() {
   const [hudPhase, setHudPhase] = useState<RaceSessionState['phase']>('countdown')
   const [hudCountdown, setHudCountdown] = useState(COUNTDOWN_SECONDS_DEFAULT)
   const [hudLap, setHudLap] = useState(0)
+  const [paused, setPaused] = useState(false)
   // Brief intro card before the countdown starts. Dismisses on the
   // first input or after `INTRO_DURATION_MS`.
   const [showIntro, setShowIntro] = useState(true)
@@ -115,8 +100,27 @@ function TourRacePageInner() {
     setHudPhase('countdown')
     setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)
     setHudLap(0)
+    setPaused(false)
     setShowIntro(true)
   }, [tour, drivers, raceIndex])
+
+  useEffect(() => {
+    const canvas = canvasRef.current
+    if (!canvas) return
+    const resize = () => {
+      const rect = canvas.getBoundingClientRect()
+      const dpr = Math.min(2, window.devicePixelRatio || 1)
+      canvas.width = Math.max(1, Math.round(rect.width * dpr))
+      canvas.height = Math.max(1, Math.round(rect.height * dpr))
+    }
+    resize()
+    window.addEventListener('resize', resize)
+    window.visualViewport?.addEventListener('resize', resize)
+    return () => {
+      window.removeEventListener('resize', resize)
+      window.visualViewport?.removeEventListener('resize', resize)
+    }
+  }, [tour])
 
   // Auto-dismiss the intro card after the documented duration.
   useEffect(() => {
@@ -125,70 +129,31 @@ function TourRacePageInner() {
     return () => window.clearTimeout(timer)
   }, [showIntro])
 
-  // Keyboard handling.
+  // Route-level controls that are not part of the shared driving key map.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      const k = keyRef.current
+      if (isEditableTarget(e.target)) return
       switch (e.code) {
         case 'KeyW':
         case 'ArrowUp':
-          setShowIntro(false)
-          k.forward = true
-          break
         case 'KeyS':
         case 'ArrowDown':
-          setShowIntro(false)
-          k.backward = true
-          break
         case 'KeyA':
         case 'ArrowLeft':
-          setShowIntro(false)
-          k.left = true
-          break
         case 'KeyD':
         case 'ArrowRight':
-          setShowIntro(false)
-          k.right = true
-          break
         case 'Space':
           setShowIntro(false)
-          k.handbrake = true
           break
         case 'Escape':
           setShowIntro(false)
-          k.paused = !k.paused
-          break
-      }
-    }
-    const onKeyUp = (e: KeyboardEvent) => {
-      const k = keyRef.current
-      switch (e.code) {
-        case 'KeyW':
-        case 'ArrowUp':
-          k.forward = false
-          break
-        case 'KeyS':
-        case 'ArrowDown':
-          k.backward = false
-          break
-        case 'KeyA':
-        case 'ArrowLeft':
-          k.left = false
-          break
-        case 'KeyD':
-        case 'ArrowRight':
-          k.right = false
-          break
-        case 'Space':
-          k.handbrake = false
+          setPaused((v) => !v)
           break
       }
     }
     window.addEventListener('keydown', onKeyDown)
-    window.addEventListener('keyup', onKeyUp)
     return () => {
       window.removeEventListener('keydown', onKeyDown)
-      window.removeEventListener('keyup', onKeyUp)
     }
   }, [])
 
@@ -230,15 +195,10 @@ function TourRacePageInner() {
       const prev = lastFrameRef.current
       const dt = prev === null ? 1 / 60 : Math.min(1 / 30, (timestamp - prev) / 1000)
       lastFrameRef.current = timestamp
-      const k = keyRef.current
       // Hold the simulation while the intro card is on screen so the
       // countdown does not burn down behind it.
-      if (!k.paused && !showIntro && sessionRef.current) {
-        const playerInput = {
-          throttle: (k.forward ? 1 : 0) + (k.backward ? -1 : 0),
-          steer: (k.left ? 1 : 0) + (k.right ? -1 : 0),
-          handbrake: k.handbrake,
-        }
+      if (!paused && !showIntro && sessionRef.current) {
+        const playerInput = inputFromKeys(keys.current)
         sessionRef.current = stepRaceSession(
           sessionRef.current,
           {
@@ -260,7 +220,7 @@ function TourRacePageInner() {
       }
       const canvas = canvasRef.current
       if (canvas && sessionRef.current) {
-        drawScene(canvas, sessionRef.current)
+        drawScene(canvas, sessionRef.current, settings.camera)
       }
       rafRef.current = window.requestAnimationFrame(loop)
     }
@@ -269,7 +229,7 @@ function TourRacePageInner() {
       if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current)
       lastFrameRef.current = null
     }
-  }, [tour, submitResult, showIntro])
+  }, [tour, submitResult, showIntro, paused, keys, settings.camera])
 
   if (!tour) {
     return (
@@ -283,7 +243,7 @@ function TourRacePageInner() {
   }
 
   return (
-    <main style={pageStyle}>
+    <main style={pageStyle} data-testid="world-tour-race-page">
       <div style={stageStyle}>
         <header style={headerStyle}>
           <div>
@@ -296,19 +256,18 @@ function TourRacePageInner() {
             {hudPhase === 'countdown' ? (
               <strong style={countdownStyle}>{hudCountdown}</strong>
             ) : hudPhase === 'racing' ? (
-              <span>GO</span>
+              <span>{paused ? 'PAUSED' : 'GO'}</span>
             ) : (
               <span>Finishing...</span>
             )}
           </div>
         </header>
 
-        <div style={{ position: 'relative' }}>
+        <div style={canvasWrapStyle}>
           <canvas
             ref={canvasRef}
-            width={720}
-            height={420}
             style={canvasStyle}
+            data-testid="world-tour-race-canvas"
           />
           {showIntro ? (
             <button
@@ -338,12 +297,46 @@ function TourRacePageInner() {
         </div>
 
         <footer style={footerStyle}>
-          <span>WASD / Arrows: drive | Space: handbrake | Esc: pause</span>
+          <span>Drive with keyboard, touch, or mapped controls</span>
           <Link href="/tour" style={backLinkStyle}>Quit race</Link>
         </footer>
+        <TouchControls
+          keys={keys}
+          enabled={!showIntro && !paused && hudPhase !== 'finished'}
+          mode={settings.touchMode}
+        />
+        {!showIntro && hudPhase !== 'finished' ? (
+          <button
+            type="button"
+            onClick={() => setPaused((v) => !v)}
+            aria-label={paused ? 'Resume World Tour race' : 'Pause World Tour race'}
+            aria-pressed={paused}
+            style={pauseButtonStyle}
+          >
+            {paused ? 'GO' : 'II'}
+          </button>
+        ) : null}
       </div>
     </main>
   )
+}
+
+function isEditableTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) return false
+  if (target.isContentEditable) return true
+  const tag = target.tagName
+  return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
+}
+
+function inputFromKeys(k: KeyInput) {
+  const throttle =
+    k.axes?.throttle ?? (k.forward ? 1 : 0) + (k.backward ? -1 : 0)
+  const steer = k.axes?.steer ?? (k.left ? 1 : 0) + (k.right ? -1 : 0)
+  return {
+    throttle,
+    steer,
+    handbrake: k.handbrake,
+  }
 }
 
 function hashSeed(tourId: string, raceIndex: number): number {
@@ -363,7 +356,11 @@ function clampRaceIndex(raw: string | null, trackCount: number): number {
   return Math.min(max, Math.max(0, Math.floor(parsed)))
 }
 
-function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
+function drawScene(
+  canvas: HTMLCanvasElement,
+  state: RaceSessionState,
+  camera: { distance: number; lookAhead: number; fov: number },
+) {
   const ctx = canvas.getContext('2d')
   if (!ctx) return
   const w = canvas.width
@@ -374,9 +371,13 @@ function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
   // Camera follows the player car.
   const player = state.cars[0]
   const camZ = player ? player.physics.z : 0
-  const zoom = 6
+  const fovScale = 70 / Math.max(50, Math.min(110, camera.fov))
+  const distanceScale = 14 / Math.max(6, Math.min(28, camera.distance))
+  const baseZoom = Math.min(w / 120, h / 150)
+  const zoom = Math.max(2.4, Math.min(8, baseZoom * 1.7 * fovScale * distanceScale))
   const cx = w / 2
-  const cy = h / 2
+  const cy = h * 0.64
+  const lookAhead = Math.max(0, Math.min(12, camera.lookAhead)) * 2.5
 
   // Track rails.
   const halfWidth = 4
@@ -394,7 +395,7 @@ function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
   ctx.lineWidth = 1
   for (let i = -10; i <= 10; i++) {
     const z = Math.round((camZ - i * 50) / 50) * 50
-    const y = cy + (z - camZ) * zoom
+    const y = cy + (z - camZ + lookAhead) * zoom
     ctx.beginPath()
     ctx.moveTo(cx - halfWidth * zoom, y)
     ctx.lineTo(cx + halfWidth * zoom, y)
@@ -404,7 +405,7 @@ function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
   // Cars.
   for (const car of state.cars) {
     const dx = car.physics.x * zoom
-    const dy = (car.physics.z - camZ) * zoom
+    const dy = (car.physics.z - camZ + lookAhead) * zoom
     const x = cx + dx
     const y = cy + dy
     if (y < -20 || y > h + 20) continue
@@ -430,63 +431,97 @@ function drawScene(canvas: HTMLCanvasElement, state: RaceSessionState) {
 }
 
 const pageStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: 16,
+  position: 'fixed',
+  inset: 0,
+  minHeight: '100dvh',
+  overflow: 'hidden',
+  padding: 0,
   background: '#080612',
   color: '#fff',
   fontFamily: 'system-ui, sans-serif',
+  touchAction: 'none',
+  WebkitUserSelect: 'none',
+  userSelect: 'none',
+  WebkitTouchCallout: 'none',
 }
 const stageStyle: React.CSSProperties = {
-  width: 'min(760px, 100%)',
-  display: 'grid',
-  gap: 12,
+  position: 'relative',
+  width: '100%',
+  height: '100%',
+  overflow: 'hidden',
 }
 const headerStyle: React.CSSProperties = {
+  position: 'fixed',
+  top: 12,
+  left: 12,
+  right: 12,
   display: 'flex',
   justifyContent: 'space-between',
-  alignItems: 'flex-end',
+  alignItems: 'flex-start',
+  gap: 12,
+  zIndex: 10,
+  pointerEvents: 'none',
 }
 const titleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 22,
+  fontSize: 'clamp(16px, 4vw, 22px)',
   fontWeight: 700,
+  textShadow: '0 2px 10px rgba(0,0,0,0.7)',
 }
 const tagStyle: React.CSSProperties = {
   margin: '4px 0 0',
-  fontSize: 13,
-  opacity: 0.75,
+  fontSize: 'clamp(11px, 3vw, 13px)',
+  opacity: 0.85,
+  textShadow: '0 2px 10px rgba(0,0,0,0.7)',
 }
 const hudStyle: React.CSSProperties = {
-  fontSize: 16,
+  minWidth: 74,
+  padding: '8px 10px',
+  borderRadius: 8,
+  background: 'rgba(0,0,0,0.5)',
+  border: '1px solid rgba(255,255,255,0.18)',
+  fontSize: 14,
   fontWeight: 700,
+  textAlign: 'center',
 }
 const countdownStyle: React.CSSProperties = {
-  fontSize: 40,
+  fontSize: 34,
+}
+const canvasWrapStyle: React.CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  zIndex: 1,
 }
 const canvasStyle: React.CSSProperties = {
+  display: 'block',
   width: '100%',
-  maxWidth: 720,
-  height: 'auto',
-  borderRadius: 8,
+  height: '100%',
   background: '#0c0a14',
 }
 const footerStyle: React.CSSProperties = {
+  position: 'fixed',
+  left: 12,
+  right: 12,
+  bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
   display: 'flex',
   justifyContent: 'space-between',
+  alignItems: 'center',
+  gap: 12,
   fontSize: 12,
-  opacity: 0.75,
+  opacity: 0.85,
+  zIndex: 10,
+  pointerEvents: 'none',
 }
 const backLinkStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.65)',
   textDecoration: 'none',
+  pointerEvents: 'auto',
 }
 const introOverlayStyle: React.CSSProperties = {
-  position: 'absolute',
+  position: 'fixed',
   inset: 0,
   width: '100%',
+  height: '100%',
   border: 0,
   display: 'flex',
   flexDirection: 'column',
@@ -498,13 +533,34 @@ const introOverlayStyle: React.CSSProperties = {
   textAlign: 'center',
   color: '#fff',
   font: 'inherit',
+  padding: 24,
+  zIndex: 30,
+  touchAction: 'manipulation',
 }
 const introTitleStyle: React.CSSProperties = {
-  fontSize: 32,
+  fontSize: 'clamp(28px, 10vw, 54px)',
   fontWeight: 800,
   letterSpacing: 1,
 }
 const introMetaStyle: React.CSSProperties = {
-  fontSize: 14,
+  fontSize: 'clamp(13px, 4vw, 16px)',
   opacity: 0.9,
+}
+const pauseButtonStyle: React.CSSProperties = {
+  position: 'fixed',
+  left: 20,
+  bottom: 'calc(28px + env(safe-area-inset-bottom, 0px))',
+  width: 64,
+  height: 64,
+  borderRadius: '50%',
+  border: '2px solid rgba(255,255,255,0.25)',
+  background: 'rgba(0,0,0,0.6)',
+  color: '#fff',
+  display: 'grid',
+  placeItems: 'center',
+  fontSize: 24,
+  fontWeight: 900,
+  boxShadow: '0 6px 18px rgba(0,0,0,0.45)',
+  zIndex: 20,
+  touchAction: 'manipulation',
 }
