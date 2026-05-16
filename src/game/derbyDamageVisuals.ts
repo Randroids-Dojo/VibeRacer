@@ -14,6 +14,7 @@ import {
   type SubmeshName,
 } from './derbyVehicleLoader'
 import type { DerbyCarState } from './derbyVehicleState'
+import { isDestroyed } from './derbyVehicleState'
 
 // Damage visualization for derby mode. Maps a car's health (0..maxHealth)
 // to visible decay: paint darkening, broken lights, smoke + fire markers,
@@ -44,31 +45,38 @@ export function tierFromFraction(fraction: number): DamageTier {
   return 'critical'
 }
 
+// Paint darkens gradually with damage. Kept close to 1.0 in the
+// early tiers so a lightly damaged car still reads as "in the fight"
+// rather than already crumpled; critical-but-still-alive is darker but
+// not yet wreck-black. detachAllRemaining (on destruction) handles the
+// rest of the "fully wrecked" look.
 const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
   pristine: 1.0,
-  light: 0.85,
-  moderate: 0.7,
-  heavy: 0.6,
-  critical: 0.5,
+  light: 0.92,
+  moderate: 0.82,
+  heavy: 0.7,
+  critical: 0.6,
 }
 
-// Lowered for v2: any meaningful clean hit pops a panel so the player
-// sees parts come off mid-fight instead of only at tier transitions or
-// at the per-hit damage cap. Mild graze contacts still stay below the
-// threshold, and the per-pair damage cooldown in derbyTick prevents a
-// single sustained ram from stripping every panel inside one second.
-const PANEL_DETACH_DAMAGE_THRESHOLD = 4
+// Per-hit panel detach is reserved for hard rams. Most hits land in the
+// 3 to 10 range; only the top of that band (and any clamped MAX_HIT)
+// strips a panel mid-fight. The tier-based progressive detach below
+// still removes some panels as health falls, so the car visibly sheds
+// parts as you keep taking damage even on clean glancing hits.
+const PANEL_DETACH_DAMAGE_THRESHOLD = 9
 // Number of detachable panels that should still be attached when the car
 // is at each damage tier. update() walks the panel sequence and detaches
-// extras whenever the car's tier drops past a transition. Critical = 0
-// means the wreck sheds anything still on it; destroyed cars hand their
-// remainder to detachAllRemaining() after dropping to critical here.
+// extras whenever the car's tier drops past a transition. We deliberately
+// keep at least one panel on at critical so a still-alive car never
+// looks like a fully stripped wreck. detachAllRemaining() on destruction
+// strips the final panel(s) so only a destroyed car reads as completely
+// crumpled.
 const PANELS_ATTACHED_BY_TIER: Record<DamageTier, number> = {
   pristine: 4,
-  light: 3,
-  moderate: 2,
-  heavy: 1,
-  critical: 0,
+  light: 4,
+  moderate: 3,
+  heavy: 2,
+  critical: 1,
 }
 // Canonical panel detach sequence. Front-most parts come off first (a
 // car typically loses its hood before its trunk in a derby) so the
@@ -232,15 +240,20 @@ export function createDamageVisualizer(
     lastAppliedFlash = flash
   }
 
-  function setTier(tier: DamageTier): void {
+  let lastDestroyed = false
+
+  function setTier(tier: DamageTier, destroyed: boolean): void {
     lastTier = tier
+    lastDestroyed = destroyed
     // Repaint applies the new tier's paint multiplier alongside the
     // current flash level so a flash that's still mid-decay is preserved
     // when a tier change lands on the same frame.
     repaint()
-    // Headlights break first; then taillights at heavy.
-    const breakHeadlights = tier === 'moderate' || tier === 'heavy' || tier === 'critical'
-    const breakTaillights = tier === 'heavy' || tier === 'critical'
+    // Lights stay intact until the damage is real. Headlights break only
+    // at heavy and below so a lightly damaged car still has working
+    // running lights; taillights hold until the car is destroyed.
+    const breakHeadlights = tier === 'heavy' || tier === 'critical' || destroyed
+    const breakTaillights = destroyed
     for (const light of lightEntries) {
       const isHeadlight = light.mesh.name.startsWith('headlight')
       const wantBroken = isHeadlight ? breakHeadlights : breakTaillights
@@ -252,20 +265,28 @@ export function createDamageVisualizer(
         light.broken = false
       }
     }
-    // Smoke / fire markers.
-    if (tier === 'heavy' || tier === 'critical') {
+    // Smoke ramps up gradually so the player can read how badly hurt a
+    // car is at a glance, but fire is reserved for an actual destruction.
+    // A critical-but-still-alive car has a heavy smoke plume; only when
+    // it is destroyed does the fire light up alongside the wreck tilt.
+    if (destroyed) {
       smoke.visible = true
-      smokeMat.opacity = tier === 'critical' ? 0.7 : 0.4
-    } else {
-      smoke.visible = false
-      smokeMat.opacity = 0
-    }
-    if (tier === 'critical') {
+      smokeMat.opacity = 0.8
       fire.visible = true
       fireMat.opacity = 0.85
     } else {
       fire.visible = false
       fireMat.opacity = 0
+      if (tier === 'critical') {
+        smoke.visible = true
+        smokeMat.opacity = 0.55
+      } else if (tier === 'heavy') {
+        smoke.visible = true
+        smokeMat.opacity = 0.35
+      } else {
+        smoke.visible = false
+        smokeMat.opacity = 0
+      }
     }
   }
 
@@ -346,12 +367,16 @@ export function createDamageVisualizer(
       const fraction =
         state.maxHealth > 0 ? state.health / state.maxHealth : 0
       const tier = tierFromFraction(fraction)
+      const destroyed = isDestroyed(state)
       const tierChanged = tier !== lastTier
-      if (tierChanged) setTier(tier)
+      const destroyedChanged = destroyed !== lastDestroyed
+      if (tierChanged || destroyedChanged) setTier(tier, destroyed)
       // Progressive panel loss: each tier drop pops one or more panels off
       // so the wear is visible mid-battle, not just at destruction. Only
       // runs on a tier change so a steady-state idle frame doesn't keep
-      // re-checking detach state.
+      // re-checking detach state. The final panel is held until
+      // destruction so a critical-but-alive car never looks fully
+      // stripped; detachAllRemaining() takes that one when the car dies.
       if (!tierChanged) return []
       return detachToTargetCount(PANELS_ATTACHED_BY_TIER[tier])
     },

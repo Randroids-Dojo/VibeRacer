@@ -49,7 +49,7 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('breaks the headlights at moderate damage', () => {
+  it('keeps headlights intact at moderate damage and breaks them at heavy', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const car = initCarState(0, DERBY_VEHICLES.car, {
@@ -57,13 +57,16 @@ describe('createDamageVisualizer', () => {
     })
     const headlightMesh = asset.submeshes.headlight_l as Mesh
     const originalMat = headlightMesh.material
-    car.health = car.maxHealth * 0.5
+    car.health = car.maxHealth * 0.5 // moderate tier
+    viz.update(car)
+    expect(headlightMesh.material).toBe(originalMat)
+    car.health = car.maxHealth * 0.15 // heavy tier
     viz.update(car)
     expect(headlightMesh.material).not.toBe(originalMat)
     viz.dispose()
   })
 
-  it('breaks the taillights at heavy damage but not at moderate', () => {
+  it('reserves taillight breaks for destruction', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const car = initCarState(0, DERBY_VEHICLES.car, {
@@ -71,16 +74,17 @@ describe('createDamageVisualizer', () => {
     })
     const taillightMesh = asset.submeshes.taillight_l as Mesh
     const originalMat = taillightMesh.material
-    car.health = car.maxHealth * 0.5 // moderate tier (0.4..0.6)
+    car.health = car.maxHealth * 0.1 // critical tier, still alive
     viz.update(car)
     expect(taillightMesh.material).toBe(originalMat)
-    car.health = car.maxHealth * 0.15 // heavy tier (0.0..0.2 dropping into critical)
+    car.health = 0
+    car.status = 'destroyed'
     viz.update(car)
     expect(taillightMesh.material).not.toBe(originalMat)
     viz.dispose()
   })
 
-  it('shows fire only at critical health', () => {
+  it('reserves fire for destroyed cars and never lights it on a still-alive critical', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const car = initCarState(0, DERBY_VEHICLES.car, {
@@ -88,10 +92,11 @@ describe('createDamageVisualizer', () => {
     })
     const fire = asset.group.children.find((c) => c.name === 'derbyDamageFire')
     expect(fire).toBeDefined()
-    car.health = car.maxHealth * 0.25
+    car.health = car.maxHealth * 0.1 // critical tier, still alive
     viz.update(car)
     expect(fire!.visible).toBe(false)
-    car.health = car.maxHealth * 0.1
+    car.health = 0
+    car.status = 'destroyed'
     viz.update(car)
     expect(fire!.visible).toBe(true)
     viz.dispose()
@@ -140,6 +145,51 @@ describe('createDamageVisualizer', () => {
     expect(first?.name).toBe('hood')
     const second = viz.applyHit(40, 1, 0, 0, () => 0.5)
     expect(second?.name).not.toBe('hood')
+    viz.dispose()
+  })
+
+  it('keeps at least one panel attached while the car is still alive at critical health', () => {
+    const asset = freshAsset('car')
+    const viz = createDamageVisualizer(asset)
+    const car = initCarState(0, DERBY_VEHICLES.car, {
+      x: 0, z: 0, heading: 0, speed: 0,
+    })
+    // Sweep through every tier; status stays 'alive' so the car must
+    // retain at least one detachable panel until destruction.
+    for (const frac of [0.65, 0.45, 0.25, 0.05]) {
+      car.health = car.maxHealth * frac
+      viz.update(car)
+    }
+    const stillAttached = (
+      ['hood', 'door_l', 'door_r', 'trunk'] as const
+    ).filter((name) => {
+      const panel = asset.submeshes[name]
+      return panel !== undefined && panel.parent !== null
+    })
+    expect(stillAttached.length).toBeGreaterThanOrEqual(1)
+    viz.dispose()
+  })
+
+  it('detachAllRemaining frees the final panel a critical-living car was holding', () => {
+    const asset = freshAsset('car')
+    const viz = createDamageVisualizer(asset)
+    const car = initCarState(0, DERBY_VEHICLES.car, {
+      x: 0, z: 0, heading: 0, speed: 0,
+    })
+    car.health = car.maxHealth * 0.05 // critical, still alive
+    viz.update(car)
+    // Drop to destroyed: handler typically calls update() with the dead
+    // state to land smoke + fire, then detachAllRemaining() to shed the
+    // last bits. After this sequence no detachable panel should remain.
+    car.health = 0
+    car.status = 'destroyed'
+    viz.update(car)
+    viz.detachAllRemaining()
+    for (const name of ['hood', 'door_l', 'door_r', 'trunk'] as const) {
+      const panel = asset.submeshes[name]
+      if (panel === undefined) continue
+      expect(panel.parent).toBeNull()
+    }
     viz.dispose()
   })
 
