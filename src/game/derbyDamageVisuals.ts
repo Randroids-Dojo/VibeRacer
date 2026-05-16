@@ -14,6 +14,7 @@ import {
   type SubmeshName,
 } from './derbyVehicleLoader'
 import type { DerbyCarState } from './derbyVehicleState'
+import { isDestroyed } from './derbyVehicleState'
 
 // Damage visualization for derby mode. Maps a car's health (0..maxHealth)
 // to visible decay: paint darkening, broken lights, smoke + fire markers,
@@ -44,38 +45,35 @@ export function tierFromFraction(fraction: number): DamageTier {
   return 'critical'
 }
 
+// Paint darkens gradually with damage. Kept close to 1.0 in the
+// early tiers so a lightly damaged car still reads as "in the fight"
+// rather than already crumpled; critical-but-still-alive is darker but
+// not yet wreck-black. detachAllRemaining (on destruction) handles the
+// rest of the "fully wrecked" look.
 const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
   pristine: 1.0,
-  light: 0.85,
-  moderate: 0.7,
-  heavy: 0.6,
-  critical: 0.5,
+  light: 0.92,
+  moderate: 0.82,
+  heavy: 0.7,
+  critical: 0.6,
 }
 
-// Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
-// Tuned so a hard ram pops an extra panel on top of the tier-based
-// progressive detach below; mild side-bumps stay below the threshold.
-const PANEL_DETACH_DAMAGE_THRESHOLD = 12
-// Number of detachable panels that should still be attached when the car
-// is at each damage tier. update() walks the panel sequence and detaches
-// extras whenever the car's tier drops past a transition. Critical = 0
-// means the wreck sheds anything still on it; destroyed cars hand their
-// remainder to detachAllRemaining() after dropping to critical here.
-const PANELS_ATTACHED_BY_TIER: Record<DamageTier, number> = {
-  pristine: 4,
-  light: 3,
-  moderate: 2,
-  heavy: 1,
-  critical: 0,
-}
-// Canonical panel detach sequence. Front-most parts come off first (a
-// car typically loses its hood before its trunk in a derby) so the
-// player sees recognizable wear progression.
-const PANEL_DETACH_SEQUENCE: SubmeshName[] = ['hood', 'door_r', 'door_l', 'trunk']
-// Paint and detach lists include doors as candidates. Variants whose
-// asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
-// simply do not contribute door entries to the visualizer's working sets.
+// Per-hit panel detach. Anything above a graze pops the matching
+// sliced part: a front hit pops the hood, a rear hit pops the trunk,
+// a side hit pops the matching door (when the variant has one). The
+// floor stays low so the player sees parts come off on any clean
+// contact, not just clamped MAX_HIT rams.
+const PANEL_DETACH_DAMAGE_THRESHOLD = 3
+// Paint targets cover every nameable shell piece so the whole car
+// darkens uniformly with damage. Variants whose asset.submeshes omits
+// the optional doors (Kenney sliced sedan/truck/race) simply do not
+// contribute door entries to the visualizer's working sets.
 const PAINT_TARGET_NAMES: SubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
+// Every sliced part the model ships is detachable. The Blender slicer
+// already cuts the hood and trunk off the body as separate nodes for
+// all four vehicles; only the ambulance ships door_l / door_r. The
+// runtime visualizer filters this against asset.submeshes so a missing
+// door is skipped naturally.
 const DETACHABLE_PANELS: SubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
 
 const SMOKE_COLOR = new Color(0x444444)
@@ -103,6 +101,13 @@ export interface DerbyDamageVisualizer {
     victimHeading: number,
     rng: () => number,
   ): Object3D | null
+  // Trigger a brief paint flash (white blend that fades over ~150 ms).
+  // Stronger hits flash brighter. The flash decays in tickFlash() so the
+  // canvas can call applyFlash() once per hit without managing timers.
+  applyFlash(strength: number): void
+  // Advance the flash decay by dtSec. Idempotent and cheap; the canvas
+  // calls this every frame regardless of whether a flash is active.
+  tickFlash(dtSec: number): void
   // Blow off every still-attached detachable panel. Called once when a car
   // is destroyed so the wreck sheds the rest of its panels into the world
   // (regardless of how few hits got it to zero). Returns the list of
@@ -199,16 +204,44 @@ export function createDamageVisualizer(
     (p) => asset.submeshes[p] !== undefined,
   )
   let lastTier: DamageTier = 'pristine'
+  // Hit-flash state. flashLevel in [0..1] tracks how strongly the paint
+  // is currently blended toward white; the canvas pumps applyFlash() to
+  // raise it on each hit, and tickFlash() decays it linearly each frame
+  // until it reaches zero. We re-apply the tier color combined with the
+  // flash blend whenever flashLevel changes so the same color update path
+  // handles both effects.
+  let flashLevel = 0
+  let lastAppliedFlash = 0
+  const FLASH_COLOR = new Color(0xffffff)
+  const FLASH_DECAY_PER_SEC = 6
 
-  function setTier(tier: DamageTier): void {
-    const mul = TIER_PAINT_MULTIPLIER[tier]
+  function repaint(): void {
+    const mul = TIER_PAINT_MULTIPLIER[lastTier]
+    const flash = flashLevel
     for (const entry of paintEntries) {
       const mat = entry.mesh.material as MeshStandardMaterial
-      mat.color.copy(entry.originalColor).multiplyScalar(mul)
+      mat.color
+        .copy(entry.originalColor)
+        .multiplyScalar(mul)
+        .lerp(FLASH_COLOR, flash)
     }
-    // Headlights break first; then taillights at heavy.
-    const breakHeadlights = tier === 'moderate' || tier === 'heavy' || tier === 'critical'
-    const breakTaillights = tier === 'heavy' || tier === 'critical'
+    lastAppliedFlash = flash
+  }
+
+  let lastDestroyed = false
+
+  function setTier(tier: DamageTier, destroyed: boolean): void {
+    lastTier = tier
+    lastDestroyed = destroyed
+    // Repaint applies the new tier's paint multiplier alongside the
+    // current flash level so a flash that's still mid-decay is preserved
+    // when a tier change lands on the same frame.
+    repaint()
+    // Lights stay intact until the damage is real. Headlights break only
+    // at heavy and below so a lightly damaged car still has working
+    // running lights; taillights hold until the car is destroyed.
+    const breakHeadlights = tier === 'heavy' || tier === 'critical' || destroyed
+    const breakTaillights = destroyed
     for (const light of lightEntries) {
       const isHeadlight = light.mesh.name.startsWith('headlight')
       const wantBroken = isHeadlight ? breakHeadlights : breakTaillights
@@ -220,60 +253,68 @@ export function createDamageVisualizer(
         light.broken = false
       }
     }
-    // Smoke / fire markers.
-    if (tier === 'heavy' || tier === 'critical') {
+    // Smoke ramps up gradually so the player can read how badly hurt a
+    // car is at a glance, but fire is reserved for an actual destruction.
+    // A critical-but-still-alive car has a heavy smoke plume; only when
+    // it is destroyed does the fire light up alongside the wreck tilt.
+    if (destroyed) {
       smoke.visible = true
-      smokeMat.opacity = tier === 'critical' ? 0.7 : 0.4
-    } else {
-      smoke.visible = false
-      smokeMat.opacity = 0
-    }
-    if (tier === 'critical') {
+      smokeMat.opacity = 0.8
       fire.visible = true
       fireMat.opacity = 0.85
     } else {
       fire.visible = false
       fireMat.opacity = 0
+      if (tier === 'critical') {
+        smoke.visible = true
+        smokeMat.opacity = 0.55
+      } else if (tier === 'heavy') {
+        smoke.visible = true
+        smokeMat.opacity = 0.35
+      } else {
+        smoke.visible = false
+        smokeMat.opacity = 0
+      }
     }
-    lastTier = tier
   }
 
-  function pickPanelByAngle(
+  function pickPanelByHitDirection(
     worldNx: number,
     worldNz: number,
     victimHeading: number,
   ): SubmeshName | null {
-    const candidates = availableDetachables.filter((p) => !detachedPanels.has(p))
-    if (candidates.length === 0) return null
     // Rotate the world-space hit normal into the victim's local frame.
-    // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
-    // local +X (front) maps to the world direction (cos(heading),
-    // -sin(heading)). Rotating the world vector by +heading aligns the
-    // local frame so local +X is forward and local +Z is right.
+    // The DerbyCanvas group rotation maps logical "forward" to a
+    // direction in world XZ; we project the hit back so a hit on the
+    // car's nose dominates the forward axis, on the door the right
+    // axis, etc.
     const cos = Math.cos(victimHeading)
     const sin = Math.sin(victimHeading)
     const localFwd = worldNx * cos + worldNz * -sin
     const localRight = worldNx * sin + worldNz * cos
-    const absFwd = Math.abs(localFwd)
-    const absRight = Math.abs(localRight)
-    // Front-on hits (positive forward component) prefer hood; rear-on
-    // prefer trunk; side hits prefer the door on the impact side.
-    if (absFwd > absRight) {
-      const preferred: SubmeshName = localFwd > 0 ? 'hood' : 'trunk'
-      if (candidates.includes(preferred)) return preferred
-    } else {
-      const preferred: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
-      if (candidates.includes(preferred)) return preferred
-    }
-    return candidates[0]
+    // Whichever axis dominates picks the panel. Front pops hood, rear
+    // pops trunk, side pops the matching door (when the variant ships
+    // one). The slicer's trunk_frac is tuned per variant to a small
+    // rear cap so a rear bump pops a recognizable trunk lid rather
+    // than the entire back of the body.
+    const preferred: SubmeshName =
+      Math.abs(localFwd) >= Math.abs(localRight)
+        ? localFwd > 0
+          ? 'hood'
+          : 'trunk'
+        : localRight > 0
+          ? 'door_r'
+          : 'door_l'
+    if (detachedPanels.has(preferred)) return null
+    if (!availableDetachables.includes(preferred)) return null
+    return preferred
   }
 
   function detachPanel(choice: SubmeshName): Object3D | null {
     const panel = asset.submeshes[choice]
-    // pickPanelByAngle only chooses from availableDetachables, which is
-    // filtered against undefined entries, so this is true by construction
-    // for the hit path; the explicit check keeps the type checker happy
-    // and covers the detachAllRemaining path on optional doors.
+    // pickDoorByHitSide only returns names already filtered against
+    // availableDetachables; the explicit check keeps the type checker
+    // happy and covers the detachAllRemaining path on optional doors.
     if (!panel) return null
     detachedPanels.add(choice)
     // Real detach: capture the panel's world transform, remove it from its
@@ -291,47 +332,46 @@ export function createDamageVisualizer(
     return panel
   }
 
-  function detachToTargetCount(targetAttached: number): Object3D[] {
-    const out: Object3D[] = []
-    // Walk the canonical sequence and detach until the number of still-
-    // attached panels matches the tier's target. availableDetachables is
-    // filtered against absent door variants, so a Kenney sliced sedan
-    // simply has fewer panels to lose, so the loop just runs out earlier.
-    for (const name of PANEL_DETACH_SEQUENCE) {
-      const attached = availableDetachables.filter(
-        (p) => !detachedPanels.has(p),
-      ).length
-      if (attached <= targetAttached) break
-      if (!availableDetachables.includes(name)) continue
-      if (detachedPanels.has(name)) continue
-      const panel = detachPanel(name)
-      if (panel) out.push(panel)
-    }
-    return out
-  }
-
   return {
     update(state: DerbyCarState) {
+      // Health drives paint, smoke, fire, lights. Panel detach is now
+      // strictly hit-driven via applyHit; tier transitions never strip
+      // a panel on their own, so the only parts that come off mid-fight
+      // are the doors when a side-impact lands hard enough.
       const fraction =
         state.maxHealth > 0 ? state.health / state.maxHealth : 0
       const tier = tierFromFraction(fraction)
+      const destroyed = isDestroyed(state)
       const tierChanged = tier !== lastTier
-      if (tierChanged) setTier(tier)
-      // Progressive panel loss: each tier drop pops one or more panels off
-      // so the wear is visible mid-battle, not just at destruction. Only
-      // runs on a tier change so a steady-state idle frame doesn't keep
-      // re-checking detach state.
-      if (!tierChanged) return []
-      return detachToTargetCount(PANELS_ATTACHED_BY_TIER[tier])
+      const destroyedChanged = destroyed !== lastDestroyed
+      if (tierChanged || destroyedChanged) setTier(tier, destroyed)
+      return []
     },
     applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null
-      // rng is reserved for tie-breaking among equally preferred panels;
-      // the angle pick covers the common cases on its own.
       void rng
-      const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
+      const choice = pickPanelByHitDirection(worldNx, worldNz, victimHeading)
       if (choice === null) return null
       return detachPanel(choice)
+    },
+    applyFlash(strength) {
+      // Hits stack: a second hit during an active flash drives the level
+      // back up to its peak rather than overwriting the decay that's
+      // still in progress.
+      const target = Math.max(0, Math.min(1, strength))
+      if (target > flashLevel) flashLevel = target
+      repaint()
+    },
+    tickFlash(dtSec) {
+      if (flashLevel <= 0) {
+        // Repaint when the flash JUST settled to ensure paint is back to
+        // tier color even if a fractional residue stayed in the
+        // multiplier accumulator.
+        if (lastAppliedFlash > 0) repaint()
+        return
+      }
+      flashLevel = Math.max(0, flashLevel - FLASH_DECAY_PER_SEC * dtSec)
+      repaint()
     },
     detachAllRemaining() {
       const out: Object3D[] = []

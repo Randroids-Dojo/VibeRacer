@@ -110,6 +110,7 @@ async function buildDerbyDestroyed(
       aliveMs: 0,
       kills: 0,
       lastHitAtMs: 0,
+      stunUntilMs: Number.NEGATIVE_INFINITY,
       destroyedByIdx: null,
     }
     visualizer.update(state)

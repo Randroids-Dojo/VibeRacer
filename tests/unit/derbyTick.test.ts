@@ -379,6 +379,76 @@ describe('derbyTick', () => {
     expect(out.events).toHaveLength(0)
   })
 
+  it('cuts the victim throttle while the stun window is active', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    placeHeadOnOverlap(round, 0, 1)
+    round.cars[0].physics.speed = 22
+    round.cars[1].physics.speed = 0
+    parkAway(round)
+    // First tick lands a hit and stuns the racecar.
+    derbyTick(round, fullThrottleInputs(4), 1 / 60)
+    expect(round.cars[1].stunUntilMs).toBeGreaterThan(round.elapsedMs - 1)
+    // Move the racecar away so it can no longer be re-hit by the truck on
+    // the same path; we are testing that ITS throttle is muted, not that
+    // it sits still under continued ramming.
+    round.cars[1].physics.x = 60
+    round.cars[1].physics.z = 60
+    const speedBefore = round.cars[1].physics.speed
+    // Tick a few frames with full throttle on the racecar; with stun
+    // attenuating the input by 0.25 the racecar gains far less speed
+    // than it would unstunned.
+    for (let i = 0; i < 4; i++) {
+      derbyTick(round, fullThrottleInputs(4), 1 / 60)
+    }
+    const speedAfterStunned = round.cars[1].physics.speed
+    // Reset and re-run unstunned for comparison: same setup, but skip the
+    // initial collision. Use a fresh round so config and physics start
+    // identical.
+    const fresh = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    fresh.cars[1].physics.x = 60
+    fresh.cars[1].physics.z = 60
+    fresh.cars[1].physics.speed = speedBefore
+    parkAway(fresh)
+    fresh.cars[0].physics.x = -60
+    for (let i = 0; i < 4; i++) {
+      derbyTick(fresh, fullThrottleInputs(4), 1 / 60)
+    }
+    expect(speedAfterStunned).toBeLessThan(fresh.cars[1].physics.speed)
+  })
+
+  it('adds an angular wobble to the victim on an off-center hit', () => {
+    const round = initDerbyRound({
+      arena: ARENA,
+      vehicleTypes: ['bigTruck', 'racecar', 'car', 'car'],
+    })
+    // Off-center head-on overlap: the contact midpoint sits noticeably
+    // off the racecar's centerline so the lever arm picks up a tangential
+    // (right-axis) component, which is what applyHitWobble keys on. A
+    // pure on-axis ram has zero torque by construction (the lever arm
+    // and the impulse direction are collinear).
+    round.cars[0].physics.x = 0
+    round.cars[0].physics.z = 0
+    round.cars[0].physics.heading = 0
+    round.cars[0].physics.speed = 22
+    round.cars[1].physics.x = round.configs[0].obbHalfLength + round.configs[1].obbHalfLength - 0.3
+    // Offset enough that the OBB still overlaps on Z (sum of half-widths
+    // is plenty) but the centers line is angled, giving the lever arm a
+    // tangential component.
+    round.cars[1].physics.z = 1.0
+    round.cars[1].physics.heading = 0
+    round.cars[1].physics.speed = 0
+    round.cars[1].physics.angularVelocity = 0
+    parkAway(round)
+    derbyTick(round, neutralInputs(4), 1 / 60)
+    expect(Math.abs(round.cars[1].physics.angularVelocity ?? 0)).toBeGreaterThan(0)
+  })
+
   it('keeps elapsed and physics frozen when dt is non-finite or non-positive', () => {
     const round = initDerbyRound({
       arena: ARENA,

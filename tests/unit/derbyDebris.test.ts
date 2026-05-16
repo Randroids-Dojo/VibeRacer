@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { Mesh, BoxGeometry, MeshBasicMaterial, Object3D } from 'three'
 import {
+  buildShrapnelChunk,
   computeGroundY,
+  disposeChunkMesh,
   pruneDebris,
   spawnDebris,
   tickDebris,
@@ -145,6 +147,43 @@ describe('tickDebris', () => {
     const items = [item]
     for (let i = 0; i < 60; i++) tickDebris(items, 1 / 60, 5)
     expect(item.alive).toBe(false)
+  })
+})
+
+describe('buildShrapnelChunk', () => {
+  it('returns a Mesh tagged as derbyShrapnel that integrates as debris', () => {
+    const chunk = buildShrapnelChunk(constantRng())
+    expect(chunk).toBeInstanceOf(Mesh)
+    expect(chunk.name).toBe('derbyShrapnel')
+    const item = spawnDebris(
+      chunk,
+      { x: 0, y: 1, z: 0 },
+      { nx: 1, nz: 0 },
+      4,
+      constantRng(),
+    )
+    expect(item.alive).toBe(true)
+    expect(item.vx).toBeGreaterThan(0)
+  })
+
+  it('disposes geometry and material via disposeChunkMesh', () => {
+    const chunk = buildShrapnelChunk(constantRng())
+    // Spy by replacing dispose; the underlying impl just calls these.
+    let geoDisposed = false
+    let matDisposed = false
+    chunk.geometry.dispose = () => {
+      geoDisposed = true
+    }
+    const m = chunk.material
+    if (Array.isArray(m)) m[0].dispose = () => { matDisposed = true }
+    else m.dispose = () => { matDisposed = true }
+    disposeChunkMesh(chunk)
+    expect(geoDisposed).toBe(true)
+    expect(matDisposed).toBe(true)
+  })
+
+  it('disposeChunkMesh is a no-op for non-Mesh objects', () => {
+    expect(() => disposeChunkMesh(new Object3D())).not.toThrow()
   })
 })
 

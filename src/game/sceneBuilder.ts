@@ -2183,6 +2183,39 @@ export function buildDragGhostCar(): {
   }
 }
 
+/**
+ * Solid opaque opponent car for multi-car modes (World Tour). Same
+ * GLB body as the player; the chassis "body" mesh is repainted to
+ * `color` so each opponent reads as a distinct car on the grid.
+ * Headlights / brake lights / racing number are intentionally omitted:
+ * opponents are visual rivals only, not customizable.
+ */
+export function buildOpponentCar(
+  color: number,
+): { car: Group; dispose: () => void } {
+  const paint = new MeshStandardMaterial({
+    color,
+    roughness: 0.5,
+    metalness: 0.05,
+  })
+  const { car, cancel } = buildCarFrame((clone) => {
+    clone.traverse((obj) => {
+      const mesh = obj as Mesh
+      if (!mesh.isMesh) return
+      if (typeof mesh.name === 'string' && mesh.name.startsWith('body')) {
+        mesh.material = paint
+      }
+    })
+  })
+  return {
+    car,
+    dispose: () => {
+      cancel()
+      paint.dispose()
+    },
+  }
+}
+
 // Floating "WHO + TIME" nameplate that hovers above the ghost car. Uses a
 // CanvasTexture-backed Sprite so the plate always faces the camera without
 // any per-frame billboard math, and so the renderer pays the cost of one

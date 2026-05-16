@@ -246,6 +246,15 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
     let stopped = false
     let lastHudPushMs = 0
     let endedReported = false
+    // Screen-shake state for impact feel. Accumulated when the player is
+    // involved in a hit (heavier on victim, lighter on attacker), decays
+    // exponentially each frame, and adds a per-axis random offset to the
+    // camera position after the rig pose is applied.
+    let cameraShake = 0
+    const CAMERA_SHAKE_DECAY_PER_SEC = 7
+    const CAMERA_SHAKE_PLAYER_VICTIM_GAIN = 0.06
+    const CAMERA_SHAKE_PLAYER_ATTACKER_GAIN = 0.025
+    const CAMERA_SHAKE_MAX = 0.55
 
     // Accumulated rolling angle per wheel per car. Indexed [carIdx][wheelIdx
     // in FRONT_WHEEL_NAMES then REAR order], in radians. Sized lazily so
@@ -358,11 +367,24 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
             panel,
             panel.position,
             { nx: dx * inv, nz: dz * inv },
-            3 + debrisRng() * 3,
+            7 + debrisRng() * 4,
             debrisRng,
           ),
         )
       }
+      // Big jolt to the player's camera when a destruction is in their
+      // line of sight: their own kill, their own death, or any nearby
+      // wreck. Use distance-falloff so a destruction across the arena
+      // doesn't shake the camera as hard as one right next to the player.
+      const wreckPos = round.cars[victimIdx].physics
+      const px = round.cars[PLAYER_IDX].physics.x
+      const pz = round.cars[PLAYER_IDX].physics.z
+      const distance = Math.hypot(wreckPos.x - px, wreckPos.z - pz)
+      const proximity = Math.max(0, 1 - distance / 30)
+      cameraShake = Math.min(
+        CAMERA_SHAKE_MAX,
+        cameraShake + 0.35 * proximity + (victimIdx === PLAYER_IDX ? 0.5 : 0),
+      )
     }
 
     function pushHudSnapshot() {
@@ -441,6 +463,22 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         cameraParams,
       )
       applyCameraRig(camera, cameraRig)
+      // Decay shake first, then add a per-axis random offset on top of
+      // the rig pose. Y axis offset is reduced so the horizon doesn't
+      // bob too violently; lateral and forward jitter carries most of
+      // the impact feel.
+      if (cameraShake > 0) {
+        cameraShake = Math.max(
+          0,
+          cameraShake - CAMERA_SHAKE_DECAY_PER_SEC * cameraShake * dtSec,
+        )
+        const sx = (debrisRng() - 0.5) * 2 * cameraShake
+        const sy = (debrisRng() - 0.5) * 1 * cameraShake * 0.5
+        const sz = (debrisRng() - 0.5) * 2 * cameraShake
+        camera.position.x += sx
+        camera.position.y += sy
+        camera.position.z += sz
+      }
 
       // Forward HUD updates at most ~10 Hz to avoid React renders every frame.
       if (nowMs - lastHudPushMs > 100 || result.events.length > 0) {
@@ -461,6 +499,18 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         if (e.victimIdx === PLAYER_IDX) {
           const p = projectToScreen(e.x, e.z)
           onHitRef.current({ amount: e.amount, screenX: p.sx, screenY: p.sy })
+          cameraShake = Math.min(
+            CAMERA_SHAKE_MAX,
+            cameraShake + e.amount * CAMERA_SHAKE_PLAYER_VICTIM_GAIN,
+          )
+        } else if (e.attackerIdx === PLAYER_IDX) {
+          // Player landed the hit. A lighter shake sells the recoil and
+          // tells the player their ram connected even when they were
+          // looking at the target through the chase camera.
+          cameraShake = Math.min(
+            CAMERA_SHAKE_MAX,
+            cameraShake + e.amount * CAMERA_SHAKE_PLAYER_ATTACKER_GAIN,
+          )
         }
         const visualizer = carVisualizers[e.victimIdx]
         if (!visualizer) continue
@@ -469,6 +519,11 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
         const nz = e.z - victim.physics.z
         const len = Math.hypot(nx, nz)
         const inv = len > 1e-6 ? 1 / len : 0
+        // Paint flash on the victim. Strength scales with hit amount so
+        // a glancing blow gives a soft pulse and a clean ram strobes the
+        // panels almost white. The visualizer decays the flash itself.
+        const flashStrength = Math.max(0.25, Math.min(0.95, e.amount / 8))
+        visualizer.applyFlash(flashStrength)
         const detached = visualizer.applyHit(
           e.amount,
           nx * inv,
@@ -493,33 +548,24 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       // Update damage visuals from current state. Tier transitions drop
       // panels here. The visualizer returns any freshly detached ones so
       // the canvas can register them with the debris integrator and they
-      // arc out instead of vanishing.
+      // arc out instead of vanishing. Also tick the per-car hit-flash
+      // decay so the white pulse fades smoothly between hits.
+      // Tick paint flash decay and refresh the health-driven visuals
+      // (paint, smoke, fire, lights). update() never strips a panel on
+      // its own anymore; mid-fight detach is handled by applyHit, and
+      // destruction-time detach is handled by handleDestruction.
       for (let i = 0; i < round.cars.length; i++) {
         const viz = carVisualizers[i]
         if (!viz) continue
-        const popped = viz.update(round.cars[i])
-        if (popped.length === 0) continue
-        const car = round.cars[i]
-        for (const panel of popped) {
-          scene.add(panel)
-          const dx = panel.position.x - car.physics.x
-          const dz = panel.position.z - car.physics.z
-          const len = Math.hypot(dx, dz)
-          const inv = len > 1e-6 ? 1 / len : 0
-          debrisItems.push(
-            spawnDebris(
-              panel,
-              panel.position,
-              { nx: dx * inv, nz: dz * inv },
-              3 + debrisRng() * 3,
-              debrisRng,
-            ),
-          )
-        }
+        viz.tickFlash(dtSec)
+        viz.update(round.cars[i])
       }
 
       // Advance debris. Removing dead meshes inline avoids the per-frame
       // filter() allocation; pruneDebris compacts the array afterward.
+      // Detached panels share their asset's geometry / material, so the
+      // canvas does not own their disposal; the asset's own dispose call
+      // releases everything when the round ends.
       tickDebris(debrisItems, dtSec, arena.radius)
       for (let i = 0; i < debrisItems.length; i++) {
         if (!debrisItems[i].alive) scene.remove(debrisItems[i].object)

@@ -77,7 +77,11 @@ VARIANTS: dict[str, SliceVariant] = {
     "sedan": SliceVariant(
         name="sedan",
         hood_frac=0.28,
-        trunk_frac=0.24,
+        # Trunk is the rear cap that flies off on a rear hit. Keep it
+        # to a small slab (about a real trunk lid's footprint); the
+        # 0.24 default removed the entire rear quarter of the body,
+        # which looked like the car was gutted on a single bump.
+        trunk_frac=0.12,
         door_slab_inset=0.03,
         door_slab_len_frac=0.38,
         door_slab_height_frac=0.45,
@@ -86,7 +90,7 @@ VARIANTS: dict[str, SliceVariant] = {
     "ambulance": SliceVariant(
         name="ambulance",
         hood_frac=0.20,
-        trunk_frac=0.18,
+        trunk_frac=0.10,
         door_slab_inset=0.0,
         door_slab_len_frac=0.0,
         door_slab_height_frac=0.0,
@@ -96,7 +100,9 @@ VARIANTS: dict[str, SliceVariant] = {
     "truck": SliceVariant(
         name="truck",
         hood_frac=0.32,
-        trunk_frac=0.20,
+        # On a pickup the "trunk" is the tailgate cap; the 0.20 default
+        # took the entire bed off in one hit.
+        trunk_frac=0.08,
         door_slab_inset=0.03,
         door_slab_len_frac=0.34,
         door_slab_height_frac=0.42,
@@ -105,7 +111,7 @@ VARIANTS: dict[str, SliceVariant] = {
     "race": SliceVariant(
         name="race",
         hood_frac=0.32,
-        trunk_frac=0.26,
+        trunk_frac=0.13,
         door_slab_inset=0.02,
         door_slab_len_frac=0.30,
         door_slab_height_frac=0.30,
@@ -354,9 +360,8 @@ def slice_body_into_parts(
     # door-right nodes (ambulance). For shell-bodied variants (sedan,
     # truck, race) we skip doors entirely: overlay boxes look like blocky
     # protrusions on the shell, and bisecting the shell for a door slab
-    # tends to leave empty meshes. The runtime contract treats doors as
-    # optional and the damage visualizer falls back to hood / trunk
-    # detach for these variants.
+    # tends to leave empty meshes. The damage visualizer falls back to
+    # hood / trunk detach for these variants based on hit direction.
     return out
 
 
