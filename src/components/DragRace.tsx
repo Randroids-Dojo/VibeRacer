@@ -25,7 +25,7 @@ import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   applyCameraRig,
-  buildGhostCar,
+  buildDragGhostCar,
   buildGhostNameplate,
   buildScene,
   DEFAULT_CAMERA_RIG,
@@ -83,6 +83,10 @@ import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { selectDragGhost } from '@/lib/dragGhost'
 import { submitDragRun } from '@/lib/dragSubmit'
 import type { NameplateSource } from '@/game/ghostNameplate'
+import {
+  DEFAULT_RACING_NUMBER,
+  type RacingNumberSetting,
+} from '@/lib/racingNumber'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
@@ -353,6 +357,23 @@ export function DragRace({ slug }: DragRaceProps) {
   // so a player on touch sees the same joystick they use everywhere
   // else, just without manual shift since drag has no gear UI.
   const { settings: controlSettings } = useControlSettings()
+  // Mirror of `controlSettings` so the scene-build effect (which runs
+  // exactly once per slug) can read the latest paint / racing-number
+  // without listing the whole settings object in its dep array. A
+  // separate effect below re-applies the values when the user updates
+  // them in Settings.
+  const controlSettingsRef = useRef(controlSettings)
+  controlSettingsRef.current = controlSettings
+
+  // Live-apply the player's livery when the Settings panel changes paint
+  // or racing-number. The scene-build effect seeds them on mount; this
+  // effect keeps them in sync without rebuilding the renderer.
+  useEffect(() => {
+    const bundle = sceneBundleRef.current
+    if (!bundle) return
+    bundle.setCarPaint(controlSettings.carPaint)
+    bundle.setRacingNumber(controlSettings.racingNumber)
+  }, [controlSettings.carPaint, controlSettings.racingNumber])
 
   // Renderer / scene refs
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -380,6 +401,14 @@ export function DragRace({ slug }: DragRaceProps) {
   > | null>(null)
   const ghostMetaRef = useRef<GhostMeta | null>(null)
   const ghostSourceRef = useRef<NameplateSource>('top')
+  // Ghost car visual setters. The replay loader pulls paint + racing
+  // number off the matching leaderboard entry's loadout and applies them
+  // here so the ghost wears the same livery the original racer had.
+  // Refs (not state) so a rAF tick never goes stale between renders.
+  const ghostSetPaintRef = useRef<((hex: string | null) => void) | null>(null)
+  const ghostSetRacingNumberRef = useRef<
+    ((setting: RacingNumberSetting) => void) | null
+  >(null)
 
   // Replay recorder. The rAF loop pushes [x, z, heading] triples at
   // REPLAY_SAMPLE_MS cadence from raceStartMs so a finished run can be
@@ -407,6 +436,11 @@ export function DragRace({ slug }: DragRaceProps) {
     const bundle = buildScene(path, { biome: strip.biome })
     bundle.setTimeOfDay(strip.timeOfDay)
     bundle.setWeather(strip.weather)
+    // Apply the player's chosen livery so the drag car matches what they
+    // race with in closed-loop mode. A separate effect re-applies on
+    // settings changes so the Settings panel reflects live.
+    bundle.setCarPaint(controlSettingsRef.current.carPaint)
+    bundle.setRacingNumber(controlSettingsRef.current.racingNumber)
     sceneBundleRef.current = bundle
     sceneRef.current = bundle.scene
     cameraRef.current = bundle.camera
@@ -455,17 +489,20 @@ export function DragRace({ slug }: DragRaceProps) {
       skirtMat.dispose()
     }
 
-    // Ghost car. The closed-loop game's `buildGhostCar` clones the same
-    // GLB the player drives and tints every material translucent cyan, so
-    // the ghost reads as "another car" rather than a generic prop. Hidden
-    // by default; the rAF loop flips visibility on when a replay is loaded
-    // and the race has started. Nameplate is parented to the ghost group
-    // so it inherits world position each frame.
-    const ghostBuild = buildGhostCar()
+    // Drag ghost. Uses `buildDragGhostCar` (not the cyan-translucent
+    // closed-loop `buildGhostCar`) so the rAF loop can dress the ghost in
+    // the original racer's paint + racing-number plate from the
+    // leaderboard entry's stored loadout. Hidden by default; the rAF
+    // loop flips visibility on when a replay is loaded and the race has
+    // started. Nameplate is parented to the ghost group so it inherits
+    // world position each frame.
+    const ghostBuild = buildDragGhostCar()
     const ghostCar = ghostBuild.ghost
     ghostCar.visible = false
     bundle.scene.add(ghostCar)
     ghostCarRef.current = ghostCar
+    ghostSetPaintRef.current = ghostBuild.setPaint
+    ghostSetRacingNumberRef.current = ghostBuild.setRacingNumber
 
     const ghostNameplate = buildGhostNameplate()
     ghostCar.add(ghostNameplate.group)
@@ -478,6 +515,8 @@ export function DragRace({ slug }: DragRaceProps) {
       ghostBuild.dispose()
       ghostCarRef.current = null
       ghostNameplateRef.current = null
+      ghostSetPaintRef.current = null
+      ghostSetRacingNumberRef.current = null
     }
 
     const renderer = new WebGLRenderer({ antialias: true })
@@ -902,11 +941,20 @@ export function DragRace({ slug }: DragRaceProps) {
     const key = `${slug}:${finishEvent.finishTimeMs}:${finishEvent.hits.length}`
     if (submittedRef.current === key) return
     submittedRef.current = key
+    // Stamp the current livery onto the submitted loadout so a future
+    // race can rebuild the ghost in the exact car the player drove.
+    // The stored DragLoadout already carries optional paint and
+    // racingNumber fields; we fill them from the live control settings.
+    const submittedLoadout: DragLoadout = {
+      ...loadout,
+      paint: controlSettings.carPaint ?? undefined,
+      racingNumber: controlSettings.racingNumber,
+    }
     void submitDragRun({
       slug,
       versionHash,
       finishEvent,
-      loadout,
+      loadout: submittedLoadout,
       replay: recordedReplayRef.current ?? undefined,
     })
       .then(async () => {
@@ -916,7 +964,15 @@ export function DragRace({ slug }: DragRaceProps) {
       .catch(() => {
         // ignore; user can retry by racing again.
       })
-  }, [finishEvent, slug, versionHash, loadout, refreshLeaderboard])
+  }, [
+    finishEvent,
+    slug,
+    versionHash,
+    loadout,
+    controlSettings.carPaint,
+    controlSettings.racingNumber,
+    refreshLeaderboard,
+  ])
 
   // Pick the player's PB for this strip from the leaderboard (server marks
   // with isMe). selectDragGhost handles the rotation rules.
@@ -951,17 +1007,26 @@ export function DragRace({ slug }: DragRaceProps) {
     // Sorted candidate queue: primary first, then everyone else with a
     // nonce, fastest to slowest. Skip entries without a nonce since
     // byNonce requires one. Dedupe so the primary is not retried at the
-    // bottom of the queue.
+    // bottom of the queue. The full leaderboard entry rides along so a
+    // successful load can also dress the ghost in the original racer's
+    // livery (paint + racing-number plate from their stored loadout).
+    type GhostCandidate = {
+      nonce: string
+      initials: string
+      lapTimeMs: number
+      entry: LeaderboardEntry | null
+    }
     const sortedRest = [...leaderboard]
       .filter((e) => e.nonce !== null && e.nonce !== ghost.nonce)
       .sort((a, b) => a.lapTimeMs - b.lapTimeMs || a.rank - b.rank)
     const primary = leaderboard.find((e) => e.nonce === ghost.nonce) ?? null
-    const queue: Array<{ nonce: string; initials: string; lapTimeMs: number }> = []
+    const queue: GhostCandidate[] = []
     if (primary && primary.nonce) {
       queue.push({
         nonce: primary.nonce,
         initials: primary.initials,
         lapTimeMs: primary.lapTimeMs,
+        entry: primary,
       })
     } else {
       // primary entry is no longer on the leaderboard; fall through to
@@ -970,6 +1035,7 @@ export function DragRace({ slug }: DragRaceProps) {
         nonce: ghost.nonce,
         initials: '???',
         lapTimeMs: 0,
+        entry: null,
       })
     }
     for (const entry of sortedRest) {
@@ -978,6 +1044,7 @@ export function DragRace({ slug }: DragRaceProps) {
           nonce: entry.nonce,
           initials: entry.initials,
           lapTimeMs: entry.lapTimeMs,
+          entry,
         })
       }
     }
@@ -999,6 +1066,16 @@ export function DragRace({ slug }: DragRaceProps) {
             initials: candidate.initials,
             lapTimeMs: candidate.lapTimeMs,
           }
+          // Dress the ghost in the original racer's livery. Falls back to
+          // stock GLB paint and no plate when the stored loadout omits a
+          // value (legacy entries, current-user defaults). The setters
+          // are buffered inside buildGhostCar so calling them before the
+          // GLB resolves is safe.
+          const liveryLoadout = candidate.entry?.loadout ?? null
+          ghostSetPaintRef.current?.(liveryLoadout?.paint ?? null)
+          ghostSetRacingNumberRef.current?.(
+            liveryLoadout?.racingNumber ?? DEFAULT_RACING_NUMBER,
+          )
           return
         } catch {
           if (cancelled) return

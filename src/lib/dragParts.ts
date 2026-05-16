@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { RacingNumberSettingSchema, type RacingNumberSetting } from './racingNumber'
 
 // Drag racing parts catalog. Players cannot tune drag cars with the regular
 // CarParams sliders; instead they pick one item per category and the runtime
@@ -83,8 +84,15 @@ export const DragLoadoutSchema = z
     body: PartIdSchema,
     engine: PartIdSchema,
     transmission: PartIdSchema,
+    // Car body paint as a 6-digit hex (e.g. "#ff8800") or omitted for the
+    // stock GLB colormap. Stored with the leaderboard entry so a future
+    // race can rebuild the ghost car in the same livery the racer used.
     paint: z.string().regex(/^#[0-9a-fA-F]{6}$/).optional(),
-    racingNumber: z.string().min(1).max(4).optional(),
+    // Roof racing-number plate setting (enabled, value, plate color, text
+    // color). Optional so legacy stored loadouts without a plate keep
+    // validating. When present the ghost rebuilds the plate the way the
+    // original racer had it; when omitted the ghost shows no plate.
+    racingNumber: RacingNumberSettingSchema.optional(),
   })
   .strict()
 export type DragLoadout = z.infer<typeof DragLoadoutSchema>
@@ -260,7 +268,7 @@ export interface ResolvedDragLoadout {
   engine: DragEngine
   transmission: DragTransmission
   paint: string | null
-  racingNumber: string | null
+  racingNumber: RacingNumberSetting | null
 }
 
 export function resolveLoadout(loadout: DragLoadout): ResolvedDragLoadout {
