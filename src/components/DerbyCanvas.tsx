@@ -32,8 +32,6 @@ import {
   type DerbyDamageVisualizer,
 } from '@/game/derbyDamageVisuals'
 import {
-  buildShrapnelChunk,
-  disposeChunkMesh,
   pruneDebris,
   spawnDebris,
   tickDebris,
@@ -374,27 +372,11 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
           ),
         )
       }
-      // Toss a burst of shrapnel from the wreck center too so the kill
-      // reads as a satisfying explosion of bits, not just panels arcing.
-      const wreckPos = round.cars[victimIdx].physics
-      for (let c = 0; c < 8; c++) {
-        const chunk = buildShrapnelChunk(debrisRng)
-        scene.add(chunk)
-        const angle = debrisRng() * Math.PI * 2
-        debrisItems.push(
-          spawnDebris(
-            chunk,
-            { x: wreckPos.x, y: 1.0 + debrisRng() * 0.5, z: wreckPos.z },
-            { nx: Math.cos(angle), nz: Math.sin(angle) },
-            6 + debrisRng() * 5,
-            debrisRng,
-          ),
-        )
-      }
       // Big jolt to the player's camera when a destruction is in their
       // line of sight: their own kill, their own death, or any nearby
       // wreck. Use distance-falloff so a destruction across the arena
       // doesn't shake the camera as hard as one right next to the player.
+      const wreckPos = round.cars[victimIdx].physics
       const px = round.cars[PLAYER_IDX].physics.x
       const pz = round.cars[PLAYER_IDX].physics.z
       const distance = Math.hypot(wreckPos.x - px, wreckPos.z - pz)
@@ -561,32 +543,6 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
             ),
           )
         }
-        // Always spawn a shower of small chunks at the contact point.
-        // Count scales with hit amount so a hard ram spits a noticeable
-        // pile of shrapnel; a graze still kicks out one chunk so even
-        // light contact reads as a hit.
-        const chunkCount = Math.min(5, 1 + Math.floor(e.amount / 3))
-        for (let c = 0; c < chunkCount; c++) {
-          const chunk = buildShrapnelChunk(debrisRng)
-          scene.add(chunk)
-          // Spread the outward direction by a random angle around the
-          // hit normal so the shower fans out instead of all chunks
-          // flying along the same line.
-          const spread = (debrisRng() - 0.5) * 1.4
-          const cosS = Math.cos(spread)
-          const sinS = Math.sin(spread)
-          const dirX = nx * inv * cosS - nz * inv * sinS
-          const dirZ = nx * inv * sinS + nz * inv * cosS
-          debrisItems.push(
-            spawnDebris(
-              chunk,
-              { x: e.x, y: 1.0 + debrisRng() * 0.3, z: e.z },
-              { nx: dirX, nz: dirZ },
-              5 + e.relativeSpeed * 0.25 + debrisRng() * 3,
-              debrisRng,
-            ),
-          )
-        }
       }
 
       // Update damage visuals from current state. Tier transitions drop
@@ -594,44 +550,25 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       // the canvas can register them with the debris integrator and they
       // arc out instead of vanishing. Also tick the per-car hit-flash
       // decay so the white pulse fades smoothly between hits.
+      // Tick paint flash decay and refresh the health-driven visuals
+      // (paint, smoke, fire, lights). update() never strips a panel on
+      // its own anymore; mid-fight detach is handled by applyHit, and
+      // destruction-time detach is handled by handleDestruction.
       for (let i = 0; i < round.cars.length; i++) {
         const viz = carVisualizers[i]
         if (!viz) continue
         viz.tickFlash(dtSec)
-        const popped = viz.update(round.cars[i])
-        if (popped.length === 0) continue
-        const car = round.cars[i]
-        for (const panel of popped) {
-          scene.add(panel)
-          const dx = panel.position.x - car.physics.x
-          const dz = panel.position.z - car.physics.z
-          const len = Math.hypot(dx, dz)
-          const inv = len > 1e-6 ? 1 / len : 0
-          debrisItems.push(
-            spawnDebris(
-              panel,
-              panel.position,
-              { nx: dx * inv, nz: dz * inv },
-              3 + debrisRng() * 3,
-              debrisRng,
-            ),
-          )
-        }
+        viz.update(round.cars[i])
       }
 
       // Advance debris. Removing dead meshes inline avoids the per-frame
       // filter() allocation; pruneDebris compacts the array afterward.
-      // Shrapnel chunks own their geometry and material (unlike detached
-      // panels, which share the asset's), so dispose them on cull to keep
-      // the GPU buffer count bounded across a long round.
+      // Detached panels share their asset's geometry / material, so the
+      // canvas does not own their disposal; the asset's own dispose call
+      // releases everything when the round ends.
       tickDebris(debrisItems, dtSec, arena.radius)
       for (let i = 0; i < debrisItems.length; i++) {
-        if (!debrisItems[i].alive) {
-          scene.remove(debrisItems[i].object)
-          if (debrisItems[i].object.name === 'derbyShrapnel') {
-            disposeChunkMesh(debrisItems[i].object)
-          }
-        }
+        if (!debrisItems[i].alive) scene.remove(debrisItems[i].object)
       }
       pruneDebris(debrisItems)
 
@@ -670,10 +607,7 @@ export function DerbyCanvas(props: DerbyCanvasProps) {
       window.visualViewport?.removeEventListener('resize', onResize)
       for (const v of carVisualizers) v?.dispose()
       for (const a of carAssets) a?.dispose()
-      for (const d of debrisItems) {
-        scene.remove(d.object)
-        if (d.object.name === 'derbyShrapnel') disposeChunkMesh(d.object)
-      }
+      for (const d of debrisItems) scene.remove(d.object)
       stadium.dispose()
       scenery.dispose()
       arenaMesh.dispose()

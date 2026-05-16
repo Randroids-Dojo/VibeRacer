@@ -60,33 +60,17 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
 
 // Per-hit panel detach is reserved for hard rams. Most hits land in the
 // 3 to 10 range; only the top of that band (and any clamped MAX_HIT)
-// strips a panel mid-fight. The tier-based progressive detach below
-// still removes some panels as health falls, so the car visibly sheds
-// parts as you keep taking damage even on clean glancing hits.
+// strips a door mid-fight. Front and rear hits never detach a panel.
 const PANEL_DETACH_DAMAGE_THRESHOLD = 9
-// Number of detachable panels that should still be attached when the car
-// is at each damage tier. update() walks the panel sequence and detaches
-// extras whenever the car's tier drops past a transition. We deliberately
-// keep at least one panel on at critical so a still-alive car never
-// looks like a fully stripped wreck. detachAllRemaining() on destruction
-// strips the final panel(s) so only a destroyed car reads as completely
-// crumpled.
-const PANELS_ATTACHED_BY_TIER: Record<DamageTier, number> = {
-  pristine: 4,
-  light: 4,
-  moderate: 3,
-  heavy: 2,
-  critical: 1,
-}
-// Canonical panel detach sequence. Front-most parts come off first (a
-// car typically loses its hood before its trunk in a derby) so the
-// player sees recognizable wear progression.
-const PANEL_DETACH_SEQUENCE: SubmeshName[] = ['hood', 'door_r', 'door_l', 'trunk']
-// Paint and detach lists include doors as candidates. Variants whose
-// asset.submeshes omits the optional doors (Kenney sliced sedan/truck/race)
-// simply do not contribute door entries to the visualizer's working sets.
+// Paint targets include the body and the doors so the whole shell
+// darkens uniformly with damage. Variants whose asset.submeshes omits
+// the optional doors (Kenney sliced sedan/truck/race) simply do not
+// contribute door entries to the visualizer's working sets.
 const PAINT_TARGET_NAMES: SubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
-const DETACHABLE_PANELS: SubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
+// Only doors are detachable. The hood and trunk stay welded on for the
+// full life of the car; the demo for v3 is that a side hit drops a
+// door and nothing else comes off, including on destruction.
+const DETACHABLE_PANELS: SubmeshName[] = ['door_l', 'door_r']
 
 const SMOKE_COLOR = new Color(0x444444)
 const FIRE_COLOR = new Color(0xff5022)
@@ -290,13 +274,11 @@ export function createDamageVisualizer(
     }
   }
 
-  function pickPanelByAngle(
+  function pickDoorByHitSide(
     worldNx: number,
     worldNz: number,
     victimHeading: number,
   ): SubmeshName | null {
-    const candidates = availableDetachables.filter((p) => !detachedPanels.has(p))
-    if (candidates.length === 0) return null
     // Rotate the world-space hit normal into the victim's local frame.
     // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
     // local +X (front) maps to the world direction (cos(heading),
@@ -306,26 +288,21 @@ export function createDamageVisualizer(
     const sin = Math.sin(victimHeading)
     const localFwd = worldNx * cos + worldNz * -sin
     const localRight = worldNx * sin + worldNz * cos
-    const absFwd = Math.abs(localFwd)
-    const absRight = Math.abs(localRight)
-    // Front-on hits (positive forward component) prefer hood; rear-on
-    // prefer trunk; side hits prefer the door on the impact side.
-    if (absFwd > absRight) {
-      const preferred: SubmeshName = localFwd > 0 ? 'hood' : 'trunk'
-      if (candidates.includes(preferred)) return preferred
-    } else {
-      const preferred: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
-      if (candidates.includes(preferred)) return preferred
-    }
-    return candidates[0]
+    // Only side hits drop a door. A front-on or rear-on hit (where the
+    // forward component dominates) leaves the doors alone; the player
+    // sees a panel come off only when they actually rammed the side.
+    if (Math.abs(localRight) <= Math.abs(localFwd)) return null
+    const choice: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
+    if (detachedPanels.has(choice)) return null
+    if (!availableDetachables.includes(choice)) return null
+    return choice
   }
 
   function detachPanel(choice: SubmeshName): Object3D | null {
     const panel = asset.submeshes[choice]
-    // pickPanelByAngle only chooses from availableDetachables, which is
-    // filtered against undefined entries, so this is true by construction
-    // for the hit path; the explicit check keeps the type checker happy
-    // and covers the detachAllRemaining path on optional doors.
+    // pickDoorByHitSide only returns names already filtered against
+    // availableDetachables; the explicit check keeps the type checker
+    // happy and covers the detachAllRemaining path on optional doors.
     if (!panel) return null
     detachedPanels.add(choice)
     // Real detach: capture the panel's world transform, remove it from its
@@ -343,27 +320,12 @@ export function createDamageVisualizer(
     return panel
   }
 
-  function detachToTargetCount(targetAttached: number): Object3D[] {
-    const out: Object3D[] = []
-    // Walk the canonical sequence and detach until the number of still-
-    // attached panels matches the tier's target. availableDetachables is
-    // filtered against absent door variants, so a Kenney sliced sedan
-    // simply has fewer panels to lose, so the loop just runs out earlier.
-    for (const name of PANEL_DETACH_SEQUENCE) {
-      const attached = availableDetachables.filter(
-        (p) => !detachedPanels.has(p),
-      ).length
-      if (attached <= targetAttached) break
-      if (!availableDetachables.includes(name)) continue
-      if (detachedPanels.has(name)) continue
-      const panel = detachPanel(name)
-      if (panel) out.push(panel)
-    }
-    return out
-  }
-
   return {
     update(state: DerbyCarState) {
+      // Health drives paint, smoke, fire, lights. Panel detach is now
+      // strictly hit-driven via applyHit; tier transitions never strip
+      // a panel on their own, so the only parts that come off mid-fight
+      // are the doors when a side-impact lands hard enough.
       const fraction =
         state.maxHealth > 0 ? state.health / state.maxHealth : 0
       const tier = tierFromFraction(fraction)
@@ -371,21 +333,15 @@ export function createDamageVisualizer(
       const tierChanged = tier !== lastTier
       const destroyedChanged = destroyed !== lastDestroyed
       if (tierChanged || destroyedChanged) setTier(tier, destroyed)
-      // Progressive panel loss: each tier drop pops one or more panels off
-      // so the wear is visible mid-battle, not just at destruction. Only
-      // runs on a tier change so a steady-state idle frame doesn't keep
-      // re-checking detach state. The final panel is held until
-      // destruction so a critical-but-alive car never looks fully
-      // stripped; detachAllRemaining() takes that one when the car dies.
-      if (!tierChanged) return []
-      return detachToTargetCount(PANELS_ATTACHED_BY_TIER[tier])
+      return []
     },
     applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null
-      // rng is reserved for tie-breaking among equally preferred panels;
-      // the angle pick covers the common cases on its own.
       void rng
-      const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
+      // Door-only panel mechanic: a left-side hit pops the left door, a
+      // right-side hit pops the right door, anything front or rear
+      // returns null. The hood and trunk never come off mid-fight.
+      const choice = pickDoorByHitSide(worldNx, worldNz, victimHeading)
       if (choice === null) return null
       return detachPanel(choice)
     },
