@@ -123,14 +123,12 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('rear-on hit does not detach the trunk mid-fight', () => {
+  it('rear-on hit drops the trunk', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    // The slicer's trunk cut is too large (the entire bed on a pickup)
-    // to lose on a single hit; keep it welded until destruction.
     const result = viz.applyHit(40, -1, 0, 0, () => 0.5)
-    expect(result).toBeNull()
-    expect(asset.submeshes.trunk.parent).not.toBeNull()
+    expect(result?.name).toBe('trunk')
+    expect(asset.submeshes.trunk.parent).toBeNull()
     viz.dispose()
   })
 
@@ -222,14 +220,15 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('returns null once every mid-fight detachable panel from that direction is gone', () => {
+  it('returns null once every detachable panel from that direction is gone', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    // Rear is intentionally not in this list: trunk is destruction-only.
-    // The mid-fight hits exhaust hood, door_r, door_l; the second pass
-    // should land on already-detached panels and return null.
+    // Pop each panel from its matching direction, then re-hit the same
+    // sides. The second pass should land on already-detached panels and
+    // return null.
     const directions: Array<{ nx: number; nz: number; name: string }> = [
       { nx: 1, nz: 0, name: 'hood' },
+      { nx: -1, nz: 0, name: 'trunk' },
       { nx: 0, nz: 1, name: 'door_r' },
       { nx: 0, nz: -1, name: 'door_l' },
     ]
