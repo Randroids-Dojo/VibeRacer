@@ -1,9 +1,14 @@
 import { describe, expect, it } from 'vitest'
 import {
+  clampDragGear,
+  dragGearSpec,
+  DRAG_MANUAL_GEAR_MAX,
+  DRAG_MANUAL_GEAR_SPECS,
   FOUL_THROTTLE_THRESHOLD,
   dragTick,
   handlePreCountdownInput,
   initDragGameState,
+  shiftDragGear,
   startDragRace,
   type DragTickConfig,
 } from '@/game/dragTick'
@@ -311,5 +316,227 @@ describe('dragTick', () => {
     expect(result.state.finishedAtMs).toBe(1234)
     expect(result.state.hits).toHaveLength(3)
     expect(result.finished).toBeNull()
+  })
+})
+
+describe('dragTick shift quality', () => {
+  // Gear-1 max-speed factor from DRAG_MANUAL_GEAR_SPECS. Pinned here so
+  // the tests can compute a target gear cap (params.maxSpeed * factor)
+  // without re-importing the table.
+  const GEAR_1_MAX_FACTOR = 0.22
+
+  it("classifies an upshift well below the gear cap as 'early'", () => {
+    const setup = setupRace('salt-flats')
+    // Gear 1 cap = params.maxSpeed * GEAR_1_MAX_FACTOR. We sit at ~40%
+    // of that, well below the 0.95 perfect threshold.
+    const earlySpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.4
+    const state = { ...setup.state, speed: earlySpeed, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('early')
+  })
+
+  it("classifies an upshift near the cap with no bog as 'perfect'", () => {
+    const setup = setupRace('salt-flats')
+    const perfectSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.97
+    const state = { ...setup.state, speed: perfectSpeed, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('perfect')
+  })
+
+  it("classifies an upshift at 85% of the cap as 'early', not 'perfect'", () => {
+    // Regression: the old SHIFT_PERFECT_MIN_RATIO sat at 0.85, so a shift
+    // anywhere from 85 percent to redline registered as perfect. The
+    // threshold is now pinned to DRAG_REDLINE_RATIO so only the redline
+    // window earns the green flash.
+    const setup = setupRace('salt-flats')
+    const justBelowRedline = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.85
+    const state = { ...setup.state, speed: justBelowRedline, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftQuality).toBe('early')
+  })
+
+  it("classifies an upshift after bogging at the cap as 'late'", () => {
+    const setup = setupRace('salt-flats')
+    const atCapSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    const state = {
+      ...setup.state,
+      speed: atCapSpeed,
+      gear: 1,
+      gearPeakHoldSec: 0.5,
+    }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('late')
+  })
+
+  it('produces no quality on a downshift', () => {
+    const setup = setupRace('salt-flats')
+    const state = { ...setup.state, speed: 5, gear: 3, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftDown: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('down')
+    expect(result.shiftQuality).toBeNull()
+  })
+
+  it('clears gearPeakHoldSec on a shift even if speed is still at the cap', () => {
+    const setup = setupRace('salt-flats')
+    const atCap = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    const state = {
+      ...setup.state,
+      speed: atCap,
+      gear: 1,
+      gearPeakHoldSec: 0.6,
+    }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.state.gearPeakHoldSec).toBe(0)
+  })
+
+  it('accumulates gearPeakHoldSec while the player bogs at the cap', () => {
+    const setup = setupRace('salt-flats')
+    // Pre-load the car near the gear 1 cap so we don't have to integrate
+    // up to it before the hold counter starts ticking. Anything >= 0.95
+    // of the cap is "in the redline" per DRAG_REDLINE_RATIO.
+    const atCap = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    let state = { ...setup.state, speed: atCap }
+    let nowMs = 16
+    for (let i = 0; i < 40; i++) {
+      const result = dragTick(
+        state,
+        { throttle: 1, steer: 0, handbrake: false },
+        16,
+        nowMs,
+        setup.path,
+        setup.derived.params,
+        setup.config,
+      )
+      state = result.state
+      nowMs += 16
+    }
+    expect(state.gearPeakHoldSec).toBeGreaterThan(0.4)
+  })
+})
+
+describe('drag manual gearbox', () => {
+  it('exposes a 7-speed gearbox', () => {
+    expect(DRAG_MANUAL_GEAR_MAX).toBe(7)
+    expect(DRAG_MANUAL_GEAR_SPECS).toHaveLength(7)
+  })
+
+  it('top gear caps at 1.0 of base maxSpeed', () => {
+    expect(DRAG_MANUAL_GEAR_SPECS[6].maxSpeedFactor).toBe(1.0)
+  })
+
+  it('every gear has a strictly higher cap than the previous gear', () => {
+    for (let i = 1; i < DRAG_MANUAL_GEAR_SPECS.length; i++) {
+      expect(DRAG_MANUAL_GEAR_SPECS[i].maxSpeedFactor).toBeGreaterThan(
+        DRAG_MANUAL_GEAR_SPECS[i - 1].maxSpeedFactor,
+      )
+    }
+  })
+
+  it('clamps to the [1, 7] range and snaps non-finite to gear 1', () => {
+    expect(clampDragGear(0)).toBe(1)
+    expect(clampDragGear(8)).toBe(7)
+    expect(clampDragGear(Number.NaN)).toBe(1)
+    expect(clampDragGear(3.4)).toBe(3)
+  })
+
+  it('shiftDragGear cannot run off either end of the box', () => {
+    expect(shiftDragGear(1, 'down')).toBe(1)
+    expect(shiftDragGear(7, 'up')).toBe(7)
+    expect(shiftDragGear(4, 'up')).toBe(5)
+    expect(shiftDragGear(4, 'down')).toBe(3)
+  })
+
+  it('dragGearSpec returns the table entry for the requested gear', () => {
+    for (let g = 1; g <= 7; g++) {
+      expect(dragGearSpec(g)).toBe(DRAG_MANUAL_GEAR_SPECS[g - 1])
+    }
+  })
+
+  it('lets the player reach gear 7 by repeatedly upshifting through a race', () => {
+    const setup = setupRace('salt-flats')
+    let state = setup.state
+    let nowMs = 16
+    // Hold throttle and tap upshift each frame; shifts edge-trigger inside
+    // dragTick, so a single shiftUp=true per frame walks the gear up by one
+    // each time the cap is reached. Six upshifts should land us in gear 7.
+    for (let i = 0; i < 6; i++) {
+      // Burn frames at full throttle until close to gear's cap, then shift.
+      for (let burn = 0; burn < 40; burn++) {
+        const r = dragTick(
+          state,
+          { throttle: 1, steer: 0, handbrake: false },
+          16,
+          nowMs,
+          setup.path,
+          setup.derived.params,
+          setup.config,
+        )
+        state = r.state
+        nowMs += 16
+      }
+      const r = dragTick(
+        state,
+        { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+        16,
+        nowMs,
+        setup.path,
+        setup.derived.params,
+        setup.config,
+      )
+      state = r.state
+      nowMs += 16
+    }
+    expect(state.gear).toBe(7)
   })
 })

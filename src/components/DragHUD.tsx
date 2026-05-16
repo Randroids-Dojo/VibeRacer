@@ -5,6 +5,10 @@ interface DragHUDProps {
   fouled: boolean
   reactionTimeMs: number | null
   splits: number[]
+  gear: number
+  // Total gears in the drag-mode gearbox, surfaced so the chip can show
+  // "3 / 7" and the player always knows how many shifts are left.
+  gearCount: number
 }
 
 function formatTime(ms: number): string {
@@ -70,6 +74,55 @@ const labelStyle: React.CSSProperties = {
   letterSpacing: 1.2,
 }
 
+// Bottom-left gear chip. Sits above the touch shifter on mobile so the
+// player has the current gear, the upcoming shifter, and the speedometer
+// arc in a single glance. Matches the dimensions of the road HUD's gear
+// chip so the two modes feel like one game.
+const gearChipStyle: React.CSSProperties = {
+  position: 'absolute',
+  left: 12,
+  bottom: 'calc(140px + env(safe-area-inset-bottom, 0px))',
+  padding: '6px 12px',
+  background: '#161616cc',
+  border: '1px solid rgba(255, 211, 107, 0.55)',
+  borderRadius: 10,
+  display: 'flex',
+  alignItems: 'baseline',
+  gap: 6,
+  fontFamily: 'system-ui, sans-serif',
+  color: '#fff',
+  boxShadow: '0 4px 16px rgba(0, 0, 0, 0.45)',
+}
+const gearChipLabel: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.4,
+  fontWeight: 700,
+  opacity: 0.8,
+}
+const gearChipValue: React.CSSProperties = {
+  fontFamily: 'monospace',
+  fontSize: 22,
+  fontWeight: 800,
+  letterSpacing: 0.5,
+  minWidth: '1ch',
+  textAlign: 'center',
+}
+// Slash + total-gears suffix on the gear chip ("3/7"). Smaller and
+// fainter than the live gear digit so the eye lands on the current
+// gear first.
+const gearChipDivider: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  opacity: 0.55,
+  marginLeft: 2,
+  letterSpacing: 0.2,
+}
+const gearChipHint: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.2,
+  opacity: 0.65,
+}
+
 const splitsPanelStyle: React.CSSProperties = {
   position: 'absolute',
   right: 12,
@@ -92,6 +145,8 @@ export function DragHUD({
   fouled,
   reactionTimeMs,
   splits,
+  gear,
+  gearCount,
 }: DragHUDProps) {
   return (
     <div style={overlayWrapStyle}>
@@ -105,6 +160,15 @@ export function DragHUD({
             ? '--'
             : `${(reactionTimeMs / 1000).toFixed(2)}s`}
         </span>
+      </div>
+
+      <div style={gearChipStyle} data-testid="drag-gear-chip">
+        <span style={gearChipLabel}>GEAR</span>
+        <span style={gearChipValue}>
+          {gear}
+          <span style={gearChipDivider}>/{gearCount}</span>
+        </span>
+        <span style={gearChipHint}>MANUAL</span>
       </div>
 
       {splits.length > 0 && (

@@ -159,11 +159,18 @@ describe('drag strips', () => {
     expect(maxH - minH).toBe(0)
   })
 
-  it('Alpine Pass profile rises monotonically', () => {
+  it('Alpine Pass climbs to a summit then descends to ground for the finish', () => {
     const profile = DRAG_STRIPS['alpine-pass'].verticalProfile
-    for (let i = 1; i < profile.length; i++) {
-      expect(profile[i].height).toBeGreaterThanOrEqual(profile[i - 1].height)
-    }
+    const maxIdx = profile.reduce(
+      (best, k, i) => (k.height > profile[best].height ? i : best),
+      0,
+    )
+    expect(maxIdx).toBeGreaterThan(0)
+    expect(maxIdx).toBeLessThan(profile.length - 1)
+    // Both endpoints land at ground level (height = 0) so the car never
+    // clips into the surrounding grass at the start or the finish.
+    expect(profile[0].height).toBe(0)
+    expect(profile[profile.length - 1].height).toBe(0)
   })
 
   it('Harbor Night profile drops then rises into the kicker', () => {
