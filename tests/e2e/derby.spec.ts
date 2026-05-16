@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('title screen surfaces the Derby tile', async ({ page }) => {
   await page.goto('/')
-  await expect(page.getByRole('link', { name: 'Derby' })).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Derby' })).toBeVisible()
 })
 
 test('derby hub lists the dust bowl arena', async ({ page }) => {
@@ -22,12 +22,11 @@ test('arena page shows the four vehicle cards', async ({ page }) => {
   await expect(page.getByRole('button', { name: /^Race Car\b/ })).toBeVisible()
 })
 
-test('selecting a vehicle and starting mounts the round HUD', async ({
+test('selecting a vehicle starts the round directly', async ({
   page,
 }) => {
   await page.goto('/derby/dust-bowl')
   await page.getByRole('button', { name: /^Pickup Truck\b/ }).click()
-  await page.getByTestId('derby-start-button').click()
   await expect(page.locator('[data-derby-place-chip="true"]')).toBeVisible()
   await expect(page.locator('[data-derby-cars-left-chip="true"]')).toBeVisible()
   await expect(page.locator('[data-derby-health-bar="true"]')).toBeVisible()
@@ -67,7 +66,6 @@ test('derby round uses the mobile viewport and shared touch joystick', async ({
 
   await page.goto('/derby/dust-bowl')
   await page.getByRole('button', { name: /^Race Car\b/ }).click()
-  await page.getByTestId('derby-start-button').click()
 
   const canvas = page.getByTestId('derby-canvas')
   await expect(canvas).toBeVisible()
