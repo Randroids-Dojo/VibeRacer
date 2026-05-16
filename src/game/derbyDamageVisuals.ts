@@ -292,18 +292,20 @@ export function createDamageVisualizer(
     const sin = Math.sin(victimHeading)
     const localFwd = worldNx * cos + worldNz * -sin
     const localRight = worldNx * sin + worldNz * cos
-    // Whichever axis dominates picks the panel. Front pops hood, rear
-    // pops trunk, right side pops door_r, left side pops door_l. A
-    // panel that isn't available on this variant (most cars lack
-    // doors) or has already detached falls back to null.
-    const preferred: SubmeshName =
-      Math.abs(localFwd) >= Math.abs(localRight)
-        ? localFwd > 0
-          ? 'hood'
-          : 'trunk'
-        : localRight > 0
-          ? 'door_r'
-          : 'door_l'
+    // Whichever axis dominates picks the panel. Front pops hood, side
+    // pops the matching door (when the variant ships one), rear hits
+    // are intentionally a no-op mid-fight because the slicer's "trunk"
+    // cut takes a huge chunk of the body (the entire bed on a pickup);
+    // losing that on a single bump looks like the car was gutted. The
+    // trunk stays welded on until destruction, when detachAllRemaining
+    // sheds it alongside everything else.
+    let preferred: SubmeshName | null
+    if (Math.abs(localFwd) >= Math.abs(localRight)) {
+      preferred = localFwd > 0 ? 'hood' : null
+    } else {
+      preferred = localRight > 0 ? 'door_r' : 'door_l'
+    }
+    if (preferred === null) return null
     if (detachedPanels.has(preferred)) return null
     if (!availableDetachables.includes(preferred)) return null
     return preferred
