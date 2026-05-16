@@ -36,11 +36,16 @@ import {
 import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
+import {
+  MenuButton,
+  MenuOverlay,
+  MenuPanel,
+  MenuTitle,
+} from '@/components/MenuUI'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
 import { buildTrackPath } from '@/game/trackPath'
 import {
   buildRail,
-  sampleHeadingToGame,
   sampleRailAt,
   type WorldTourRail,
 } from '@/game/worldTourRail'
@@ -229,58 +234,75 @@ function TourRacePageInner() {
   const [paused, setPaused] = useState(false)
   const [showIntro, setShowIntro] = useState(true)
 
-  // Reset run state on route param changes.
-  useEffect(() => {
-    submittedRef.current = false
-    lapTimesMsRef.current = []
-    setHudLap(0)
-    setHudPhase('intro')
-    setPaused(false)
-    setShowIntro(true)
-    pausedRef.current = false
-    pendingRaceStartRef.current = null
+  // Reset the run from scratch. Used by both the route-change effect
+  // (fresh tour or race index loaded) and by the pause menu Restart
+  // button. `replayIntro` controls whether the player sees the intro
+  // card again (true on route change, false on a mid-race restart).
+  const resetRace = useCallback(
+    (replayIntro: boolean) => {
+      submittedRef.current = false
+      lapTimesMsRef.current = []
+      setHudLap(0)
+      setHudPhase('intro')
+      setPaused(false)
+      setShowIntro(replayIntro)
+      pausedRef.current = false
+      pendingRaceStartRef.current = null
+      // Tell RaceCanvas to teleport the player back to the spawn and
+      // restart its internal countdown. Only meaningful for a mid-race
+      // restart; harmless on a route change because RaceCanvas remounts
+      // anyway when `pieces` changes.
+      pendingResetRef.current = true
 
-    // Seed the AI field: one car per non-player grid slot, with a
-    // stable lane offset and a per-car target speed derived from the
-    // tour+race seed so an identical run reproduces an identical
-    // field shape. Player slot (index 0) is intentionally absent --
-    // the player drives the real car via RaceCanvas.
-    if (!tour) {
-      aiStateRef.current = []
-      opponentsRef.current = null
-      return
-    }
-    const seed = hashSeed(tour.id, raceIndex)
-    const rng = mulberry32(seed)
-    const palette = OPPONENT_PALETTE
-    const aiCount = Math.max(0, tour.fieldSize - 1)
-    const state: typeof aiStateRef.current = []
-    for (let i = 0; i < aiCount; i++) {
-      // Alternate lanes so the field reads as a real grid, not a
-      // conga line. Lane half-width is set so a 2-lane oval fits two
-      // cars side-by-side inside the track ribbon (TRACK_WIDTH = 8).
-      const lane = i % 2 === 0 ? -OPPONENT_LANE_OFFSET : OPPONENT_LANE_OFFSET
-      // Stagger starts a few meters back so the field reads as a
-      // grid lined up behind the start line at race-go.
-      const startBack = OPPONENT_GRID_SPACING_M * (Math.floor(i / 2) + 1)
-      // Per-car target speed in [16, 23] m/s. Below maxSpeed (26)
-      // so the player can pass them with a clean lap.
-      const speedMps = 16 + rng() * 7
-      state.push({
-        progress: -startBack,
-        speedMps,
-        lateralM: lane,
-        color: palette[i % palette.length]!,
-      })
-    }
-    aiStateRef.current = state
-    opponentsRef.current = state.map(() => ({
-      x: 0,
-      z: 0,
-      heading: 0,
-      color: 0xffffff,
-    }))
-  }, [tour, raceIndex])
+      if (!tour) {
+        aiStateRef.current = []
+        opponentsRef.current = null
+        return
+      }
+      // Seed the AI field: one car per non-player grid slot, with a
+      // stable lane offset and a per-car target speed derived from the
+      // tour+race seed so an identical run reproduces an identical
+      // field shape. Player slot (index 0) is intentionally absent --
+      // the player drives the real car via RaceCanvas.
+      const seed = hashSeed(tour.id, raceIndex)
+      const rng = mulberry32(seed)
+      const palette = OPPONENT_PALETTE
+      const aiCount = Math.max(0, tour.fieldSize - 1)
+      const state: typeof aiStateRef.current = []
+      for (let i = 0; i < aiCount; i++) {
+        // Alternate lanes so the field reads as a real grid, not a
+        // conga line. Lane half-width is set so a 2-lane oval fits two
+        // cars side-by-side inside the track ribbon (TRACK_WIDTH = 8).
+        const lane = i % 2 === 0 ? -OPPONENT_LANE_OFFSET : OPPONENT_LANE_OFFSET
+        // Stagger starts a few meters back so the field reads as a
+        // grid lined up behind the start line at race-go.
+        const startBack = OPPONENT_GRID_SPACING_M * (Math.floor(i / 2) + 1)
+        // Per-car target speed in [16, 23] m/s. Below maxSpeed (26)
+        // so the player can pass them with a clean lap.
+        const speedMps = 16 + rng() * 7
+        state.push({
+          progress: -startBack,
+          speedMps,
+          lateralM: lane,
+          color: palette[i % palette.length]!,
+        })
+      }
+      aiStateRef.current = state
+      opponentsRef.current = state.map(() => ({
+        x: 0,
+        z: 0,
+        heading: 0,
+        color: 0xffffff,
+      }))
+    },
+    [tour, raceIndex],
+  )
+
+  // Reset run state on route param changes. Replays the intro card so
+  // the player sees the tour banner before the green flag.
+  useEffect(() => {
+    resetRace(true)
+  }, [resetRace])
 
   // AI loop: advance each opponent along the rail by `speed * dt` so
   // they read as racing the track in front of / alongside the player.
@@ -310,7 +332,11 @@ function TourRacePageInner() {
         const slot = opponents[i]!
         slot.x = pose.x
         slot.z = pose.z
-        slot.heading = sampleHeadingToGame(pose.heading)
+        // SampledPoint headings already match the main game's
+        // state.heading convention (0 = +X east, PI/2 = -Z north),
+        // which is exactly what bundle.car.rotation.y wants. No
+        // conversion needed.
+        slot.heading = pose.heading
         slot.color = car.color
       }
     }
@@ -425,6 +451,16 @@ function TourRacePageInner() {
     // speed-ref poll below; the rich HUD payload from RaceCanvas is
     // unused for now. Required by the prop contract.
   }, [])
+
+  const handleResume = useCallback(() => {
+    setPaused(false)
+  }, [])
+  const handleRestart = useCallback(() => {
+    resetRace(false)
+  }, [resetRace])
+  const handleQuit = useCallback(() => {
+    router.push('/tour')
+  }, [router])
 
   // Poll the live speed ref at 4 Hz so the bottom-left readout stays
   // in sync without re-rendering on every frame.
@@ -553,16 +589,34 @@ function TourRacePageInner() {
           enabled={!showIntro && !paused && hudPhase !== 'finished'}
           mode={settings.touchMode}
         />
-        {!showIntro && hudPhase !== 'finished' ? (
+        {!showIntro && hudPhase !== 'finished' && !paused ? (
           <button
             type="button"
-            onClick={() => setPaused((v) => !v)}
-            aria-label={paused ? 'Resume World Tour race' : 'Pause World Tour race'}
-            aria-pressed={paused}
+            onClick={() => setPaused(true)}
+            aria-label="Pause World Tour race"
+            aria-pressed={false}
             style={pauseButtonStyle}
           >
-            {paused ? 'GO' : 'II'}
+            II
           </button>
+        ) : null}
+        {paused && hudPhase !== 'finished' ? (
+          <MenuOverlay zIndex={100} onBack={handleResume}>
+            <MenuPanel>
+              <MenuTitle>PAUSED</MenuTitle>
+              <div style={menuButtonStackStyle}>
+                <MenuButton variant="primary" onClick={handleResume}>
+                  Resume
+                </MenuButton>
+                <MenuButton onClick={handleRestart}>
+                  Restart race
+                </MenuButton>
+                <MenuButton onClick={handleQuit}>
+                  Quit to tours
+                </MenuButton>
+              </div>
+            </MenuPanel>
+          </MenuOverlay>
         ) : null}
       </div>
     </main>
@@ -773,6 +827,13 @@ const introTitleStyle: React.CSSProperties = {
 const introMetaStyle: React.CSSProperties = {
   fontSize: 'clamp(13px, 4vw, 16px)',
   opacity: 0.9,
+}
+const menuButtonStackStyle: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  marginTop: 18,
+  width: '100%',
 }
 const pauseButtonStyle: React.CSSProperties = {
   position: 'fixed',

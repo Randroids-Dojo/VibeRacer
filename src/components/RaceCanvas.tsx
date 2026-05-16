@@ -152,7 +152,9 @@ const EMPTY_DECORATIONS: readonly TrackDecoration[] = []
 export interface OpponentPose {
   x: number
   z: number
-  // Game-convention heading: 0 = -Z north, increasing CCW.
+  // Same heading convention as the main game's GameState.heading and
+  // SampledPoint.heading: 0 = +X (east), PI/2 = -Z (north), increasing
+  // CCW. Written directly to the rendered car's `rotation.y`.
   heading: number
   color: number
 }

@@ -140,13 +140,3 @@ function lerpAngle(a: number, b: number, t: number): number {
   if (d < -Math.PI) d += 2 * Math.PI
   return a + d * t
 }
-
-/**
- * Convert a SampledPoint heading (0 = +X east, CCW) to the game's car
- * heading convention (0 = -Z north, CCW). The game's `stepPhysics`
- * integrates forward as (-sin H, -cos H); SampledPoint tangents are
- * (cos h, -sin h). The two conventions differ by a quarter turn.
- */
-export function sampleHeadingToGame(sampleHeading: number): number {
-  return sampleHeading - Math.PI / 2
-}
