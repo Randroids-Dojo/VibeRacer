@@ -57,7 +57,9 @@ import {
 import { deriveDragCarParams } from '@/game/dragTuning'
 import { readPlayerInput } from '@/game/playerInput'
 import {
+  dragGearSpec,
   dragTick,
+  DRAG_MANUAL_GEAR_MAX,
   DRAG_REDLINE_RATIO,
   SHIFT_LATE_HOLD_SEC,
   handlePreCountdownInput,
@@ -68,7 +70,6 @@ import {
   type DragShiftQuality,
   type DragTickConfig,
 } from '@/game/dragTick'
-import { manualGearSpec } from '@/game/transmission'
 import {
   heightAt,
   projectArcLengthOnSpawnAxis,
@@ -548,7 +549,7 @@ export function DragRace({ slug }: DragRaceProps) {
       if (ph === 'racing') {
         const gMax = Math.max(
           1,
-          paramsRef.current.maxSpeed * manualGearSpec(state.gear).maxSpeedFactor,
+          paramsRef.current.maxSpeed * dragGearSpec(state.gear).maxSpeedFactor,
         )
         const speedRatio = Math.abs(state.speed) / gMax
         const proximity = Math.max(
@@ -908,6 +909,7 @@ export function DragRace({ slug }: DragRaceProps) {
             reactionTimeMs={hud.reactionTimeMs}
             splits={hud.splits}
             gear={hud.gear}
+            gearCount={DRAG_MANUAL_GEAR_MAX}
           />
           <DragShiftFlash event={shiftFlash} />
         </>

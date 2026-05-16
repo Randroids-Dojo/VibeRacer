@@ -13,15 +13,10 @@ import {
   slopeAt,
   type VerticalProfile,
 } from './dragVerticalProfile'
-import {
-  DEFAULT_MANUAL_GEAR,
-  manualGearSpec,
-  shiftManualGear,
-} from './transmission'
 
 // Drag racing tick. Mirrors the closed-loop tick.ts shape but tailored to
 // straight-line sprints: no lap repeats, no auto-restart on a wrap-around.
-// Drag mode forces a 5-gear manual box (the player shifts; auto is not
+// Drag mode forces a 7-gear manual box (the player shifts; auto is not
 // offered) so reaching the strip's top end is a timing task, not a
 // hold-the-pedal task. Adds three further drag-specific concerns: a foul
 // flag and an associated decaying acceleration multiplier (jump-start
@@ -32,9 +27,53 @@ import {
 
 // Brief torque cut on every shift -- mirrors tick.ts. ~110 ms gives the
 // upshift a perceptible "click" without feeling like input lag on a 15 s
-// drag run that may chain four upshifts.
+// drag run that may chain six upshifts.
 export const DRAG_SHIFT_TORQUE_CUT_SEC = 0.11
 export const DRAG_SHIFT_TORQUE_CUT_THRUST = 0.5
+
+// Drag-specific 7-speed gearbox. Kept separate from the road tick's
+// 5-speed table in transmission.ts so changes here never reach into
+// closed-loop racing. Each gear caps at `maxSpeedFactor * params.maxSpeed`
+// and applies `accelFactor` to base accel. Accel falls off in the higher
+// gears so the player feels the difference between off-the-line gears 1-3
+// and the long-pull top gears 6-7.
+export const DRAG_MANUAL_GEAR_MIN = 1
+export const DRAG_MANUAL_GEAR_MAX = 7
+export const DRAG_DEFAULT_GEAR = 1
+export interface DragGearSpec {
+  gear: number
+  maxSpeedFactor: number
+  accelFactor: number
+}
+export const DRAG_MANUAL_GEAR_SPECS: readonly DragGearSpec[] = [
+  { gear: 1, maxSpeedFactor: 0.22, accelFactor: 1.7 },
+  { gear: 2, maxSpeedFactor: 0.36, accelFactor: 1.45 },
+  { gear: 3, maxSpeedFactor: 0.5, accelFactor: 1.25 },
+  { gear: 4, maxSpeedFactor: 0.64, accelFactor: 1.1 },
+  { gear: 5, maxSpeedFactor: 0.77, accelFactor: 0.95 },
+  { gear: 6, maxSpeedFactor: 0.89, accelFactor: 0.85 },
+  { gear: 7, maxSpeedFactor: 1.0, accelFactor: 0.75 },
+]
+
+export function clampDragGear(gear: number): number {
+  if (!Number.isFinite(gear)) return DRAG_DEFAULT_GEAR
+  return Math.max(
+    DRAG_MANUAL_GEAR_MIN,
+    Math.min(DRAG_MANUAL_GEAR_MAX, Math.round(gear)),
+  )
+}
+
+export function shiftDragGear(
+  currentGear: number,
+  direction: 'up' | 'down',
+): number {
+  const gear = clampDragGear(currentGear)
+  return clampDragGear(direction === 'up' ? gear + 1 : gear - 1)
+}
+
+export function dragGearSpec(gear: number): DragGearSpec {
+  return DRAG_MANUAL_GEAR_SPECS[clampDragGear(gear) - 1]
+}
 
 // Shift-quality thresholds. Used both to classify an upshift event and to
 // drive the redline-bleed HUD overlay.
@@ -142,7 +181,7 @@ export function initDragGameState(path: TrackPath): DragGameState {
     topSpeed: 0,
     reactionTimeMs: null,
     arcLengthS: 0,
-    gear: DEFAULT_MANUAL_GEAR,
+    gear: DRAG_DEFAULT_GEAR,
     torqueCutSec: 0,
     gearPeakHoldSec: 0,
   }
@@ -161,7 +200,7 @@ export function startDragRace(
     arcLengthS: 0,
     topSpeed: 0,
     reactionTimeMs: null,
-    gear: DEFAULT_MANUAL_GEAR,
+    gear: DRAG_DEFAULT_GEAR,
     torqueCutSec: 0,
     gearPeakHoldSec: 0,
   }
@@ -232,8 +271,8 @@ export function dragTick(
   let shiftQuality: DragShiftQuality | null = null
   if (state.raceStartMs !== null && state.finishedAtMs === null) {
     let nextGear = gear
-    if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
-    if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
+    if (input.shiftDown) nextGear = shiftDragGear(nextGear, 'down')
+    if (input.shiftUp) nextGear = shiftDragGear(nextGear, 'up')
     if (nextGear !== gear) {
       shiftEvent = nextGear > gear ? 'up' : 'down'
       // Classify the upshift against the OLD gear's cap. Downshifts and
@@ -241,7 +280,7 @@ export function dragTick(
       // produce no chip; the gear-equality guard above already filtered
       // those out, so any 'up' here is a real upshift.
       if (shiftEvent === 'up') {
-        const oldGearSpec = manualGearSpec(gear)
+        const oldGearSpec = dragGearSpec(gear)
         const oldGearCap = Math.max(1, params.maxSpeed * oldGearSpec.maxSpeedFactor)
         const completion = Math.abs(state.speed) / oldGearCap
         if (state.gearPeakHoldSec >= SHIFT_LATE_HOLD_SEC) {
@@ -308,7 +347,7 @@ export function dragTick(
   // because the player needs a clean cap to bounce off so the shift timing
   // becomes a real skill check; the quartic taper's asymptote would never
   // hit the gear ceiling and make shifts feel optional.
-  const gearSpec = manualGearSpec(gear)
+  const gearSpec = dragGearSpec(gear)
   const gearAccelMul = gearSpec.accelFactor * (
     torqueCutSec > 0 ? DRAG_SHIFT_TORQUE_CUT_THRUST : 1
   )
@@ -394,7 +433,7 @@ export function dragTick(
   // gearPeakHoldSec seconds.
   const currentGearCap = Math.max(
     1,
-    params.maxSpeed * manualGearSpec(gear).maxSpeedFactor,
+    params.maxSpeed * dragGearSpec(gear).maxSpeedFactor,
   )
   const atRedline = Math.abs(phys.speed) >= currentGearCap * DRAG_REDLINE_RATIO
   const gearPeakHoldSec = shiftEvent !== null

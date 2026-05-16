@@ -6,6 +6,9 @@ interface DragHUDProps {
   reactionTimeMs: number | null
   splits: number[]
   gear: number
+  // Total gears in the drag-mode gearbox, surfaced so the chip can show
+  // "3 / 7" and the player always knows how many shifts are left.
+  gearCount: number
 }
 
 function formatTime(ms: number): string {
@@ -104,6 +107,16 @@ const gearChipValue: React.CSSProperties = {
   minWidth: '1ch',
   textAlign: 'center',
 }
+// Slash + total-gears suffix on the gear chip ("3/7"). Smaller and
+// fainter than the live gear digit so the eye lands on the current
+// gear first.
+const gearChipDivider: React.CSSProperties = {
+  fontSize: 12,
+  fontWeight: 700,
+  opacity: 0.55,
+  marginLeft: 2,
+  letterSpacing: 0.2,
+}
 const gearChipHint: React.CSSProperties = {
   fontSize: 9,
   letterSpacing: 1.2,
@@ -133,6 +146,7 @@ export function DragHUD({
   reactionTimeMs,
   splits,
   gear,
+  gearCount,
 }: DragHUDProps) {
   return (
     <div style={overlayWrapStyle}>
@@ -150,7 +164,10 @@ export function DragHUD({
 
       <div style={gearChipStyle} data-testid="drag-gear-chip">
         <span style={gearChipLabel}>GEAR</span>
-        <span style={gearChipValue}>{gear}</span>
+        <span style={gearChipValue}>
+          {gear}
+          <span style={gearChipDivider}>/{gearCount}</span>
+        </span>
         <span style={gearChipHint}>MANUAL</span>
       </div>
 
