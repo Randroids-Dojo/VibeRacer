@@ -36,6 +36,19 @@ import {
 export const DRAG_SHIFT_TORQUE_CUT_SEC = 0.11
 export const DRAG_SHIFT_TORQUE_CUT_THRUST = 0.5
 
+// Shift-quality thresholds. Used both to classify an upshift event and to
+// drive the redline-bleed HUD overlay.
+//   - Below SHIFT_PERFECT_MIN_RATIO of the gear's cap: 'early'
+//   - At least SHIFT_PERFECT_MIN_RATIO of the cap but the player has held
+//     within DRAG_REDLINE_RATIO of the cap for fewer than
+//     SHIFT_LATE_HOLD_SEC seconds: 'perfect'
+//   - Otherwise (cap held too long): 'late'
+export const DRAG_REDLINE_RATIO = 0.95
+export const SHIFT_PERFECT_MIN_RATIO = 0.85
+export const SHIFT_LATE_HOLD_SEC = 0.4
+
+export type DragShiftQuality = 'early' | 'perfect' | 'late'
+
 export interface DragGameState {
   x: number
   z: number
@@ -60,6 +73,12 @@ export interface DragGameState {
   // the cut reads in the chassis, not just the audio.
   gear: number
   torqueCutSec: number
+  // Time the speed has been at or above DRAG_REDLINE_RATIO of the current
+  // gear's cap, in seconds. Resets to 0 the moment the speed dips below
+  // the redline and on every successful shift. Feeds two surfaces: the
+  // 'late' classifier for the next upshift, and the HUD's red-edge tint
+  // that intensifies the longer the player bogs.
+  gearPeakHoldSec: number
 }
 
 export interface DragTickInput extends PhysicsInput {
@@ -81,6 +100,10 @@ export interface DragTickResult {
   // 'up' or 'down' on the frame a shift fires; null otherwise. Hosts forward
   // this to SFX / camera bob in the same shape tick.ts uses.
   shiftEvent: 'up' | 'down' | null
+  // Quality classification for the upshift on this frame. Null for
+  // downshifts and for frames without a shift. Used to drive the
+  // EARLY / PERFECT / LATE chip on the drag HUD.
+  shiftQuality: DragShiftQuality | null
 }
 
 export interface DragTickConfig {
@@ -121,6 +144,7 @@ export function initDragGameState(path: TrackPath): DragGameState {
     arcLengthS: 0,
     gear: DEFAULT_MANUAL_GEAR,
     torqueCutSec: 0,
+    gearPeakHoldSec: 0,
   }
 }
 
@@ -139,6 +163,7 @@ export function startDragRace(
     reactionTimeMs: null,
     gear: DEFAULT_MANUAL_GEAR,
     torqueCutSec: 0,
+    gearPeakHoldSec: 0,
   }
 }
 
@@ -204,12 +229,29 @@ export function dragTick(
   let gear = state.gear
   let torqueCutSec = Math.max(0, state.torqueCutSec - dtSec)
   let shiftEvent: 'up' | 'down' | null = null
+  let shiftQuality: DragShiftQuality | null = null
   if (state.raceStartMs !== null && state.finishedAtMs === null) {
     let nextGear = gear
     if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
     if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
     if (nextGear !== gear) {
       shiftEvent = nextGear > gear ? 'up' : 'down'
+      // Classify the upshift against the OLD gear's cap. Downshifts and
+      // ineffective shifts at gear boundaries (e.g. shiftUp at gear 5)
+      // produce no chip; the gear-equality guard above already filtered
+      // those out, so any 'up' here is a real upshift.
+      if (shiftEvent === 'up') {
+        const oldGearSpec = manualGearSpec(gear)
+        const oldGearCap = Math.max(1, params.maxSpeed * oldGearSpec.maxSpeedFactor)
+        const completion = Math.abs(state.speed) / oldGearCap
+        if (state.gearPeakHoldSec >= SHIFT_LATE_HOLD_SEC) {
+          shiftQuality = 'late'
+        } else if (completion < SHIFT_PERFECT_MIN_RATIO) {
+          shiftQuality = 'early'
+        } else {
+          shiftQuality = 'perfect'
+        }
+      }
       torqueCutSec = DRAG_SHIFT_TORQUE_CUT_SEC
       gear = nextGear
     }
@@ -254,9 +296,11 @@ export function dragTick(
         foulPenaltyAccelFactor,
         arcLengthS,
         lastCellKey: cellKey(cell.row, cell.col),
+        gearPeakHoldSec: 0,
       },
       finished: null,
       shiftEvent: null,
+      shiftQuality: null,
     }
   }
 
@@ -342,6 +386,23 @@ export function dragTick(
 
   const topSpeed = Math.max(state.topSpeed, Math.abs(phys.speed))
 
+  // Redline hold accumulator. Resets to 0 whenever speed falls below the
+  // redline threshold for the *new* gear (so an upshift that opens the cap
+  // immediately drops the hold to 0 because the same speed is now below
+  // the wider band), and also resets on a shift this tick. Otherwise it
+  // counts up by dt so the player has been "bogging at the redline" for
+  // gearPeakHoldSec seconds.
+  const currentGearCap = Math.max(
+    1,
+    params.maxSpeed * manualGearSpec(gear).maxSpeedFactor,
+  )
+  const atRedline = Math.abs(phys.speed) >= currentGearCap * DRAG_REDLINE_RATIO
+  const gearPeakHoldSec = shiftEvent !== null
+    ? 0
+    : atRedline
+      ? state.gearPeakHoldSec + dtSec
+      : 0
+
   return {
     state: {
       x: phys.x,
@@ -363,8 +424,10 @@ export function dragTick(
       arcLengthS: newArcLength,
       gear,
       torqueCutSec,
+      gearPeakHoldSec,
     },
     finished,
     shiftEvent,
+    shiftQuality,
   }
 }

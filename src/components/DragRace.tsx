@@ -58,13 +58,17 @@ import { deriveDragCarParams } from '@/game/dragTuning'
 import { readPlayerInput } from '@/game/playerInput'
 import {
   dragTick,
+  DRAG_REDLINE_RATIO,
+  SHIFT_LATE_HOLD_SEC,
   handlePreCountdownInput,
   initDragGameState,
   startDragRace,
   type DragGameState,
   type DragLapCompleteEvent,
+  type DragShiftQuality,
   type DragTickConfig,
 } from '@/game/dragTick'
+import { manualGearSpec } from '@/game/transmission'
 import {
   heightAt,
   projectArcLengthOnSpawnAxis,
@@ -77,6 +81,8 @@ import type { NameplateSource } from '@/game/ghostNameplate'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
+import { DragShiftFlash } from './DragShiftFlash'
+import { DragRedlineTint } from './DragRedlineTint'
 import { Speedometer } from './Speedometer'
 import {
   DRAG_COUNTDOWN_TOTAL_MS,
@@ -183,6 +189,16 @@ export function DragRace({ slug }: DragRaceProps) {
   const [finishEvent, setFinishEvent] =
     useState<DragLapCompleteEvent | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
+  // Transient EARLY / PERFECT / LATE chip seeded from the rAF loop. The
+  // `triggeredAt` timestamp is included in the key so two same-quality
+  // upshifts in a row each restart the CSS animation. Cleared back to null
+  // after the animation duration so a stale chip never lingers across a
+  // restart.
+  const [shiftFlash, setShiftFlash] = useState<{
+    quality: DragShiftQuality
+    triggeredAt: number
+  } | null>(null)
+  const shiftFlashTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   // Captured once when startCountdown fires so a parent re-render during the
   // countdown phase does not reset the elapsed lamp animation. Cleared back
   // to null when we leave countdown.
@@ -257,6 +273,11 @@ export function DragRace({ slug }: DragRaceProps) {
     down: false,
     up: false,
   })
+  // Redline-bleed intensity in [0, 1] driven by the rAF loop. The
+  // DragRedlineTint overlay owns its own animation loop and reads this
+  // ref each frame; using a ref instead of React state keeps the 60 Hz
+  // pulse from re-rendering the rest of the HUD tree.
+  const redlineIntensityRef = useRef<number>(0)
 
   useEffect(() => {
     phaseRef.current = phase
@@ -491,6 +512,24 @@ export function DragRace({ slug }: DragRaceProps) {
           configRef.current,
         )
         state = result.state
+        if (result.shiftQuality !== null) {
+          // Schedule the chip and clear it after the animation finishes
+          // so a stale "PERFECT" doesn't linger across a restart. Any
+          // pending timer is cleared first so back-to-back shifts always
+          // get the full animation duration.
+          if (shiftFlashTimerRef.current) {
+            clearTimeout(shiftFlashTimerRef.current)
+          }
+          const triggeredAt = performance.now()
+          const quality = result.shiftQuality
+          setShiftFlash({ quality, triggeredAt })
+          shiftFlashTimerRef.current = setTimeout(() => {
+            setShiftFlash((current) =>
+              current && current.triggeredAt === triggeredAt ? null : current,
+            )
+            shiftFlashTimerRef.current = null
+          }, 900)
+        }
         if (result.finished && !finishedRef.current) {
           finishedRef.current = true
           setFinishEvent(result.finished)
@@ -499,6 +538,31 @@ export function DragRace({ slug }: DragRaceProps) {
       }
 
       stateRef.current = state
+
+      // Drive the redline-bleed overlay. Mix two signals: proximity to
+      // the current gear's cap (so the tint hints in as the player
+      // approaches the redline) and the gearPeakHoldSec accumulator
+      // (so the tint intensifies the longer they bog at the cap before
+      // shifting). The view is on a self-owned rAF loop reading the ref;
+      // we only write here.
+      if (ph === 'racing') {
+        const gMax = Math.max(
+          1,
+          paramsRef.current.maxSpeed * manualGearSpec(state.gear).maxSpeedFactor,
+        )
+        const speedRatio = Math.abs(state.speed) / gMax
+        const proximity = Math.max(
+          0,
+          Math.min(1, (speedRatio - DRAG_REDLINE_RATIO) / (1 - DRAG_REDLINE_RATIO)),
+        )
+        const holdBonus = Math.min(1, state.gearPeakHoldSec / SHIFT_LATE_HOLD_SEC)
+        redlineIntensityRef.current = Math.min(
+          1,
+          proximity * 0.55 + holdBonus * 0.6,
+        )
+      } else {
+        redlineIntensityRef.current = 0
+      }
 
       // Sync car group position / rotation. Apply hill height + pitch.
       const car = carGroupRef.current
@@ -628,6 +692,18 @@ export function DragRace({ slug }: DragRaceProps) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [path, strip])
 
+  // Clear the shift-flash timer on unmount so a stale setTimeout cannot
+  // fire after the component (and its setShiftFlash setter) has been
+  // disposed by a route change.
+  useEffect(() => {
+    return () => {
+      if (shiftFlashTimerRef.current) {
+        clearTimeout(shiftFlashTimerRef.current)
+        shiftFlashTimerRef.current = null
+      }
+    }
+  }, [])
+
   // Run the countdown lights, then start the race.
   const startCountdown = useCallback(() => {
     setPhase('countdown')
@@ -641,6 +717,12 @@ export function DragRace({ slug }: DragRaceProps) {
     topSpeedRef.current = 0
     setCountdownStartedAt(performance.now())
     setCountdownFouled(false)
+    setShiftFlash(null)
+    if (shiftFlashTimerRef.current) {
+      clearTimeout(shiftFlashTimerRef.current)
+      shiftFlashTimerRef.current = null
+    }
+    redlineIntensityRef.current = 0
     setHud({
       elapsedMs: 0,
       speed: 0,
@@ -818,13 +900,17 @@ export function DragRace({ slug }: DragRaceProps) {
       )}
 
       {phase === 'racing' && (
-        <DragHUD
-          elapsedMs={hud.elapsedMs}
-          fouled={hud.fouled}
-          reactionTimeMs={hud.reactionTimeMs}
-          splits={hud.splits}
-          gear={hud.gear}
-        />
+        <>
+          <DragRedlineTint intensityRef={redlineIntensityRef} />
+          <DragHUD
+            elapsedMs={hud.elapsedMs}
+            fouled={hud.fouled}
+            reactionTimeMs={hud.reactionTimeMs}
+            splits={hud.splits}
+            gear={hud.gear}
+          />
+          <DragShiftFlash event={shiftFlash} />
+        </>
       )}
 
       {(phase === 'racing' || phase === 'finished') &&

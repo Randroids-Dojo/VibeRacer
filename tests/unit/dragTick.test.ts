@@ -313,3 +313,129 @@ describe('dragTick', () => {
     expect(result.finished).toBeNull()
   })
 })
+
+describe('dragTick shift quality', () => {
+  // Gear-1 max-speed factor from MANUAL_GEAR_SPECS. Pinned here so the
+  // tests can compute a target gear cap (params.maxSpeed * factor)
+  // without re-importing the table.
+  const GEAR_1_MAX_FACTOR = 0.34
+
+  it("classifies an upshift well below the gear cap as 'early'", () => {
+    const setup = setupRace('salt-flats')
+    // Gear 1 cap = params.maxSpeed * 0.34. We sit at ~40% of that, well
+    // below the 0.85 perfect threshold.
+    const earlySpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.4
+    const state = { ...setup.state, speed: earlySpeed, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('early')
+  })
+
+  it("classifies an upshift near the cap with no bog as 'perfect'", () => {
+    const setup = setupRace('salt-flats')
+    const perfectSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.95
+    const state = { ...setup.state, speed: perfectSpeed, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('perfect')
+  })
+
+  it("classifies an upshift after bogging at the cap as 'late'", () => {
+    const setup = setupRace('salt-flats')
+    const atCapSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    const state = {
+      ...setup.state,
+      speed: atCapSpeed,
+      gear: 1,
+      gearPeakHoldSec: 0.5,
+    }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('up')
+    expect(result.shiftQuality).toBe('late')
+  })
+
+  it('produces no quality on a downshift', () => {
+    const setup = setupRace('salt-flats')
+    const state = { ...setup.state, speed: 5, gear: 3, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftDown: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftEvent).toBe('down')
+    expect(result.shiftQuality).toBeNull()
+  })
+
+  it('clears gearPeakHoldSec on a shift even if speed is still at the cap', () => {
+    const setup = setupRace('salt-flats')
+    const atCap = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    const state = {
+      ...setup.state,
+      speed: atCap,
+      gear: 1,
+      gearPeakHoldSec: 0.6,
+    }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.state.gearPeakHoldSec).toBe(0)
+  })
+
+  it('accumulates gearPeakHoldSec while the player bogs at the cap', () => {
+    const setup = setupRace('salt-flats')
+    // Pre-load the car near the gear 1 cap so we don't have to integrate
+    // up to it before the hold counter starts ticking. Anything >= 0.95
+    // of the cap is "in the redline" per DRAG_REDLINE_RATIO.
+    const atCap = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR
+    let state = { ...setup.state, speed: atCap }
+    let nowMs = 16
+    for (let i = 0; i < 40; i++) {
+      const result = dragTick(
+        state,
+        { throttle: 1, steer: 0, handbrake: false },
+        16,
+        nowMs,
+        setup.path,
+        setup.derived.params,
+        setup.config,
+      )
+      state = result.state
+      nowMs += 16
+    }
+    expect(state.gearPeakHoldSec).toBeGreaterThan(0.4)
+  })
+})
