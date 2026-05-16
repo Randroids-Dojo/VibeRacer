@@ -362,8 +362,26 @@ function TourRacePageInner() {
   useEffect(() => {
     if (showIntro) return
     if (hudPhase !== 'intro') return
-    pendingRaceStartRef.current = performance.now()
-    setHudPhase('racing')
+    // RaceCanvas's reset block explicitly nulls pendingRaceStartRef
+    // while it's consuming a pendingReset pulse, so if we arm the
+    // race-start pulse in the same React tick we just requested a
+    // reset, the reset can wipe it before the next frame and the
+    // player never gets driving control back. Poll until the reset
+    // ref is clear, then fire the start pulse on the same frame.
+    let cancelled = false
+    const armWhenResetDone = () => {
+      if (cancelled) return
+      if (pendingResetRef.current) {
+        window.requestAnimationFrame(armWhenResetDone)
+        return
+      }
+      pendingRaceStartRef.current = performance.now()
+      setHudPhase('racing')
+    }
+    window.requestAnimationFrame(armWhenResetDone)
+    return () => {
+      cancelled = true
+    }
   }, [showIntro, hudPhase])
 
   // Route-level controls that are not part of the shared driving key map.
