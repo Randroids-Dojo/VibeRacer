@@ -934,58 +934,86 @@ export function DragRace({ slug }: DragRaceProps) {
     ghostSourceRef.current = ghost.source === 'none' ? 'auto' : ghost.source
   }, [ghost.source])
 
-  // Push the active ghost's "WHO + TIME" tuple into a ref so the rAF loop
-  // can drive the floating nameplate without re-rendering. The matching
-  // entry is the leaderboard row whose nonce matches the active ghost.
-  // null hides the plate (e.g. when the leaderboard is empty or the
-  // selected entry has no nonce).
-  useEffect(() => {
-    if (!ghost.nonce) {
-      ghostMetaRef.current = null
-      return
-    }
-    const entry = leaderboard.find((e) => e.nonce === ghost.nonce)
-    if (!entry) {
-      ghostMetaRef.current = null
-      return
-    }
-    ghostMetaRef.current = {
-      initials: entry.initials,
-      lapTimeMs: entry.lapTimeMs,
-    }
-  }, [ghost.nonce, leaderboard])
-
-  // Load the ghost's replay whenever the selected nonce changes. Best
-  // effort: a 404 (legacy entry without a stored replay) just leaves
-  // ghostReplayRef null so the rAF loop hides the ghost mesh.
+  // Load the ghost's replay whenever the selected nonce changes. The
+  // primary candidate comes from `selectDragGhost`; if its byNonce lookup
+  // 404s (e.g., a legacy entry submitted before drag replay recording
+  // shipped, or a row with no stored replay for any other reason), walk
+  // through the remaining leaderboard entries in best-time order and use
+  // the first one that does have a replay. The matching nameplate meta is
+  // updated alongside so the floating "WHO + TIME" plate tracks whichever
+  // candidate we ended up loading.
   useEffect(() => {
     if (!ghost.nonce) {
       ghostReplayRef.current = null
+      ghostMetaRef.current = null
       return undefined
     }
+    // Sorted candidate queue: primary first, then everyone else with a
+    // nonce, fastest to slowest. Skip entries without a nonce since
+    // byNonce requires one. Dedupe so the primary is not retried at the
+    // bottom of the queue.
+    const sortedRest = [...leaderboard]
+      .filter((e) => e.nonce !== null && e.nonce !== ghost.nonce)
+      .sort((a, b) => a.lapTimeMs - b.lapTimeMs || a.rank - b.rank)
+    const primary = leaderboard.find((e) => e.nonce === ghost.nonce) ?? null
+    const queue: Array<{ nonce: string; initials: string; lapTimeMs: number }> = []
+    if (primary && primary.nonce) {
+      queue.push({
+        nonce: primary.nonce,
+        initials: primary.initials,
+        lapTimeMs: primary.lapTimeMs,
+      })
+    } else {
+      // primary entry is no longer on the leaderboard; fall through to
+      // the rest of the board.
+      queue.push({
+        nonce: ghost.nonce,
+        initials: '???',
+        lapTimeMs: 0,
+      })
+    }
+    for (const entry of sortedRest) {
+      if (entry.nonce) {
+        queue.push({
+          nonce: entry.nonce,
+          initials: entry.initials,
+          lapTimeMs: entry.lapTimeMs,
+        })
+      }
+    }
+
     let cancelled = false
-    void fetch(
-      `/api/replay/byNonce?slug=${encodeURIComponent(slug)}&v=${versionHash}&nonce=${ghost.nonce}`,
-    )
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled) return
-        if (!data || typeof data !== 'object') {
-          ghostReplayRef.current = null
+    void (async () => {
+      for (const candidate of queue) {
+        try {
+          const res = await fetch(
+            `/api/replay/byNonce?slug=${encodeURIComponent(slug)}&v=${versionHash}&nonce=${candidate.nonce}`,
+          )
+          if (cancelled) return
+          if (!res.ok) continue
+          const data = (await res.json()) as unknown
+          if (cancelled) return
+          if (!data || typeof data !== 'object') continue
+          ghostReplayRef.current = data as Replay
+          ghostMetaRef.current = {
+            initials: candidate.initials,
+            lapTimeMs: candidate.lapTimeMs,
+          }
           return
+        } catch {
+          if (cancelled) return
         }
-        // Trust the API: it already validated through ReplaySchema before
-        // returning. Storing the raw object keeps the per-frame lookup a
-        // simple array index without re-parsing.
-        ghostReplayRef.current = data as Replay
-      })
-      .catch(() => {
-        if (!cancelled) ghostReplayRef.current = null
-      })
+      }
+      // No candidate had a replay; clear so the rAF loop falls back to
+      // the parked ghost.
+      if (!cancelled) {
+        ghostReplayRef.current = null
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [ghost.nonce, slug, versionHash])
+  }, [ghost.nonce, leaderboard, slug, versionHash])
 
   return (
     <div style={dragRootStyle}>
