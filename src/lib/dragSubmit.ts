@@ -1,6 +1,7 @@
 import type { DragLapCompleteEvent } from '@/game/dragTick'
 import type { DragLoadout } from './dragParts'
 import type { DragStripSlug } from './dragStrips'
+import type { Replay } from './replay'
 import { readStoredInitials } from './initials'
 
 // Submit a finished drag run to the leaderboard. Mirrors the closed-loop
@@ -17,6 +18,10 @@ export interface DragSubmitArgs {
   versionHash: string
   finishEvent: DragLapCompleteEvent
   loadout: DragLoadout
+  // Optional recorded position trail. When present the server persists it
+  // under the lap's nonce so a later race can render this run as a ghost.
+  // Mirrors the closed-loop replay submission shape.
+  replay?: Replay
 }
 
 interface RaceStartResponse {
@@ -41,7 +46,7 @@ async function mintRaceToken(
 }
 
 export async function submitDragRun(args: DragSubmitArgs): Promise<void> {
-  const { slug, versionHash, finishEvent, loadout } = args
+  const { slug, versionHash, finishEvent, loadout, replay } = args
   const token = await mintRaceToken(slug, versionHash)
   if (!token) return
 
@@ -61,6 +66,7 @@ export async function submitDragRun(args: DragSubmitArgs): Promise<void> {
     topSpeed: finishEvent.topSpeed,
     fouled: finishEvent.fouled,
     reactionTimeMs: finishEvent.reactionTimeMs ?? undefined,
+    replay,
   }
   await fetch(
     `/api/race/submit?slug=${encodeURIComponent(slug)}&v=${versionHash}`,

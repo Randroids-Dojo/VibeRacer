@@ -16,7 +16,11 @@ import {
   type Group,
   type Scene,
 } from 'three'
-import { type Replay } from '@/lib/replay'
+import {
+  MAX_REPLAY_SAMPLES,
+  REPLAY_SAMPLE_MS,
+  type Replay,
+} from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
@@ -377,6 +381,16 @@ export function DragRace({ slug }: DragRaceProps) {
   const ghostMetaRef = useRef<GhostMeta | null>(null)
   const ghostSourceRef = useRef<NameplateSource>('top')
 
+  // Replay recorder. The rAF loop pushes [x, z, heading] triples at
+  // REPLAY_SAMPLE_MS cadence from raceStartMs so a finished run can be
+  // stored as a ghost for the next racer to chase. The buffer is reset on
+  // every startCountdown and the completed Replay is parked in
+  // `recordedReplayRef` so the submit effect can read it after the
+  // 'finished' phase fires.
+  const recordingBufferRef = useRef<number[]>([])
+  const nextSampleAtRef = useRef<number>(0)
+  const recordedReplayRef = useRef<Replay | null>(null)
+
   // Live speed values surfaced to the bottom-center Speedometer overlay.
   // The overlay drives its own rAF loop, so writing into refs lets the
   // gauge needle and peak marker update at 60 Hz without re-rendering the
@@ -570,7 +584,40 @@ export function DragRace({ slug }: DragRaceProps) {
             shiftFlashTimerRef.current = null
           }, 900)
         }
+        // Sample the player's pose into the recording buffer at fixed
+        // cadence. Push every slot we crossed this frame so a long dt does
+        // not create gaps. The cap mirrors RaceCanvas: stop sampling at
+        // MAX_REPLAY_SAMPLES so the persisted blob stays bounded.
+        if (state.raceStartMs !== null) {
+          const tLap = performance.now() - state.raceStartMs
+          const buf = recordingBufferRef.current
+          while (
+            tLap >= nextSampleAtRef.current &&
+            buf.length / 3 < MAX_REPLAY_SAMPLES
+          ) {
+            buf.push(state.x, state.z, state.heading)
+            nextSampleAtRef.current += REPLAY_SAMPLE_MS
+          }
+        }
         if (result.finished && !finishedRef.current) {
+          // Snapshot the recording into a Replay so the submit effect can
+          // forward it. ReplaySchema requires at least one sample; very
+          // short runs that never crossed a sample slot are skipped.
+          const buf = recordingBufferRef.current
+          const sampleCount = Math.floor(buf.length / 3)
+          if (sampleCount >= 1) {
+            const samples: Array<[number, number, number]> = new Array(
+              sampleCount,
+            )
+            for (let i = 0; i < sampleCount; i++) {
+              const o = i * 3
+              samples[i] = [buf[o], buf[o + 1], buf[o + 2]]
+            }
+            recordedReplayRef.current = {
+              samples,
+              lapTimeMs: result.finished.finishTimeMs,
+            }
+          }
           finishedRef.current = true
           setFinishEvent(result.finished)
           setPhase('finished')
@@ -785,6 +832,13 @@ export function DragRace({ slug }: DragRaceProps) {
     goAtMsRef.current = null
     speedRef.current = 0
     topSpeedRef.current = 0
+    // Wipe the previous lap's recording so the next finish only captures
+    // the upcoming attempt. nextSampleAt is anchored at 0 so the first
+    // sample lands at t=0 (GO) and successive samples step at the fixed
+    // cadence.
+    recordingBufferRef.current = []
+    nextSampleAtRef.current = 0
+    recordedReplayRef.current = null
     setCountdownStartedAt(performance.now())
     setCountdownFouled(false)
     setShiftFlash(null)
@@ -853,6 +907,7 @@ export function DragRace({ slug }: DragRaceProps) {
       versionHash,
       finishEvent,
       loadout,
+      replay: recordedReplayRef.current ?? undefined,
     })
       .then(async () => {
         const entries = await refreshLeaderboard()
