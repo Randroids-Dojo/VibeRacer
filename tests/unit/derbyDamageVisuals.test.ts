@@ -100,7 +100,10 @@ describe('createDamageVisualizer', () => {
   it('applyHit below the threshold does not detach a panel', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    const result = viz.applyHit(10, 1, 0, 0, () => 0.5)
+    // Threshold sits low (around 4) so any meaningful hit sheds a panel;
+    // grazes under that floor stay attached. Use 2 so the test does not
+    // become brittle to small future tuning bumps within the graze band.
+    const result = viz.applyHit(2, 1, 0, 0, () => 0.5)
     expect(result).toBeNull()
     expect(asset.submeshes.door_l!.visible).toBe(true)
     viz.dispose()
@@ -137,6 +140,23 @@ describe('createDamageVisualizer', () => {
     expect(first?.name).toBe('hood')
     const second = viz.applyHit(40, 1, 0, 0, () => 0.5)
     expect(second?.name).not.toBe('hood')
+    viz.dispose()
+  })
+
+  it('flashes paint toward white on a hit and fades back', () => {
+    const asset = freshAsset('car')
+    const viz = createDamageVisualizer(asset)
+    const bodyMesh = asset.submeshes.body as Mesh
+    const bodyMat = bodyMesh.material as MeshStandardMaterial
+    // The placeholder paint is saturated red (r=1). Pick a non-saturated
+    // channel (green) to assert the lerp toward white is observable.
+    const g0 = bodyMat.color.g
+    viz.applyFlash(0.8)
+    const gFlash = bodyMat.color.g
+    expect(gFlash).toBeGreaterThan(g0)
+    // Decay enough frames for the flash to fully drain.
+    for (let i = 0; i < 60; i++) viz.tickFlash(1 / 30)
+    expect(bodyMat.color.g).toBeCloseTo(g0, 5)
     viz.dispose()
   })
 

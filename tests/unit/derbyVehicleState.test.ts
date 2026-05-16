@@ -4,7 +4,10 @@ import {
   derbyScorePoints,
   initCarState,
   isDestroyed,
+  isStunned,
   rankCars,
+  STUN_DURATION_MAX_MS,
+  stunDurationForHit,
   type DerbyCarState,
 } from '@/game/derbyVehicleState'
 import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
@@ -115,6 +118,48 @@ describe('rankCars', () => {
     const c1 = freshCar(1, 'car')
     expect(rankCars([c0, c1])).toEqual([0, 1])
     expect(rankCars([c1, c0])).toEqual([0, 1])
+  })
+})
+
+describe('stunDurationForHit', () => {
+  it('returns zero for sub-threshold grazes', () => {
+    expect(stunDurationForHit(0)).toBe(0)
+    expect(stunDurationForHit(1)).toBe(0)
+    expect(stunDurationForHit(Number.NaN)).toBe(0)
+  })
+
+  it('scales linearly up to the cap', () => {
+    const small = stunDurationForHit(4)
+    const big = stunDurationForHit(8)
+    expect(small).toBeGreaterThan(0)
+    expect(big).toBeGreaterThan(small)
+    expect(stunDurationForHit(20)).toBe(STUN_DURATION_MAX_MS)
+  })
+})
+
+describe('stun on hit', () => {
+  it('sets stunUntilMs after a non-trivial hit', () => {
+    const car = freshCar(0, 'car')
+    expect(car.stunUntilMs).toBe(Number.NEGATIVE_INFINITY)
+    applyDamage(car, 12, 1, 1000)
+    expect(car.stunUntilMs).toBe(1000 + STUN_DURATION_MAX_MS)
+    expect(isStunned(car, 1000 + 100)).toBe(true)
+    expect(isStunned(car, 1000 + STUN_DURATION_MAX_MS + 1)).toBe(false)
+  })
+
+  it('extends stun on a second hit landing inside the window', () => {
+    const car = freshCar(0, 'car')
+    applyDamage(car, 12, 1, 1000)
+    const firstStunUntil = car.stunUntilMs
+    applyDamage(car, 12, 1, 1100)
+    expect(car.stunUntilMs).toBeGreaterThan(firstStunUntil)
+  })
+
+  it('does not stun on a graze under the floor', () => {
+    const car = freshCar(0, 'car')
+    applyDamage(car, 1, 1, 1000)
+    expect(car.stunUntilMs).toBe(Number.NEGATIVE_INFINITY)
+    expect(isStunned(car, 1000)).toBe(false)
   })
 })
 

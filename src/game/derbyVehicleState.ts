@@ -34,6 +34,11 @@ export interface DerbyCarState {
   // -Infinity means "never hit". Used by the AI Recover state and by the
   // panel-detach trigger.
   lastHitAtMs: number
+  // Round-relative ms after which the car is no longer stunned. While
+  // stunned (elapsedMs < stunUntilMs), derbyTick scales the car's throttle
+  // and steer inputs toward zero so the victim of a clean hit feels
+  // briefly sluggish. -Infinity until the first hit lands.
+  stunUntilMs: number
   // carIdx of whichever car landed the killing blow. null until destroyed.
   destroyedByIdx: number | null
 }
@@ -53,8 +58,40 @@ export function initCarState(
     aliveMs: 0,
     kills: 0,
     lastHitAtMs: Number.NEGATIVE_INFINITY,
+    stunUntilMs: Number.NEGATIVE_INFINITY,
     destroyedByIdx: null,
   }
+}
+
+// Maximum stun duration in ms, awarded for a max-damage hit. Smaller hits
+// receive a proportionally shorter stun. Tuned so a soft graze does not
+// freeze a chase but a clean ram briefly takes the wheel out of the
+// victim's hands.
+export const STUN_DURATION_MAX_MS = 380
+// Minimum hit amount that produces any stun at all. Below this the hit is
+// a graze and we skip the stun so light side-rubs don't kill momentum.
+export const STUN_DAMAGE_MIN = 2
+// Reference damage value used to map an individual hit amount to a stun
+// duration. Scales with the per-hit clamp in derbyDamage so the worst
+// possible hit reaches STUN_DURATION_MAX_MS.
+export const STUN_DAMAGE_REFERENCE = 12
+// Multiplier applied to throttle and steer while stunned. 0 = total
+// freeze (too punishing); 0.25 leaves enough authority to finish a turn
+// but kills any acceleration recovery for the duration.
+export const STUN_INPUT_SCALE = 0.25
+
+// Convert a clamped hit amount to a stun-window duration in ms. Linear
+// between STUN_DAMAGE_MIN and STUN_DAMAGE_REFERENCE; clamps at
+// STUN_DURATION_MAX_MS for hits at or above the reference.
+export function stunDurationForHit(amount: number): number {
+  if (!Number.isFinite(amount) || amount <= STUN_DAMAGE_MIN) return 0
+  const span = Math.max(0.001, STUN_DAMAGE_REFERENCE - STUN_DAMAGE_MIN)
+  const t = Math.min(1, (amount - STUN_DAMAGE_MIN) / span)
+  return Math.round(STUN_DURATION_MAX_MS * t)
+}
+
+export function isStunned(state: DerbyCarState, nowMs: number): boolean {
+  return nowMs < state.stunUntilMs
 }
 
 export function isDestroyed(state: DerbyCarState): boolean {
@@ -79,6 +116,16 @@ export function applyDamage(
     return { destroyed: false, clampedAmount: 0 }
   }
   state.lastHitAtMs = nowMs
+  // Briefly stun the victim. Stun extends rather than overrides so two
+  // hits in quick succession produce a longer fog window than one. Apply
+  // before the destruction check: a destroyed car has no inputs to stun
+  // so the field is harmless to set, and clearing it on the dead path
+  // would require a special case.
+  const stunMs = stunDurationForHit(clamped)
+  if (stunMs > 0) {
+    const candidate = nowMs + stunMs
+    if (candidate > state.stunUntilMs) state.stunUntilMs = candidate
+  }
   state.health = Math.max(0, state.health - clamped)
   if (state.health === 0) {
     state.status = 'destroyed'

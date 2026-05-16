@@ -1,4 +1,11 @@
-import { Box3, Mesh, type Object3D } from 'three'
+import {
+  Box3,
+  BoxGeometry,
+  Color,
+  Mesh,
+  MeshStandardMaterial,
+  type Object3D,
+} from 'three'
 
 // Tiny ballistic integrator for detached vehicle panels in derby mode. A
 // piece of debris is a Three.js Object3D plus a position/velocity/spin
@@ -154,6 +161,49 @@ export function tickDebris(
       item.alive = false
     }
   }
+}
+
+// Build a small "shrapnel" chunk: a tiny box that gets spawned in groups
+// alongside any meaningful hit so the contact reads as a shower of broken
+// bits even when no panel comes off. Geometry and material are owned by
+// the chunk and disposed when the integrator culls it (see
+// disposeChunkMesh below); the chunk is otherwise a plain Mesh that
+// works with spawnDebris() unchanged.
+export function buildShrapnelChunk(
+  rng: () => number,
+  baseColor = 0x9a8268,
+): Mesh {
+  // Random box size in [0.18, 0.4]: small enough to read as debris, big
+  // enough to be visible against the dirt at chase-camera distance.
+  const sx = 0.18 + rng() * 0.22
+  const sy = 0.12 + rng() * 0.16
+  const sz = 0.18 + rng() * 0.22
+  const geo = new BoxGeometry(sx, sy, sz)
+  // Shade the base color randomly to give a chunky-junkyard look (varied
+  // browns / grays / dull metals) without having to author a texture.
+  const tint = new Color(baseColor)
+  const shade = 0.7 + rng() * 0.6
+  tint.multiplyScalar(shade)
+  const mat = new MeshStandardMaterial({
+    color: tint,
+    roughness: 0.85,
+    metalness: 0.15,
+  })
+  const mesh = new Mesh(geo, mat)
+  mesh.name = 'derbyShrapnel'
+  return mesh
+}
+
+// Free the geometry and material a shrapnel chunk owns. Must be called
+// before the chunk's Object3D is dropped from the scene; without it the
+// per-hit shrapnel pile leaks a few KB of GPU buffers per frame in a
+// busy round.
+export function disposeChunkMesh(object: Object3D): void {
+  if (!(object instanceof Mesh)) return
+  object.geometry.dispose()
+  const m = object.material
+  if (Array.isArray(m)) for (const item of m) item.dispose()
+  else m.dispose()
 }
 
 // Convenience: scrub the dead items out of the array, returning the count

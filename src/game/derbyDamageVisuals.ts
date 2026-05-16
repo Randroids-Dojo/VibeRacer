@@ -52,10 +52,12 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
   critical: 0.5,
 }
 
-// Roughly the upper third of a clamped hit (MAX_HIT_DAMAGE in derbyDamage).
-// Tuned so a hard ram pops an extra panel on top of the tier-based
-// progressive detach below; mild side-bumps stay below the threshold.
-const PANEL_DETACH_DAMAGE_THRESHOLD = 12
+// Lowered for v2: any meaningful clean hit pops a panel so the player
+// sees parts come off mid-fight instead of only at tier transitions or
+// at the per-hit damage cap. Mild graze contacts still stay below the
+// threshold, and the per-pair damage cooldown in derbyTick prevents a
+// single sustained ram from stripping every panel inside one second.
+const PANEL_DETACH_DAMAGE_THRESHOLD = 4
 // Number of detachable panels that should still be attached when the car
 // is at each damage tier. update() walks the panel sequence and detaches
 // extras whenever the car's tier drops past a transition. Critical = 0
@@ -103,6 +105,13 @@ export interface DerbyDamageVisualizer {
     victimHeading: number,
     rng: () => number,
   ): Object3D | null
+  // Trigger a brief paint flash (white blend that fades over ~150 ms).
+  // Stronger hits flash brighter. The flash decays in tickFlash() so the
+  // canvas can call applyFlash() once per hit without managing timers.
+  applyFlash(strength: number): void
+  // Advance the flash decay by dtSec. Idempotent and cheap; the canvas
+  // calls this every frame regardless of whether a flash is active.
+  tickFlash(dtSec: number): void
   // Blow off every still-attached detachable panel. Called once when a car
   // is destroyed so the wreck sheds the rest of its panels into the world
   // (regardless of how few hits got it to zero). Returns the list of
@@ -199,13 +208,36 @@ export function createDamageVisualizer(
     (p) => asset.submeshes[p] !== undefined,
   )
   let lastTier: DamageTier = 'pristine'
+  // Hit-flash state. flashLevel in [0..1] tracks how strongly the paint
+  // is currently blended toward white; the canvas pumps applyFlash() to
+  // raise it on each hit, and tickFlash() decays it linearly each frame
+  // until it reaches zero. We re-apply the tier color combined with the
+  // flash blend whenever flashLevel changes so the same color update path
+  // handles both effects.
+  let flashLevel = 0
+  let lastAppliedFlash = 0
+  const FLASH_COLOR = new Color(0xffffff)
+  const FLASH_DECAY_PER_SEC = 6
 
-  function setTier(tier: DamageTier): void {
-    const mul = TIER_PAINT_MULTIPLIER[tier]
+  function repaint(): void {
+    const mul = TIER_PAINT_MULTIPLIER[lastTier]
+    const flash = flashLevel
     for (const entry of paintEntries) {
       const mat = entry.mesh.material as MeshStandardMaterial
-      mat.color.copy(entry.originalColor).multiplyScalar(mul)
+      mat.color
+        .copy(entry.originalColor)
+        .multiplyScalar(mul)
+        .lerp(FLASH_COLOR, flash)
     }
+    lastAppliedFlash = flash
+  }
+
+  function setTier(tier: DamageTier): void {
+    lastTier = tier
+    // Repaint applies the new tier's paint multiplier alongside the
+    // current flash level so a flash that's still mid-decay is preserved
+    // when a tier change lands on the same frame.
+    repaint()
     // Headlights break first; then taillights at heavy.
     const breakHeadlights = tier === 'moderate' || tier === 'heavy' || tier === 'critical'
     const breakTaillights = tier === 'heavy' || tier === 'critical'
@@ -235,7 +267,6 @@ export function createDamageVisualizer(
       fire.visible = false
       fireMat.opacity = 0
     }
-    lastTier = tier
   }
 
   function pickPanelByAngle(
@@ -332,6 +363,25 @@ export function createDamageVisualizer(
       const choice = pickPanelByAngle(worldNx, worldNz, victimHeading)
       if (choice === null) return null
       return detachPanel(choice)
+    },
+    applyFlash(strength) {
+      // Hits stack: a second hit during an active flash drives the level
+      // back up to its peak rather than overwriting the decay that's
+      // still in progress.
+      const target = Math.max(0, Math.min(1, strength))
+      if (target > flashLevel) flashLevel = target
+      repaint()
+    },
+    tickFlash(dtSec) {
+      if (flashLevel <= 0) {
+        // Repaint when the flash JUST settled to ensure paint is back to
+        // tier color even if a fractional residue stayed in the
+        // multiplier accumulator.
+        if (lastAppliedFlash > 0) repaint()
+        return
+      }
+      flashLevel = Math.max(0, flashLevel - FLASH_DECAY_PER_SEC * dtSec)
+      repaint()
     },
     detachAllRemaining() {
       const out: Object3D[] = []
