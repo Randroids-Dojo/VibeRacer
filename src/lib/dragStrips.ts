@@ -35,7 +35,7 @@ export const DRAG_STRIP_SLUGS = [
 export const DragStripSlugSchema = z.enum(DRAG_STRIP_SLUGS)
 export type DragStripSlug = z.infer<typeof DragStripSlugSchema>
 
-const DRAG_STRIP_FORMAT_VERSION = 1
+const DRAG_STRIP_FORMAT_VERSION = 2
 
 export interface DragStripConfig {
   slug: DragStripSlug

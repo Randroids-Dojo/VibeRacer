@@ -207,10 +207,10 @@ export function dragTick(
     }
   }
 
-  // Drag races opt out of the road-mode quartic taper (last arg = 1). Why:
-  // dragTuning (firstGearFactor, rpmFactor, weightFactor) was balanced around
-  // a linear accel model, and existing drag PBs assume that timing. Until
-  // drag is re-tuned against the curve, pass 1 to keep behavior identical.
+  // Drag uses the road-mode quartic accel taper. The taper plus a low base
+  // accel make the car spend most of the strip squeezing the last few
+  // percent of top speed out against drag, so an 800 m strip is genuinely
+  // needed to approach ~200 mph.
   const phys = stepPhysics(
     {
       x: state.x,
@@ -226,7 +226,6 @@ export function dragTick(
     foulPenaltyAccelFactor,
     1,
     slopeAccelTerm,
-    1,
   )
 
   const newCell = worldToCell(phys.x, phys.z)

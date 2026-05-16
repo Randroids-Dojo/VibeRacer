@@ -23,6 +23,14 @@ export const RPM_GAIN = 0.35
 // effects.
 export const GRAVITY = 9.81
 
+// Drag-mode base values. Road racing uses DEFAULT_CAR_PARAMS; drag picks
+// its own ceiling and acceleration so a sprint car can chase ~200 mph
+// (90 m/s * MPS_TO_MPH ≈ 201). Accel is low enough that even on the
+// longest strip (salt-flats, 800 m) the default loadout is still
+// gaining mph at the finish under the quartic taper dragTick now uses.
+export const DRAG_BASE_MAX_SPEED = 90
+export const DRAG_BASE_ACCEL = 10
+
 export interface LaunchProfile {
   // Acceleration multiplier applied immediately after a jump-start foul. The
   // multiplier decays exponentially toward 1 at decayPerSec; minDuration
@@ -93,8 +101,8 @@ export function deriveDragCarParams(
   const accelMul = weightFactor * rpmFactor * firstGearFactor * surfaceMul
   const maxSpeedMul = topGearFactor * surfaceMul
 
-  const totalAccel = DEFAULT_CAR_PARAMS.accel * accelMul
-  const totalMaxSpeed = DEFAULT_CAR_PARAMS.maxSpeed * maxSpeedMul
+  const totalAccel = DRAG_BASE_ACCEL * accelMul
+  const totalMaxSpeed = DRAG_BASE_MAX_SPEED * maxSpeedMul
 
   const params: CarParams = {
     maxSpeed: totalMaxSpeed,
