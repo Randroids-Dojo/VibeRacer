@@ -24,12 +24,14 @@ export const RPM_GAIN = 0.35
 export const GRAVITY = 9.81
 
 // Drag-mode base values. Road racing uses DEFAULT_CAR_PARAMS; drag picks
-// its own ceiling and acceleration so a sprint car can chase ~200 mph
-// (90 m/s * MPS_TO_MPH ≈ 201). Accel is low enough that even on the
-// longest strip (salt-flats, 800 m) the default loadout is still
-// gaining mph at the finish under the quartic taper dragTick now uses.
+// its own ceiling and acceleration so the stock loadout caps at ~200 mph
+// (90 m/s * MPS_TO_MPH ≈ 201). Base accel is low because drag now runs a
+// 5-gear manual box: the player times shifts and the strip's length, not
+// raw accel, gates how close they get to the cap. Salt Flats (800 m) is
+// the only strip on which the default loadout can reach the cap, and only
+// when shifts are perfect.
 export const DRAG_BASE_MAX_SPEED = 90
-export const DRAG_BASE_ACCEL = 10
+export const DRAG_BASE_ACCEL = 5
 
 export interface LaunchProfile {
   // Acceleration multiplier applied immediately after a jump-start foul. The
@@ -89,7 +91,11 @@ export function deriveDragCarParams(
   // Numerically higher first-gear ratio gives stronger off-line acceleration.
   const firstGearFactor = clamp(transmission.firstGearRatio / 2.5, 0.7, 1.5)
   // Numerically lower top-gear ratio is overdrive and yields higher top end.
-  const topGearFactor = clamp(0.7 / transmission.topGearRatio, 0.7, 1.6)
+  // Numerator picks 0.85 so the stock 'standard' transmission (topGearRatio
+  // 0.85) lands at 1.0 -- the default loadout caps at DRAG_BASE_MAX_SPEED
+  // exactly. Tighter clamp ceiling keeps the long-gear setup from running
+  // away to absurd numbers when stacked with a high surface multiplier.
+  const topGearFactor = clamp(0.85 / transmission.topGearRatio, 0.7, 1.3)
 
   const surfaceKey = surfaceFromBiomeWeather(strip)
   const surfaceMul = clamp(

@@ -13,15 +13,28 @@ import {
   slopeAt,
   type VerticalProfile,
 } from './dragVerticalProfile'
+import {
+  DEFAULT_MANUAL_GEAR,
+  manualGearSpec,
+  shiftManualGear,
+} from './transmission'
 
 // Drag racing tick. Mirrors the closed-loop tick.ts shape but tailored to
-// straight-line sprints: no lap repeats, no manual gearing, no auto-restart
-// on a wrap-around. Adds three drag-specific concerns: a foul flag and an
-// associated decaying acceleration multiplier (jump-start dampening), a
-// per-frame slope-induced acceleration term derived from the strip's
-// vertical profile and the car's mass, and a finish freeze on the final
-// checkpoint that locks the timer until the parent component decides what
-// to do next.
+// straight-line sprints: no lap repeats, no auto-restart on a wrap-around.
+// Drag mode forces a 5-gear manual box (the player shifts; auto is not
+// offered) so reaching the strip's top end is a timing task, not a
+// hold-the-pedal task. Adds three further drag-specific concerns: a foul
+// flag and an associated decaying acceleration multiplier (jump-start
+// dampening), a per-frame slope-induced acceleration term derived from
+// the strip's vertical profile and the car's mass, and a finish freeze on
+// the final checkpoint that locks the timer until the parent component
+// decides what to do next.
+
+// Brief torque cut on every shift -- mirrors tick.ts. ~110 ms gives the
+// upshift a perceptible "click" without feeling like input lag on a 15 s
+// drag run that may chain four upshifts.
+export const DRAG_SHIFT_TORQUE_CUT_SEC = 0.11
+export const DRAG_SHIFT_TORQUE_CUT_THRUST = 0.5
 
 export interface DragGameState {
   x: number
@@ -41,6 +54,17 @@ export interface DragGameState {
   topSpeed: number
   reactionTimeMs: number | null
   arcLengthS: number
+  // Manual gearbox state. Drag mode runs forced manual: gear starts at 1
+  // and only moves when the player presses shiftDown / shiftUp. The
+  // torqueCutSec counter dampens accel for ~110 ms after every shift so
+  // the cut reads in the chassis, not just the audio.
+  gear: number
+  torqueCutSec: number
+}
+
+export interface DragTickInput extends PhysicsInput {
+  shiftDown?: boolean
+  shiftUp?: boolean
 }
 
 export interface DragLapCompleteEvent {
@@ -54,6 +78,9 @@ export interface DragLapCompleteEvent {
 export interface DragTickResult {
   state: DragGameState
   finished: DragLapCompleteEvent | null
+  // 'up' or 'down' on the frame a shift fires; null otherwise. Hosts forward
+  // this to SFX / camera bob in the same shape tick.ts uses.
+  shiftEvent: 'up' | 'down' | null
 }
 
 export interface DragTickConfig {
@@ -92,6 +119,8 @@ export function initDragGameState(path: TrackPath): DragGameState {
     topSpeed: 0,
     reactionTimeMs: null,
     arcLengthS: 0,
+    gear: DEFAULT_MANUAL_GEAR,
+    torqueCutSec: 0,
   }
 }
 
@@ -108,6 +137,8 @@ export function startDragRace(
     arcLengthS: 0,
     topSpeed: 0,
     reactionTimeMs: null,
+    gear: DEFAULT_MANUAL_GEAR,
+    torqueCutSec: 0,
   }
 }
 
@@ -152,7 +183,7 @@ function computeArcLengthFromSpawn(
 
 export function dragTick(
   state: DragGameState,
-  input: PhysicsInput,
+  input: DragTickInput,
   dtMs: number,
   nowMs: number,
   path: TrackPath,
@@ -164,6 +195,25 @@ export function dragTick(
   },
 ): DragTickResult {
   const dtSec = dtMs / 1000
+
+  // Forced-manual gearbox. Shifts are edge-triggered by the input booleans
+  // (the host is expected to debounce key repeats before calling). Drag
+  // never auto-shifts: missing a shift is a skill check, not something the
+  // game smooths over. The torque-cut counter drains every frame and
+  // re-seeds on a successful shift.
+  let gear = state.gear
+  let torqueCutSec = Math.max(0, state.torqueCutSec - dtSec)
+  let shiftEvent: 'up' | 'down' | null = null
+  if (state.raceStartMs !== null && state.finishedAtMs === null) {
+    let nextGear = gear
+    if (input.shiftDown) nextGear = shiftManualGear(nextGear, 'down')
+    if (input.shiftUp) nextGear = shiftManualGear(nextGear, 'up')
+    if (nextGear !== gear) {
+      shiftEvent = nextGear > gear ? 'up' : 'down'
+      torqueCutSec = DRAG_SHIFT_TORQUE_CUT_SEC
+      gear = nextGear
+    }
+  }
 
   // Decay foul penalty toward 1 (no penalty). The decay rate is the launch
   // profile's own; minDuration is enforced by clamping to the floor for the
@@ -199,18 +249,25 @@ export function dragTick(
     return {
       state: {
         ...state,
+        gear,
+        torqueCutSec,
         foulPenaltyAccelFactor,
         arcLengthS,
         lastCellKey: cellKey(cell.row, cell.col),
       },
       finished: null,
+      shiftEvent: null,
     }
   }
 
-  // Drag uses the road-mode quartic accel taper. The taper plus a low base
-  // accel make the car spend most of the strip squeezing the last few
-  // percent of top speed out against drag, so an 800 m strip is genuinely
-  // needed to approach ~200 mph.
+  // Per-gear accel and max speed factors. Linear accel curve (last arg = 1)
+  // because the player needs a clean cap to bounce off so the shift timing
+  // becomes a real skill check; the quartic taper's asymptote would never
+  // hit the gear ceiling and make shifts feel optional.
+  const gearSpec = manualGearSpec(gear)
+  const gearAccelMul = gearSpec.accelFactor * (
+    torqueCutSec > 0 ? DRAG_SHIFT_TORQUE_CUT_THRUST : 1
+  )
   const phys = stepPhysics(
     {
       x: state.x,
@@ -223,9 +280,10 @@ export function dragTick(
     dtSec,
     state.onTrack,
     params,
-    foulPenaltyAccelFactor,
-    1,
+    foulPenaltyAccelFactor * gearAccelMul,
+    gearSpec.maxSpeedFactor,
     slopeAccelTerm,
+    1,
   )
 
   const newCell = worldToCell(phys.x, phys.z)
@@ -303,7 +361,10 @@ export function dragTick(
       topSpeed,
       reactionTimeMs,
       arcLengthS: newArcLength,
+      gear,
+      torqueCutSec,
     },
     finished,
+    shiftEvent,
   }
 }

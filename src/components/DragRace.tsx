@@ -170,7 +170,16 @@ export function DragRace({ slug }: DragRaceProps) {
     reactionTimeMs: number | null
     splits: number[]
     topSpeed: number
-  }>({ elapsedMs: 0, speed: 0, fouled: false, reactionTimeMs: null, splits: [], topSpeed: 0 })
+    gear: number
+  }>({
+    elapsedMs: 0,
+    speed: 0,
+    fouled: false,
+    reactionTimeMs: null,
+    splits: [],
+    topSpeed: 0,
+    gear: 1,
+  })
   const [finishEvent, setFinishEvent] =
     useState<DragLapCompleteEvent | null>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -241,6 +250,13 @@ export function DragRace({ slug }: DragRaceProps) {
   const paramsRef = useRef(derived.params)
   const goAtMsRef = useRef<number | null>(null)
   const finishedRef = useRef(false)
+  // Tracks whether shiftDown / shiftUp were already pressed on the previous
+  // tick so the rAF loop can emit a single shift on the press edge instead
+  // of cycling gears every frame the key is held.
+  const shiftLatchedRef = useRef<{ down: boolean; up: boolean }>({
+    down: false,
+    up: false,
+  })
 
   useEffect(() => {
     phaseRef.current = phase
@@ -439,7 +455,25 @@ export function DragRace({ slug }: DragRaceProps) {
       // which read as inverted on the touch joystick (push joystick right
       // -> car turned left). The helper's "+steer turns CCW" convention
       // matches the physics module.
-      const input = readPlayerInput(keys.current)
+      const baseInput = readPlayerInput(keys.current)
+      // Edge-trigger shifts so a held Q / E or LB / RB does not auto-cycle
+      // gears every frame. shiftLatchedRef remembers whether each binding
+      // was already down on the previous tick; we only emit a shift on the
+      // press, not while the key is held. Cleared on key release so the
+      // next press fires a fresh shift.
+      const rawShiftDown = !!keys.current.shiftDown
+      const rawShiftUp = !!keys.current.shiftUp
+      const wasShiftDown = shiftLatchedRef.current.down
+      const wasShiftUp = shiftLatchedRef.current.up
+      const input: typeof baseInput & {
+        shiftDown: boolean
+        shiftUp: boolean
+      } = {
+        ...baseInput,
+        shiftDown: rawShiftDown && !wasShiftDown,
+        shiftUp: rawShiftUp && !wasShiftUp,
+      }
+      shiftLatchedRef.current = { down: rawShiftDown, up: rawShiftUp }
 
       let state = stateRef.current
       const ph = phaseRef.current
@@ -552,6 +586,7 @@ export function DragRace({ slug }: DragRaceProps) {
           reactionTimeMs: state.reactionTimeMs,
           splits: state.hits.map((h) => h.tMs),
           topSpeed: state.topSpeed,
+          gear: state.gear,
         })
       } else if (ph === 'finished' && finishEvent) {
         setHud((h) => ({
@@ -613,6 +648,7 @@ export function DragRace({ slug }: DragRaceProps) {
       reactionTimeMs: null,
       splits: [],
       topSpeed: 0,
+      gear: 1,
     })
     // Three "ready/set/go" beats at 800ms each. After GO we transition to
     // 'racing' and seed the race start time. Foul detection runs across the
@@ -787,6 +823,7 @@ export function DragRace({ slug }: DragRaceProps) {
           fouled={hud.fouled}
           reactionTimeMs={hud.reactionTimeMs}
           splits={hud.splits}
+          gear={hud.gear}
         />
       )}
 
@@ -817,6 +854,7 @@ export function DragRace({ slug }: DragRaceProps) {
         keys={keys}
         enabled={phase === 'racing' || phase === 'countdown'}
         mode={controlSettings.touchMode}
+        showShifter
       />
     </div>
   )
