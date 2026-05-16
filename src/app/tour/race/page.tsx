@@ -17,7 +17,14 @@ import { buildRaceResult } from '@/game/worldTourRaceResult'
 import { applyRaceResult } from '@/game/worldTourProgress'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { useAudioSettings } from '@/hooks/useAudioSettings'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import type { TransmissionMode } from '@/game/transmission'
+import type { BrakeLightMode } from '@/lib/brakeLights'
+import type { EngineNoiseMode } from '@/lib/audioSettings'
+import type { TimeOfDay } from '@/lib/lighting'
+import type { Weather } from '@/lib/weather'
+import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import {
   readCareer,
   writeCareer,
@@ -65,6 +72,7 @@ function TourRacePageInner() {
   )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
   const { settings } = useControlSettings()
+  const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
 
   // 3D track pieces. The template is resolved at mount; a tour with a
@@ -111,6 +119,51 @@ function TourRacePageInner() {
   const resumeShiftRef = useRef(0)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
+
+  // Mirror the player's tuning preferences into live refs so the tour
+  // race feels identical to Time Attack. Without these, RaceCanvas
+  // falls back to automatic transmission, legacy linear accel, and the
+  // baseline top-speed cap regardless of what the player set in
+  // Settings, which makes the car feel sluggish to anyone used to the
+  // tuned defaults.
+  const transmissionRef = useRef<TransmissionMode>(settings.transmission)
+  transmissionRef.current = settings.transmission
+  const enhancedShiftingRef = useRef<boolean>(settings.enhancedShifting)
+  enhancedShiftingRef.current = settings.enhancedShifting
+  const extendedTopSpeedRef = useRef<boolean>(settings.extendedTopSpeed)
+  extendedTopSpeedRef.current = settings.extendedTopSpeed
+
+  // Lighting, weather, lamps, and audio profile: same poll-and-set
+  // pattern Game.tsx uses so the tour shares the visual + audio feel
+  // of Time Attack.
+  const timeOfDayRef = useRef<TimeOfDay | null>(settings.timeOfDay)
+  timeOfDayRef.current = settings.timeOfDay
+  const weatherRef = useRef<Weather | null>(settings.weather)
+  weatherRef.current = settings.weather
+  const headlightsOnRef = useRef<boolean>(
+    shouldHeadlightsBeOn(settings.headlights, settings.timeOfDay, settings.weather),
+  )
+  headlightsOnRef.current = shouldHeadlightsBeOn(
+    settings.headlights,
+    settings.timeOfDay,
+    settings.weather,
+  )
+  const brakeLightModeRef = useRef<BrakeLightMode>(settings.brakeLights)
+  brakeLightModeRef.current = settings.brakeLights
+  const engineNoiseRef = useRef<EngineNoiseMode>(audioSettings.engineNoise)
+  engineNoiseRef.current = audioSettings.engineNoise
+
+  // Trackside visuals. Kerbs and scenery are what give a corner real
+  // "approach" weight on a chase camera; without them the layout reads
+  // as a flat tarmac slab.
+  const showKerbsRef = useRef<boolean>(settings.showKerbs)
+  showKerbsRef.current = settings.showKerbs
+  const showSceneryRef = useRef<boolean>(settings.showScenery)
+  showSceneryRef.current = settings.showScenery
+  const showSkidMarksRef = useRef<boolean>(settings.showSkidMarks)
+  showSkidMarksRef.current = settings.showSkidMarks
+  const showTireSmokeRef = useRef<boolean>(settings.showTireSmoke)
+  showTireSmokeRef.current = settings.showTireSmoke
 
   const submittedRef = useRef(false)
   const lapTimesMsRef = useRef<number[]>([])
@@ -315,6 +368,18 @@ function TourRacePageInner() {
             pendingResetRef={pendingResetRef}
             pendingRaceStartRef={pendingRaceStartRef}
             cameraRigRef={cameraRigRef}
+            transmissionRef={transmissionRef}
+            enhancedShiftingRef={enhancedShiftingRef}
+            extendedTopSpeedRef={extendedTopSpeedRef}
+            timeOfDayRef={timeOfDayRef}
+            weatherRef={weatherRef}
+            headlightsOnRef={headlightsOnRef}
+            brakeLightModeRef={brakeLightModeRef}
+            engineNoiseRef={engineNoiseRef}
+            showKerbsRef={showKerbsRef}
+            showSceneryRef={showSceneryRef}
+            showSkidMarksRef={showSkidMarksRef}
+            showTireSmokeRef={showTireSmokeRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
             speedOutRef={speedRef}
