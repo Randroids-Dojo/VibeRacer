@@ -6,7 +6,6 @@ import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
-import { WorldTourLauncher } from '@/components/WorldTourLauncher'
 
 export default function HomePage() {
   return (
@@ -34,7 +33,9 @@ export default function HomePage() {
             Derby
           </Link>
 
-          <WorldTourLauncher />
+          <Link href="/tour" style={primaryBtnStyle}>
+            World Tour
+          </Link>
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
