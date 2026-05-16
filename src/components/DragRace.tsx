@@ -540,27 +540,24 @@ export function DragRace({ slug }: DragRaceProps) {
 
       stateRef.current = state
 
-      // Drive the redline-bleed overlay. Mix two signals: proximity to
-      // the current gear's cap (so the tint hints in as the player
-      // approaches the redline) and the gearPeakHoldSec accumulator
-      // (so the tint intensifies the longer they bog at the cap before
-      // shifting). The view is on a self-owned rAF loop reading the ref;
-      // we only write here.
+      // Drive the redline-bleed overlay. Red only appears once the
+      // needle hits the gear-number tick on the dial (speedRatio >=
+      // DRAG_REDLINE_RATIO of the gear cap, ~at the tick mark): the
+      // gear number is the shift cue, the red is "you've bogged past
+      // it". 35 percent base intensity the moment the player reaches
+      // the cap so the warning reads instantly, then climbs with
+      // gearPeakHoldSec so a longer bog produces a deeper bleed.
       if (ph === 'racing') {
         const gMax = Math.max(
           1,
           paramsRef.current.maxSpeed * dragGearSpec(state.gear).maxSpeedFactor,
         )
         const speedRatio = Math.abs(state.speed) / gMax
-        const proximity = Math.max(
-          0,
-          Math.min(1, (speedRatio - DRAG_REDLINE_RATIO) / (1 - DRAG_REDLINE_RATIO)),
-        )
+        const atRedline = speedRatio >= DRAG_REDLINE_RATIO
         const holdBonus = Math.min(1, state.gearPeakHoldSec / SHIFT_LATE_HOLD_SEC)
-        redlineIntensityRef.current = Math.min(
-          1,
-          proximity * 0.55 + holdBonus * 0.6,
-        )
+        redlineIntensityRef.current = atRedline
+          ? Math.min(1, 0.35 + holdBonus * 0.65)
+          : 0
       } else {
         redlineIntensityRef.current = 0
       }

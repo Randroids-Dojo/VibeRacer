@@ -75,18 +75,22 @@ export function dragGearSpec(gear: number): DragGearSpec {
   return DRAG_MANUAL_GEAR_SPECS[clampDragGear(gear) - 1]
 }
 
-// Shift-quality thresholds. Used both to classify an upshift event and to
-// drive the redline-bleed HUD overlay.
-//   - Below DRAG_REDLINE_RATIO of the gear's cap: 'early' (left power
-//     on the table by shifting before hitting the redline window)
-//   - In the redline window AND the player has held within
-//     DRAG_REDLINE_RATIO of the cap for fewer than SHIFT_LATE_HOLD_SEC
-//     seconds: 'perfect'
-//   - Otherwise (cap held too long): 'late'
-// The perfect window matches the redline tint so the player only sees
-// PERFECT when the dial actually entered the red-edge zone.
-export const DRAG_REDLINE_RATIO = 0.95
-export const SHIFT_PERFECT_MIN_RATIO = DRAG_REDLINE_RATIO
+// Shift-quality thresholds. These two split apart on purpose:
+//   - SHIFT_PERFECT_MIN_RATIO is the lower edge of the "great shift"
+//     window in the classifier. Shifts in [SHIFT_PERFECT_MIN_RATIO .. 1]
+//     of the gear cap with no bog earn PERFECT; below that earns EARLY.
+//   - DRAG_REDLINE_RATIO is the speed-vs-cap threshold the HUD uses to
+//     start ticking the gearPeakHoldSec bog accumulator and lighting the
+//     red-edge tint. Set right at the gear cap so the tint appears WHEN
+//     the needle reaches the gear-number tick on the dial -- the gear
+//     number is the visual shift cue, and red signals "you've hit it,
+//     you're bogging". The perfect-shift window opens earlier (5 percent
+//     below the cap) so a shift right before the bog actually starts
+//     still earns PERFECT.
+//   - SHIFT_LATE_HOLD_SEC is the maximum tolerable bog at the redline
+//     before the classifier flips to LATE.
+export const SHIFT_PERFECT_MIN_RATIO = 0.95
+export const DRAG_REDLINE_RATIO = 0.99
 export const SHIFT_LATE_HOLD_SEC = 0.4
 
 export type DragShiftQuality = 'early' | 'perfect' | 'late'
