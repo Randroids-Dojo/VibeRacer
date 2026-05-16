@@ -9,33 +9,41 @@ import {
 } from '@/data/worldTourChampionship'
 import { findTour, tourDrivers, type Tour } from '@/lib/worldTourChampionship'
 import {
-  COUNTDOWN_SECONDS_DEFAULT,
   createRaceSession,
-  stepRaceSession,
   type RaceSessionState,
 } from '@/game/worldTourRaceSession'
-import type { AiTrackView } from '@/game/worldTourAi'
-import { DEFAULT_CAR_PARAMS } from '@/game/physics'
+import { type CarParams } from '@/game/physics'
 import { buildRaceResult } from '@/game/worldTourRaceResult'
 import { applyRaceResult } from '@/game/worldTourProgress'
-import { useKeyboard, type KeyInput } from '@/hooks/useKeyboard'
+import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
+import { cameraLerpsFor } from '@/lib/controlSettings'
 import {
   readCareer,
   writeCareer,
 } from '@/lib/worldTourCareerStorage'
 import { defaultCareer, getActiveCar } from '@/game/worldTourCareer'
+import {
+  baseParamsFor,
+} from '@/game/worldTourCars'
+import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
-
-const FLAT_TRACK: AiTrackView = {
-  centerXAt: () => 0,
-  curveAt: () => 0,
-}
+import { RaceCanvas } from '@/components/RaceCanvas'
+import { getTrackTemplate } from '@/game/trackTemplates'
+import {
+  DEFAULT_CAMERA_RIG,
+  type CameraRigParams,
+} from '@/game/sceneBuilder'
+import type { LapCompleteEvent } from '@/game/tick'
 
 const TOTAL_LAPS = 2
-const LAP_DISTANCE_METERS = 300
 const INTRO_DURATION_MS = 2000
+
+// MVP: all tour races run on the same 3D track template. Per-track
+// templates are a follow-up; the championship data still threads through
+// the right `trackId`, this layer just resolves them to one shape today.
+const DEFAULT_TOUR_TEMPLATE_ID = 'top-gear-opener'
 
 export default function TourRacePage() {
   return (
@@ -55,79 +63,104 @@ function TourRacePageInner() {
     () => findTour(championship, tourId),
     [championship, tourId],
   )
-  const drivers = useMemo(
-    () => (tour ? tourDrivers(championship, tour) : null),
-    [championship, tour],
-  )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
   const { settings } = useControlSettings()
   const keys = useKeyboard(settings.keyBindings)
 
-  const sessionRef = useRef<RaceSessionState | null>(null)
-  const rafRef = useRef<number | null>(null)
-  const lastFrameRef = useRef<number | null>(null)
-  const canvasRef = useRef<HTMLCanvasElement | null>(null)
-  const submittedRef = useRef(false)
-  const [hudPhase, setHudPhase] = useState<RaceSessionState['phase']>('countdown')
-  const [hudCountdown, setHudCountdown] = useState(COUNTDOWN_SECONDS_DEFAULT)
-  const [hudLap, setHudLap] = useState(0)
-  const [paused, setPaused] = useState(false)
-  // Brief intro card before the countdown starts. Dismisses on the
-  // first input or after `INTRO_DURATION_MS`.
-  const [showIntro, setShowIntro] = useState(true)
+  // 3D track pieces. The template is resolved at mount; a tour with a
+  // missing template falls back to an empty pieces array so the canvas
+  // refuses to mount instead of rendering a broken loop.
+  const pieces = useMemo(() => {
+    const template = getTrackTemplate(DEFAULT_TOUR_TEMPLATE_ID)
+    return template?.pieces ?? []
+  }, [])
 
-  // Reset the run when the route params change.
-  useEffect(() => {
-    submittedRef.current = false
-    if (!tour || !drivers) return
+  // Career-derived player car params. Resolved at mount and pinned for
+  // the duration of the race so a mid-race upgrade purchase in another
+  // tab does not change handling under the player.
+  const playerParams = useMemo<CarParams>(() => {
     const career =
       typeof window !== 'undefined' ? readCareer() : defaultCareer()
     const activeCar = getActiveCar(career)
-    // Two-lane grid for the 4-car MVP; three-lane grid (3 x 4 = 12)
-    // once a tour scales to the full field.
-    const laneCount = tour.fieldSize <= 4 ? 2 : 3
-    sessionRef.current = createRaceSession({
-      slotCount: tour.fieldSize,
-      laneCount,
-      aiDrivers: drivers.map((d) => ({ id: d.id })),
-      seed: hashSeed(tour.id, raceIndex),
-      totalLaps: TOTAL_LAPS,
-      lapDistanceMeters: LAP_DISTANCE_METERS,
-      playerCarId: career.activeCarId,
-      playerInitialDamage: activeCar.damage,
-      playerUpgrades: activeCar.upgrades,
-    })
-    setHudPhase('countdown')
-    setHudCountdown(COUNTDOWN_SECONDS_DEFAULT)
+    return resolveCarParams(baseParamsFor(career.activeCarId), activeCar.upgrades)
+  }, [])
+
+  const paramsRef = useRef<CarParams>(playerParams)
+  paramsRef.current = playerParams
+
+  // Camera rig mirrored from Settings, same poll-and-set pattern as
+  // Game.tsx so a slider tweak in Settings lands on the next frame.
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      ...DEFAULT_CAMERA_RIG,
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+      fov: settings.camera.fov,
+    }
+  }
+
+  // Refs RaceCanvas needs to drive its internal state machine. The tour
+  // page owns the pause + race-start pulse; everything else stays at the
+  // canvas defaults.
+  const pausedRef = useRef(false)
+  const resumeShiftRef = useRef(0)
+  const pendingResetRef = useRef(false)
+  const pendingRaceStartRef = useRef<number | null>(null)
+
+  const submittedRef = useRef(false)
+  const lapTimesMsRef = useRef<number[]>([])
+  // Live speed channel RaceCanvas writes every frame. The footer reads
+  // it via a 4 Hz rAF loop so the bottom-left readout matches the main
+  // game's km/h convention without re-rendering React 60 times per
+  // second.
+  const speedRef = useRef<number>(0)
+
+  const [hudPhase, setHudPhase] = useState<'intro' | 'racing' | 'finished'>(
+    'intro',
+  )
+  const [hudLap, setHudLap] = useState(0)
+  const [speedKmh, setSpeedKmh] = useState(0)
+  const [paused, setPaused] = useState(false)
+  const [showIntro, setShowIntro] = useState(true)
+
+  // Reset run state on route param changes.
+  useEffect(() => {
+    submittedRef.current = false
+    lapTimesMsRef.current = []
     setHudLap(0)
+    setHudPhase('intro')
     setPaused(false)
     setShowIntro(true)
-  }, [tour, drivers, raceIndex])
+    pausedRef.current = false
+    pendingRaceStartRef.current = null
+  }, [tour, raceIndex])
 
+  // Mirror the React paused state into the live ref RaceCanvas reads
+  // each frame.
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-    const resize = () => {
-      const rect = canvas.getBoundingClientRect()
-      const dpr = Math.min(2, window.devicePixelRatio || 1)
-      canvas.width = Math.max(1, Math.round(rect.width * dpr))
-      canvas.height = Math.max(1, Math.round(rect.height * dpr))
-    }
-    resize()
-    window.addEventListener('resize', resize)
-    window.visualViewport?.addEventListener('resize', resize)
-    return () => {
-      window.removeEventListener('resize', resize)
-      window.visualViewport?.removeEventListener('resize', resize)
-    }
-  }, [tour])
+    pausedRef.current = paused
+  }, [paused])
 
-  // Auto-dismiss the intro card after the documented duration.
+  // Auto-dismiss the intro card after the documented duration. On
+  // dismiss, fire the race-start pulse so RaceCanvas drops out of its
+  // hold and begins counting elapsed time on the first throttle press.
   useEffect(() => {
     if (!showIntro) return
     const timer = window.setTimeout(() => setShowIntro(false), INTRO_DURATION_MS)
     return () => window.clearTimeout(timer)
   }, [showIntro])
+
+  useEffect(() => {
+    if (showIntro) return
+    if (hudPhase !== 'intro') return
+    pendingRaceStartRef.current = performance.now()
+    setHudPhase('racing')
+  }, [showIntro, hudPhase])
 
   // Route-level controls that are not part of the shared driving key map.
   useEffect(() => {
@@ -157,85 +190,90 @@ function TourRacePageInner() {
     }
   }, [])
 
-  const submitResult = useCallback(() => {
-    if (submittedRef.current) return
-    const state = sessionRef.current
-    if (!state || !tour) return
-    submittedRef.current = true
-    const career = readCareer()
-    const raceResult = buildRaceResult({
-      finalState: state,
-      career,
-      championship: STANDARD_CHAMPIONSHIP,
-      tourId: tour.id,
-      trackIndex: raceIndex,
-      playerCarId: career.activeCarId,
-    })
-    const applied = applyRaceResult({
-      career,
-      raceResult,
-      championship: STANDARD_CHAMPIONSHIP,
-    })
-    writeCareer(applied.career)
-    try {
-      window.sessionStorage.setItem(
-        WORLD_TOUR_LAST_RESULT_KEY,
-        JSON.stringify(raceResult),
-      )
-    } catch {
-      // best effort
-    }
-    router.push('/tour/results')
-  }, [router, tour, raceIndex])
-
-  // Game loop.
-  useEffect(() => {
-    if (!tour) return
-    const loop = (timestamp: number) => {
-      const prev = lastFrameRef.current
-      const dt = prev === null ? 1 / 60 : Math.min(1 / 30, (timestamp - prev) / 1000)
-      lastFrameRef.current = timestamp
-      // Hold the simulation while the intro card is on screen so the
-      // countdown does not burn down behind it.
-      if (!paused && !showIntro && sessionRef.current) {
-        const playerInput = inputFromKeys(keys.current)
-        sessionRef.current = stepRaceSession(
-          sessionRef.current,
-          {
-            playerInput,
-            dt,
-            track: FLAT_TRACK,
-            aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
-          },
-          { totalLaps: TOTAL_LAPS, lapDistanceMeters: LAP_DISTANCE_METERS },
+  const submitResult = useCallback(
+    (totalRaceMs: number) => {
+      if (submittedRef.current) return
+      if (!tour) return
+      submittedRef.current = true
+      const career = readCareer()
+      const finalState = synthesizeFinalState({
+        tour,
+        raceIndex,
+        playerCarId: career.activeCarId,
+        playerTotalMs: totalRaceMs,
+      })
+      const raceResult = buildRaceResult({
+        finalState,
+        career,
+        championship: STANDARD_CHAMPIONSHIP,
+        tourId: tour.id,
+        trackIndex: raceIndex,
+        playerCarId: career.activeCarId,
+      })
+      const applied = applyRaceResult({
+        career,
+        raceResult,
+        championship: STANDARD_CHAMPIONSHIP,
+      })
+      writeCareer(applied.career)
+      try {
+        window.sessionStorage.setItem(
+          WORLD_TOUR_LAST_RESULT_KEY,
+          JSON.stringify(raceResult),
         )
-        const s = sessionRef.current
-        setHudPhase(s.phase)
-        setHudCountdown(Math.ceil(s.countdownRemainingSec))
-        setHudLap(s.cars[0]?.lap ?? 0)
-        if (s.phase === 'finished') {
-          submitResult()
-          return
-        }
+      } catch {
+        // best effort
       }
-      const canvas = canvasRef.current
-      if (canvas && sessionRef.current) {
-        drawScene(canvas, sessionRef.current, settings.camera)
+      router.push('/tour/results')
+    },
+    [router, tour, raceIndex],
+  )
+
+  const handleLapComplete = useCallback(
+    (event: LapCompleteEvent) => {
+      lapTimesMsRef.current.push(event.lapTimeMs)
+      setHudLap(event.lapNumber)
+      if (event.lapNumber >= TOTAL_LAPS) {
+        const total = lapTimesMsRef.current.reduce((a, b) => a + b, 0)
+        setHudPhase('finished')
+        submitResult(total)
       }
-      rafRef.current = window.requestAnimationFrame(loop)
-    }
-    rafRef.current = window.requestAnimationFrame(loop)
-    return () => {
-      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current)
-      lastFrameRef.current = null
-    }
-  }, [tour, submitResult, showIntro, paused, keys, settings.camera])
+    },
+    [submitResult],
+  )
+
+  const handleHud = useCallback(() => {
+    // Tour HUD is currently driven by lap-complete events and the
+    // speed-ref poll below; the rich HUD payload from RaceCanvas is
+    // unused for now. Required by the prop contract.
+  }, [])
+
+  // Poll the live speed ref at 4 Hz so the bottom-left readout stays
+  // in sync without re-rendering on every frame.
+  useEffect(() => {
+    const id = window.setInterval(() => {
+      setSpeedKmh(Math.round(Math.abs(speedRef.current) * 3.6))
+    }, 250)
+    return () => window.clearInterval(id)
+  }, [])
 
   if (!tour) {
     return (
       <main style={pageStyle}>
         <div style={stageStyle}>
           <h1>Unknown tour</h1>
+          <Link href="/tour" style={backLinkStyle}>Back to tours</Link>
+        </div>
+      </main>
+    )
+  }
+
+  if (pieces.length === 0) {
+    return (
+      <main style={pageStyle}>
+        <div style={stageStyle}>
+          <h1>Track unavailable</h1>
+          <p>Default tour track template is missing.</p>
           <Link href="/tour" style={backLinkStyle}>Back to tours</Link>
         </div>
       </main>
@@ -249,12 +287,13 @@ function TourRacePageInner() {
           <div>
             <h1 style={titleStyle}>{tour.name}</h1>
             <p style={tagStyle}>
-              Race {raceIndex + 1} of {tour.trackIds.length} | Lap {hudLap + 1}/{TOTAL_LAPS}
+              Race {raceIndex + 1} of {tour.trackIds.length} | Lap{' '}
+              {Math.min(hudLap + 1, TOTAL_LAPS)}/{TOTAL_LAPS}
             </p>
           </div>
           <div style={hudStyle}>
-            {hudPhase === 'countdown' ? (
-              <strong style={countdownStyle}>{hudCountdown}</strong>
+            {hudPhase === 'intro' ? (
+              <span>READY</span>
             ) : hudPhase === 'racing' ? (
               <span>{paused ? 'PAUSED' : 'GO'}</span>
             ) : (
@@ -263,41 +302,59 @@ function TourRacePageInner() {
           </div>
         </header>
 
-        <div style={canvasWrapStyle}>
-          <canvas
-            ref={canvasRef}
-            style={canvasStyle}
-            data-testid="world-tour-race-canvas"
+        <div
+          style={canvasStyle}
+          data-testid="world-tour-race-canvas"
+        >
+          <RaceCanvas
+            pieces={pieces}
+            paramsRef={paramsRef}
+            keys={keys}
+            pausedRef={pausedRef}
+            resumeShiftRef={resumeShiftRef}
+            pendingResetRef={pendingResetRef}
+            pendingRaceStartRef={pendingRaceStartRef}
+            cameraRigRef={cameraRigRef}
+            onLapComplete={handleLapComplete}
+            onHudUpdate={handleHud}
+            speedOutRef={speedRef}
+            disableMusicIntensity
+            style={raceCanvasInnerStyle}
           />
-          {showIntro ? (
-            <button
-              type="button"
-              style={{
-                ...introOverlayStyle,
-                background: `linear-gradient(135deg, ${tour.theme.secondary}cc 0%, ${tour.theme.primary}99 100%)`,
-              }}
-              onClick={() => setShowIntro(false)}
-              onKeyDown={(e) => {
-                if (e.key !== 'Enter' && e.key !== ' ') return
-                e.preventDefault()
-                e.stopPropagation()
-                setShowIntro(false)
-              }}
-            >
-              <div style={introTitleStyle}>{tour.name}</div>
-              <div style={introMetaStyle}>
-                {tour.region} | Race {raceIndex + 1} of {tour.trackIds.length}
-                {' '}| {tour.weather}
-              </div>
-              <div style={introMetaStyle}>
-                Top {tour.requiredStanding} of {tour.fieldSize} to clear
-              </div>
-            </button>
-          ) : null}
         </div>
 
+        {showIntro ? (
+          <button
+            type="button"
+            style={{
+              ...introOverlayStyle,
+              background: `linear-gradient(135deg, ${tour.theme.secondary}cc 0%, ${tour.theme.primary}99 100%)`,
+            }}
+            onClick={() => setShowIntro(false)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return
+              e.preventDefault()
+              e.stopPropagation()
+              setShowIntro(false)
+            }}
+          >
+            <div style={introTitleStyle}>{tour.name}</div>
+            <div style={introMetaStyle}>
+              {tour.region} | Race {raceIndex + 1} of {tour.trackIds.length}
+              {' '}| {tour.weather}
+            </div>
+            <div style={introMetaStyle}>
+              Top {tour.requiredStanding} of {tour.fieldSize} to clear
+            </div>
+          </button>
+        ) : null}
+
         <footer style={footerStyle}>
-          <span>Drive with keyboard, touch, or mapped controls</span>
+          <span>
+            Drive with keyboard, touch, or mapped controls
+            <br />
+            <small>{speedKmh} km/h</small>
+          </span>
           <Link href="/tour" style={backLinkStyle}>Quit race</Link>
         </footer>
         <TouchControls
@@ -328,15 +385,66 @@ function isEditableTarget(target: EventTarget | null): boolean {
   return tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT'
 }
 
-function inputFromKeys(k: KeyInput) {
-  const throttle =
-    k.axes?.throttle ?? (k.forward ? 1 : 0) + (k.backward ? -1 : 0)
-  const steer = k.axes?.steer ?? (k.left ? 1 : 0) + (k.right ? -1 : 0)
-  return {
-    throttle,
-    steer,
-    handbrake: k.handbrake,
+function clampRaceIndex(raw: string | null, trackCount: number): number {
+  const parsed = Number(raw ?? '0')
+  if (!Number.isFinite(parsed)) return 0
+  const max = Math.max(0, Math.floor(trackCount) - 1)
+  return Math.min(max, Math.max(0, Math.floor(parsed)))
+}
+
+// Build a synthetic RaceSessionState in the 'finished' phase so the
+// existing race-result builder can compute placement, points, and purse
+// without a parallel multi-car simulation. The 3D player race is the
+// source of truth for the player's lap time; AI cars get deterministic
+// seeded offsets so finishing order is stable per tour+race.
+function synthesizeFinalState(args: {
+  tour: Tour
+  raceIndex: number
+  playerCarId: string
+  playerTotalMs: number
+}): RaceSessionState {
+  const drivers = tourDrivers(STANDARD_CHAMPIONSHIP, args.tour) ?? []
+  const seed = hashSeed(args.tour.id, args.raceIndex)
+  const state = createRaceSession({
+    slotCount: args.tour.fieldSize,
+    laneCount: args.tour.fieldSize <= 4 ? 2 : 3,
+    aiDrivers: drivers.map((d) => ({ id: d.id })),
+    seed,
+    totalLaps: TOTAL_LAPS,
+    lapDistanceMeters: 300,
+    playerCarId: args.playerCarId,
+  })
+  // Mutate the freshly-seeded state into a finished race. The player's
+  // time comes from their actual 3D laps; AI cars get deterministic
+  // offsets around the player so placement varies per tour without
+  // running a parallel sim. Negative deltas put an AI ahead of the
+  // player; positive deltas put them behind.
+  const rng = mulberry32(seed)
+  state.phase = 'finished'
+  state.elapsedMs = args.playerTotalMs
+  state.finishingOrder = []
+  for (let i = 0; i < state.cars.length; i++) {
+    const car = state.cars[i]!
+    car.status = 'finished'
+    if (car.isPlayer) {
+      car.finishedAtMs = args.playerTotalMs
+    } else {
+      // Per-car offset in [-10s, +15s] around the player; the slight
+      // upward bias means a clean run usually beats half the field.
+      const delta = (rng() - 0.4) * 25_000
+      car.finishedAtMs = Math.max(1000, args.playerTotalMs + delta)
+    }
+    car.lap = TOTAL_LAPS
   }
+  state.finishingOrder = state.cars
+    .map((c) => c.index)
+    .slice()
+    .sort((a, b) => {
+      const aMs = state.cars[a]!.finishedAtMs ?? Number.POSITIVE_INFINITY
+      const bMs = state.cars[b]!.finishedAtMs ?? Number.POSITIVE_INFINITY
+      return aMs - bMs
+    })
+  return state
 }
 
 function hashSeed(tourId: string, raceIndex: number): number {
@@ -349,84 +457,14 @@ function hashSeed(tourId: string, raceIndex: number): number {
   return h >>> 0
 }
 
-function clampRaceIndex(raw: string | null, trackCount: number): number {
-  const parsed = Number(raw ?? '0')
-  if (!Number.isFinite(parsed)) return 0
-  const max = Math.max(0, Math.floor(trackCount) - 1)
-  return Math.min(max, Math.max(0, Math.floor(parsed)))
-}
-
-function drawScene(
-  canvas: HTMLCanvasElement,
-  state: RaceSessionState,
-  camera: { distance: number; lookAhead: number; fov: number },
-) {
-  const ctx = canvas.getContext('2d')
-  if (!ctx) return
-  const w = canvas.width
-  const h = canvas.height
-  ctx.fillStyle = '#0c0a14'
-  ctx.fillRect(0, 0, w, h)
-
-  // Camera follows the player car.
-  const player = state.cars[0]
-  const camZ = player ? player.physics.z : 0
-  const fovScale = 70 / Math.max(50, Math.min(110, camera.fov))
-  const distanceScale = 14 / Math.max(6, Math.min(28, camera.distance))
-  const baseZoom = Math.min(w / 120, h / 150)
-  const zoom = Math.max(2.4, Math.min(8, baseZoom * 1.7 * fovScale * distanceScale))
-  const cx = w / 2
-  const cy = h * 0.64
-  const lookAhead = Math.max(0, Math.min(12, camera.lookAhead)) * 2.5
-
-  // Track rails.
-  const halfWidth = 4
-  ctx.strokeStyle = '#3a2858'
-  ctx.lineWidth = 2
-  ctx.beginPath()
-  ctx.moveTo(cx - halfWidth * zoom, 0)
-  ctx.lineTo(cx - halfWidth * zoom, h)
-  ctx.moveTo(cx + halfWidth * zoom, 0)
-  ctx.lineTo(cx + halfWidth * zoom, h)
-  ctx.stroke()
-
-  // Lap markers (one every 50 m).
-  ctx.strokeStyle = 'rgba(255,255,255,0.06)'
-  ctx.lineWidth = 1
-  for (let i = -10; i <= 10; i++) {
-    const z = Math.round((camZ - i * 50) / 50) * 50
-    const y = cy + (z - camZ + lookAhead) * zoom
-    ctx.beginPath()
-    ctx.moveTo(cx - halfWidth * zoom, y)
-    ctx.lineTo(cx + halfWidth * zoom, y)
-    ctx.stroke()
-  }
-
-  // Cars.
-  for (const car of state.cars) {
-    const dx = car.physics.x * zoom
-    const dy = (car.physics.z - camZ + lookAhead) * zoom
-    const x = cx + dx
-    const y = cy + dy
-    if (y < -20 || y > h + 20) continue
-    ctx.save()
-    ctx.translate(x, y)
-    ctx.rotate(car.physics.heading)
-    ctx.fillStyle = car.isPlayer
-      ? '#fff1c4'
-      : car.status === 'dnf'
-        ? '#3a2858'
-        : '#ff5470'
-    ctx.fillRect(-4, -8, 8, 16)
-    ctx.restore()
-  }
-
-  // HUD: speed for the player.
-  if (player) {
-    ctx.fillStyle = '#fff'
-    ctx.font = '14px system-ui'
-    const kmh = Math.round(Math.abs(player.physics.speed) * 3.6)
-    ctx.fillText(`${kmh} km/h`, 12, h - 12)
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0
+  return () => {
+    t = (t + 0x6d2b79f5) >>> 0
+    let r = t
+    r = Math.imul(r ^ (r >>> 15), r | 1)
+    r ^= r + Math.imul(r ^ (r >>> 7), r | 61)
+    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
   }
 }
 
@@ -484,19 +522,18 @@ const hudStyle: React.CSSProperties = {
   fontWeight: 700,
   textAlign: 'center',
 }
-const countdownStyle: React.CSSProperties = {
-  fontSize: 34,
-}
-const canvasWrapStyle: React.CSSProperties = {
+const canvasStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
+  width: '100%',
+  height: '100%',
+  display: 'block',
   zIndex: 1,
 }
-const canvasStyle: React.CSSProperties = {
+const raceCanvasInnerStyle: React.CSSProperties = {
   display: 'block',
   width: '100%',
   height: '100%',
-  background: '#0c0a14',
 }
 const footerStyle: React.CSSProperties = {
   position: 'fixed',
