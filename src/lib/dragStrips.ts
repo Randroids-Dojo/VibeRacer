@@ -35,7 +35,7 @@ export const DRAG_STRIP_SLUGS = [
 export const DragStripSlugSchema = z.enum(DRAG_STRIP_SLUGS)
 export type DragStripSlug = z.infer<typeof DragStripSlugSchema>
 
-const DRAG_STRIP_FORMAT_VERSION = 2
+const DRAG_STRIP_FORMAT_VERSION = 3
 
 export interface DragStripConfig {
   slug: DragStripSlug
@@ -71,13 +71,21 @@ const SALT_FLATS_PROFILE = verticalProfileFromNormalized(
   ],
 )
 
+// Profile keyframes anchor on the strip's *full* world length, but the
+// finish line lives at the last cell center -- one full cell short of
+// sFrac=1. To keep the car from clipping into the grass plane on the
+// finish frame, every non-flat profile lands at height=0 by sFrac=0.93
+// (well before the finish line) and stays there for the rest of the
+// strip. The shaping (climb, dip, kicker) lives in the body of the
+// strip, and the final stretch flattens to ground level.
 const COASTAL_PROFILE = verticalProfileFromNormalized(
   stripWorldLength(COASTAL_LENGTH),
   [
     { sFrac: 0, height: 0 },
     { sFrac: 0.25, height: 2 },
     { sFrac: 0.5, height: 0 },
-    { sFrac: 0.75, height: -2 },
+    { sFrac: 0.7, height: -2 },
+    { sFrac: 0.93, height: 0 },
     { sFrac: 1, height: 0 },
   ],
 )
@@ -86,8 +94,10 @@ const ALPINE_PROFILE = verticalProfileFromNormalized(
   stripWorldLength(ALPINE_LENGTH),
   [
     { sFrac: 0, height: 0 },
-    { sFrac: 0.5, height: 3 },
-    { sFrac: 1, height: 6 },
+    { sFrac: 0.45, height: 4 },
+    { sFrac: 0.75, height: 5 },
+    { sFrac: 0.93, height: 0 },
+    { sFrac: 1, height: 0 },
   ],
 )
 
@@ -95,8 +105,10 @@ const HARBOR_PROFILE = verticalProfileFromNormalized(
   stripWorldLength(HARBOR_LENGTH),
   [
     { sFrac: 0, height: 0 },
-    { sFrac: 0.85, height: -4 },
-    { sFrac: 1, height: -3.6 },
+    { sFrac: 0.55, height: -4 },
+    { sFrac: 0.8, height: -3.6 },
+    { sFrac: 0.93, height: 0 },
+    { sFrac: 1, height: 0 },
   ],
 )
 
