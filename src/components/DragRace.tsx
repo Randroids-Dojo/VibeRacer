@@ -650,24 +650,38 @@ export function DragRace({ slug }: DragRaceProps) {
             }
           },
         })
-        // Pin the ghost to the left lane regardless of the replay's
-        // recorded lateral position. The strip is straight, so the
-        // arc-length projection captures the ghost's longitudinal
-        // progression; we then rebuild the world position centered on the
-        // spawn axis with a leftward offset. Y is unchanged because the
-        // vertical profile only varies along the spawn axis.
+        // Pin the ghost to the left lane. When the replay drove it
+        // visible we keep the longitudinal arc length and just rebuild
+        // the world position on the left side of the spawn axis. When
+        // the helper left it hidden (no replay loaded, or pre-race) we
+        // park a phantom ghost at the start line so the player always
+        // has a visible opponent staged in the left lane. Y is unchanged
+        // because the vertical profile only varies along the spawn axis.
+        const fwdX = Math.cos(spawn.heading)
+        const fwdZ = -Math.sin(spawn.heading)
+        const leftOff = lateralOffset(spawn.heading, -LANE_OFFSET_M)
         if (ghostNode.visible) {
           const arc = projectArcLengthOnSpawnAxis(
             { x: ghostNode.position.x, z: ghostNode.position.z },
             { position: spawn.position, heading: spawn.heading },
           )
-          const fwdX = Math.cos(spawn.heading)
-          const fwdZ = -Math.sin(spawn.heading)
-          const leftOff = lateralOffset(spawn.heading, -LANE_OFFSET_M)
           ghostNode.position.x =
             spawn.position.x + fwdX * arc + leftOff.x
           ghostNode.position.z =
             spawn.position.z + fwdZ * arc + leftOff.z
+        } else {
+          // Parked at the spawn line in the left lane. Heading matches
+          // the strip so the car is aimed down the strip from the start,
+          // not idling sideways.
+          const y = heightAt(strip.verticalProfile, 0)
+          const pitch = slopeAt(strip.verticalProfile, 0)
+          ghostNode.position.set(
+            spawn.position.x + leftOff.x,
+            y,
+            spawn.position.z + leftOff.z,
+          )
+          ghostNode.rotation.set(-pitch, spawn.heading, 0)
+          ghostNode.visible = true
         }
       }
 
