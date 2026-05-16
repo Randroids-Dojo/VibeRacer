@@ -104,6 +104,39 @@ interface DragRaceProps {
 // plane that buildScene already places under the scene.
 const SKIRT_HALF_WIDTH = 24
 
+// Lateral lane offset from the strip centerline. The player spawns this far
+// to the driver's right; the ghost is rendered this far to the driver's
+// left, so the two appear side by side on the strip. Track width is 8m, so
+// 2m puts each car halfway between the centerline and the kerb.
+const LANE_OFFSET_M = 2
+
+// Right-perpendicular vector to the forward (cos h, -sin h) basis at
+// `heading`. Multiplying by a signed magnitude gives a world-frame lateral
+// offset relative to the spawn axis: positive = driver's right, negative =
+// driver's left.
+function lateralOffset(
+  heading: number,
+  signedMagnitude: number,
+): { x: number; z: number } {
+  return {
+    x: Math.sin(heading) * signedMagnitude,
+    z: Math.cos(heading) * signedMagnitude,
+  }
+}
+
+// Move a freshly initialized drag state so the player car spawns offset
+// from the strip centerline. Arc-length progression is unaffected because
+// `projectArcLengthOnSpawnAxis` projects onto the heading direction, which
+// is orthogonal to this offset.
+function spawnAtLane(
+  state: DragGameState,
+  spawn: { position: { x: number; z: number }; heading: number },
+  signedOffset: number,
+): DragGameState {
+  const off = lateralOffset(spawn.heading, signedOffset)
+  return { ...state, x: state.x + off.x, z: state.z + off.z }
+}
+
 // Drag mode reuses the closed-loop camera rig from sceneBuilder so the
 // framing matches the rest of the game. The rig handles position /
 // quaternion lerp internally; we only feed the car's pose each frame.
@@ -257,7 +290,9 @@ export function DragRace({ slug }: DragRaceProps) {
     [loadout, strip],
   )
 
-  const stateRef = useRef<DragGameState>(initDragGameState(path))
+  const stateRef = useRef<DragGameState>(
+    spawnAtLane(initDragGameState(path), path.spawn, LANE_OFFSET_M),
+  )
   const phaseRef = useRef<Phase>(phase)
   const configRef = useRef<DragTickConfig>({
     totalWeight: derived.derivation.totalWeight,
@@ -450,16 +485,20 @@ export function DragRace({ slug }: DragRaceProps) {
     window.addEventListener('resize', onResize)
     onResize()
 
-    // Position the car at the spawn.
+    // Position the car at the spawn, offset into the right lane so the
+    // ghost (which we pin to the left lane each frame) can race alongside.
     const spawn = path.spawn
-    bundle.car.position.set(spawn.position.x, 0, spawn.position.z)
+    const playerOff = lateralOffset(spawn.heading, LANE_OFFSET_M)
+    const playerSpawnX = spawn.position.x + playerOff.x
+    const playerSpawnZ = spawn.position.z + playerOff.z
+    bundle.car.position.set(playerSpawnX, 0, playerSpawnZ)
     bundle.car.rotation.y = spawn.heading
 
-    // Seed the camera rig at the spawn so the first frame is already
-    // composed instead of snapping into place on tick 1.
+    // Seed the camera rig at the offset spawn so the first frame is
+    // already composed instead of snapping into place on tick 1.
     cameraRigRef.current = initCameraRig(
-      spawn.position.x,
-      spawn.position.z,
+      playerSpawnX,
+      playerSpawnZ,
       spawn.heading,
       DEFAULT_CAMERA_RIG,
     )
@@ -611,6 +650,25 @@ export function DragRace({ slug }: DragRaceProps) {
             }
           },
         })
+        // Pin the ghost to the left lane regardless of the replay's
+        // recorded lateral position. The strip is straight, so the
+        // arc-length projection captures the ghost's longitudinal
+        // progression; we then rebuild the world position centered on the
+        // spawn axis with a leftward offset. Y is unchanged because the
+        // vertical profile only varies along the spawn axis.
+        if (ghostNode.visible) {
+          const arc = projectArcLengthOnSpawnAxis(
+            { x: ghostNode.position.x, z: ghostNode.position.z },
+            { position: spawn.position, heading: spawn.heading },
+          )
+          const fwdX = Math.cos(spawn.heading)
+          const fwdZ = -Math.sin(spawn.heading)
+          const leftOff = lateralOffset(spawn.heading, -LANE_OFFSET_M)
+          ghostNode.position.x =
+            spawn.position.x + fwdX * arc + leftOff.x
+          ghostNode.position.z =
+            spawn.position.z + fwdZ * arc + leftOff.z
+        }
       }
 
       // Camera follow uses the closed-loop rig from sceneBuilder so the
@@ -708,7 +766,7 @@ export function DragRace({ slug }: DragRaceProps) {
     finishedRef.current = false
     setFinishEvent(null)
     // Reset the game state to spawn.
-    const fresh = initDragGameState(path)
+    const fresh = spawnAtLane(initDragGameState(path), path.spawn, LANE_OFFSET_M)
     stateRef.current = fresh
     goAtMsRef.current = null
     speedRef.current = 0
