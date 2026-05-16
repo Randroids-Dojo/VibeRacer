@@ -66,10 +66,6 @@ export default async function HomePage() {
 
           <WorldTourTile buttonStyle={primaryBtnStyle} />
 
-          <Link href="/model-viewer" style={primaryBtnStyle}>
-            Model Viewer
-          </Link>
-
           <DailyChallenge />
 
           <DailyStreak />
@@ -104,6 +100,9 @@ export default async function HomePage() {
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
           <FeatureListLauncher buttonStyle={settingsBtnStyle} />
           <HowToPlayLauncher buttonStyle={settingsBtnStyle} />
+          <Link href="/model-viewer" style={{ ...settingsBtnStyle, textDecoration: 'none' }}>
+            Model Viewer
+          </Link>
         </div>
       </section>
     </main>
