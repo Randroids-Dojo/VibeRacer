@@ -77,13 +77,16 @@ export function dragGearSpec(gear: number): DragGearSpec {
 
 // Shift-quality thresholds. Used both to classify an upshift event and to
 // drive the redline-bleed HUD overlay.
-//   - Below SHIFT_PERFECT_MIN_RATIO of the gear's cap: 'early'
-//   - At least SHIFT_PERFECT_MIN_RATIO of the cap but the player has held
-//     within DRAG_REDLINE_RATIO of the cap for fewer than
-//     SHIFT_LATE_HOLD_SEC seconds: 'perfect'
+//   - Below DRAG_REDLINE_RATIO of the gear's cap: 'early' (left power
+//     on the table by shifting before hitting the redline window)
+//   - In the redline window AND the player has held within
+//     DRAG_REDLINE_RATIO of the cap for fewer than SHIFT_LATE_HOLD_SEC
+//     seconds: 'perfect'
 //   - Otherwise (cap held too long): 'late'
+// The perfect window matches the redline tint so the player only sees
+// PERFECT when the dial actually entered the red-edge zone.
 export const DRAG_REDLINE_RATIO = 0.95
-export const SHIFT_PERFECT_MIN_RATIO = 0.85
+export const SHIFT_PERFECT_MIN_RATIO = DRAG_REDLINE_RATIO
 export const SHIFT_LATE_HOLD_SEC = 0.4
 
 export type DragShiftQuality = 'early' | 'perfect' | 'late'

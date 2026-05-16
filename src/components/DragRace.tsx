@@ -349,10 +349,6 @@ export function DragRace({ slug }: DragRaceProps) {
   const speedRef = useRef<number>(0)
   const maxSpeedRef = useRef<number>(derived.params.maxSpeed)
   const topSpeedRef = useRef<number>(0)
-  // Current gear surfaced as a ref so the DragSpeedometer overlay can
-  // read it inside its own rAF loop without re-rendering React on every
-  // shift.
-  const gearRef = useRef<number>(1)
 
   // Set up Three.js renderer + scene exactly once for the strip lifetime.
   useEffect(() => {
@@ -641,7 +637,6 @@ export function DragRace({ slug }: DragRaceProps) {
       // the last racing frame. The peak ref is reset alongside the game
       // state in startCountdown so a fresh attempt starts the marker clean.
       speedRef.current = state.speed
-      gearRef.current = state.gear
       if (state.topSpeed > topSpeedRef.current) {
         topSpeedRef.current = state.topSpeed
       }
@@ -721,7 +716,6 @@ export function DragRace({ slug }: DragRaceProps) {
     goAtMsRef.current = null
     speedRef.current = 0
     topSpeedRef.current = 0
-    gearRef.current = 1
     setCountdownStartedAt(performance.now())
     setCountdownFouled(false)
     setShiftFlash(null)
@@ -926,7 +920,6 @@ export function DragRace({ slug }: DragRaceProps) {
           <DragSpeedometer
             speedRef={speedRef}
             maxSpeedRef={maxSpeedRef}
-            gearRef={gearRef}
             unit={controlSettings.speedUnit}
             topSpeedRef={topSpeedRef}
             showTopSpeedMarker={controlSettings.showTopSpeedMarker}

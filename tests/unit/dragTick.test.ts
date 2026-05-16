@@ -328,7 +328,7 @@ describe('dragTick shift quality', () => {
   it("classifies an upshift well below the gear cap as 'early'", () => {
     const setup = setupRace('salt-flats')
     // Gear 1 cap = params.maxSpeed * GEAR_1_MAX_FACTOR. We sit at ~40%
-    // of that, well below the 0.85 perfect threshold.
+    // of that, well below the 0.95 perfect threshold.
     const earlySpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.4
     const state = { ...setup.state, speed: earlySpeed, gear: 1, gearPeakHoldSec: 0 }
     const result = dragTick(
@@ -346,7 +346,7 @@ describe('dragTick shift quality', () => {
 
   it("classifies an upshift near the cap with no bog as 'perfect'", () => {
     const setup = setupRace('salt-flats')
-    const perfectSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.95
+    const perfectSpeed = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.97
     const state = { ...setup.state, speed: perfectSpeed, gear: 1, gearPeakHoldSec: 0 }
     const result = dragTick(
       state,
@@ -359,6 +359,26 @@ describe('dragTick shift quality', () => {
     )
     expect(result.shiftEvent).toBe('up')
     expect(result.shiftQuality).toBe('perfect')
+  })
+
+  it("classifies an upshift at 85% of the cap as 'early', not 'perfect'", () => {
+    // Regression: the old SHIFT_PERFECT_MIN_RATIO sat at 0.85, so a shift
+    // anywhere from 85 percent to redline registered as perfect. The
+    // threshold is now pinned to DRAG_REDLINE_RATIO so only the redline
+    // window earns the green flash.
+    const setup = setupRace('salt-flats')
+    const justBelowRedline = setup.derived.params.maxSpeed * GEAR_1_MAX_FACTOR * 0.85
+    const state = { ...setup.state, speed: justBelowRedline, gear: 1, gearPeakHoldSec: 0 }
+    const result = dragTick(
+      state,
+      { throttle: 1, steer: 0, handbrake: false, shiftUp: true },
+      16,
+      16,
+      setup.path,
+      setup.derived.params,
+      setup.config,
+    )
+    expect(result.shiftQuality).toBe('early')
   })
 
   it("classifies an upshift after bogging at the cap as 'late'", () => {
