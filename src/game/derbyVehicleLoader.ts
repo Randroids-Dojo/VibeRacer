@@ -293,6 +293,7 @@ function recolorMaterial(mat: unknown, paintColor: number): MeshStandardMaterial
   return clone
 }
 
+
 export function buildPlaceholderVehicleGroup(
   config: DerbyVehicleConfig,
   paintColor: number,

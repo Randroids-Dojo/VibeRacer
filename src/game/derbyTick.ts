@@ -6,7 +6,9 @@ import {
 import {
   applyDamage,
   isDestroyed,
+  isStunned,
   rankCars,
+  STUN_INPUT_SCALE,
   type DerbyCarState,
 } from './derbyVehicleState'
 import { clampInsideArena } from './derbyArena'
@@ -122,9 +124,24 @@ export function derbyTick(
   for (let i = 0; i < round.cars.length; i++) {
     const car = round.cars[i]
     const dead = isDestroyed(car)
-    const input = dead
-      ? { throttle: 0, steer: 0, handbrake: false }
-      : inputs.perCar[i] ?? { throttle: 0, steer: 0, handbrake: false }
+    const rawInput = inputs.perCar[i] ?? { throttle: 0, steer: 0, handbrake: false }
+    let input: PhysicsInput
+    if (dead) {
+      input = { throttle: 0, steer: 0, handbrake: false }
+    } else if (isStunned(car, round.elapsedMs)) {
+      // Stun: scale throttle and steer toward zero so a victim of a clean
+      // hit feels briefly sluggish. Handbrake is forced off so a stunned
+      // car cannot lock its wheels mid-rattle. The position-only physics
+      // tick keeps integrating velocity, so the car still drifts; we just
+      // take the wheel out of the player's (or AI's) hands.
+      input = {
+        throttle: rawInput.throttle * STUN_INPUT_SCALE,
+        steer: rawInput.steer * STUN_INPUT_SCALE,
+        handbrake: false,
+      }
+    } else {
+      input = rawInput
+    }
     const params = round.configs[i].carParams
     // Derby opts out of the road-mode quartic taper (final arg = 1). Vehicle
     // catalog accel/maxSpeed values were tuned against a linear curve, and
@@ -593,6 +610,48 @@ function applyImpactImpulse(
   writeVelocity(b, vb.vx + impulseX * invMassB, vb.vz + impulseZ * invMassB)
 }
 
+// Angular kick magnitude (rad/sec) per unit of clamped damage on a pure
+// side-impact. A head-on or rear-end hit imparts no yaw (the lever arm
+// is parallel to the impulse); a 90-degree door hit gets the full kick.
+// Kept modest so a hard ram rotates by ~25 degrees over the next half
+// second instead of spinning the car like a top.
+const HIT_ANGULAR_KICK_PER_DAMAGE = 0.18
+
+function applyHitWobble(
+  victim: DerbyCarState,
+  amount: number,
+  contactX: number,
+  contactZ: number,
+): void {
+  if (amount <= 0) return
+  const lx = contactX - victim.physics.x
+  const lz = contactZ - victim.physics.z
+  const len = Math.hypot(lx, lz)
+  if (len < 1e-4) return
+  // Project the lever arm onto the victim's local right axis. carAxes()
+  // gives forward = (cos h, -sin h) and right = (sin h, cos h); a
+  // contact landing on the right side has positive localRight, on the
+  // left side has negative localRight, and on the nose / tail has zero.
+  // Scaling by the unit lever arm gives a smooth interpolation between
+  // pure head-on (no kick) and pure side hit (full kick).
+  const h = victim.physics.heading
+  const rx = Math.sin(h)
+  const rz = Math.cos(h)
+  const localRight = lx * rx + lz * rz
+  const ratio = localRight / len
+  // Sign: a hit on the right side pushes the rear to the right and the
+  // nose to the left, which in the simulator's convention is positive
+  // angularVelocity (heading 0 = +X, PI/2 = -Z; positive angVel rotates
+  // forward toward -Z, i.e. nose to the left when the car faces +X).
+  const kick = HIT_ANGULAR_KICK_PER_DAMAGE * amount * ratio
+  const current = victim.physics.angularVelocity ?? 0
+  // Add rather than overwrite so a stack of hits compounds the spin
+  // briefly. The car physics damps angular velocity back toward the
+  // steered target via ANGULAR_VELOCITY_RESPONSE so the wobble decays
+  // on its own within a few ticks.
+  victim.physics.angularVelocity = current + kick
+}
+
 function applyAndEmit(
   round: DerbyRoundState,
   events: DerbyTickEvent[],
@@ -606,6 +665,7 @@ function applyAndEmit(
   if (damage.aDelta > 0) {
     const attackerIdx = damage.attacker === 'bIsAttacker' ? b.carIdx : null
     const r = applyDamage(a, damage.aDelta, attackerIdx, nowMs)
+    applyHitWobble(a, r.clampedAmount, contactX, contactZ)
     events.push({
       kind: 'hit',
       victimIdx: a.carIdx,
@@ -630,6 +690,7 @@ function applyAndEmit(
   if (damage.bDelta > 0) {
     const attackerIdx = damage.attacker === 'aIsAttacker' ? a.carIdx : null
     const r = applyDamage(b, damage.bDelta, attackerIdx, nowMs)
+    applyHitWobble(b, r.clampedAmount, contactX, contactZ)
     events.push({
       kind: 'hit',
       victimIdx: b.carIdx,
