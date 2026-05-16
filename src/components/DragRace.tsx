@@ -16,12 +16,16 @@ import {
   type Group,
   type Scene,
 } from 'three'
-import { type Replay } from '@/lib/replay'
+import {
+  MAX_REPLAY_SAMPLES,
+  REPLAY_SAMPLE_MS,
+  type Replay,
+} from '@/lib/replay'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   applyCameraRig,
-  buildGhostCar,
+  buildDragGhostCar,
   buildGhostNameplate,
   buildScene,
   DEFAULT_CAMERA_RIG,
@@ -79,6 +83,10 @@ import type { LeaderboardEntry } from '@/lib/leaderboard'
 import { selectDragGhost } from '@/lib/dragGhost'
 import { submitDragRun } from '@/lib/dragSubmit'
 import type { NameplateSource } from '@/game/ghostNameplate'
+import {
+  DEFAULT_RACING_NUMBER,
+  type RacingNumberSetting,
+} from '@/lib/racingNumber'
 import { DragGarage } from './DragGarage'
 import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
@@ -103,6 +111,39 @@ interface DragRaceProps {
 // road. Tuned to frame the strip without overlapping the biome ground
 // plane that buildScene already places under the scene.
 const SKIRT_HALF_WIDTH = 24
+
+// Lateral lane offset from the strip centerline. The player spawns this far
+// to the driver's right; the ghost is rendered this far to the driver's
+// left, so the two appear side by side on the strip. Track width is 8m, so
+// 2m puts each car halfway between the centerline and the kerb.
+const LANE_OFFSET_M = 2
+
+// Right-perpendicular vector to the forward (cos h, -sin h) basis at
+// `heading`. Multiplying by a signed magnitude gives a world-frame lateral
+// offset relative to the spawn axis: positive = driver's right, negative =
+// driver's left.
+function lateralOffset(
+  heading: number,
+  signedMagnitude: number,
+): { x: number; z: number } {
+  return {
+    x: Math.sin(heading) * signedMagnitude,
+    z: Math.cos(heading) * signedMagnitude,
+  }
+}
+
+// Move a freshly initialized drag state so the player car spawns offset
+// from the strip centerline. Arc-length progression is unaffected because
+// `projectArcLengthOnSpawnAxis` projects onto the heading direction, which
+// is orthogonal to this offset.
+function spawnAtLane(
+  state: DragGameState,
+  spawn: { position: { x: number; z: number }; heading: number },
+  signedOffset: number,
+): DragGameState {
+  const off = lateralOffset(spawn.heading, signedOffset)
+  return { ...state, x: state.x + off.x, z: state.z + off.z }
+}
 
 // Drag mode reuses the closed-loop camera rig from sceneBuilder so the
 // framing matches the rest of the game. The rig handles position /
@@ -257,7 +298,9 @@ export function DragRace({ slug }: DragRaceProps) {
     [loadout, strip],
   )
 
-  const stateRef = useRef<DragGameState>(initDragGameState(path))
+  const stateRef = useRef<DragGameState>(
+    spawnAtLane(initDragGameState(path), path.spawn, LANE_OFFSET_M),
+  )
   const phaseRef = useRef<Phase>(phase)
   const configRef = useRef<DragTickConfig>({
     totalWeight: derived.derivation.totalWeight,
@@ -314,6 +357,23 @@ export function DragRace({ slug }: DragRaceProps) {
   // so a player on touch sees the same joystick they use everywhere
   // else, just without manual shift since drag has no gear UI.
   const { settings: controlSettings } = useControlSettings()
+  // Mirror of `controlSettings` so the scene-build effect (which runs
+  // exactly once per slug) can read the latest paint / racing-number
+  // without listing the whole settings object in its dep array. A
+  // separate effect below re-applies the values when the user updates
+  // them in Settings.
+  const controlSettingsRef = useRef(controlSettings)
+  controlSettingsRef.current = controlSettings
+
+  // Live-apply the player's livery when the Settings panel changes paint
+  // or racing-number. The scene-build effect seeds them on mount; this
+  // effect keeps them in sync without rebuilding the renderer.
+  useEffect(() => {
+    const bundle = sceneBundleRef.current
+    if (!bundle) return
+    bundle.setCarPaint(controlSettings.carPaint)
+    bundle.setRacingNumber(controlSettings.racingNumber)
+  }, [controlSettings.carPaint, controlSettings.racingNumber])
 
   // Renderer / scene refs
   const containerRef = useRef<HTMLDivElement | null>(null)
@@ -341,6 +401,24 @@ export function DragRace({ slug }: DragRaceProps) {
   > | null>(null)
   const ghostMetaRef = useRef<GhostMeta | null>(null)
   const ghostSourceRef = useRef<NameplateSource>('top')
+  // Ghost car visual setters. The replay loader pulls paint + racing
+  // number off the matching leaderboard entry's loadout and applies them
+  // here so the ghost wears the same livery the original racer had.
+  // Refs (not state) so a rAF tick never goes stale between renders.
+  const ghostSetPaintRef = useRef<((hex: string | null) => void) | null>(null)
+  const ghostSetRacingNumberRef = useRef<
+    ((setting: RacingNumberSetting) => void) | null
+  >(null)
+
+  // Replay recorder. The rAF loop pushes [x, z, heading] triples at
+  // REPLAY_SAMPLE_MS cadence from raceStartMs so a finished run can be
+  // stored as a ghost for the next racer to chase. The buffer is reset on
+  // every startCountdown and the completed Replay is parked in
+  // `recordedReplayRef` so the submit effect can read it after the
+  // 'finished' phase fires.
+  const recordingBufferRef = useRef<number[]>([])
+  const nextSampleAtRef = useRef<number>(0)
+  const recordedReplayRef = useRef<Replay | null>(null)
 
   // Live speed values surfaced to the bottom-center Speedometer overlay.
   // The overlay drives its own rAF loop, so writing into refs lets the
@@ -358,6 +436,11 @@ export function DragRace({ slug }: DragRaceProps) {
     const bundle = buildScene(path, { biome: strip.biome })
     bundle.setTimeOfDay(strip.timeOfDay)
     bundle.setWeather(strip.weather)
+    // Apply the player's chosen livery so the drag car matches what they
+    // race with in closed-loop mode. A separate effect re-applies on
+    // settings changes so the Settings panel reflects live.
+    bundle.setCarPaint(controlSettingsRef.current.carPaint)
+    bundle.setRacingNumber(controlSettingsRef.current.racingNumber)
     sceneBundleRef.current = bundle
     sceneRef.current = bundle.scene
     cameraRef.current = bundle.camera
@@ -406,17 +489,20 @@ export function DragRace({ slug }: DragRaceProps) {
       skirtMat.dispose()
     }
 
-    // Ghost car. The closed-loop game's `buildGhostCar` clones the same
-    // GLB the player drives and tints every material translucent cyan, so
-    // the ghost reads as "another car" rather than a generic prop. Hidden
-    // by default; the rAF loop flips visibility on when a replay is loaded
-    // and the race has started. Nameplate is parented to the ghost group
-    // so it inherits world position each frame.
-    const ghostBuild = buildGhostCar()
+    // Drag ghost. Uses `buildDragGhostCar` (not the cyan-translucent
+    // closed-loop `buildGhostCar`) so the rAF loop can dress the ghost in
+    // the original racer's paint + racing-number plate from the
+    // leaderboard entry's stored loadout. Hidden by default; the rAF
+    // loop flips visibility on when a replay is loaded and the race has
+    // started. Nameplate is parented to the ghost group so it inherits
+    // world position each frame.
+    const ghostBuild = buildDragGhostCar()
     const ghostCar = ghostBuild.ghost
     ghostCar.visible = false
     bundle.scene.add(ghostCar)
     ghostCarRef.current = ghostCar
+    ghostSetPaintRef.current = ghostBuild.setPaint
+    ghostSetRacingNumberRef.current = ghostBuild.setRacingNumber
 
     const ghostNameplate = buildGhostNameplate()
     ghostCar.add(ghostNameplate.group)
@@ -429,6 +515,8 @@ export function DragRace({ slug }: DragRaceProps) {
       ghostBuild.dispose()
       ghostCarRef.current = null
       ghostNameplateRef.current = null
+      ghostSetPaintRef.current = null
+      ghostSetRacingNumberRef.current = null
     }
 
     const renderer = new WebGLRenderer({ antialias: true })
@@ -450,16 +538,20 @@ export function DragRace({ slug }: DragRaceProps) {
     window.addEventListener('resize', onResize)
     onResize()
 
-    // Position the car at the spawn.
+    // Position the car at the spawn, offset into the right lane so the
+    // ghost (which we pin to the left lane each frame) can race alongside.
     const spawn = path.spawn
-    bundle.car.position.set(spawn.position.x, 0, spawn.position.z)
+    const playerOff = lateralOffset(spawn.heading, LANE_OFFSET_M)
+    const playerSpawnX = spawn.position.x + playerOff.x
+    const playerSpawnZ = spawn.position.z + playerOff.z
+    bundle.car.position.set(playerSpawnX, 0, playerSpawnZ)
     bundle.car.rotation.y = spawn.heading
 
-    // Seed the camera rig at the spawn so the first frame is already
-    // composed instead of snapping into place on tick 1.
+    // Seed the camera rig at the offset spawn so the first frame is
+    // already composed instead of snapping into place on tick 1.
     cameraRigRef.current = initCameraRig(
-      spawn.position.x,
-      spawn.position.z,
+      playerSpawnX,
+      playerSpawnZ,
       spawn.heading,
       DEFAULT_CAMERA_RIG,
     )
@@ -531,7 +623,40 @@ export function DragRace({ slug }: DragRaceProps) {
             shiftFlashTimerRef.current = null
           }, 900)
         }
+        // Sample the player's pose into the recording buffer at fixed
+        // cadence. Push every slot we crossed this frame so a long dt does
+        // not create gaps. The cap mirrors RaceCanvas: stop sampling at
+        // MAX_REPLAY_SAMPLES so the persisted blob stays bounded.
+        if (state.raceStartMs !== null) {
+          const tLap = performance.now() - state.raceStartMs
+          const buf = recordingBufferRef.current
+          while (
+            tLap >= nextSampleAtRef.current &&
+            buf.length / 3 < MAX_REPLAY_SAMPLES
+          ) {
+            buf.push(state.x, state.z, state.heading)
+            nextSampleAtRef.current += REPLAY_SAMPLE_MS
+          }
+        }
         if (result.finished && !finishedRef.current) {
+          // Snapshot the recording into a Replay so the submit effect can
+          // forward it. ReplaySchema requires at least one sample; very
+          // short runs that never crossed a sample slot are skipped.
+          const buf = recordingBufferRef.current
+          const sampleCount = Math.floor(buf.length / 3)
+          if (sampleCount >= 1) {
+            const samples: Array<[number, number, number]> = new Array(
+              sampleCount,
+            )
+            for (let i = 0; i < sampleCount; i++) {
+              const o = i * 3
+              samples[i] = [buf[o], buf[o + 1], buf[o + 2]]
+            }
+            recordedReplayRef.current = {
+              samples,
+              lapTimeMs: result.finished.finishTimeMs,
+            }
+          }
           finishedRef.current = true
           setFinishEvent(result.finished)
           setPhase('finished')
@@ -611,6 +736,39 @@ export function DragRace({ slug }: DragRaceProps) {
             }
           },
         })
+        // Pin the ghost to the left lane. When the replay drove it
+        // visible we keep the longitudinal arc length and just rebuild
+        // the world position on the left side of the spawn axis. When
+        // the helper left it hidden (no replay loaded, or pre-race) we
+        // park a phantom ghost at the start line so the player always
+        // has a visible opponent staged in the left lane. Y is unchanged
+        // because the vertical profile only varies along the spawn axis.
+        const fwdX = Math.cos(spawn.heading)
+        const fwdZ = -Math.sin(spawn.heading)
+        const leftOff = lateralOffset(spawn.heading, -LANE_OFFSET_M)
+        if (ghostNode.visible) {
+          const arc = projectArcLengthOnSpawnAxis(
+            { x: ghostNode.position.x, z: ghostNode.position.z },
+            { position: spawn.position, heading: spawn.heading },
+          )
+          ghostNode.position.x =
+            spawn.position.x + fwdX * arc + leftOff.x
+          ghostNode.position.z =
+            spawn.position.z + fwdZ * arc + leftOff.z
+        } else {
+          // Parked at the spawn line in the left lane. Heading matches
+          // the strip so the car is aimed down the strip from the start,
+          // not idling sideways.
+          const y = heightAt(strip.verticalProfile, 0)
+          const pitch = slopeAt(strip.verticalProfile, 0)
+          ghostNode.position.set(
+            spawn.position.x + leftOff.x,
+            y,
+            spawn.position.z + leftOff.z,
+          )
+          ghostNode.rotation.set(-pitch, spawn.heading, 0)
+          ghostNode.visible = true
+        }
       }
 
       // Camera follow uses the closed-loop rig from sceneBuilder so the
@@ -708,11 +866,18 @@ export function DragRace({ slug }: DragRaceProps) {
     finishedRef.current = false
     setFinishEvent(null)
     // Reset the game state to spawn.
-    const fresh = initDragGameState(path)
+    const fresh = spawnAtLane(initDragGameState(path), path.spawn, LANE_OFFSET_M)
     stateRef.current = fresh
     goAtMsRef.current = null
     speedRef.current = 0
     topSpeedRef.current = 0
+    // Wipe the previous lap's recording so the next finish only captures
+    // the upcoming attempt. nextSampleAt is anchored at 0 so the first
+    // sample lands at t=0 (GO) and successive samples step at the fixed
+    // cadence.
+    recordingBufferRef.current = []
+    nextSampleAtRef.current = 0
+    recordedReplayRef.current = null
     setCountdownStartedAt(performance.now())
     setCountdownFouled(false)
     setShiftFlash(null)
@@ -776,11 +941,21 @@ export function DragRace({ slug }: DragRaceProps) {
     const key = `${slug}:${finishEvent.finishTimeMs}:${finishEvent.hits.length}`
     if (submittedRef.current === key) return
     submittedRef.current = key
+    // Stamp the current livery onto the submitted loadout so a future
+    // race can rebuild the ghost in the exact car the player drove.
+    // The stored DragLoadout already carries optional paint and
+    // racingNumber fields; we fill them from the live control settings.
+    const submittedLoadout: DragLoadout = {
+      ...loadout,
+      paint: controlSettings.carPaint ?? undefined,
+      racingNumber: controlSettings.racingNumber,
+    }
     void submitDragRun({
       slug,
       versionHash,
       finishEvent,
-      loadout,
+      loadout: submittedLoadout,
+      replay: recordedReplayRef.current ?? undefined,
     })
       .then(async () => {
         const entries = await refreshLeaderboard()
@@ -789,7 +964,15 @@ export function DragRace({ slug }: DragRaceProps) {
       .catch(() => {
         // ignore; user can retry by racing again.
       })
-  }, [finishEvent, slug, versionHash, loadout, refreshLeaderboard])
+  }, [
+    finishEvent,
+    slug,
+    versionHash,
+    loadout,
+    controlSettings.carPaint,
+    controlSettings.racingNumber,
+    refreshLeaderboard,
+  ])
 
   // Pick the player's PB for this strip from the leaderboard (server marks
   // with isMe). selectDragGhost handles the rotation rules.
@@ -807,58 +990,107 @@ export function DragRace({ slug }: DragRaceProps) {
     ghostSourceRef.current = ghost.source === 'none' ? 'auto' : ghost.source
   }, [ghost.source])
 
-  // Push the active ghost's "WHO + TIME" tuple into a ref so the rAF loop
-  // can drive the floating nameplate without re-rendering. The matching
-  // entry is the leaderboard row whose nonce matches the active ghost.
-  // null hides the plate (e.g. when the leaderboard is empty or the
-  // selected entry has no nonce).
-  useEffect(() => {
-    if (!ghost.nonce) {
-      ghostMetaRef.current = null
-      return
-    }
-    const entry = leaderboard.find((e) => e.nonce === ghost.nonce)
-    if (!entry) {
-      ghostMetaRef.current = null
-      return
-    }
-    ghostMetaRef.current = {
-      initials: entry.initials,
-      lapTimeMs: entry.lapTimeMs,
-    }
-  }, [ghost.nonce, leaderboard])
-
-  // Load the ghost's replay whenever the selected nonce changes. Best
-  // effort: a 404 (legacy entry without a stored replay) just leaves
-  // ghostReplayRef null so the rAF loop hides the ghost mesh.
+  // Load the ghost's replay whenever the selected nonce changes. The
+  // primary candidate comes from `selectDragGhost`; if its byNonce lookup
+  // 404s (e.g., a legacy entry submitted before drag replay recording
+  // shipped, or a row with no stored replay for any other reason), walk
+  // through the remaining leaderboard entries in best-time order and use
+  // the first one that does have a replay. The matching nameplate meta is
+  // updated alongside so the floating "WHO + TIME" plate tracks whichever
+  // candidate we ended up loading.
   useEffect(() => {
     if (!ghost.nonce) {
       ghostReplayRef.current = null
+      ghostMetaRef.current = null
       return undefined
     }
+    // Sorted candidate queue: primary first, then everyone else with a
+    // nonce, fastest to slowest. Skip entries without a nonce since
+    // byNonce requires one. Dedupe so the primary is not retried at the
+    // bottom of the queue. The full leaderboard entry rides along so a
+    // successful load can also dress the ghost in the original racer's
+    // livery (paint + racing-number plate from their stored loadout).
+    type GhostCandidate = {
+      nonce: string
+      initials: string
+      lapTimeMs: number
+      entry: LeaderboardEntry | null
+    }
+    const sortedRest = [...leaderboard]
+      .filter((e) => e.nonce !== null && e.nonce !== ghost.nonce)
+      .sort((a, b) => a.lapTimeMs - b.lapTimeMs || a.rank - b.rank)
+    const primary = leaderboard.find((e) => e.nonce === ghost.nonce) ?? null
+    const queue: GhostCandidate[] = []
+    if (primary && primary.nonce) {
+      queue.push({
+        nonce: primary.nonce,
+        initials: primary.initials,
+        lapTimeMs: primary.lapTimeMs,
+        entry: primary,
+      })
+    } else {
+      // primary entry is no longer on the leaderboard; fall through to
+      // the rest of the board.
+      queue.push({
+        nonce: ghost.nonce,
+        initials: '???',
+        lapTimeMs: 0,
+        entry: null,
+      })
+    }
+    for (const entry of sortedRest) {
+      if (entry.nonce) {
+        queue.push({
+          nonce: entry.nonce,
+          initials: entry.initials,
+          lapTimeMs: entry.lapTimeMs,
+          entry,
+        })
+      }
+    }
+
     let cancelled = false
-    void fetch(
-      `/api/replay/byNonce?slug=${encodeURIComponent(slug)}&v=${versionHash}&nonce=${ghost.nonce}`,
-    )
-      .then((res) => (res.ok ? res.json() : null))
-      .then((data) => {
-        if (cancelled) return
-        if (!data || typeof data !== 'object') {
-          ghostReplayRef.current = null
+    void (async () => {
+      for (const candidate of queue) {
+        try {
+          const res = await fetch(
+            `/api/replay/byNonce?slug=${encodeURIComponent(slug)}&v=${versionHash}&nonce=${candidate.nonce}`,
+          )
+          if (cancelled) return
+          if (!res.ok) continue
+          const data = (await res.json()) as unknown
+          if (cancelled) return
+          if (!data || typeof data !== 'object') continue
+          ghostReplayRef.current = data as Replay
+          ghostMetaRef.current = {
+            initials: candidate.initials,
+            lapTimeMs: candidate.lapTimeMs,
+          }
+          // Dress the ghost in the original racer's livery. Falls back to
+          // stock GLB paint and no plate when the stored loadout omits a
+          // value (legacy entries, current-user defaults). The setters
+          // are buffered inside buildGhostCar so calling them before the
+          // GLB resolves is safe.
+          const liveryLoadout = candidate.entry?.loadout ?? null
+          ghostSetPaintRef.current?.(liveryLoadout?.paint ?? null)
+          ghostSetRacingNumberRef.current?.(
+            liveryLoadout?.racingNumber ?? DEFAULT_RACING_NUMBER,
+          )
           return
+        } catch {
+          if (cancelled) return
         }
-        // Trust the API: it already validated through ReplaySchema before
-        // returning. Storing the raw object keeps the per-frame lookup a
-        // simple array index without re-parsing.
-        ghostReplayRef.current = data as Replay
-      })
-      .catch(() => {
-        if (!cancelled) ghostReplayRef.current = null
-      })
+      }
+      // No candidate had a replay; clear so the rAF loop falls back to
+      // the parked ghost.
+      if (!cancelled) {
+        ghostReplayRef.current = null
+      }
+    })()
     return () => {
       cancelled = true
     }
-  }, [ghost.nonce, slug, versionHash])
+  }, [ghost.nonce, leaderboard, slug, versionHash])
 
   return (
     <div style={dragRootStyle}>

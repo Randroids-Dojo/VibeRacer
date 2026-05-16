@@ -2114,6 +2114,75 @@ export function buildGhostCar(): { ghost: Group; dispose: () => void } {
   }
 }
 
+// Drag-mode ghost: a fully-opaque clone of the player car with the same
+// paint / racing-number affordances as `buildCar` so a finished drag run
+// can be rendered as the exact car the original racer drove. Used only by
+// the drag-mode rAF loop; the closed-loop flow keeps the translucent
+// cyan `buildGhostCar` above because closed-loop submissions do not yet
+// persist a livery alongside the replay. Headlight / brake-light layers
+// are omitted because their per-frame on/off state was never recorded
+// and would not survive a replay scrub.
+export function buildDragGhostCar(): {
+  ghost: Group
+  setPaint: (hex: string | null) => void
+  setRacingNumber: (setting: RacingNumberSetting) => void
+  dispose: () => void
+} {
+  let bodyMesh: Mesh | null = null
+  let originalBodyMaterial: Material | null = null
+  let paintMaterial: MeshStandardMaterial | null = null
+  let pendingHex: string | null = null
+
+  function applyPaint(hex: string | null) {
+    if (!bodyMesh || !originalBodyMaterial) return
+    if (hex === null) {
+      bodyMesh.material = originalBodyMaterial
+      return
+    }
+    if (!paintMaterial) {
+      paintMaterial = new MeshStandardMaterial({
+        color: 0xffffff,
+        roughness: 0.5,
+        metalness: 0.05,
+      })
+    }
+    paintMaterial.color.set(hex)
+    bodyMesh.material = paintMaterial
+  }
+
+  const plate = buildRacingNumberPlate()
+
+  const { car, cancel: cancelLoad } = buildCarFrame((clone) => {
+    clone.traverse((obj) => {
+      if (bodyMesh) return
+      const mesh = obj as Mesh
+      if (!mesh.isMesh) return
+      if (typeof mesh.name === 'string' && mesh.name.startsWith('body')) {
+        bodyMesh = mesh
+        const mat = Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+        originalBodyMaterial = mat ?? null
+      }
+    })
+    applyPaint(pendingHex)
+  })
+  car.add(plate.group)
+
+  return {
+    ghost: car,
+    setPaint: (hex: string | null) => {
+      pendingHex = hex
+      applyPaint(hex)
+    },
+    setRacingNumber: plate.apply,
+    dispose: () => {
+      cancelLoad()
+      paintMaterial?.dispose()
+      paintMaterial = null
+      plate.dispose()
+    },
+  }
+}
+
 /**
  * Solid opaque opponent car for multi-car modes (World Tour). Same
  * GLB body as the player; the chassis "body" mesh is repainted to

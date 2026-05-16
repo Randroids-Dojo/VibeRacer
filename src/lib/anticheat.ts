@@ -1,5 +1,6 @@
 import { verifyRaceToken } from './signToken'
 import type { CheckpointHit, RaceMode, RaceTokenPayload } from './schemas'
+import { DRAG_BASE_MAX_SPEED } from '@/game/dragTuning'
 
 export const ANTICHEAT_DEFAULTS = {
   tokenMaxAgeMs: 15 * 60 * 1000,
@@ -11,10 +12,12 @@ export const ANTICHEAT_DEFAULTS = {
   // layout (60 ft, midpoint, finish). A drag run that submits a different
   // count is either misconfigured or tampered.
   dragCheckpoints: 3,
-  // World-unit-per-second ceiling for any single drag submission. Picked as
-  // 2.5x the closed-loop default top speed; even the fastest drag loadout
-  // tops out well below this. Anything above is bug or tamper.
-  dragTopSpeedCeiling: 26 * 2.5,
+  // World-unit-per-second ceiling for any single drag submission. Anchored
+  // on DRAG_BASE_MAX_SPEED so the ceiling tracks the tuning when the base
+  // moves. 2x covers the fastest legit loadout (top-gear factor 1.3 +
+  // favorable surface) plus generous slope-kicker headroom from the hilly
+  // strips. Anything above is bug or tamper.
+  dragTopSpeedCeiling: DRAG_BASE_MAX_SPEED * 2,
 }
 
 const PROFANITY = new Set([
