@@ -97,6 +97,44 @@ const REFERENCE_GP_LOOP: Piece[] = convertV1Pieces([
   { type: 'arc45', row: -1, col: 0, rotation: 0 },
 ])
 
+// Elongated oval with a top-straight chicane, modeled after the corner
+// sequence of Top Gear 2's opening track: two long parallel straights
+// flanked by four sweeping right-handers, with a single kink-right /
+// kink-left pair on the top run to break up the flat-out section.
+// The layout is wide and forgiving so it reads as a "level 1" track for
+// a player still learning the chase camera.
+const TOP_GEAR_OPENER: Piece[] = convertV1Pieces([
+  // Start/finish straight, six cells long heading north up col 0.
+  { type: 'straight', row: 5, col: 0, rotation: 0 },
+  { type: 'straight', row: 4, col: 0, rotation: 0 },
+  { type: 'straight', row: 3, col: 0, rotation: 0 },
+  { type: 'straight', row: 2, col: 0, rotation: 0 },
+  { type: 'straight', row: 1, col: 0, rotation: 0 },
+  // T1: wide right-hander into the top run.
+  { type: 'sweepRight', row: 0, col: 0, rotation: 0 },
+  // Top run with mid-straight chicane (right kink, then left kink).
+  { type: 'straight', row: 0, col: 1, rotation: 90 },
+  { type: 'kinkRight', row: 0, col: 2, rotation: 90 },
+  { type: 'kinkLeft', row: 0, col: 3, rotation: 90 },
+  { type: 'straight', row: 0, col: 4, rotation: 90 },
+  // T2: wide right-hander onto the back straight.
+  { type: 'sweepRight', row: 0, col: 5, rotation: 90 },
+  // Back straight, six cells long heading south down col 5.
+  { type: 'straight', row: 1, col: 5, rotation: 0 },
+  { type: 'straight', row: 2, col: 5, rotation: 0 },
+  { type: 'straight', row: 3, col: 5, rotation: 0 },
+  { type: 'straight', row: 4, col: 5, rotation: 0 },
+  { type: 'straight', row: 5, col: 5, rotation: 0 },
+  // T3: wide right-hander onto the bottom run.
+  { type: 'sweepRight', row: 6, col: 5, rotation: 180 },
+  { type: 'straight', row: 6, col: 4, rotation: 90 },
+  { type: 'straight', row: 6, col: 3, rotation: 90 },
+  { type: 'straight', row: 6, col: 2, rotation: 90 },
+  { type: 'straight', row: 6, col: 1, rotation: 90 },
+  // T4: wide right-hander back onto the start/finish straight.
+  { type: 'sweepRight', row: 6, col: 0, rotation: 270 },
+])
+
 export const TRACK_TEMPLATES: TrackTemplate[] = [
   {
     id: 'starter-oval',
@@ -121,6 +159,12 @@ export const TRACK_TEMPLATES: TrackTemplate[] = [
     label: 'Reference GP',
     description: 'Miami-style replica with a diagonal start, T1-T3 complex, lower loop, right stack, top straight, and T17-T19 return.',
     pieces: REFERENCE_GP_LOOP,
+  },
+  {
+    id: 'top-gear-opener',
+    label: 'Top Gear opener',
+    description: 'Wide elongated oval with two long straights, four sweeping right-handers, and a single chicane on the top run.',
+    pieces: TOP_GEAR_OPENER,
   },
 ]
 
