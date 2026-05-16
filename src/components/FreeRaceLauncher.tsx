@@ -1,14 +1,9 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { createPortal } from 'react-dom'
 import Link from 'next/link'
-import {
-  RecentTrackList,
-  type RecentTrackListItem,
-} from './RecentTrackList'
 import { SlugInput } from './SlugInput'
-import { DailyChallenge } from './DailyChallenge'
 import { DailyStreak } from './DailyStreak'
 import { FavoriteTracks } from './FavoriteTracks'
 import { MyTracks } from './MyTracks'
@@ -21,14 +16,24 @@ import { TrophyCase } from './TrophyCase'
 interface Props {
   playSlug: string
   hasRecent: boolean
-  items: RecentTrackListItem[]
+  // Pre-rendered server components passed through the server/client boundary
+  // so the launcher can stay a client component without dragging the daily
+  // challenge or recent-tracks data-loading code (which uses node:crypto)
+  // into the browser bundle.
+  dailyChallengeSlot: ReactNode
+  recentTracksSlot: ReactNode
 }
 
 // Launcher that opens the Free Race submenu. The trigger is styled like the
 // other primary CTAs on the home page so it still reads as the main entry
 // point. The submenu mirrors the home page panel's visual language so the
 // dialog feels like an extension of the menu, not a foreign dialog.
-export function FreeRaceLauncher({ playSlug, hasRecent, items }: Props) {
+export function FreeRaceLauncher({
+  playSlug,
+  hasRecent,
+  dailyChallengeSlot,
+  recentTracksSlot,
+}: Props) {
   const [open, setOpen] = useState(false)
   const [mounted, setMounted] = useState(false)
   const triggerRef = useRef<HTMLButtonElement | null>(null)
@@ -93,7 +98,7 @@ export function FreeRaceLauncher({ playSlug, hasRecent, items }: Props) {
                   Start a new race
                 </Link>
 
-                <DailyChallenge />
+                {dailyChallengeSlot}
 
                 <DailyStreak />
 
@@ -106,7 +111,7 @@ export function FreeRaceLauncher({ playSlug, hasRecent, items }: Props) {
                   <div style={sectionHeaderStyle}>
                     {hasRecent ? 'Load existing track' : 'Try a sample track'}
                   </div>
-                  <RecentTrackList items={items} />
+                  {recentTracksSlot}
                 </div>
 
                 <FavoriteTracks />

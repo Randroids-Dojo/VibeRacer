@@ -1,7 +1,10 @@
 import Link from 'next/link'
 import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
-import type { RecentTrackListItem } from '@/components/RecentTrackList'
+import {
+  RecentTrackList,
+  type RecentTrackListItem,
+} from '@/components/RecentTrackList'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'
@@ -10,6 +13,7 @@ import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
 import { WorldTourTile } from '@/components/WorldTourTile'
+import { DailyChallenge } from '@/components/DailyChallenge'
 import { FreeRaceLauncher } from '@/components/FreeRaceLauncher'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
@@ -43,7 +47,8 @@ export default async function HomePage() {
           <FreeRaceLauncher
             playSlug={PLAY_SLUG}
             hasRecent={hasRecent}
-            items={items}
+            dailyChallengeSlot={<DailyChallenge />}
+            recentTracksSlot={<RecentTrackList items={items} />}
           />
 
           <Link href="/drag" style={primaryBtnStyle}>
