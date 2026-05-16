@@ -12,7 +12,9 @@ import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
-import { WorldTourTile } from '@/components/WorldTourTile'
+import { WorldTourLauncher } from '@/components/WorldTourLauncher'
+import { DerbyLauncher } from '@/components/DerbyLauncher'
+import { DerbyArenaCards } from '@/components/DerbyArenaCards'
 import { DailyChallenge } from '@/components/DailyChallenge'
 import { FreeRaceLauncher } from '@/components/FreeRaceLauncher'
 
@@ -55,11 +57,9 @@ export default async function HomePage() {
             Drag Racing
           </Link>
 
-          <Link href="/derby" style={primaryBtnStyle}>
-            Derby
-          </Link>
+          <DerbyLauncher arenaCardsSlot={<DerbyArenaCards />} />
 
-          <WorldTourTile buttonStyle={primaryBtnStyle} />
+          <WorldTourLauncher />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />

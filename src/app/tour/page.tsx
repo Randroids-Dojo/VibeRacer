@@ -35,12 +35,15 @@ function classifyTour(tour: Tour, career: WorldTourCareer): TourCard {
   return { tour, state: 'locked', raceIndex: null }
 }
 
+// Standalone /tour page. Mirrors the Free-Race-style WorldTourLauncher
+// modal so a deep link lands on the same look the title-screen launcher
+// opens to.
+
 export default function TourSelectionPage() {
   const router = useRouter()
   const championship = useMemo(() => getStandardChampionship(), [])
   const [career, setCareer] = useState<WorldTourCareer>(() => defaultCareer())
 
-  // Sync the career on mount and on the storage change event.
   useEffect(() => {
     setCareer(readCareer())
     const onChange = (e: Event) => {
@@ -78,69 +81,77 @@ export default function TourSelectionPage() {
   return (
     <main style={pageStyle}>
       <div style={stageStyle}>
-        <header style={logoWrapStyle}>
-          <h1 style={logoStyle}>World Tour</h1>
-          <p style={tagStyle}>
+        <header style={headerStyle}>
+          <h1 style={titleStyle}>World Tour</h1>
+          <Link href="/" style={closeBtnStyle} aria-label="Back to title">
+            CLOSE
+          </Link>
+        </header>
+
+        <div style={menuStyle}>
+          <p style={tagBlurbStyle}>
             Eight tours, four races each. Place inside the gate to unlock the
             next region.
           </p>
-        </header>
 
-        <section style={summaryStyle}>
-          <div style={summaryRowStyle}>
-            <span style={summaryLabelStyle}>Credits</span>
-            <strong>{career.money.toLocaleString()}</strong>
-          </div>
-          <div style={summaryRowStyle}>
-            <span style={summaryLabelStyle}>Active car</span>
-            <strong>{career.activeCarId}</strong>
-          </div>
-          <div style={summaryRowStyle}>
-            <span style={summaryLabelStyle}>Completed tours</span>
-            <strong>{career.completedTourIds.length}</strong>
-          </div>
-        </section>
+          <section style={summaryStyle}>
+            <div style={summaryRowStyle}>
+              <span style={summaryLabelStyle}>Credits</span>
+              <strong>{career.money.toLocaleString()}</strong>
+            </div>
+            <div style={summaryRowStyle}>
+              <span style={summaryLabelStyle}>Active car</span>
+              <strong>{career.activeCarId}</strong>
+            </div>
+            <div style={summaryRowStyle}>
+              <span style={summaryLabelStyle}>Completed</span>
+              <strong>{career.completedTourIds.length}</strong>
+            </div>
+          </section>
 
-        <div style={menuStyle}>
-          <div style={cardGridStyle}>
-            {cards.map((card) => (
-              <button
-                key={card.tour.id}
-                type="button"
-                disabled={card.state === 'locked'}
-                onClick={() => enterTour(card)}
-                style={{
-                  ...cardStyle,
-                  background: card.state === 'locked'
-                    ? cardStyle.background
-                    : `linear-gradient(135deg, ${card.tour.theme.secondary}66 0%, ${card.tour.theme.primary}33 100%)`,
-                  borderColor: card.tour.theme.accent + '55',
-                  opacity: card.state === 'locked' ? 0.45 : 1,
-                  cursor: card.state === 'locked' ? 'not-allowed' : 'pointer',
-                }}
-              >
-                <div
+          <div style={sectionStyle}>
+            <div style={sectionHeaderStyle}>Tours</div>
+            <div style={cardGridStyle}>
+              {cards.map((card) => (
+                <button
+                  key={card.tour.id}
+                  type="button"
+                  disabled={card.state === 'locked'}
+                  onClick={() => enterTour(card)}
                   style={{
-                    ...cardTitleStyle,
-                    color: card.tour.theme.accent,
+                    ...cardStyle,
+                    background:
+                      card.state === 'locked'
+                        ? cardStyle.background
+                        : `linear-gradient(135deg, ${card.tour.theme.secondary}66 0%, ${card.tour.theme.primary}33 100%)`,
+                    borderColor: card.tour.theme.accent + '55',
+                    opacity: card.state === 'locked' ? 0.45 : 1,
+                    cursor:
+                      card.state === 'locked' ? 'not-allowed' : 'pointer',
                   }}
                 >
-                  {card.tour.name}
-                </div>
-                <div style={cardBlurbStyle}>
-                  {card.tour.region} | {card.tour.trackIds.length} races
-                </div>
-                <div style={pillRowStyle}>
-                  <Pill>Top {card.tour.requiredStanding} of {card.tour.fieldSize}</Pill>
-                  <Pill>{weatherLabel(card.tour.weather)}</Pill>
-                  <Pill>{stateLabel(card)}</Pill>
-                </div>
-              </button>
-            ))}
+                  <div
+                    style={{
+                      ...cardTitleStyle,
+                      color: card.tour.theme.accent,
+                    }}
+                  >
+                    {card.tour.name}
+                  </div>
+                  <div style={cardBlurbStyle}>
+                    {card.tour.region} | {card.tour.trackIds.length} races
+                  </div>
+                  <div style={pillRowStyle}>
+                    <Pill>
+                      Top {card.tour.requiredStanding} of {card.tour.fieldSize}
+                    </Pill>
+                    <Pill>{weatherLabel(card.tour.weather)}</Pill>
+                    <Pill>{stateLabel(card)}</Pill>
+                  </div>
+                </button>
+              ))}
+            </div>
           </div>
-          <Link href="/" style={backLinkStyle}>
-            {'‹'} back to title
-          </Link>
         </div>
       </div>
     </main>
@@ -185,38 +196,68 @@ const pageStyle: React.CSSProperties = {
   background:
     'radial-gradient(ellipse at top, #2a1a3a 0%, #0a0a0a 60%, #050505 100%)',
   color: '#fff',
-  fontFamily: 'system-ui, sans-serif',
+  fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
   boxSizing: 'border-box',
 }
 const stageStyle: React.CSSProperties = {
   position: 'relative',
-  width: 'min(760px, 100%)',
+  width: 'min(600px, 100%)',
   display: 'grid',
-  gap: 24,
+  gap: 14,
 }
-const logoWrapStyle: React.CSSProperties = {
-  textAlign: 'center',
-  textShadow: '0 4px 0 rgba(0,0,0,0.25), 0 10px 24px rgba(0,0,0,0.35)',
+const headerStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'space-between',
+  padding: '12px 18px',
+  background: 'rgba(0,0,0,0.55)',
+  borderRadius: 12,
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
 }
-const logoStyle: React.CSSProperties = {
+const titleStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 'clamp(40px, 9vw, 64px)',
+  fontSize: 24,
   fontWeight: 800,
-  color: '#fff',
   letterSpacing: 1,
 }
-const tagStyle: React.CSSProperties = {
-  fontSize: 16,
-  color: 'rgba(255,255,255,0.8)',
-  margin: '8px 0 0',
+const closeBtnStyle: React.CSSProperties = {
+  padding: '8px 12px',
+  background: 'rgba(255,255,255,0.1)',
+  color: 'white',
+  border: '1px solid rgba(255,255,255,0.15)',
+  borderRadius: 10,
+  fontSize: 13,
+  letterSpacing: 1,
+  fontFamily: 'inherit',
+  fontWeight: 600,
+  cursor: 'pointer',
+  textDecoration: 'none',
+}
+const menuStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.45)',
+  padding: 24,
+  borderRadius: 18,
+  display: 'grid',
+  gap: 18,
+  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+const tagBlurbStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 14,
+  opacity: 0.85,
+  lineHeight: 1.4,
 }
 const summaryStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.45)',
+  background: 'rgba(0,0,0,0.35)',
   padding: '12px 16px',
   borderRadius: 12,
   display: 'grid',
   gridTemplateColumns: 'repeat(3, 1fr)',
   gap: 12,
+  border: '1px solid rgba(255,255,255,0.08)',
 }
 const summaryRowStyle: React.CSSProperties = {
   display: 'flex',
@@ -226,16 +267,20 @@ const summaryRowStyle: React.CSSProperties = {
 }
 const summaryLabelStyle: React.CSSProperties = {
   opacity: 0.6,
-  fontSize: 12,
+  fontSize: 11,
   textTransform: 'uppercase',
   letterSpacing: 0.4,
 }
-const menuStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.45)',
-  padding: 20,
-  borderRadius: 12,
-  display: 'grid',
-  gap: 16,
+const sectionStyle: React.CSSProperties = {
+  paddingTop: 4,
+}
+const sectionHeaderStyle: React.CSSProperties = {
+  fontSize: 12,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.75,
+  marginBottom: 10,
+  fontWeight: 600,
 }
 const cardGridStyle: React.CSSProperties = {
   display: 'grid',
@@ -273,10 +318,4 @@ const pillStyle: React.CSSProperties = {
   padding: '2px 8px',
   textTransform: 'uppercase',
   letterSpacing: 0.4,
-}
-const backLinkStyle: React.CSSProperties = {
-  textAlign: 'center',
-  color: 'rgba(255,255,255,0.65)',
-  textDecoration: 'none',
-  fontSize: 14,
 }
