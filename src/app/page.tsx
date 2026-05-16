@@ -1,10 +1,4 @@
 import Link from 'next/link'
-import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
-import { formatDate } from '@/lib/formatDate'
-import {
-  RecentTrackList,
-  type RecentTrackListItem,
-} from '@/components/RecentTrackList'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'
@@ -13,26 +7,8 @@ import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
 import { WorldTourLauncher } from '@/components/WorldTourLauncher'
-import { DerbyLauncher } from '@/components/DerbyLauncher'
-import { DerbyArenaCards } from '@/components/DerbyArenaCards'
-import { DailyChallenge } from '@/components/DailyChallenge'
-import { FreeRaceLauncher } from '@/components/FreeRaceLauncher'
 
-const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
-const PLAY_SLUG = 'start'
-
-export default async function HomePage() {
-  const recent = await loadRecentTrackPreviewsSafe()
-  const hasRecent = recent.length > 0
-  const items: RecentTrackListItem[] = hasRecent
-    ? recent.map((r) => ({
-        slug: r.slug,
-        label: formatDate(r.updatedAt),
-        pieces: r.pieces,
-        topTime: r.topTime,
-      }))
-    : SAMPLE_SLUGS.map((slug) => ({ slug, label: 'sample' }))
-
+export default function HomePage() {
   return (
     <main style={mainStyle}>
       <TitleBackground />
@@ -46,18 +22,17 @@ export default async function HomePage() {
         </header>
 
         <div style={menuStyle}>
-          <FreeRaceLauncher
-            playSlug={PLAY_SLUG}
-            hasRecent={hasRecent}
-            dailyChallengeSlot={<DailyChallenge />}
-            recentTracksSlot={<RecentTrackList items={items} />}
-          />
+          <Link href="/free-race" style={primaryBtnStyle}>
+            Free Race
+          </Link>
 
           <Link href="/drag" style={primaryBtnStyle}>
             Drag Racing
           </Link>
 
-          <DerbyLauncher arenaCardsSlot={<DerbyArenaCards />} />
+          <Link href="/derby" style={primaryBtnStyle}>
+            Derby
+          </Link>
 
           <WorldTourLauncher />
 
