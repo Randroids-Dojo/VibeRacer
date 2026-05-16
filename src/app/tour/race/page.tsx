@@ -36,7 +36,14 @@ import {
 import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
-import { RaceCanvas } from '@/components/RaceCanvas'
+import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
+import { buildTrackPath } from '@/game/trackPath'
+import {
+  buildRail,
+  sampleHeadingToGame,
+  sampleRailAt,
+  type WorldTourRail,
+} from '@/game/worldTourRail'
 import { getTrackTemplate } from '@/game/trackTemplates'
 import {
   DEFAULT_CAMERA_RIG,
@@ -46,6 +53,31 @@ import type { LapCompleteEvent } from '@/game/tick'
 
 const TOTAL_LAPS = 2
 const INTRO_DURATION_MS = 2000
+// Lateral offset (meters) from the centerline for the alternating
+// AI lanes. TRACK_WIDTH is 8 in this codebase, so 2 m places opponent
+// cars firmly on each side of the centerline without scraping the
+// edge of the road.
+const OPPONENT_LANE_OFFSET = 2
+// Distance (meters) between successive grid rows behind the start
+// line. Tuned so a 12-car field fits comfortably on the back-straight
+// portion of the loop without folding past corners.
+const OPPONENT_GRID_SPACING_M = 6
+// Stable per-car color palette for opponent cars. Picked from a high-
+// contrast set so the field reads at chase-cam distance against the
+// dark asphalt and against each other.
+const OPPONENT_PALETTE: ReadonlyArray<number> = [
+  0xff4d6d, // crimson
+  0x4dabf7, // sky blue
+  0xffd43b, // sunflower
+  0x51cf66, // mint
+  0xb197fc, // lavender
+  0xff922b, // orange
+  0xff8cc8, // pink
+  0x63e6be, // teal
+  0xffe066, // butter
+  0x99e9f2, // ice
+  0xfab005, // amber
+]
 
 // MVP: all tour races run on the same 3D track template. Per-track
 // templates are a follow-up; the championship data still threads through
@@ -82,6 +114,14 @@ function TourRacePageInner() {
     const template = getTrackTemplate(DEFAULT_TOUR_TEMPLATE_ID)
     return template?.pieces ?? []
   }, [])
+
+  // Rail used by the opponent AI loop. Flattens the track centerline
+  // into a closed polyline so each AI car can advance a single scalar
+  // distance and sample (x, z, heading) at that point.
+  const rail = useMemo<WorldTourRail | null>(() => {
+    if (pieces.length === 0) return null
+    return buildRail(buildTrackPath(pieces))
+  }, [pieces])
 
   // Career-derived player car params. Resolved at mount and pinned for
   // the duration of the race so a mid-race upgrade purchase in another
@@ -167,6 +207,14 @@ function TourRacePageInner() {
 
   const submittedRef = useRef(false)
   const lapTimesMsRef = useRef<number[]>([])
+
+  // Opponent AI state. One entry per AI rival; persists across the
+  // intro card and pause toggles so progress on the rail does not
+  // reset every render.
+  const opponentsRef = useRef<OpponentPose[] | null>(null)
+  const aiStateRef = useRef<
+    { progress: number; speedMps: number; lateralM: number; color: number }[]
+  >([])
   // Live speed channel RaceCanvas writes every frame. The footer reads
   // it via a 4 Hz rAF loop so the bottom-left readout matches the main
   // game's km/h convention without re-rendering React 60 times per
@@ -191,7 +239,84 @@ function TourRacePageInner() {
     setShowIntro(true)
     pausedRef.current = false
     pendingRaceStartRef.current = null
+
+    // Seed the AI field: one car per non-player grid slot, with a
+    // stable lane offset and a per-car target speed derived from the
+    // tour+race seed so an identical run reproduces an identical
+    // field shape. Player slot (index 0) is intentionally absent --
+    // the player drives the real car via RaceCanvas.
+    if (!tour) {
+      aiStateRef.current = []
+      opponentsRef.current = null
+      return
+    }
+    const seed = hashSeed(tour.id, raceIndex)
+    const rng = mulberry32(seed)
+    const palette = OPPONENT_PALETTE
+    const aiCount = Math.max(0, tour.fieldSize - 1)
+    const state: typeof aiStateRef.current = []
+    for (let i = 0; i < aiCount; i++) {
+      // Alternate lanes so the field reads as a real grid, not a
+      // conga line. Lane half-width is set so a 2-lane oval fits two
+      // cars side-by-side inside the track ribbon (TRACK_WIDTH = 8).
+      const lane = i % 2 === 0 ? -OPPONENT_LANE_OFFSET : OPPONENT_LANE_OFFSET
+      // Stagger starts a few meters back so the field reads as a
+      // grid lined up behind the start line at race-go.
+      const startBack = OPPONENT_GRID_SPACING_M * (Math.floor(i / 2) + 1)
+      // Per-car target speed in [16, 23] m/s. Below maxSpeed (26)
+      // so the player can pass them with a clean lap.
+      const speedMps = 16 + rng() * 7
+      state.push({
+        progress: -startBack,
+        speedMps,
+        lateralM: lane,
+        color: palette[i % palette.length]!,
+      })
+    }
+    aiStateRef.current = state
+    opponentsRef.current = state.map(() => ({
+      x: 0,
+      z: 0,
+      heading: 0,
+      color: 0xffffff,
+    }))
   }, [tour, raceIndex])
+
+  // AI loop: advance each opponent along the rail by `speed * dt` so
+  // they read as racing the track in front of / alongside the player.
+  // The loop runs at rAF cadence and short-circuits while paused or
+  // before the player has dismissed the intro so opponents do not
+  // race away during the static "READY" screen.
+  useEffect(() => {
+    if (!rail) return
+    let last = performance.now()
+    let raf = 0
+    const loop = (now: number) => {
+      raf = window.requestAnimationFrame(loop)
+      const dt = Math.min(0.05, (now - last) / 1000)
+      last = now
+      const opponents = opponentsRef.current
+      const ai = aiStateRef.current
+      if (!opponents || opponents.length !== ai.length) return
+      // Hold opponents on the grid until the player has dropped the
+      // intro card. Same gate the player's race-start pulse uses.
+      const racing = !showIntro && !paused && hudPhase !== 'finished'
+      for (let i = 0; i < ai.length; i++) {
+        const car = ai[i]!
+        if (racing) {
+          car.progress += car.speedMps * dt
+        }
+        const pose = sampleRailAt(rail, car.progress, car.lateralM)
+        const slot = opponents[i]!
+        slot.x = pose.x
+        slot.z = pose.z
+        slot.heading = sampleHeadingToGame(pose.heading)
+        slot.color = car.color
+      }
+    }
+    raf = window.requestAnimationFrame(loop)
+    return () => window.cancelAnimationFrame(raf)
+  }, [rail, showIntro, paused, hudPhase])
 
   // Mirror the React paused state into the live ref RaceCanvas reads
   // each frame.
@@ -380,6 +505,7 @@ function TourRacePageInner() {
             showSceneryRef={showSceneryRef}
             showSkidMarksRef={showSkidMarksRef}
             showTireSmokeRef={showTireSmokeRef}
+            opponentsRef={opponentsRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
             speedOutRef={speedRef}

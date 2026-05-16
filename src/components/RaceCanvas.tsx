@@ -20,12 +20,14 @@ import {
   applyCameraRig,
   buildGhostCar,
   buildGhostNameplate,
+  buildOpponentCar,
   buildScene,
   initCameraRig,
   updateCameraRig,
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import type { Group } from 'three'
 import { type GhostMeta } from '@/game/ghostNameplate'
 import {
   applyGhostPresentation,
@@ -140,6 +142,20 @@ export interface RaceCanvasHud {
 
 const HUD_UPDATE_MS = 50
 const EMPTY_DECORATIONS: readonly TrackDecoration[] = []
+
+/**
+ * Pose for a single opponent car rendered alongside the player. World
+ * Tour uses this for AI rivals; the position + heading come from the
+ * tour route's rail-following AI loop, the color is per-car stable so
+ * the field stays visually distinct.
+ */
+export interface OpponentPose {
+  x: number
+  z: number
+  // Game-convention heading: 0 = -Z north, increasing CCW.
+  heading: number
+  color: number
+}
 
 export interface RaceCanvasProps {
   pieces: Piece[]
@@ -344,6 +360,13 @@ export interface RaceCanvasProps {
   captureScreenshotRef?: MutableRefObject<
     ((mimeType?: string, quality?: number) => string | null) | null
   >
+  // Per-frame opponent poses for multi-car modes (World Tour). The
+  // parent owns the AI loop and writes an array of length N each
+  // frame; this component spawns N opponent car meshes lazily on
+  // first sight and updates their position / rotation every frame.
+  // null or undefined disables the opponent rendering path entirely
+  // so single-player modes pay zero per-frame cost.
+  opponentsRef?: MutableRefObject<OpponentPose[] | null>
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -407,6 +430,7 @@ export function RaceCanvas({
   flushOffTrackEventsRef,
   onReactionTime,
   captureScreenshotRef,
+  opponentsRef,
   disableMusicIntensity,
   className,
   style,
@@ -603,6 +627,60 @@ export function RaceCanvas({
       }
     }
     syncRacingLine()
+
+    // Per-opponent car meshes for multi-car modes. We spawn lazily as
+    // the opponents ref grows so a single-player mode pays nothing
+    // and a tour mode that resizes its field (e.g. 4-car opener to
+    // 12-car final tour) just grows the pool. Each entry owns its
+    // own paint material so a per-car color override does not bleed
+    // across the field.
+    const opponentSlots: {
+      car: Group
+      dispose: () => void
+      color: number
+    }[] = []
+    function ensureOpponentSlot(idx: number, color: number) {
+      while (opponentSlots.length <= idx) {
+        const slot = buildOpponentCar(color)
+        bundle.scene.add(slot.car)
+        opponentSlots.push({ car: slot.car, dispose: slot.dispose, color })
+      }
+      const slot = opponentSlots[idx]!
+      if (slot.color !== color) {
+        // Repaint by swapping in a fresh opponent car. Cheap because
+        // the GLB is cached; the old slot's material is disposed.
+        bundle.scene.remove(slot.car)
+        slot.dispose()
+        const next = buildOpponentCar(color)
+        bundle.scene.add(next.car)
+        opponentSlots[idx] = {
+          car: next.car,
+          dispose: next.dispose,
+          color,
+        }
+      }
+    }
+    function syncOpponents() {
+      const list = opponentsRef?.current ?? null
+      if (!list) {
+        for (const slot of opponentSlots) slot.car.visible = false
+        return
+      }
+      for (let i = 0; i < list.length; i++) {
+        const pose = list[i]!
+        ensureOpponentSlot(i, pose.color)
+        const slot = opponentSlots[i]!
+        slot.car.visible = true
+        slot.car.position.set(pose.x, 0, pose.z)
+        slot.car.rotation.y = pose.heading
+      }
+      // Hide any meshes the parent shrunk away from so a re-grow does
+      // not strand stale geometry on the track.
+      for (let i = list.length; i < opponentSlots.length; i++) {
+        opponentSlots[i]!.car.visible = false
+      }
+    }
+    syncOpponents()
 
     function resize() {
       const el = canvasRef.current
@@ -822,6 +900,9 @@ export function RaceCanvas({
       syncScenery()
       // And the racing-line overlay (visibility + replay source).
       syncRacingLine()
+      // And the per-opponent car positions for multi-car modes. No-op
+      // for single-player modes that never set `opponentsRef`.
+      syncOpponents()
 
       if (pendingResetRef.current) {
         state = initGameState(path)
@@ -1689,6 +1770,11 @@ export function RaceCanvas({
       ghostMesh.remove(ghostNameplate.group)
       ghostBuild.dispose()
       bundle.scene.remove(ghostMesh)
+      for (const slot of opponentSlots) {
+        bundle.scene.remove(slot.car)
+        slot.dispose()
+      }
+      opponentSlots.length = 0
       bundle.dispose()
       renderer.dispose()
       if (rearRenderer) {
