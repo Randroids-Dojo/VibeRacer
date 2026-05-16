@@ -1,28 +1,16 @@
 import Link from 'next/link'
 import { loadRecentTrackPreviewsSafe } from '@/lib/recentTracks'
 import { formatDate } from '@/lib/formatDate'
-import {
-  RecentTrackList,
-  type RecentTrackListItem,
-} from '@/components/RecentTrackList'
+import type { RecentTrackListItem } from '@/components/RecentTrackList'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'
-import { SlugInput } from '@/components/SlugInput'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
 import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
-import { MyPbs } from '@/components/MyPbs'
-import { MyTracks } from '@/components/MyTracks'
-import { FavoriteTracks } from '@/components/FavoriteTracks'
-import { LifetimeStats } from '@/components/LifetimeStats'
-import { MostPlayed } from '@/components/MostPlayed'
-import { MedalCabinet } from '@/components/MedalCabinet'
-import { TrophyCase } from '@/components/TrophyCase'
-import { DailyChallenge } from '@/components/DailyChallenge'
-import { DailyStreak } from '@/components/DailyStreak'
 import { WorldTourTile } from '@/components/WorldTourTile'
+import { FreeRaceLauncher } from '@/components/FreeRaceLauncher'
 
 const SAMPLE_SLUGS = ['oval', 'sandbox'] as const
 const PLAY_SLUG = 'start'
@@ -52,9 +40,11 @@ export default async function HomePage() {
         </header>
 
         <div style={menuStyle}>
-          <Link href={`/${PLAY_SLUG}`} style={primaryBtnStyle}>
-            Play
-          </Link>
+          <FreeRaceLauncher
+            playSlug={PLAY_SLUG}
+            hasRecent={hasRecent}
+            items={items}
+          />
 
           <Link href="/drag" style={primaryBtnStyle}>
             Drag Racing
@@ -65,36 +55,6 @@ export default async function HomePage() {
           </Link>
 
           <WorldTourTile buttonStyle={primaryBtnStyle} />
-
-          <DailyChallenge />
-
-          <DailyStreak />
-
-          <div style={sectionStyle}>
-            <div style={sectionHeaderStyle}>Go to any track</div>
-            <SlugInput />
-          </div>
-
-          <div style={sectionStyle}>
-            <div style={sectionHeaderStyle}>
-              {hasRecent ? 'Load existing track' : 'Try a sample track'}
-            </div>
-            <RecentTrackList items={items} />
-          </div>
-
-          <FavoriteTracks />
-
-          <MyTracks />
-
-          <MyPbs />
-
-          <MostPlayed />
-
-          <LifetimeStats />
-
-          <MedalCabinet />
-
-          <TrophyCase />
 
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
@@ -187,17 +147,6 @@ const primaryBtnStyle: React.CSSProperties = {
   letterSpacing: 0.5,
   textAlign: 'center',
   boxShadow: '0 6px 0 #9c2a3c',
-}
-const sectionStyle: React.CSSProperties = {
-  paddingTop: 8,
-}
-const sectionHeaderStyle: React.CSSProperties = {
-  fontSize: 12,
-  letterSpacing: 1.5,
-  textTransform: 'uppercase',
-  opacity: 0.75,
-  marginBottom: 10,
-  fontWeight: 600,
 }
 const settingsBtnStyle: React.CSSProperties = {
   padding: '12px 16px',
