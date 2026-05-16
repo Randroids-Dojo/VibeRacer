@@ -114,22 +114,21 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('front-on hit does not detach any panel', () => {
+  it('front-on hit drops the hood', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const result = viz.applyHit(40, 1, 0, 0, () => 0.5)
-    expect(result).toBeNull()
-    expect(asset.submeshes.hood.parent).not.toBeNull()
-    expect(asset.submeshes.trunk.parent).not.toBeNull()
+    expect(result?.name).toBe('hood')
+    expect(asset.submeshes.hood.parent).toBeNull()
     viz.dispose()
   })
 
-  it('rear-on hit does not detach any panel', () => {
+  it('rear-on hit drops the trunk', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const result = viz.applyHit(40, -1, 0, 0, () => 0.5)
-    expect(result).toBeNull()
-    expect(asset.submeshes.trunk.parent).not.toBeNull()
+    expect(result?.name).toBe('trunk')
+    expect(asset.submeshes.trunk.parent).toBeNull()
     viz.dispose()
   })
 
@@ -159,14 +158,14 @@ describe('createDamageVisualizer', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     // Car rotated 90 degrees so its forward is world -Z. A world-space
-    // normal of (1, 0) is now a side hit; pickDoorByHitSide rotates the
+    // normal of (1, 0) is now a side hit; the picker rotates the
     // normal into the local frame to see that.
     const result = viz.applyHit(40, 1, 0, Math.PI / 2, () => 0.5)
     expect(['door_l', 'door_r']).toContain(result?.name)
     viz.dispose()
   })
 
-  it('does not detach the same door twice', () => {
+  it('does not detach the same panel twice', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const first = viz.applyHit(40, 0, 1, 0, () => 0.5)
@@ -176,14 +175,12 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('keeps every panel attached while the car is still alive', () => {
+  it('keeps every panel attached while the car is still alive (no tier-based detach)', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const car = initCarState(0, DERBY_VEHICLES.car, {
       x: 0, z: 0, heading: 0, speed: 0,
     })
-    // Sweep through every tier; status stays 'alive' so the tier
-    // transitions never strip a panel on their own.
     for (const frac of [0.65, 0.45, 0.25, 0.05]) {
       car.health = car.maxHealth * frac
       viz.update(car)
@@ -196,15 +193,13 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('detachAllRemaining sheds only the doors on destruction', () => {
+  it('detachAllRemaining sheds every still-attached sliced panel on destruction', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
     const detached = viz.detachAllRemaining()
     const names = detached.map((d) => d.name).sort()
-    expect(names).toEqual(['door_l', 'door_r'])
-    // Hood and trunk stay welded on even on destruction.
-    expect(asset.submeshes.hood.parent).not.toBeNull()
-    expect(asset.submeshes.trunk.parent).not.toBeNull()
+    // Placeholder asset ships hood, trunk, door_l, door_r.
+    expect(names).toEqual(['door_l', 'door_r', 'hood', 'trunk'])
     viz.dispose()
   })
 
@@ -225,15 +220,26 @@ describe('createDamageVisualizer', () => {
     viz.dispose()
   })
 
-  it('returns null once both doors are gone', () => {
+  it('returns null once every detachable panel from that direction is gone', () => {
     const asset = freshAsset('car')
     const viz = createDamageVisualizer(asset)
-    const r1 = viz.applyHit(40, 0, 1, 0, () => 0.5)
-    expect(r1?.name).toBe('door_r')
-    const r2 = viz.applyHit(40, 0, -1, 0, () => 0.5)
-    expect(r2?.name).toBe('door_l')
-    const r3 = viz.applyHit(40, 0, 1, 0, () => 0.5)
-    expect(r3).toBeNull()
+    // Pop each panel from its matching direction, then re-hit the same
+    // sides. The second pass should land on already-detached panels and
+    // return null.
+    const directions: Array<{ nx: number; nz: number; name: string }> = [
+      { nx: 1, nz: 0, name: 'hood' },
+      { nx: -1, nz: 0, name: 'trunk' },
+      { nx: 0, nz: 1, name: 'door_r' },
+      { nx: 0, nz: -1, name: 'door_l' },
+    ]
+    for (const d of directions) {
+      const r = viz.applyHit(40, d.nx, d.nz, 0, () => 0.5)
+      expect(r?.name).toBe(d.name)
+    }
+    for (const d of directions) {
+      const r = viz.applyHit(40, d.nx, d.nz, 0, () => 0.5)
+      expect(r).toBeNull()
+    }
     viz.dispose()
   })
 })

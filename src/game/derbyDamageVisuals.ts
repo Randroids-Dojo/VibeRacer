@@ -58,19 +58,23 @@ const TIER_PAINT_MULTIPLIER: Record<DamageTier, number> = {
   critical: 0.6,
 }
 
-// Per-hit panel detach is reserved for hard rams. Most hits land in the
-// 3 to 10 range; only the top of that band (and any clamped MAX_HIT)
-// strips a door mid-fight. Front and rear hits never detach a panel.
-const PANEL_DETACH_DAMAGE_THRESHOLD = 9
-// Paint targets include the body and the doors so the whole shell
+// Per-hit panel detach. Anything above a graze pops the matching
+// sliced part: a front hit pops the hood, a rear hit pops the trunk,
+// a side hit pops the matching door (when the variant has one). The
+// floor stays low so the player sees parts come off on any clean
+// contact, not just clamped MAX_HIT rams.
+const PANEL_DETACH_DAMAGE_THRESHOLD = 3
+// Paint targets cover every nameable shell piece so the whole car
 // darkens uniformly with damage. Variants whose asset.submeshes omits
 // the optional doors (Kenney sliced sedan/truck/race) simply do not
 // contribute door entries to the visualizer's working sets.
 const PAINT_TARGET_NAMES: SubmeshName[] = ['body', 'hood', 'trunk', 'door_l', 'door_r']
-// Only doors are detachable. The hood and trunk stay welded on for the
-// full life of the car; the demo for v3 is that a side hit drops a
-// door and nothing else comes off, including on destruction.
-const DETACHABLE_PANELS: SubmeshName[] = ['door_l', 'door_r']
+// Every sliced part the model ships is detachable. The Blender slicer
+// already cuts the hood and trunk off the body as separate nodes for
+// all four vehicles; only the ambulance ships door_l / door_r. The
+// runtime visualizer filters this against asset.submeshes so a missing
+// door is skipped naturally.
+const DETACHABLE_PANELS: SubmeshName[] = ['hood', 'trunk', 'door_l', 'door_r']
 
 const SMOKE_COLOR = new Color(0x444444)
 const FIRE_COLOR = new Color(0xff5022)
@@ -274,28 +278,35 @@ export function createDamageVisualizer(
     }
   }
 
-  function pickDoorByHitSide(
+  function pickPanelByHitDirection(
     worldNx: number,
     worldNz: number,
     victimHeading: number,
   ): SubmeshName | null {
     // Rotate the world-space hit normal into the victim's local frame.
-    // DerbyCanvas applies group.rotation.y = -heading + PI/2, so the car's
-    // local +X (front) maps to the world direction (cos(heading),
-    // -sin(heading)). Rotating the world vector by +heading aligns the
-    // local frame so local +X is forward and local +Z is right.
+    // The DerbyCanvas group rotation maps logical "forward" to a
+    // direction in world XZ; we project the hit back so a hit on the
+    // car's nose dominates the forward axis, on the door the right
+    // axis, etc.
     const cos = Math.cos(victimHeading)
     const sin = Math.sin(victimHeading)
     const localFwd = worldNx * cos + worldNz * -sin
     const localRight = worldNx * sin + worldNz * cos
-    // Only side hits drop a door. A front-on or rear-on hit (where the
-    // forward component dominates) leaves the doors alone; the player
-    // sees a panel come off only when they actually rammed the side.
-    if (Math.abs(localRight) <= Math.abs(localFwd)) return null
-    const choice: SubmeshName = localRight > 0 ? 'door_r' : 'door_l'
-    if (detachedPanels.has(choice)) return null
-    if (!availableDetachables.includes(choice)) return null
-    return choice
+    // Whichever axis dominates picks the panel. Front pops hood, rear
+    // pops trunk, right side pops door_r, left side pops door_l. A
+    // panel that isn't available on this variant (most cars lack
+    // doors) or has already detached falls back to null.
+    const preferred: SubmeshName =
+      Math.abs(localFwd) >= Math.abs(localRight)
+        ? localFwd > 0
+          ? 'hood'
+          : 'trunk'
+        : localRight > 0
+          ? 'door_r'
+          : 'door_l'
+    if (detachedPanels.has(preferred)) return null
+    if (!availableDetachables.includes(preferred)) return null
+    return preferred
   }
 
   function detachPanel(choice: SubmeshName): Object3D | null {
@@ -338,10 +349,7 @@ export function createDamageVisualizer(
     applyHit(amount, worldNx, worldNz, victimHeading, rng) {
       if (amount < PANEL_DETACH_DAMAGE_THRESHOLD) return null
       void rng
-      // Door-only panel mechanic: a left-side hit pops the left door, a
-      // right-side hit pops the right door, anything front or rear
-      // returns null. The hood and trunk never come off mid-fight.
-      const choice = pickDoorByHitSide(worldNx, worldNz, victimHeading)
+      const choice = pickPanelByHitDirection(worldNx, worldNz, victimHeading)
       if (choice === null) return null
       return detachPanel(choice)
     },

@@ -350,18 +350,12 @@ def slice_body_into_parts(
 
     out: dict[str, bpy.types.Object] = {"body": body, "hood": hood, "trunk": trunk}
 
-    # Door panels for shell-bodied variants (sedan, truck, race). Skipped
-    # when the source GLB ships pre-separated door nodes (ambulance) and
-    # rename_source_doors has already renamed them. build_door_slabs
-    # builds overlay boxes embedded just inside the body shell so they
-    # read as flush while attached and fly out as recognizable panels
-    # when the damage visualizer detaches them.
-    if not variant.has_source_doors and variant.door_slab_inset > 0:
-        door_l, door_r = build_door_slabs(
-            body, variant, side, axes, fwd_min, length, interior_mat,
-        )
-        out["door_l"] = door_l
-        out["door_r"] = door_r
+    # Door panels: only emitted when the source GLB ships door-left and
+    # door-right nodes (ambulance). For shell-bodied variants (sedan,
+    # truck, race) we skip doors entirely: overlay boxes look like blocky
+    # protrusions on the shell, and bisecting the shell for a door slab
+    # tends to leave empty meshes. The damage visualizer falls back to
+    # hood / trunk detach for these variants based on hit direction.
     return out
 
 

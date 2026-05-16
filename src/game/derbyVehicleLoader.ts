@@ -1,5 +1,4 @@
 import {
-  Box3,
   BoxGeometry,
   CylinderGeometry,
   Group,
@@ -248,14 +247,6 @@ export async function loadDerbyVehicleAsset(
       group.name = `derbyVehicle:${config.type}`
       for (const child of [...root.children]) group.add(child)
       tintBody(group, paintColor)
-      // Synthesize door panels for variants whose GLB does not ship them.
-      // The Blender slicer only emits doors when the source had pre-
-      // separated nodes (ambulance); sedan/truck/race come through with
-      // body + hood + trunk only, so the runtime door-pop mechanic had
-      // nothing to detach. We add procedural door slabs flush against
-      // the body's sides so the visualizer's per-hit detach pops them
-      // off on a side impact.
-      ensureDoors(group, paintColor)
       return assertVehicleContract(group)
     } catch (err) {
       console.error(
@@ -302,80 +293,6 @@ function recolorMaterial(mat: unknown, paintColor: number): MeshStandardMaterial
   return clone
 }
 
-// Add door_l / door_r slabs to an asset whose source GLB lacked them.
-// Model-local axes after the slicer's Blender pipeline: forward is -Z,
-// side is X, up is Y. The slabs are tucked just inside the body's side
-// edges at mid-height and mid-length so they sit flush with the body
-// shell, then break free when applyHit / detachAllRemaining pulls them.
-// Door geometry is sized from the body's actual bbox so a long truck
-// gets a long door and a short racecar gets a short one. No-op when
-// both doors are already present (ambulance). Exported for unit tests.
-export function ensureDoors(group: Group, paintColor: number): void {
-  let bodyNode: Object3D | null = null
-  let hasLeft = false
-  let hasRight = false
-  group.traverse((n) => {
-    if (!bodyNode && n.name === 'body') bodyNode = n
-    if (n.name === 'door_l') hasLeft = true
-    if (n.name === 'door_r') hasRight = true
-  })
-  if (hasLeft && hasRight) return
-  if (!bodyNode) return
-
-  group.updateMatrixWorld(true)
-  const box = new Box3().setFromObject(bodyNode)
-  if (
-    !Number.isFinite(box.min.x) ||
-    !Number.isFinite(box.max.x) ||
-    !Number.isFinite(box.min.y) ||
-    !Number.isFinite(box.max.y) ||
-    !Number.isFinite(box.min.z) ||
-    !Number.isFinite(box.max.z)
-  ) {
-    return
-  }
-  const sx = box.max.x - box.min.x
-  const sy = box.max.y - box.min.y
-  const sz = box.max.z - box.min.z
-  const thickness = Math.max(0.18, sx * 0.12)
-  const height = Math.max(0.5, sy * 0.5)
-  const length = Math.max(0.7, sz * 0.42)
-  const cy = box.min.y + sy * 0.45
-  const cz = (box.min.z + box.max.z) * 0.5
-  // Outer face flush with the body's side edge: subtract half-thickness
-  // so the slab sits with its inner half embedded inside the shell.
-  const xLeft = box.min.x + thickness * 0.5
-  const xRight = box.max.x - thickness * 0.5
-
-  // Borrow a material from the body so the door's paint tracks the
-  // tinted body color; fall back to a fresh paint material if the body
-  // is a Group that doesn't surface a Mesh directly.
-  const bodyMesh = firstMeshOf(bodyNode)
-  let doorMat: MeshStandardMaterial
-  if (bodyMesh && bodyMesh.material instanceof MeshStandardMaterial) {
-    doorMat = bodyMesh.material.clone()
-    doorMat.color.setHex(paintColor)
-  } else {
-    doorMat = new MeshStandardMaterial({
-      color: paintColor,
-      roughness: 0.6,
-      metalness: 0.1,
-    })
-  }
-
-  if (!hasLeft) {
-    const m = new Mesh(new BoxGeometry(thickness, height, length), doorMat)
-    m.name = 'door_l'
-    m.position.set(xLeft, cy, cz)
-    group.add(m)
-  }
-  if (!hasRight) {
-    const m = new Mesh(new BoxGeometry(thickness, height, length), doorMat)
-    m.name = 'door_r'
-    m.position.set(xRight, cy, cz)
-    group.add(m)
-  }
-}
 
 export function buildPlaceholderVehicleGroup(
   config: DerbyVehicleConfig,
