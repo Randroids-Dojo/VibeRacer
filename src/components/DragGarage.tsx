@@ -26,9 +26,10 @@ interface DragGarageProps {
   onBack?: () => void
 }
 
-// Reusable card style for each part option. Borrowed directly from the
-// project's MenuRadioRow look so the garage feels like part of the same
-// app instead of a third-party widget.
+// Reusable card style for each part option. Mirrors PreRaceSetup's setup
+// picker: cream cards with a thick dark outline when unselected, solid
+// accent fill when selected so the active row pops against the dark
+// translucent panel underneath.
 function partRowStyle(active: boolean): React.CSSProperties {
   return {
     display: 'flex',
@@ -37,9 +38,9 @@ function partRowStyle(active: boolean): React.CSSProperties {
     width: '100%',
     textAlign: 'left',
     padding: '10px 12px',
-    background: active ? 'rgba(255,107,53,0.16)' : menuTheme.rowBg,
-    border: `1px solid ${active ? menuTheme.accent : menuTheme.panelBorder}`,
-    color: menuTheme.textPrimary,
+    background: active ? menuTheme.accentBg : '#fff8d6',
+    border: `2px solid ${active ? menuTheme.accentBg : 'rgba(0,0,0,0.75)'}`,
+    color: active ? menuTheme.accentText : '#1b1b1b',
     borderRadius: 8,
     cursor: 'pointer',
     fontSize: 14,
@@ -53,10 +54,14 @@ const partListStyle: React.CSSProperties = {
   gap: 6,
 }
 
-const subTextStyle: React.CSSProperties = {
-  fontSize: 11,
-  color: menuTheme.textMuted,
-  letterSpacing: 0.3,
+// Sub-line under each row label. Lives inside the cream card, so the muted
+// color is a translucent black rather than the panel-default gray.
+function subTextStyle(active: boolean): React.CSSProperties {
+  return {
+    fontSize: 11,
+    color: active ? 'rgba(255,255,255,0.85)' : 'rgba(0,0,0,0.6)',
+    letterSpacing: 0.3,
+  }
 }
 
 const blurbStyle: React.CSSProperties = {
@@ -120,7 +125,7 @@ export function DragGarage({
                   onClick={() => onChange({ ...loadout, tire: tire.id })}
                 >
                   <span>{tire.label}</span>
-                  <span style={subTextStyle}>
+                  <span style={subTextStyle(active)}>
                     weight {tire.weight}, grip {tire.baseGrip}
                   </span>
                 </button>
@@ -143,7 +148,7 @@ export function DragGarage({
                   onClick={() => onChange({ ...loadout, body: body.id })}
                 >
                   <span>{body.label}</span>
-                  <span style={subTextStyle}>
+                  <span style={subTextStyle(active)}>
                     weight {body.weight}, drag {body.dragCoefficient}
                   </span>
                 </button>
@@ -166,7 +171,7 @@ export function DragGarage({
                   onClick={() => onChange({ ...loadout, engine: engine.id })}
                 >
                   <span>{engine.label}</span>
-                  <span style={subTextStyle}>
+                  <span style={subTextStyle(active)}>
                     weight {engine.weight}, RPM {engine.launchRpm}
                   </span>
                 </button>
@@ -195,7 +200,7 @@ export function DragGarage({
                   }
                 >
                   <span>{tr.label}</span>
-                  <span style={subTextStyle}>
+                  <span style={subTextStyle(active)}>
                     1st {tr.firstGearRatio}, top {tr.topGearRatio}
                   </span>
                 </button>
