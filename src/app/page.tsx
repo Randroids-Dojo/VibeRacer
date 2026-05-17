@@ -5,7 +5,6 @@ import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'
 import { SettingsLauncher } from '@/components/SettingsLauncher'
 import { TuningLaunchButton } from '@/components/TuningLaunchButton'
-import { HowToPlayLauncher } from '@/components/HowToPlayLauncher'
 import { FeatureListLauncher } from '@/components/FeatureListLauncher'
 
 export default function HomePage() {
@@ -41,7 +40,6 @@ export default function HomePage() {
           <TuningLaunchButton buttonStyle={settingsBtnStyle} />
           <SettingsLauncher buttonStyle={settingsBtnStyle} />
           <FeatureListLauncher buttonStyle={settingsBtnStyle} />
-          <HowToPlayLauncher buttonStyle={settingsBtnStyle} />
           <Link href="/model-viewer" style={{ ...settingsBtnStyle, textDecoration: 'none' }}>
             Model Viewer
           </Link>

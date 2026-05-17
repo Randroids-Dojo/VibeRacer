@@ -71,7 +71,10 @@ test('initials prompt: Enter on the input submits without arrow key focus shift'
 })
 
 test('how-to-play overlay: Esc closes', async ({ page }) => {
-  await page.goto('/')
+  // How to play moved off the title screen and now lives on the
+  // Free Race hub (next to the primary "Start a new race" CTA) so
+  // newcomers see it landing on the main race mode page.
+  await page.goto('/free-race')
   await page.getByRole('button', { name: 'How to play' }).click()
 
   await expect(page.getByText('HOW TO PLAY', { exact: true })).toBeVisible()
