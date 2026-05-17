@@ -31,6 +31,7 @@ test('settings pane: arrow keys walk the tab strip and close on Esc', async ({
   // Esc routes back to the title page via the page-mode onBack handler.
   await page.keyboard.press('Escape')
   await expect(page.getByRole('tab', { name: 'Audio' })).toHaveCount(0)
+  await expect(page).toHaveURL('/')
 })
 
 test('settings pane: ArrowLeft / ArrowRight steps a focused range slider', async ({

@@ -18,7 +18,7 @@ export default function SettingsPage() {
         mode="page"
         settings={settings}
         onChange={setSettings}
-        onClose={() => router.push('/')}
+        onClose={() => router.replace('/')}
         onReset={resetSettings}
       />
     </MenuPageShell>

@@ -118,7 +118,6 @@ export default function TourSelectionPage() {
                   borderColor: card.tour.theme.accent,
                   boxShadow: `0 6px 0 ${card.tour.theme.secondary}`,
                   opacity: isLocked ? 0.55 : 1,
-                  cursor: isLocked ? 'not-allowed' : 'pointer',
                 }}
               >
                 <div
@@ -154,12 +153,17 @@ export default function TourSelectionPage() {
 }
 
 function TourPill({ children }: { children: React.ReactNode }) {
+  // White-on-dark over the per-region gradient. The earlier translucent
+  // white fill (rgba(255,255,255,0.18)) was nearly invisible on the
+  // brighter ends of the gradient and failed WCAG AA contrast. Anchor
+  // the pill to a darker fill so the label stays legible regardless of
+  // which region's primary/secondary the card was built with.
   return (
     <span
       style={{
         ...menuStyles.pill,
-        background: 'rgba(255,255,255,0.18)',
-        border: '1px solid rgba(255,255,255,0.22)',
+        background: 'rgba(0,0,0,0.5)',
+        border: '1px solid rgba(0,0,0,0.7)',
         color: '#fff',
       }}
     >
