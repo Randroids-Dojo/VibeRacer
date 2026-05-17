@@ -92,7 +92,7 @@ import { DragHUD } from './DragHUD'
 import { DragSessionSummary } from './DragSessionSummary'
 import { DragShiftFlash } from './DragShiftFlash'
 import { DragRedlineTint } from './DragRedlineTint'
-import { DragSpeedometer } from './DragSpeedometer'
+import { DragTachometer } from './DragTachometer'
 import {
   DRAG_COUNTDOWN_TOTAL_MS,
   DragChristmasTree,
@@ -420,13 +420,15 @@ export function DragRace({ slug }: DragRaceProps) {
   const nextSampleAtRef = useRef<number>(0)
   const recordedReplayRef = useRef<Replay | null>(null)
 
-  // Live speed values surfaced to the bottom-center Speedometer overlay.
+  // Live speed values surfaced to the bottom-center Tachometer overlay.
   // The overlay drives its own rAF loop, so writing into refs lets the
-  // gauge needle and peak marker update at 60 Hz without re-rendering the
-  // rest of the React tree.
+  // gauge needle update at 60 Hz without re-rendering the rest of the
+  // React tree. gearRef rides alongside speedRef because the tach maps
+  // speed onto a per-gear band: the needle position depends on BOTH.
   const speedRef = useRef<number>(0)
   const maxSpeedRef = useRef<number>(derived.params.maxSpeed)
   const topSpeedRef = useRef<number>(0)
+  const gearRef = useRef<number>(1)
 
   // Set up Three.js renderer + scene exactly once for the strip lifetime.
   useEffect(() => {
@@ -787,11 +789,13 @@ export function DragRace({ slug }: DragRaceProps) {
         applyCameraRig(cameraRef.current, cameraRigRef.current)
       }
 
-      // Live speed refs for the Speedometer overlay. Always updated so the
-      // gauge needle drops to zero between phases instead of freezing on
-      // the last racing frame. The peak ref is reset alongside the game
-      // state in startCountdown so a fresh attempt starts the marker clean.
+      // Live speed + gear refs for the Tachometer overlay. Always
+      // updated so the gauge needle drops to zero between phases
+      // instead of freezing on the last racing frame. The peak ref is
+      // reset alongside the game state in startCountdown so a fresh
+      // attempt starts the marker clean.
       speedRef.current = state.speed
+      gearRef.current = state.gear
       if (state.topSpeed > topSpeedRef.current) {
         topSpeedRef.current = state.topSpeed
       }
@@ -871,6 +875,7 @@ export function DragRace({ slug }: DragRaceProps) {
     goAtMsRef.current = null
     speedRef.current = 0
     topSpeedRef.current = 0
+    gearRef.current = fresh.gear
     // Wipe the previous lap's recording so the next finish only captures
     // the upcoming attempt. nextSampleAt is anchored at 0 so the first
     // sample lands at t=0 (GO) and successive samples step at the fixed
@@ -1146,12 +1151,11 @@ export function DragRace({ slug }: DragRaceProps) {
 
       {(phase === 'racing' || phase === 'finished') &&
         controlSettings.showSpeedometer && (
-          <DragSpeedometer
+          <DragTachometer
             speedRef={speedRef}
             maxSpeedRef={maxSpeedRef}
+            gearRef={gearRef}
             unit={controlSettings.speedUnit}
-            topSpeedRef={topSpeedRef}
-            showTopSpeedMarker={controlSettings.showTopSpeedMarker}
           />
         )}
 

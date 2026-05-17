@@ -21,14 +21,14 @@ test('Salt Flats opens the garage with the parts picker', async ({ page }) => {
   await expect(page.getByRole('button', { name: 'Race' })).toBeVisible()
 })
 
-test('drag speedometer needle visibly moves under throttle', async ({ page }) => {
+test('drag tachometer needle visibly moves under throttle', async ({ page }) => {
   await page.goto('/drag/salt-flats')
   await page.getByRole('button', { name: 'Race' }).click()
-  await expect(page.getByTestId('hud-speedometer')).toBeVisible({
+  await expect(page.getByTestId('hud-drag-tachometer')).toBeVisible({
     timeout: 6000,
   })
 
-  const needle = page.getByTestId('speedometer-needle')
+  const needle = page.getByTestId('tachometer-needle')
   const before = await needle.getAttribute('transform')
   await page.keyboard.down('ArrowUp')
   await expect
