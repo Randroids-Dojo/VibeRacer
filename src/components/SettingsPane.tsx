@@ -98,13 +98,12 @@ import {
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
   MenuButton,
-  MenuHeader,
   MenuHint,
-  MenuOverlay,
-  MenuPanel,
   MenuSection,
   MenuSettingRow,
   MenuSlider,
+  MenuStageOverlay,
+  MenuStartButton,
   MenuTabBar,
   MenuToggle,
   menuTheme,
@@ -644,7 +643,6 @@ export function SettingsPane({
   const body = (
     <>
       <CaptureSuppression active={captureActive} />
-      {isPage ? null : <MenuHeader title="SETTINGS" onClose={onClose} />}
 
       <MenuTabBar
         tabs={tabBarTabs}
@@ -657,7 +655,7 @@ export function SettingsPane({
         id={`settings-panel-${activeTab}`}
         role="tabpanel"
         aria-labelledby={`settings-tab-${activeTab}`}
-        style={isPage ? tabPanelPage : tabPanel}
+        style={tabPanelStyle}
       >
           {activeTab === 'profile' ? (
             <>
@@ -1493,19 +1491,19 @@ export function SettingsPane({
             Reset to defaults
           </MenuButton>
           {isPage ? null : (
-            <MenuButton
-              variant="primary"
-              click="confirm"
-              fullWidth={false}
-              onClick={onClose}
-            >
+            <MenuStartButton onClick={onClose} style={doneBtnStyle}>
               Done
-            </MenuButton>
+            </MenuStartButton>
           )}
         </div>
     </>
   )
 
+  // Page mode hosts the body inline so the caller (e.g. /settings) can
+  // wrap it in MenuPageShell directly. Modal mode hosts the body inside
+  // a MenuStageOverlay so the in-game pause Settings inherits the same
+  // sky-blue + dark-translucent + cream-card menu shell look the route
+  // already uses.
   if (isPage) {
     return (
       <MenuNavProvider
@@ -1522,19 +1520,19 @@ export function SettingsPane({
   }
 
   return (
-    <MenuOverlay
+    <MenuStageOverlay
+      title="SETTINGS"
       zIndex={110}
       onBack={onClose}
       onTabPrev={() => shiftTab(-1)}
       onTabNext={() => shiftTab(1)}
+      width="wide"
     >
-      <MenuPanel width="wide" overflow="hidden">
-        {body}
-      </MenuPanel>
+      {body}
       {featureListOpen ? (
         <FeatureListOverlay onClose={closeFeatureList} />
       ) : null}
-    </MenuOverlay>
+    </MenuStageOverlay>
   )
 }
 
@@ -1995,24 +1993,26 @@ const subTitle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
 }
-const tabPanel: React.CSSProperties = {
+// Both modal and page hosts (MenuStageOverlay / MenuPageShell) scroll
+// naturally on overflow now, so the tab panel itself does not need a
+// nested scroll container. Long tabs (Vehicle, World, Controls) just
+// extend the outer page / overlay scroll.
+const tabPanelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 14,
-  flex: '1 1 auto',
-  minHeight: 0,
-  overflowY: 'auto',
-  overscrollBehavior: 'contain',
-  paddingRight: 4,
+  gap: 12,
   paddingTop: 4,
 }
-// Page-mode tab panel: no nested scroll. The MenuPageShell page background
-// scrolls naturally instead of trapping a scrollbar inside the panel.
-const tabPanelPage: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  paddingTop: 4,
+
+// Compact red-pink "Done" button. Reuses MenuStartButton (so the click
+// sfx + focus ring stay consistent) but overrides the CTA padding so a
+// footer-right Done sits at the same size as the ghost "Reset" beside
+// it instead of swelling to the size of the bottom-of-page Start CTAs.
+const doneBtnStyle: React.CSSProperties = {
+  padding: '10px 16px',
+  fontSize: 16,
+  width: 'auto',
+  boxShadow: `0 4px 0 ${menuTheme.ctaShadow}`,
 }
 const bindingTable: React.CSSProperties = {
   display: 'flex',

@@ -1,6 +1,8 @@
 'use client'
 import {
+  createContext,
   forwardRef,
+  useContext,
   useEffect,
   useId,
   useRef,
@@ -19,6 +21,40 @@ import type { FocusAxis } from './MenuNav'
 // Shared visual language for the dark in-game / pause / settings menus.
 // Components on the light title backdrop (SlugInput, SlugLanding) intentionally
 // keep their own styles since they live on a sky gradient.
+
+// Variant of the surrounding overlay / page. Components like MenuTabBar,
+// MenuToggle, and MenuButton primary use it to pick the right accent
+// color: 'modal' (dark in-game overlays) → orange, 'shell' (sky-blue
+// MenuPageShell / MenuStageOverlay) → red-pink. Defaults to 'modal' for
+// any consumer that hasn't been wrapped by a provider, which preserves
+// the existing in-game look.
+type MenuShellVariant = 'modal' | 'shell'
+const MenuShellContext = createContext<MenuShellVariant>('modal')
+
+// `useMenuAccent` returns the accent color triple that the surrounding
+// shell variant calls for. Components inside a MenuStageOverlay (the
+// sky-blue page family) get the red-pink CTA accent so they stay inside
+// the menu-shell palette; components inside the dark in-game overlays
+// keep the orange accent the rest of the racing HUD uses.
+function useMenuAccent(): {
+  bg: string
+  text: string
+  border: string
+} {
+  const variant = useContext(MenuShellContext)
+  if (variant === 'shell') {
+    return {
+      bg: menuTheme.pickSelectedBg,
+      text: menuTheme.pickSelectedText,
+      border: menuTheme.pickSelectedBorder,
+    }
+  }
+  return {
+    bg: menuTheme.accentBg,
+    text: menuTheme.accentText,
+    border: menuTheme.accentBg,
+  }
+}
 
 // Re-export the design tokens so existing client-side callers (MenuUI's
 // own primitives, the in-game pause / settings modals, the
@@ -93,6 +129,12 @@ export function MenuOverlay({
     injectFocusStyle()
   }, [])
 
+  const isPage = variant === 'page'
+  const wrappedChildren = isPage ? (
+    <MenuShellContext.Provider value="shell">{children}</MenuShellContext.Provider>
+  ) : (
+    children
+  )
   const inner = onBack || onTabPrev || onTabNext || autoFocus !== undefined ? (
     <MenuNavProvider
       onBack={onBack}
@@ -100,13 +142,12 @@ export function MenuOverlay({
       onTabNext={onTabNext}
       autoFocus={autoFocus}
     >
-      {children}
+      {wrappedChildren}
     </MenuNavProvider>
   ) : (
-    children
+    wrappedChildren
   )
 
-  const isPage = variant === 'page'
   const overlay = (
     <div
       style={{
@@ -359,9 +400,10 @@ export const MenuButton = forwardRef<HTMLButtonElement, MenuButtonProps>(
       axis: navAxis ?? 'vertical',
       disabled,
     })
+    const accent = useMenuAccent()
     const variantStyle: CSSProperties =
       variant === 'primary'
-        ? { background: menuTheme.accentBg, color: menuTheme.accentText }
+        ? { background: accent.bg, color: accent.text }
         : variant === 'ghost'
           ? {
               background: 'transparent',
@@ -417,6 +459,7 @@ export function MenuToggle({
   const click = useClickSfx('soft')
   const ref = useRef<HTMLButtonElement | null>(null)
   useRegisterFocusable(ref, { axis: navAxis ?? 'vertical', disabled })
+  const accent = useMenuAccent()
   return (
     <button
       ref={ref}
@@ -439,8 +482,8 @@ export function MenuToggle({
         textTransform: 'uppercase',
         cursor: disabled ? 'not-allowed' : 'pointer',
         fontFamily: 'inherit',
-        background: value ? menuTheme.accentBg : '#3a3a3a',
-        color: 'white',
+        background: value ? accent.bg : '#3a3a3a',
+        color: accent.text,
         opacity: disabled ? 0.5 : 1,
         minWidth: 64,
       }}
@@ -634,6 +677,7 @@ function RadioOption<T extends string>({
     disabled: opt.disabled,
     onActivate: onPick,
   })
+  const accent = useMenuAccent()
   if (opt.render) {
     return (
       <button
@@ -670,9 +714,9 @@ function RadioOption<T extends string>({
       className="menuui-radio"
       onClick={onPick}
       style={{
-        border: `1px solid ${selected ? menuTheme.accent : menuTheme.ghostBorder}`,
-        background: selected ? menuTheme.accentBg : 'transparent',
-        color: selected ? menuTheme.accentText : '#cfcfcf',
+        border: `1px solid ${selected ? accent.bg : menuTheme.ghostBorder}`,
+        background: selected ? accent.bg : 'transparent',
+        color: selected ? accent.text : '#cfcfcf',
         borderRadius: 8,
         padding: '8px 12px',
         fontSize: 13,
@@ -765,6 +809,7 @@ function TabButton<T extends string>({
     disabled: tab.disabled,
     onActivate: onPick,
   })
+  const accent = useMenuAccent()
   return (
     <button
       ref={ref}
@@ -778,8 +823,8 @@ function TabButton<T extends string>({
       onClick={onPick}
       style={{
         border: 'none',
-        background: selected ? menuTheme.accentBg : 'transparent',
-        color: selected ? menuTheme.accentText : '#cfcfcf',
+        background: selected ? accent.bg : 'transparent',
+        color: selected ? accent.text : '#cfcfcf',
         borderRadius: 6,
         padding: '6px 12px',
         fontSize: 13,
@@ -831,18 +876,29 @@ export function MenuShellStage({
   children: ReactNode
 }) {
   const isWide = width === 'wide'
+  // Anchor the menu-shell variant context here so children inside any
+  // MenuPageShell or MenuStageOverlay (which both wrap their content
+  // in MenuShellStage) automatically pick up the red-pink accent via
+  // useMenuAccent, regardless of which outer overlay variant they
+  // happen to use.
   return (
-    <div style={isWide ? shellStageWide : shellStageNarrow}>
-      <header style={shellHeaderStyle}>
-        <h1 style={shellTitleStyle}>{title}</h1>
-        {closeHref ? (
-          <Link href={closeHref} style={shellCloseStyle} aria-label={closeLabel}>
-            {closeLabel}
-          </Link>
-        ) : null}
-      </header>
-      <div style={shellPanelStyle}>{children}</div>
-    </div>
+    <MenuShellContext.Provider value="shell">
+      <div style={isWide ? shellStageWide : shellStageNarrow}>
+        <header style={shellHeaderStyle}>
+          <h1 style={shellTitleStyle}>{title}</h1>
+          {closeHref ? (
+            <Link
+              href={closeHref}
+              style={shellCloseStyle}
+              aria-label={closeLabel}
+            >
+              {closeLabel}
+            </Link>
+          ) : null}
+        </header>
+        <div style={shellPanelStyle}>{children}</div>
+      </div>
+    </MenuShellContext.Provider>
   )
 }
 
@@ -853,6 +909,8 @@ export function MenuShellStage({
 export function MenuStageOverlay({
   title,
   onBack,
+  onTabPrev,
+  onTabNext,
   zIndex,
   autoFocus,
   width = 'narrow',
@@ -860,6 +918,8 @@ export function MenuStageOverlay({
 }: {
   title: ReactNode
   onBack?: () => void
+  onTabPrev?: () => void
+  onTabNext?: () => void
   zIndex?: number
   autoFocus?: boolean
   width?: 'narrow' | 'wide'
@@ -870,6 +930,8 @@ export function MenuStageOverlay({
       variant="page"
       zIndex={zIndex}
       onBack={onBack}
+      onTabPrev={onTabPrev}
+      onTabNext={onTabNext}
       autoFocus={autoFocus}
     >
       <MenuShellStage title={title} width={width}>
@@ -902,6 +964,7 @@ export function MenuPickRow({
 }) {
   const ref = useRef<HTMLButtonElement | null>(null)
   useRegisterFocusable(ref, { axis, onActivate: onPick })
+  const accent = useMenuAccent()
   return (
     <button
       ref={ref}
@@ -913,10 +976,10 @@ export function MenuPickRow({
       className="menuui-focusable"
       style={{
         ...pickRowStyle,
-        background: selected ? menuTheme.pickSelectedBg : menuTheme.cardBg,
-        color: selected ? menuTheme.pickSelectedText : menuTheme.cardText,
+        background: selected ? accent.bg : menuTheme.cardBg,
+        color: selected ? accent.text : menuTheme.cardText,
         borderColor: selected
-          ? menuTheme.pickSelectedBorder
+          ? accent.border
           : menuTheme.cardBorder,
       }}
     >
@@ -967,6 +1030,35 @@ export const MenuStartButton = forwardRef<
       click="confirm"
       onClick={onClick}
       style={{ ...startBtnStyle, ...style }}
+      {...rest}
+    >
+      {children}
+    </MenuButton>
+  )
+})
+
+// `MenuShellAction` is the secondary action button for menu shell
+// screens (pause menu rows, "Feature List" / "Open Tuning Lab" inside
+// Settings, etc.). It mirrors the cream pick-row card (`MenuPickRow`'s
+// unselected state): cream fill, dark text, thick black outline, amber
+// drop shadow. Reusing the same surface for both selection rows and
+// action rows keeps the menu shell visually unified while
+// `MenuStartButton` (red-pink) reads as the dominant CTA on the page.
+export const MenuShellAction = forwardRef<
+  HTMLButtonElement,
+  Omit<ButtonHTMLAttributes<HTMLButtonElement>, 'onClick'> & {
+    onClick?: () => void
+    click?: ClickVariant
+    children: ReactNode
+  }
+>(function MenuShellAction({ children, onClick, click, style, ...rest }, ref) {
+  return (
+    <MenuButton
+      ref={ref}
+      variant="secondary"
+      click={click ?? 'soft'}
+      onClick={onClick}
+      style={{ ...shellActionStyle, ...style }}
       {...rest}
     >
       {children}
@@ -1075,4 +1167,17 @@ const startBtnStyle: CSSProperties = {
   letterSpacing: 0.5,
   boxShadow: `0 6px 0 ${menuTheme.ctaShadow}`,
   border: 'none',
+}
+
+const shellActionStyle: CSSProperties = {
+  padding: '12px 18px',
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 12,
+  fontSize: 16,
+  fontWeight: 700,
+  letterSpacing: 0.3,
+  boxShadow: `0 4px 0 ${menuTheme.cardShadow}`,
+  textAlign: 'center',
 }
