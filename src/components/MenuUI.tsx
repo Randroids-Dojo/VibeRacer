@@ -913,9 +913,11 @@ export function MenuPickRow({
       className="menuui-focusable"
       style={{
         ...pickRowStyle,
-        background: selected ? menuTheme.accentBg : menuTheme.cardBg,
-        color: selected ? menuTheme.accentText : menuTheme.cardText,
-        borderColor: selected ? menuTheme.accentBg : menuTheme.cardBorder,
+        background: selected ? menuTheme.pickSelectedBg : menuTheme.cardBg,
+        color: selected ? menuTheme.pickSelectedText : menuTheme.cardText,
+        borderColor: selected
+          ? menuTheme.pickSelectedBorder
+          : menuTheme.cardBorder,
       }}
     >
       <span style={pickRowTextStyle}>

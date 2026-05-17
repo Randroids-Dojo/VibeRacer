@@ -222,14 +222,18 @@ const radioListStyle: CSSProperties = {
   minWidth: 0,
 }
 
+// Banner that echoes the currently-selected option at the top of the
+// modal. Borrows the menu shell's red-pink (ctaBg / pickSelectedBg)
+// instead of orange so the highlight stays in the cream + red-pink
+// palette the rest of the picker uses.
 const selectedBannerStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 10,
   padding: '8px 12px',
   borderRadius: 8,
-  border: `1px solid ${menuTheme.accentBg}`,
-  background: 'rgba(255, 107, 53, 0.12)',
+  border: `1px solid ${menuTheme.pickSelectedBg}`,
+  background: 'rgba(232, 74, 95, 0.15)',
   minWidth: 0,
 }
 
@@ -238,7 +242,7 @@ const selectedLabelStyle: CSSProperties = {
   fontWeight: 700,
   letterSpacing: 1.6,
   textTransform: 'uppercase',
-  color: menuTheme.accent,
+  color: menuTheme.pickSelectedBg,
 }
 
 const selectedNameStyle: CSSProperties = {

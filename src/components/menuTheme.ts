@@ -44,4 +44,11 @@ export const menuTheme = {
   // shell (Start a new race, Start race, Race, Play, etc.).
   ctaBg: '#e84a5f',
   ctaShadow: '#9c2a3c',
+  // Pick-row selected state. Anchored to the same red-pink as the CTA
+  // so the selected option visually links to the "go" path. The CTA
+  // outranks the selected row with bigger padding + a drop shadow so
+  // the two never read as the same control even on a narrow modal.
+  pickSelectedBg: '#e84a5f',
+  pickSelectedText: '#ffffff',
+  pickSelectedBorder: '#9c2a3c',
 } as const
