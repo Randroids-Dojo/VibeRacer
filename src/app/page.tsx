@@ -1,4 +1,5 @@
 import Link from 'next/link'
+import { menuTheme } from '@/components/MenuUI'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'
@@ -57,9 +58,9 @@ const mainStyle: React.CSSProperties = {
   placeItems: 'center',
   fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
   color: 'white',
-  padding: 24,
+  padding: 20,
   overflow: 'hidden',
-  background: '#9ad8ff',
+  background: menuTheme.pageBg,
 }
 const skyFadeStyle: React.CSSProperties = {
   position: 'fixed',
@@ -107,27 +108,28 @@ const tagStyle: React.CSSProperties = {
   opacity: 0.95,
 }
 const menuStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.45)',
-  padding: 24,
-  borderRadius: 18,
-  display: 'grid',
-  gap: 18,
-  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
+  background: menuTheme.shellPanelBg,
+  padding: 18,
+  borderRadius: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  boxShadow: menuTheme.shellShadow,
+  backdropFilter: menuTheme.shellBlur,
+  WebkitBackdropFilter: menuTheme.shellBlur,
 }
 const primaryBtnStyle: React.CSSProperties = {
   display: 'block',
-  padding: '18px 24px',
-  background: '#e84a5f',
+  padding: '14px 20px',
+  background: menuTheme.ctaBg,
   color: 'white',
   textDecoration: 'none',
   borderRadius: 12,
-  fontSize: 22,
+  fontSize: 20,
   fontWeight: 700,
   letterSpacing: 0.5,
   textAlign: 'center',
-  boxShadow: '0 6px 0 #9c2a3c',
+  boxShadow: `0 6px 0 ${menuTheme.ctaShadow}`,
 }
 const settingsBtnStyle: React.CSSProperties = {
   padding: '12px 16px',

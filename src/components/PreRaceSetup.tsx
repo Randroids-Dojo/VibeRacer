@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   isStockParams,
@@ -18,11 +18,12 @@ import {
 import {
   MenuButton,
   MenuHint,
-  MenuOverlay,
+  MenuPickRow,
+  MenuStageOverlay,
+  MenuStartButton,
   MenuToggle,
   menuTheme,
 } from './MenuUI'
-import { useRegisterFocusable } from './MenuNav'
 
 export interface PreRaceSetupResult {
   params: CarParams
@@ -42,12 +43,16 @@ interface Props {
 const OPEN_LAB_PROMPT =
   'Leave this race to open the Tuning Lab? You can pick a setup again when you come back.'
 
-// Player-facing pre-race tuning picker. The picker now spells out the name
-// of every choice (no more "Saved setup for this track" mystery box) and
+// Player-facing pre-race tuning picker. The picker spells out the name of
+// every choice (no more "Saved setup for this track" mystery box) and
 // shows the highlighted choice in a header strip so it is always obvious
 // which setup is about to drive the race. Pinning a track suppresses this
 // modal entirely on the next visit; the pause menu's "Change car setup"
 // action is the explicit override.
+//
+// Layout is delegated to MenuStageOverlay so the modal sits in the same
+// blue-page + dark-translucent header/body shell as Free Race, Derby,
+// Drag, Tour, Settings, and the Drag Garage.
 export function PreRaceSetup({
   slug,
   versionHash,
@@ -137,52 +142,41 @@ export function PreRaceSetup({
   }
 
   return (
-    <MenuOverlay zIndex={150} autoFocus variant="page">
-      <div style={stageStyle}>
-        <header style={headerStyle}>
-          <h2 style={titleStyle}>SETUP</h2>
-        </header>
-        <div style={panelStyle}>
-          <SelectedBanner option={selected} />
-          <MenuHint>
-            The highlighted setup is what your car will use this race. Toggle
-            {' '}
-            <strong>Always use this setup</strong> below to skip this picker
-            on your next visit.
-          </MenuHint>
+    <MenuStageOverlay title="SETUP" zIndex={150} autoFocus width="narrow">
+      <SelectedBanner option={selected} />
+      <MenuHint>
+        The highlighted setup is what your car will use this race. Toggle
+        {' '}
+        <strong>Always use this setup</strong> below to skip this picker
+        on your next visit.
+      </MenuHint>
 
-          <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
-            {options.map((o) => (
-              <RadioRow
-                key={o.id}
-                option={o}
-                selected={o.id === pickId}
-                onPick={() => setPickId(o.id)}
-              />
-            ))}
-          </div>
-
-          <MenuButton variant="ghost" onClick={handleOpenLab}>
-            Create a new tuning in the Lab
-          </MenuButton>
-
-          <MenuToggle
-            label="Always use this setup for this track"
-            value={pin}
-            onChange={setPin}
+      <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
+        {options.map((o) => (
+          <MenuPickRow
+            key={o.id}
+            label={o.label}
+            sublabel={o.sublabel}
+            tag={isStockParams(o.params) ? 'STOCK' : undefined}
+            selected={o.id === pickId}
+            onPick={() => setPickId(o.id)}
+            ariaLabel={`Pick setup: ${o.label}`}
           />
-
-          <MenuButton
-            variant="primary"
-            click="confirm"
-            onClick={handleRace}
-            style={startBtnStyle}
-          >
-            Start race
-          </MenuButton>
-        </div>
+        ))}
       </div>
-    </MenuOverlay>
+
+      <MenuButton variant="ghost" onClick={handleOpenLab}>
+        Create a new tuning in the Lab
+      </MenuButton>
+
+      <MenuToggle
+        label="Always use this setup for this track"
+        value={pin}
+        onChange={setPin}
+      />
+
+      <MenuStartButton onClick={handleRace}>Start race</MenuStartButton>
+    </MenuStageOverlay>
   )
 }
 
@@ -195,60 +189,6 @@ function SelectedBanner({ option }: { option: PreRaceSetupOption }) {
         <span style={stockTagStyle}>STOCK</span>
       ) : null}
     </div>
-  )
-}
-
-function RadioRow({
-  option,
-  selected,
-  onPick,
-}: {
-  option: PreRaceSetupOption
-  selected: boolean
-  onPick: () => void
-}) {
-  const ref = useRef<HTMLButtonElement | null>(null)
-  useRegisterFocusable(ref, { axis: 'vertical', onActivate: onPick })
-  const stock = isStockParams(option.params)
-  return (
-    <button
-      ref={ref}
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onPick}
-      className="menuui-focusable"
-      style={{
-        ...radioRowStyle,
-        background: selected ? menuTheme.accentBg : '#fff8d6',
-        color: selected ? menuTheme.accentText : '#1b1b1b',
-        borderColor: selected ? menuTheme.accentBg : 'rgba(0,0,0,0.75)',
-      }}
-    >
-      <span style={radioRowTextStyle}>
-        <span style={radioRowLabelStyle}>{option.label}</span>
-        {option.sublabel ? (
-          <span
-            style={{
-              ...radioRowSublabelStyle,
-              opacity: selected ? 0.85 : 0.65,
-            }}
-          >
-            {option.sublabel}
-          </span>
-        ) : null}
-      </span>
-      {stock ? (
-        <span
-          style={{
-            ...stockTagStyle,
-            opacity: selected ? 0.75 : 0.55,
-          }}
-        >
-          STOCK
-        </span>
-      ) : null}
-    </button>
   )
 }
 
@@ -272,63 +212,6 @@ async function fetchTopEntry(
   }
 }
 
-// Two-piece dark translucent stack so the modal reads as part of the same
-// family as the Free Race / Derby / Drag / Tour menu shells: dark header
-// strip with the title, then a dark body panel for the picker content, both
-// with backdrop blur. Sits on top of the MenuOverlay's dim backdrop.
-const stageStyle: CSSProperties = {
-  width: 'min(480px, 100%)',
-  display: 'grid',
-  gap: 14,
-}
-
-const headerStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  padding: '12px 18px',
-  background: 'rgba(0,0,0,0.55)',
-  borderRadius: 12,
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-}
-
-const titleStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 24,
-  fontWeight: 800,
-  letterSpacing: 1,
-  color: '#fff',
-}
-
-const panelStyle: CSSProperties = {
-  background: 'rgba(0,0,0,0.45)',
-  padding: 24,
-  borderRadius: 18,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 14,
-  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-}
-
-// Bold red-pink primary CTA that matches the Start / Play buttons on the
-// new menu shell pages (Free Race "Start a new race" etc.). Overrides the
-// MenuButton primary's orange so the visual hierarchy reads the same
-// across modes.
-const startBtnStyle: CSSProperties = {
-  padding: '18px 24px',
-  background: '#e84a5f',
-  color: 'white',
-  borderRadius: 12,
-  fontSize: 22,
-  fontWeight: 700,
-  letterSpacing: 0.5,
-  boxShadow: '0 6px 0 #9c2a3c',
-  border: 'none',
-}
-
 const radioListStyle: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
@@ -336,44 +219,7 @@ const radioListStyle: CSSProperties = {
   maxHeight: 260,
   overflowY: 'auto',
   paddingRight: 4,
-}
-
-const radioRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  padding: '10px 14px',
-  borderRadius: 8,
-  border: '2px solid',
-  cursor: 'pointer',
-  textAlign: 'left',
-  fontFamily: 'inherit',
-}
-
-const radioRowTextStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
   minWidth: 0,
-}
-
-const radioRowLabelStyle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-}
-
-const radioRowSublabelStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 500,
-  letterSpacing: 0.2,
-}
-
-const stockTagStyle: CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: 1.2,
-  opacity: 0.7,
 }
 
 const selectedBannerStyle: CSSProperties = {
@@ -384,6 +230,7 @@ const selectedBannerStyle: CSSProperties = {
   borderRadius: 8,
   border: `1px solid ${menuTheme.accentBg}`,
   background: 'rgba(255, 107, 53, 0.12)',
+  minWidth: 0,
 }
 
 const selectedLabelStyle: CSSProperties = {
@@ -403,4 +250,11 @@ const selectedNameStyle: CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const stockTagStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 1.2,
+  opacity: 0.7,
 }

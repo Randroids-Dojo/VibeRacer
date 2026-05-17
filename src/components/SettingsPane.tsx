@@ -1575,6 +1575,11 @@ function InitialsInput({
       ref={ref}
       value={value}
       maxLength={3}
+      // size={3} caps the input's intrinsic content-based min-width so a
+      // narrow mobile viewport doesn't blow out the parent flex container
+      // (the default size=20 + monospace 28 + letter-spacing 8 demanded
+      // ~400px and forced the whole Settings panel to overflow).
+      size={3}
       onChange={(e) =>
         onChangeValue(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
       }
@@ -2075,6 +2080,9 @@ const initialsRow: React.CSSProperties = {
 }
 const initialsInput: React.CSSProperties = {
   flex: 1,
+  // min-width: 0 so the input shrinks below its intrinsic content size
+  // when the flex parent is narrower than 3 letter-spaced 28px chars.
+  minWidth: 0,
   fontFamily: 'monospace',
   fontSize: 28,
   textAlign: 'center',
