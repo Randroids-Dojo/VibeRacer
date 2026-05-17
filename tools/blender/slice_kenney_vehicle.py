@@ -262,6 +262,66 @@ def bisect_in_place(
     bpy.ops.object.mode_set(mode="OBJECT")
 
 
+def bisect_split(
+    obj: bpy.types.Object,
+    plane_co: Vector,
+    plane_no: Vector,
+) -> None:
+    """Bisect the mesh along a plane without removing either side. Splits
+    any face that spans the plane into two faces, leaving the mesh
+    visually identical but ready for a downstream centroid-based delete
+    to remove only the faces fully on one side."""
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    local_co = obj.matrix_world.inverted() @ plane_co
+    local_no = (obj.matrix_world.inverted().to_3x3() @ plane_no).normalized()
+    bpy.ops.object.mode_set(mode="EDIT")
+    bm = bmesh.from_edit_mesh(obj.data)
+    geom = list(bm.verts) + list(bm.edges) + list(bm.faces)
+    bmesh.ops.bisect_plane(
+        bm,
+        geom=geom,
+        plane_co=local_co,
+        plane_no=local_no,
+        clear_outer=False,
+        clear_inner=False,
+        use_snap_center=False,
+    )
+    bmesh.update_edit_mesh(obj.data)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
+def delete_faces_in_box(
+    obj: bpy.types.Object,
+    lo: Vector,
+    hi: Vector,
+) -> None:
+    """Delete every face whose centroid (world-space) lies inside the AABB
+    [lo, hi]. Used to punch a real hole in the body shell where a carved
+    door panel sits so the panel doesn't z-fight with the body. Inclusive
+    bounds are fine because the bisect-carved door uses the same box as
+    its keep region, so every face that ends up in the door piece is the
+    same face we delete from the body."""
+    bpy.context.view_layer.objects.active = obj
+    bpy.ops.object.select_all(action="DESELECT")
+    obj.select_set(True)
+    bpy.ops.object.mode_set(mode="EDIT")
+    bm = bmesh.from_edit_mesh(obj.data)
+    mw = obj.matrix_world
+    to_delete = []
+    for face in bm.faces:
+        c_world = mw @ face.calc_center_median()
+        if (lo.x <= c_world.x <= hi.x
+                and lo.y <= c_world.y <= hi.y
+                and lo.z <= c_world.z <= hi.z):
+            to_delete.append(face)
+    if to_delete:
+        bmesh.ops.delete(bm, geom=to_delete, context="FACES")
+    bmesh.update_edit_mesh(obj.data)
+    bpy.ops.object.mode_set(mode="OBJECT")
+
+
 def add_interior_material_to_caps(
     obj: bpy.types.Object,
     interior_mat: bpy.types.Material,
@@ -356,12 +416,17 @@ def slice_body_into_parts(
 
     out: dict[str, bpy.types.Object] = {"body": body, "hood": hood, "trunk": trunk}
 
-    # Door panels: only emitted when the source GLB ships door-left and
-    # door-right nodes (ambulance). For shell-bodied variants (sedan,
-    # truck, race) we skip doors entirely: overlay boxes look like blocky
-    # protrusions on the shell, and bisecting the shell for a door slab
-    # tends to leave empty meshes. The damage visualizer falls back to
-    # hood / trunk detach for these variants based on hit direction.
+    # Door panels. The ambulance ships door-left / door-right as separate
+    # source nodes; rename_source_doors handles those before we get here.
+    # Every other variant has a shell body with no door geometry, so we
+    # bake in real carved door panels and a matching cavity in the body
+    # shell (see build_door_slabs for the full reasoning).
+    if not variant.has_source_doors:
+        door_l, door_r = build_door_slabs(
+            body, variant, side, axes, fwd_min, length, interior_mat,
+        )
+        out["door_l"] = door_l
+        out["door_r"] = door_r
     return out
 
 
@@ -374,60 +439,146 @@ def build_door_slabs(
     length: float,
     interior_mat: bpy.types.Material,
 ) -> tuple[bpy.types.Object, bpy.types.Object]:
-    """Build "door" panel boxes embedded INSIDE the body shell so they sit
-    flush at the body's outer surface and are occluded by the body until
-    they detach. Truly slicing a door piece out of Kenney's shell bodies
-    risks leaving zero-vertex meshes (the shell is thin so multi-axis
-    bisect can over-eat); embedded overlays are reliable. When a panel
-    detaches at runtime the body shell stays put and the door flies out
-    as free-standing debris, so the visual reads as "a chunk popped off
-    that side of the car" rather than "a thin flag detached from outside
-    the car". The Kenney source for ambulance ships doors as separate
-    Nodes and the rename_source_doors path uses those directly. This
-    overlay code is only the fallback for variants that do not."""
+    """Carve real door panels out of the body shell with 5 bisect cuts per
+    side: one inner-side plane, two forward planes, two up planes. After
+    each door is carved (from a duplicate of the body) we also DELETE the
+    body's faces inside the same door box so the body shell has a real
+    cavity there. The door panel sits in the same world position as the
+    cavity, so when attached the panel covers the hole flush (no
+    z-fighting) and when the runtime visualizer detaches it the cavity
+    reads as a torn-off door region. The runtime tintBody pass recolors
+    body and door together so the seam reads as a panel line.
+
+    The ambulance ships door-left / door-right as separate source nodes
+    and goes through rename_source_doors instead; this carve path is for
+    variants whose Kenney source has the doors fused into the body shell
+    (sedan, truck, race)."""
     mn, mx = world_bbox(body)
     side_idx = ("x", "y", "z").index(axes["side"])
     fwd_idx = ("x", "y", "z").index(axes["forward"])
     up_idx = ("x", "y", "z").index("z")
+    side_vec = axis_vec(axes["side"])
+    fwd_vec = axis_vec(axes["forward"])
+    up_vec = axis_vec("z")
     width = mx[side_idx] - mn[side_idx]
     height = mx[up_idx] - mn[up_idx]
-    door_height = max(0.4, height * 0.45)
-    door_z = mn[up_idx] + height * 0.30
-    door_len = max(0.6, length * 0.42)
-    door_fwd_center = fwd_min + length * 0.50
-    # Thick enough to read as a real door slab once detached; we tuck it
-    # entirely INSIDE the body shell on the side axis so the outer face is
-    # roughly coplanar with the body's exterior. The body shell occludes
-    # the door panel while it is still attached.
-    door_thickness = max(0.18, width * 0.12)
 
-    def make_door(name: str, side_sign: int) -> bpy.types.Object:
-        loc = [0.0, 0.0, 0.0]
-        # Center the door so its OUTER face sits ~1mm inside the body's
-        # edge (width/2). Subtracting door_thickness/2 puts the outer face
-        # exactly at width/2; pull in a tiny bit more so micro float
-        # variance never lets the panel pop through the body.
-        loc[side_idx] = side_sign * (width / 2 - door_thickness / 2 - 0.005)
-        loc[fwd_idx] = door_fwd_center
-        loc[up_idx] = door_z + door_height / 2
-        bpy.ops.mesh.primitive_cube_add(size=1.0, location=tuple(loc))
-        obj = bpy.context.active_object
-        obj.name = name
-        scale = [0.0, 0.0, 0.0]
-        scale[side_idx] = door_thickness
-        scale[fwd_idx] = door_len
-        scale[up_idx] = door_height
-        obj.scale = Vector(scale)
-        bpy.ops.object.transform_apply(scale=True, location=False, rotation=False)
-        # Reuse the body's first material so the door's paint matches once
-        # it detaches and becomes visible debris. The runtime tintBody
-        # pass also recolors it per derby slot.
-        if body.data.materials:
-            obj.data.materials.append(body.data.materials[0])
-        return obj
+    # Door region. The inner side plane bites into the cabin shell —
+    # placed at 40% of the half-width so the kept side captures the door
+    # panel (and the window pillar above it) without reaching into the
+    # opposite side's skin via the floor pan. Forward planes pick the
+    # middle 42% of the body length (cabin door area, between wheel
+    # arches). Up planes cover from just above the floor up to the
+    # window line; sitting below the roof so the door piece doesn't
+    # include the roof skin.
+    side_inner_offset = (width / 2.0) * 0.40
+    fwd_center = fwd_min + length * 0.50
+    fwd_lo = fwd_center - length * 0.21
+    fwd_hi = fwd_center + length * 0.21
+    z_lo = mn[up_idx] + height * 0.18
+    z_hi = mn[up_idx] + height * 0.62
 
-    door_l = make_door("door_l", -1)
-    door_r = make_door("door_r", +1)
+    door_mat = make_pbr(
+        "derbyDoorPanel",
+        color=(0.85, 0.85, 0.85),
+        roughness=0.55,
+        metallic=0.10,
+    )
+
+    def door_box_bounds(side_sign: int) -> tuple[Vector, Vector]:
+        """World-space AABB of the door region for one side. Extends past
+        the body's outer edge on the side axis so a face whose centroid
+        sits right at the skin still counts as inside."""
+        lo = mn.copy()
+        hi = mx.copy()
+        if side_sign > 0:
+            lo[side_idx] = side_inner_offset
+            hi[side_idx] = mx[side_idx] + 0.05
+        else:
+            lo[side_idx] = mn[side_idx] - 0.05
+            hi[side_idx] = -side_inner_offset
+        lo[fwd_idx] = fwd_lo
+        hi[fwd_idx] = fwd_hi
+        lo[up_idx] = z_lo
+        hi[up_idx] = z_hi
+        return lo, hi
+
+    def carve_door(name: str, side_sign: int) -> bpy.types.Object:
+        door = duplicate(body, name)
+        # 1. Inner side plane. Normal points toward the kept (door) side
+        # so the kept verts have positive dot product; clear_inner removes
+        # the negative side (the body center and the opposite skin).
+        plane_co = mn.copy()
+        plane_co[side_idx] = side_sign * side_inner_offset
+        plane_no = side_vec * side_sign
+        bisect_in_place(door, plane_co, plane_no,
+                        clear_outer=False, clear_inner=True)
+        # 2. Forward low plane: keep verts forward of fwd_lo.
+        plane_co = mn.copy()
+        plane_co[fwd_idx] = fwd_lo
+        bisect_in_place(door, plane_co, fwd_vec,
+                        clear_outer=False, clear_inner=True)
+        # 3. Forward high plane: keep verts behind fwd_hi.
+        plane_co = mx.copy()
+        plane_co[fwd_idx] = fwd_hi
+        bisect_in_place(door, plane_co, fwd_vec,
+                        clear_outer=True, clear_inner=False)
+        # 4. Up low plane: keep verts above z_lo.
+        plane_co = mn.copy()
+        plane_co[up_idx] = z_lo
+        bisect_in_place(door, plane_co, up_vec,
+                        clear_outer=False, clear_inner=True)
+        # 5. Up high plane: keep verts below z_hi.
+        plane_co = mx.copy()
+        plane_co[up_idx] = z_hi
+        bisect_in_place(door, plane_co, up_vec,
+                        clear_outer=True, clear_inner=False)
+
+        # Swap the inherited Kenney palette material for a flat door
+        # paint. The Kenney material samples a palette texture via UVs;
+        # after the bisects the door piece's UVs are the same as the body
+        # patch's, which would render as whatever palette stripe the
+        # source body sat on. A texture-less material lets tintBody at
+        # runtime produce a clean solid paint color.
+        door.data.materials.clear()
+        door.data.materials.append(door_mat)
+        for poly in door.data.polygons:
+            poly.material_index = 0
+
+        if len(door.data.vertices) == 0:
+            raise RuntimeError(
+                f"carve_door produced an empty mesh for {name}; "
+                f"tune SliceVariant.door_slab_* for variant {variant.name}"
+            )
+        return door
+
+    door_l = carve_door("door_l", -1)
+    door_r = carve_door("door_r", +1)
+
+    # Punch real holes in the body shell at each door box. First
+    # split-bisect along every plane that bounds either door box so any
+    # body face spanning a box boundary is divided into a fully-inside
+    # piece and a fully-outside piece; without that pre-split a spanning
+    # face's centroid lands outside the box and survives the delete,
+    # leaving overlap with the door's carved (inside-portion) face and
+    # producing visible z-fight stripes on the panel. Plane positions
+    # come from the carve's plane set so the split lines match exactly.
+    for sign in (-1, +1):
+        side_plane = mn.copy()
+        side_plane[side_idx] = sign * side_inner_offset
+        bisect_split(body, side_plane, side_vec * sign)
+    for fwd_val in (fwd_lo, fwd_hi):
+        plane = mn.copy()
+        plane[fwd_idx] = fwd_val
+        bisect_split(body, plane, fwd_vec)
+    for z_val in (z_lo, z_hi):
+        plane = mn.copy()
+        plane[up_idx] = z_val
+        bisect_split(body, plane, up_vec)
+    for sign in (-1, +1):
+        lo, hi = door_box_bounds(sign)
+        delete_faces_in_box(body, lo, hi)
+
     return door_l, door_r
 
 
@@ -554,6 +705,143 @@ def add_lights(body: bpy.types.Object, variant: SliceVariant) -> list[bpy.types.
     ]
 
 
+def add_wheel_axles(interior_mat: bpy.types.Material) -> list[bpy.types.Object]:
+    """Add transverse axle bars between each wheel pair so a destroyed
+    wreck doesn't read as four floating wheels around a gutted body.
+    Each axle is a thin horizontal bar spanning the wheels at their
+    center height, dark interior material. Hidden inside the body shell
+    when assembled; visible bridging the wheels in the destroyed view."""
+    out: list[bpy.types.Object] = []
+    for axle_name, left, right in (
+        ("axle_front", "wheel_fl", "wheel_fr"),
+        ("axle_rear", "wheel_rl", "wheel_rr"),
+    ):
+        wl = bpy.data.objects.get(left)
+        wr = bpy.data.objects.get(right)
+        if wl is None or wr is None:
+            continue
+        pl = wl.matrix_world.translation
+        pr = wr.matrix_world.translation
+        cx = (pl.x + pr.x) / 2.0
+        cy = (pl.y + pr.y) / 2.0
+        cz = (pl.z + pr.z) / 2.0
+        wheel_span = abs(pl.x - pr.x)
+        bpy.ops.mesh.primitive_cube_add(size=1.0, location=(cx, cy, cz))
+        axle = bpy.context.active_object
+        axle.name = axle_name
+        # Long across X (wheel-to-wheel), thin in Y (forward), thin in Z (up).
+        # 0.9× the wheel span so the bar's ends sit just inside the inner
+        # wheel face — looks like the axle continues into the hub.
+        axle.scale = Vector((wheel_span * 0.9, 0.28, 0.20))
+        bpy.ops.object.transform_apply(
+            scale=True, location=False, rotation=False,
+        )
+        axle.data.materials.clear()
+        axle.data.materials.append(interior_mat)
+        out.append(axle)
+    return out
+
+
+def double_side_all_materials() -> None:
+    """Flip backface culling off on every material in the scene so the
+    GLTF exporter writes doubleSided=true. When a panel detaches and
+    exposes a cavity in the body shell, the back of the opposite shell
+    skin renders in the same paint color instead of being invisible, so
+    the cavity reads as a clean carved opening rather than a flickering
+    gap. Also keeps detached panels visible from both faces while they
+    tumble through the air."""
+    for mat in bpy.data.materials:
+        mat.use_backface_culling = False
+
+
+def add_chassis_internals(
+    body: bpy.types.Object,
+    interior_mat: bpy.types.Material,
+) -> list[bpy.types.Object]:
+    """Drop dark interior pieces inside the body shell so when hood /
+    trunk / doors detach the cavities reveal real-looking car internals
+    instead of light passing through to the opposite cavity. Three
+    pieces, each sized to fit comfortably inside the body so none of
+    them poke through an exterior surface when assembled:
+
+    - engine_block: front of the body, between the wheels, low. Visible
+      through the hood cavity from the front and through the front of
+      the door cavity from the side.
+    - cabin_core: centered seat-and-dashboard-volume, taller than the
+      others. Visible through both door cavities so the line of sight
+      from one door to the other is blocked.
+    - trunk_floor: rear of the body, low and flat. Visible through the
+      trunk cavity from the back and through the rear of the door
+      cavity from the side.
+
+    All three are top-level nodes with the derbyInterior material; they
+    are NOT in tintBody's PAINT_NODE_NAMES so they keep their dark color
+    instead of being recolored to the paint, and they are NOT in
+    detachable panel names so they stay put through the destroy
+    sequence."""
+    mn, mx = world_bbox(body)
+    width = mx.x - mn.x
+    length = mx.y - mn.y
+    height = mx.z - mn.z
+    cx = (mn.x + mx.x) / 2
+    cy = (mn.y + mx.y) / 2
+
+    def add_piece(name: str, fwd_center: float, fwd_extent: float,
+                  side_width: float, up_extent: float,
+                  up_offset: float) -> bpy.types.Object:
+        cz = mn.z + up_offset + up_extent / 2
+        bpy.ops.mesh.primitive_cube_add(
+            size=1.0, location=(cx, fwd_center, cz)
+        )
+        piece = bpy.context.active_object
+        piece.name = name
+        piece.scale = Vector((side_width, fwd_extent, up_extent))
+        bpy.ops.object.transform_apply(
+            scale=True, location=False, rotation=False,
+        )
+        piece.data.materials.clear()
+        piece.data.materials.append(interior_mat)
+        return piece
+
+    # Engine block: front quarter of the body, low, narrow enough to
+    # leave room around the inner wheel wells.
+    engine_fwd = cy + length * 0.32
+    engine = add_piece(
+        "engine_block",
+        fwd_center=engine_fwd,
+        fwd_extent=length * 0.20,
+        side_width=width * 0.55,
+        up_extent=height * 0.30,
+        up_offset=height * 0.05,
+    )
+
+    # Cabin core: middle of the body, taller (up to door-cavity top so
+    # it fills the line-of-sight from one door cavity to the other) but
+    # narrow so it doesn't poke through the doors when assembled.
+    cabin = add_piece(
+        "cabin_core",
+        fwd_center=cy,
+        fwd_extent=length * 0.34,
+        side_width=width * 0.55,
+        up_extent=height * 0.50,
+        up_offset=height * 0.05,
+    )
+
+    # Trunk floor: rear quarter, low and short — visible through the
+    # trunk cavity from behind but sized to stay under a truck bed wall.
+    trunk_fwd = cy - length * 0.32
+    trunk_floor = add_piece(
+        "trunk_floor",
+        fwd_center=trunk_fwd,
+        fwd_extent=length * 0.20,
+        side_width=width * 0.55,
+        up_extent=height * 0.22,
+        up_offset=height * 0.05,
+    )
+
+    return [engine, cabin, trunk_floor]
+
+
 # ---------------------------------------------------------------------------
 # Export
 # ---------------------------------------------------------------------------
@@ -640,10 +928,29 @@ def main() -> None:
         "body", "hood", "trunk", "door_l", "door_r",
         "headlight_l", "headlight_r", "taillight_l", "taillight_r",
         "wheel_fl", "wheel_fr", "wheel_rl", "wheel_rr",
+        "engine_block", "cabin_core", "trunk_floor",
+        "axle_front", "axle_rear",
     }
     for obj in list(bpy.data.objects):
         if obj.type == "MESH" and obj.name not in keep_names:
             bpy.data.objects.remove(obj, do_unlink=True)
+
+    # 6. Chassis internals: engine block, cabin core, trunk floor. Each
+    # fits inside the body shell when assembled and shows through the
+    # matching cavity when its corresponding panel detaches, so a
+    # destroyed wreck reads as gutted with real internals instead of a
+    # transparent shell.
+    add_chassis_internals(body, interior_mat)
+
+    # 7. Wheel axles. Without these, the destroyed view reads as four
+    # floating wheels around a gutted body; the axle bars give them
+    # something to connect to.
+    add_wheel_axles(interior_mat)
+
+    # 8. Make every material double-sided so cavities in the body shell
+    # read as clean carved openings instead of flickering gaps to the
+    # invisible back of the opposite shell skin.
+    double_side_all_materials()
 
     export_glb(args.out, variant.name)
 
