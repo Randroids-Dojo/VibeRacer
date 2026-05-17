@@ -153,7 +153,7 @@ export function MenuOverlay({
       style={{
         position: 'fixed',
         inset: 0,
-        background: isPage ? '#9ad8ff' : menuTheme.overlayBg,
+        background: isPage ? menuTheme.pageBg : menuTheme.overlayBg,
         display: isPage ? 'flex' : 'grid',
         alignItems: isPage ? 'flex-start' : undefined,
         justifyContent: isPage ? 'center' : undefined,
@@ -888,18 +888,33 @@ export function MenuShellStage({
         <header style={shellHeaderStyle}>
           <h1 style={shellTitleStyle}>{title}</h1>
           {closeHref ? (
-            <Link
-              href={closeHref}
-              style={shellCloseStyle}
-              aria-label={closeLabel}
-            >
-              {closeLabel}
-            </Link>
+            <ShellCloseLink href={closeHref} label={closeLabel} />
           ) : null}
         </header>
         <div style={shellPanelStyle}>{children}</div>
       </div>
     </MenuShellContext.Provider>
+  )
+}
+
+// Focusable CLOSE pill for routes that use MenuPageShell. Mirrors
+// MenuHeaderClose's gamepad registration (axis 'vertical', high `order`
+// so auto-focus lands on the first useful interactive element instead
+// of CLOSE) and the menuui-focusable class so the shared focus-visible
+// ring renders consistently.
+function ShellCloseLink({ href, label }: { href: string; label: string }) {
+  const ref = useRef<HTMLAnchorElement | null>(null)
+  useRegisterFocusable(ref, { axis: 'vertical', order: 1e10 })
+  return (
+    <Link
+      ref={ref}
+      href={href}
+      className="menuui-focusable"
+      style={shellCloseStyle}
+      aria-label={label}
+    >
+      {label}
+    </Link>
   )
 }
 
