@@ -78,6 +78,11 @@ export function MenuOverlay({
   onTabPrev,
   onTabNext,
   autoFocus,
+  // 'dim' (default) renders the rgba dim backdrop used by in-game modals
+  // (pause, settings, photo, etc.). 'page' uses the sky-blue page bg from
+  // MenuPageShell so a full-screen modal (PreRaceSetup, DragGarage) reads
+  // as part of the colorful menu family instead of a black box.
+  variant = 'dim',
 }: {
   children: ReactNode
   zIndex?: number
@@ -86,6 +91,7 @@ export function MenuOverlay({
   onTabPrev?: () => void
   onTabNext?: () => void
   autoFocus?: boolean
+  variant?: 'dim' | 'page'
 }) {
   const [mounted, setMounted] = useState(false)
 
@@ -107,20 +113,23 @@ export function MenuOverlay({
     children
   )
 
+  const isPage = variant === 'page'
   const overlay = (
     <div
       style={{
         position: 'fixed',
         inset: 0,
-        background: menuTheme.overlayBg,
-        display: 'grid',
-        placeItems: 'center',
+        background: isPage ? '#9ad8ff' : menuTheme.overlayBg,
+        display: isPage ? 'flex' : 'grid',
+        alignItems: isPage ? 'flex-start' : undefined,
+        justifyContent: isPage ? 'center' : undefined,
+        placeItems: isPage ? undefined : 'center',
         zIndex,
         fontFamily: menuTheme.font,
         color: menuTheme.textPrimary,
-        padding: 16,
+        padding: isPage ? 24 : 16,
         boxSizing: 'border-box',
-        overflow: 'hidden',
+        overflow: isPage ? 'auto' : 'hidden',
       }}
     >
       {inner}

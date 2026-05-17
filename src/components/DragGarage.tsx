@@ -11,9 +11,7 @@ import type { DragDerivation } from '@/game/dragTuning'
 import {
   MenuButton,
   MenuOverlay,
-  MenuPanel,
   MenuSection,
-  MenuTitle,
   menuTheme,
 } from './MenuUI'
 
@@ -94,6 +92,60 @@ const ctaRowStyle: React.CSSProperties = {
   marginTop: 4,
 }
 
+// Garage now mounts as a full-screen page on the shared blue backdrop
+// (variant='page' on MenuOverlay) instead of a black modal. The header
+// strip and body panel mirror MenuPageShell so the picker sits inside
+// the same two-piece dark-translucent stack the rest of the menu family
+// uses, and the Race CTA matches the menu shell's red-pink primary.
+const garageStageStyle: React.CSSProperties = {
+  width: 'min(640px, 100%)',
+  display: 'grid',
+  gap: 14,
+}
+
+const garageHeaderStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '12px 18px',
+  background: 'rgba(0,0,0,0.55)',
+  borderRadius: 12,
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+
+const garageTitleStyle: React.CSSProperties = {
+  margin: 0,
+  fontSize: 24,
+  fontWeight: 800,
+  letterSpacing: 1,
+  color: '#fff',
+}
+
+const garagePanelStyle: React.CSSProperties = {
+  background: 'rgba(0,0,0,0.45)',
+  padding: 24,
+  borderRadius: 18,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
+  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+
+const garageStartBtnStyle: React.CSSProperties = {
+  padding: '18px 24px',
+  background: '#e84a5f',
+  color: 'white',
+  borderRadius: 12,
+  fontSize: 22,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  boxShadow: '0 6px 0 #9c2a3c',
+  border: 'none',
+}
+
 export function DragGarage({
   strip,
   loadout,
@@ -103,9 +155,12 @@ export function DragGarage({
   onBack,
 }: DragGarageProps) {
   return (
-    <MenuOverlay zIndex={100} onBack={onBack}>
-      <MenuPanel width="wide">
-        <MenuTitle>GARAGE</MenuTitle>
+    <MenuOverlay zIndex={100} onBack={onBack} variant="page">
+      <div style={garageStageStyle}>
+        <header style={garageHeaderStyle}>
+          <h1 style={garageTitleStyle}>GARAGE</h1>
+        </header>
+        <div style={garagePanelStyle}>
         <div style={{ textAlign: 'center', fontSize: 14, opacity: 0.85 }}>
           {strip.displayName}
         </div>
@@ -225,11 +280,17 @@ export function DragGarage({
         </MenuSection>
 
         <div style={ctaRowStyle}>
-          <MenuButton variant="primary" click="confirm" onClick={onConfirm}>
+          <MenuButton
+            variant="primary"
+            click="confirm"
+            onClick={onConfirm}
+            style={garageStartBtnStyle}
+          >
             Race
           </MenuButton>
         </div>
-      </MenuPanel>
+        </div>
+      </div>
     </MenuOverlay>
   )
 }

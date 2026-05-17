@@ -137,7 +137,7 @@ export function PreRaceSetup({
   }
 
   return (
-    <MenuOverlay zIndex={150} autoFocus>
+    <MenuOverlay zIndex={150} autoFocus variant="page">
       <div style={stageStyle}>
         <header style={headerStyle}>
           <h2 style={titleStyle}>SETUP</h2>
