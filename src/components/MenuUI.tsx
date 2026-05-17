@@ -519,6 +519,7 @@ export function MenuSlider({
   // the native range input + MenuNav pass-through) and up / down moves focus
   // out of the slider.
   useRegisterFocusable(ref, { axis: 'both', disabled })
+  const accent = useMenuAccent()
   return (
     <label
       style={{
@@ -543,7 +544,7 @@ export function MenuSlider({
           onChange={(e) => onChange(Number(e.target.value))}
           style={{
             flex: 1,
-            accentColor: menuTheme.accent,
+            accentColor: accent.bg,
             cursor: disabled ? 'not-allowed' : 'pointer',
           }}
         />
