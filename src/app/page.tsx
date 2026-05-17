@@ -1,5 +1,5 @@
 import Link from 'next/link'
-import { menuTheme } from '@/components/MenuUI'
+import { menuTheme } from '@/components/menuTheme'
 import { TitleMusic } from '@/components/TitleMusic'
 import { TitleBackground } from '@/components/TitleBackground'
 import { TitleGamepadNav } from '@/components/TitleGamepadNav'

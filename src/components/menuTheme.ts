@@ -1,10 +1,10 @@
-// Shared design tokens for the menu family (Free Race / Derby / Drag /
-// Tour / Settings page hubs, plus the PreRaceSetup and DragGarage
+// Shared design tokens for the menu family (Free Race, Derby, Drag,
+// Tour, Settings page hubs, plus the PreRaceSetup and DragGarage
 // modals). Lives in its own non-'use client' module so React Server
 // Components (MenuPageShell, the per-mode app/.../page.tsx files) can
-// import the constants directly without crossing the client boundary —
-// importing them from MenuUI ('use client') resolved to `undefined` for
-// the server bundle and broke card / cta inline styles.
+// import the constants directly without crossing the client boundary.
+// Importing them from MenuUI ('use client') resolved to `undefined`
+// for the server bundle and broke card / cta inline styles.
 
 export const menuTheme = {
   font: 'system-ui, sans-serif',
@@ -25,8 +25,8 @@ export const menuTheme = {
   focusRing: '0 0 0 2px #161616, 0 0 0 4px #ff6b35',
   // Shared menu-shell tokens. The full-page menus and full-page modals
   // all paint the same sky-blue backdrop, dark-translucent header strip,
-  // and dark-translucent body panel — read these from one place so a
-  // global tweak (panel alpha, blur radius, etc.) lands everywhere.
+  // and dark-translucent body panel. Reading these from one place means
+  // a global tweak (panel alpha, blur radius, etc.) lands everywhere.
   pageBg: '#9ad8ff',
   shellHeaderBg: 'rgba(0,0,0,0.55)',
   shellPanelBg: 'rgba(0,0,0,0.45)',
