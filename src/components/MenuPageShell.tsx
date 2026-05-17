@@ -158,15 +158,15 @@ export const menuStyles = {
     flexDirection: 'column',
     gap: 8,
     padding: 16,
-    background: '#161616',
-    border: '1px solid #2a2a2a',
+    background: '#fff8d6',
+    border: '2px solid rgba(0,0,0,0.75)',
     borderRadius: 12,
-    color: '#fff',
+    color: '#1b1b1b',
     textDecoration: 'none',
     fontFamily: 'inherit',
     textAlign: 'left',
     cursor: 'pointer',
-    boxShadow: '0 6px 0 rgba(0,0,0,0.55)',
+    boxShadow: '0 6px 0 #b48a14',
     transition: 'transform 80ms ease, border-color 80ms ease',
   } satisfies React.CSSProperties,
   cardTitle: {
@@ -176,7 +176,7 @@ export const menuStyles = {
   } satisfies React.CSSProperties,
   cardBlurb: {
     fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
+    color: 'rgba(0,0,0,0.7)',
     lineHeight: 1.4,
   } satisfies React.CSSProperties,
   pillRow: {
@@ -188,15 +188,15 @@ export const menuStyles = {
   pill: {
     padding: '2px 8px',
     borderRadius: 999,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(0,0,0,0.08)',
+    border: '1px solid rgba(0,0,0,0.18)',
     textTransform: 'capitalize',
     letterSpacing: 0.3,
   } satisfies React.CSSProperties,
   cardFooter: {
     marginTop: 4,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(0,0,0,0.85)',
     fontVariantNumeric: 'tabular-nums',
   } satisfies React.CSSProperties,
 }

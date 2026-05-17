@@ -220,9 +220,9 @@ function RadioRow({
       className="menuui-focusable"
       style={{
         ...radioRowStyle,
-        background: selected ? menuTheme.accentBg : menuTheme.rowBg,
-        color: selected ? menuTheme.accentText : 'white',
-        borderColor: selected ? menuTheme.accentBg : menuTheme.panelBorder,
+        background: selected ? menuTheme.accentBg : '#fff8d6',
+        color: selected ? menuTheme.accentText : '#1b1b1b',
+        borderColor: selected ? menuTheme.accentBg : 'rgba(0,0,0,0.75)',
       }}
     >
       <span style={radioRowTextStyle}>
@@ -231,14 +231,23 @@ function RadioRow({
           <span
             style={{
               ...radioRowSublabelStyle,
-              opacity: selected ? 0.85 : 0.6,
+              opacity: selected ? 0.85 : 0.65,
             }}
           >
             {option.sublabel}
           </span>
         ) : null}
       </span>
-      {stock ? <span style={stockTagStyle}>STOCK</span> : null}
+      {stock ? (
+        <span
+          style={{
+            ...stockTagStyle,
+            opacity: selected ? 0.75 : 0.55,
+          }}
+        >
+          STOCK
+        </span>
+      ) : null}
     </button>
   )
 }
@@ -336,7 +345,7 @@ const radioRowStyle: CSSProperties = {
   gap: 8,
   padding: '10px 14px',
   borderRadius: 8,
-  border: '1px solid',
+  border: '2px solid',
   cursor: 'pointer',
   textAlign: 'left',
   fontFamily: 'inherit',

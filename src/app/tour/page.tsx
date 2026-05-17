@@ -98,47 +98,73 @@ export default function TourSelectionPage() {
       <div style={menuStyles.section}>
         <div style={menuStyles.sectionHeader}>Tours</div>
         <div style={menuStyles.cardGrid}>
-          {cards.map((card) => (
-            <button
-              key={card.tour.id}
-              type="button"
-              disabled={card.state === 'locked'}
-              onClick={() => enterTour(card)}
-              style={{
-                ...menuStyles.card,
-                background:
-                  card.state === 'locked'
-                    ? menuStyles.card.background
-                    : `linear-gradient(135deg, ${card.tour.theme.secondary}66 0%, ${card.tour.theme.primary}33 100%)`,
-                borderColor: card.tour.theme.accent + '55',
-                opacity: card.state === 'locked' ? 0.45 : 1,
-                cursor:
-                  card.state === 'locked' ? 'not-allowed' : 'pointer',
-              }}
-            >
-              <div
+          {cards.map((card) => {
+            // Tour cards override the shared cream card with a per-region
+            // gradient (built from the region theme's primary/secondary).
+            // Override the in-card text + pill colors to white-on-dark so
+            // they stay legible on top of the gradient instead of inheriting
+            // the cream card's dark-on-light defaults.
+            const isLocked = card.state === 'locked'
+            return (
+              <button
+                key={card.tour.id}
+                type="button"
+                disabled={isLocked}
+                onClick={() => enterTour(card)}
                 style={{
-                  ...menuStyles.cardTitle,
-                  color: card.tour.theme.accent,
+                  ...menuStyles.card,
+                  background: `linear-gradient(135deg, ${card.tour.theme.secondary}cc 0%, ${card.tour.theme.primary}99 100%)`,
+                  color: '#fff',
+                  borderColor: card.tour.theme.accent,
+                  boxShadow: `0 6px 0 ${card.tour.theme.secondary}`,
+                  opacity: isLocked ? 0.55 : 1,
+                  cursor: isLocked ? 'not-allowed' : 'pointer',
                 }}
               >
-                {card.tour.name}
-              </div>
-              <div style={menuStyles.cardBlurb}>
-                {card.tour.region} | {card.tour.trackIds.length} races
-              </div>
-              <div style={menuStyles.pillRow}>
-                <Pill>
-                  Top {card.tour.requiredStanding} of {card.tour.fieldSize}
-                </Pill>
-                <Pill>{weatherLabel(card.tour.weather)}</Pill>
-                <Pill>{stateLabel(card)}</Pill>
-              </div>
-            </button>
-          ))}
+                <div
+                  style={{
+                    ...menuStyles.cardTitle,
+                    color: card.tour.theme.accent,
+                  }}
+                >
+                  {card.tour.name}
+                </div>
+                <div
+                  style={{
+                    ...menuStyles.cardBlurb,
+                    color: 'rgba(255,255,255,0.85)',
+                  }}
+                >
+                  {card.tour.region} | {card.tour.trackIds.length} races
+                </div>
+                <div style={menuStyles.pillRow}>
+                  <TourPill>
+                    Top {card.tour.requiredStanding} of {card.tour.fieldSize}
+                  </TourPill>
+                  <TourPill>{weatherLabel(card.tour.weather)}</TourPill>
+                  <TourPill>{stateLabel(card)}</TourPill>
+                </div>
+              </button>
+            )
+          })}
         </div>
       </div>
     </MenuPageShell>
+  )
+}
+
+function TourPill({ children }: { children: React.ReactNode }) {
+  return (
+    <span
+      style={{
+        ...menuStyles.pill,
+        background: 'rgba(255,255,255,0.18)',
+        border: '1px solid rgba(255,255,255,0.22)',
+        color: '#fff',
+      }}
+    >
+      {children}
+    </span>
   )
 }
 
@@ -164,10 +190,6 @@ function stateLabel(card: TourCard): string {
     return `Race ${card.raceIndex + 1} of 4`
   }
   return 'Available'
-}
-
-function Pill({ children }: { children: React.ReactNode }) {
-  return <span style={menuStyles.pill}>{children}</span>
 }
 
 const summaryStyle: React.CSSProperties = {
