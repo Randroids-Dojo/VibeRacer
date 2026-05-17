@@ -113,7 +113,7 @@ import {
 import { FeatureListOverlay } from './FeatureListOverlay'
 import { SettingsAudioTab } from './SettingsAudioTab'
 import { SettingsGhostTab } from './SettingsGhostTab'
-import { useMenuNav, useRegisterFocusable } from './MenuNav'
+import { MenuNavProvider, useMenuNav, useRegisterFocusable } from './MenuNav'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -125,6 +125,11 @@ interface SettingsPaneProps {
   inRace?: boolean
   onSetup?: () => void
   slug?: string
+  // 'modal' (default) renders the dark MenuOverlay+MenuPanel chrome used by
+  // the in-game pause settings. 'page' strips that chrome so the caller can
+  // embed the tab strip + content + footer inside a MenuPageShell on a
+  // full-page route with the shared blue background.
+  mode?: 'modal' | 'page'
 }
 
 interface CaptureTarget {
@@ -170,6 +175,7 @@ export function SettingsPane({
   inRace,
   onSetup,
   slug,
+  mode = 'modal',
 }: SettingsPaneProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
@@ -633,31 +639,26 @@ export function SettingsPane({
   }))
 
   const captureActive = capture !== null || padCapture !== null
+  const isPage = mode === 'page'
 
-  return (
-    <MenuOverlay
-      zIndex={110}
-      onBack={onClose}
-      onTabPrev={() => shiftTab(-1)}
-      onTabNext={() => shiftTab(1)}
-    >
+  const body = (
+    <>
       <CaptureSuppression active={captureActive} />
-      <MenuPanel width="wide" overflow="hidden">
-        <MenuHeader title="SETTINGS" onClose={onClose} />
+      {isPage ? null : <MenuHeader title="SETTINGS" onClose={onClose} />}
 
-        <MenuTabBar
-          tabs={tabBarTabs}
-          value={activeTab}
-          onChange={selectTab}
-          ariaLabel="Settings sections"
-        />
+      <MenuTabBar
+        tabs={tabBarTabs}
+        value={activeTab}
+        onChange={selectTab}
+        ariaLabel="Settings sections"
+      />
 
-        <div
-          id={`settings-panel-${activeTab}`}
-          role="tabpanel"
-          aria-labelledby={`settings-tab-${activeTab}`}
-          style={tabPanel}
-        >
+      <div
+        id={`settings-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+        style={isPage ? tabPanelPage : tabPanel}
+      >
           {activeTab === 'profile' ? (
             <>
               <MenuSection title="Identity">
@@ -1491,15 +1492,44 @@ export function SettingsPane({
           <MenuButton variant="ghost" fullWidth={false} onClick={resetAll}>
             Reset to defaults
           </MenuButton>
-          <MenuButton
-            variant="primary"
-            click="confirm"
-            fullWidth={false}
-            onClick={onClose}
-          >
-            Done
-          </MenuButton>
+          {isPage ? null : (
+            <MenuButton
+              variant="primary"
+              click="confirm"
+              fullWidth={false}
+              onClick={onClose}
+            >
+              Done
+            </MenuButton>
+          )}
         </div>
+    </>
+  )
+
+  if (isPage) {
+    return (
+      <MenuNavProvider
+        onBack={onClose}
+        onTabPrev={() => shiftTab(-1)}
+        onTabNext={() => shiftTab(1)}
+      >
+        {body}
+        {featureListOpen ? (
+          <FeatureListOverlay onClose={closeFeatureList} />
+        ) : null}
+      </MenuNavProvider>
+    )
+  }
+
+  return (
+    <MenuOverlay
+      zIndex={110}
+      onBack={onClose}
+      onTabPrev={() => shiftTab(-1)}
+      onTabNext={() => shiftTab(1)}
+    >
+      <MenuPanel width="wide" overflow="hidden">
+        {body}
       </MenuPanel>
       {featureListOpen ? (
         <FeatureListOverlay onClose={closeFeatureList} />
@@ -1969,6 +1999,14 @@ const tabPanel: React.CSSProperties = {
   overflowY: 'auto',
   overscrollBehavior: 'contain',
   paddingRight: 4,
+  paddingTop: 4,
+}
+// Page-mode tab panel: no nested scroll. The MenuPageShell page background
+// scrolls naturally instead of trapping a scrollbar inside the panel.
+const tabPanelPage: React.CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
   paddingTop: 4,
 }
 const bindingTable: React.CSSProperties = {

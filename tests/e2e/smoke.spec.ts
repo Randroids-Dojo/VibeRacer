@@ -49,7 +49,7 @@ test('Feature List has a direct URL', async ({ page }) => {
 
 test('settings menu groups options behind tabs', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('link', { name: 'Settings' }).click()
 
   await expect(page.getByRole('tab', { name: 'Profile' })).toHaveAttribute(
     'aria-selected',
@@ -82,7 +82,7 @@ test('settings menu groups options behind tabs', async ({ page }) => {
 
 test('settings opens the Feature List credits', async ({ page }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('link', { name: 'Settings' }).click()
   await page
     .getByRole('tabpanel')
     .getByRole('button', { name: 'Feature List' })
@@ -116,37 +116,25 @@ test('music editor rolls a seed and saves a personal entry', async ({ page }) =>
   expect(stored).toContain('Smoke Tune')
 })
 
-test('settings tabs keep long sections inside the modal viewport', async ({
+test('settings page lets long sections scroll into view', async ({
   page,
 }) => {
   await page.setViewportSize({ width: 390, height: 844 })
-  await page.goto('/')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.goto('/settings')
   await page.getByRole('tab', { name: 'Vehicle' }).click()
 
-  const panelInfo = await page.getByRole('tabpanel').evaluate((panel) => {
-    const menu = panel.parentElement
-    const menuRect = menu?.getBoundingClientRect()
-    return {
-      scrollHeight: panel.scrollHeight,
-      clientHeight: panel.clientHeight,
-      menuTop: menuRect?.top ?? Number.NEGATIVE_INFINITY,
-      menuBottom: menuRect?.bottom ?? Number.POSITIVE_INFINITY,
-      menuLeft: menuRect?.left ?? Number.NEGATIVE_INFINITY,
-      menuRight: menuRect?.right ?? Number.POSITIVE_INFINITY,
-      viewportWidth: window.innerWidth,
-      viewportHeight: window.innerHeight,
-    }
-  })
-  expect(panelInfo.menuTop).toBeGreaterThanOrEqual(15)
-  expect(panelInfo.menuBottom).toBeLessThanOrEqual(panelInfo.viewportHeight - 15)
-  expect(panelInfo.menuLeft).toBeGreaterThanOrEqual(15)
-  expect(panelInfo.menuRight).toBeLessThanOrEqual(panelInfo.viewportWidth - 15)
-  expect(panelInfo.scrollHeight).toBeGreaterThan(panelInfo.clientHeight)
+  // Settings is a full-page route now, so the body / document scrolls and
+  // long tabs like Vehicle should produce a scrollable document on a
+  // mobile-width viewport. Tab content sits inside the page rather than a
+  // modal, so we assert the document scroll height exceeds the viewport
+  // and the lower-bound sub-section becomes visible after scrolling.
+  const docInfo = await page.evaluate(() => ({
+    scrollHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight,
+  }))
+  expect(docInfo.scrollHeight).toBeGreaterThan(docInfo.viewportHeight)
 
-  await page.getByRole('tabpanel').evaluate((panel) => {
-    panel.scrollTop = panel.scrollHeight
-  })
+  await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight))
   await expect(page.getByText('Brake lights', { exact: true })).toBeVisible()
 })
 

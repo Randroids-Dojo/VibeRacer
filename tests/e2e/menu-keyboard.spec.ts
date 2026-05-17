@@ -11,7 +11,7 @@ test('settings pane: arrow keys walk the tab strip and close on Esc', async ({
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('link', { name: 'Settings' }).click()
 
   // Profile is auto-focused as the first interactive item below the title.
   // Confirm the first tab is selected.
@@ -28,7 +28,7 @@ test('settings pane: arrow keys walk the tab strip and close on Esc', async ({
     'true',
   )
 
-  // Esc closes the pane.
+  // Esc routes back to the title page via the page-mode onBack handler.
   await page.keyboard.press('Escape')
   await expect(page.getByRole('tab', { name: 'Audio' })).toHaveCount(0)
 })
@@ -37,7 +37,7 @@ test('settings pane: ArrowLeft / ArrowRight steps a focused range slider', async
   page,
 }) => {
   await page.goto('/')
-  await page.getByRole('button', { name: 'Settings' }).click()
+  await page.getByRole('link', { name: 'Settings' }).click()
   await page.getByRole('tab', { name: 'Audio' }).click()
 
   const slider = page

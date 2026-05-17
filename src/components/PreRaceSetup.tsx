@@ -19,8 +19,6 @@ import {
   MenuButton,
   MenuHint,
   MenuOverlay,
-  MenuPanel,
-  MenuTitle,
   MenuToggle,
   menuTheme,
 } from './MenuUI'
@@ -140,41 +138,50 @@ export function PreRaceSetup({
 
   return (
     <MenuOverlay zIndex={150} autoFocus>
-      <MenuPanel width="narrow">
-        <MenuTitle>SETUP</MenuTitle>
-        <SelectedBanner option={selected} />
-        <MenuHint>
-          The highlighted setup is what your car will use this race. Toggle
-          {' '}
-          <strong>Always use this setup</strong> below to skip this picker on
-          your next visit.
-        </MenuHint>
+      <div style={stageStyle}>
+        <header style={headerStyle}>
+          <h2 style={titleStyle}>SETUP</h2>
+        </header>
+        <div style={panelStyle}>
+          <SelectedBanner option={selected} />
+          <MenuHint>
+            The highlighted setup is what your car will use this race. Toggle
+            {' '}
+            <strong>Always use this setup</strong> below to skip this picker
+            on your next visit.
+          </MenuHint>
 
-        <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
-          {options.map((o) => (
-            <RadioRow
-              key={o.id}
-              option={o}
-              selected={o.id === pickId}
-              onPick={() => setPickId(o.id)}
-            />
-          ))}
+          <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
+            {options.map((o) => (
+              <RadioRow
+                key={o.id}
+                option={o}
+                selected={o.id === pickId}
+                onPick={() => setPickId(o.id)}
+              />
+            ))}
+          </div>
+
+          <MenuButton variant="ghost" onClick={handleOpenLab}>
+            Create a new tuning in the Lab
+          </MenuButton>
+
+          <MenuToggle
+            label="Always use this setup for this track"
+            value={pin}
+            onChange={setPin}
+          />
+
+          <MenuButton
+            variant="primary"
+            click="confirm"
+            onClick={handleRace}
+            style={startBtnStyle}
+          >
+            Start race
+          </MenuButton>
         </div>
-
-        <MenuButton variant="ghost" onClick={handleOpenLab}>
-          Create a new tuning in the Lab
-        </MenuButton>
-
-        <MenuToggle
-          label="Always use this setup for this track"
-          value={pin}
-          onChange={setPin}
-        />
-
-        <MenuButton variant="primary" onClick={handleRace}>
-          Start race
-        </MenuButton>
-      </MenuPanel>
+      </div>
     </MenuOverlay>
   )
 }
@@ -254,6 +261,63 @@ async function fetchTopEntry(
     lapTimeMs: top.lapTimeMs,
     params: top.tuning,
   }
+}
+
+// Two-piece dark translucent stack so the modal reads as part of the same
+// family as the Free Race / Derby / Drag / Tour menu shells: dark header
+// strip with the title, then a dark body panel for the picker content, both
+// with backdrop blur. Sits on top of the MenuOverlay's dim backdrop.
+const stageStyle: CSSProperties = {
+  width: 'min(480px, 100%)',
+  display: 'grid',
+  gap: 14,
+}
+
+const headerStyle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: '12px 18px',
+  background: 'rgba(0,0,0,0.55)',
+  borderRadius: 12,
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+
+const titleStyle: CSSProperties = {
+  margin: 0,
+  fontSize: 24,
+  fontWeight: 800,
+  letterSpacing: 1,
+  color: '#fff',
+}
+
+const panelStyle: CSSProperties = {
+  background: 'rgba(0,0,0,0.45)',
+  padding: 24,
+  borderRadius: 18,
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 14,
+  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+}
+
+// Bold red-pink primary CTA that matches the Start / Play buttons on the
+// new menu shell pages (Free Race "Start a new race" etc.). Overrides the
+// MenuButton primary's orange so the visual hierarchy reads the same
+// across modes.
+const startBtnStyle: CSSProperties = {
+  padding: '18px 24px',
+  background: '#e84a5f',
+  color: 'white',
+  borderRadius: 12,
+  fontSize: 22,
+  fontWeight: 700,
+  letterSpacing: 0.5,
+  boxShadow: '0 6px 0 #9c2a3c',
+  border: 'none',
 }
 
 const radioListStyle: CSSProperties = {
