@@ -10,6 +10,7 @@ import {
   type ReactNode,
 } from 'react'
 import { createPortal } from 'react-dom'
+import Link from 'next/link'
 import { useClickSfx, type ClickVariant } from '@/hooks/useClickSfx'
 import { menuTheme } from './menuTheme'
 import { MenuNavProvider, useRegisterFocusable } from './MenuNav'
@@ -835,10 +836,9 @@ export function MenuShellStage({
       <header style={shellHeaderStyle}>
         <h1 style={shellTitleStyle}>{title}</h1>
         {closeHref ? (
-          // eslint-disable-next-line @next/next/no-html-link-for-pages
-          <a href={closeHref} style={shellCloseStyle} aria-label={closeLabel}>
+          <Link href={closeHref} style={shellCloseStyle} aria-label={closeLabel}>
             {closeLabel}
-          </a>
+          </Link>
         ) : null}
       </header>
       <div style={shellPanelStyle}>{children}</div>
