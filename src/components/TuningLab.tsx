@@ -36,11 +36,12 @@ import {
   MenuStartButton,
   menuTheme,
 } from './MenuUI'
+import { TuningManualBuilder } from './TuningManualBuilder'
 import { TuningSavedList } from './TuningSavedList'
 import { TuningSession } from './TuningSession'
 import { TuningHistoryList } from './TuningHistoryList'
 
-type View = 'home' | 'session' | 'list' | 'import' | 'history'
+type View = 'home' | 'session' | 'manual' | 'list' | 'import' | 'history'
 
 export function TuningLab() {
   const { settings, hydrated: controlsHydrated } = useControlSettings()
@@ -97,6 +98,21 @@ export function TuningLab() {
     setItems(readSavedTunings())
     setView('home')
   }, [])
+
+  const handleManualSaved = useCallback((saved: SavedTuning) => {
+    upsertTuning(saved)
+    persistLabLastLoaded(saved.params)
+    setItems(readSavedTunings())
+    recordTuningChange({
+      next: saved.params,
+      source: 'savedApplied',
+      label: saved.name,
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
+    flashToast(`Saved "${saved.name}"`)
+    setView('list')
+  }, [recordTuningChange])
 
   function applyToNextRace(t: SavedTuning) {
     applySavedAsLastLoaded(t)
@@ -264,6 +280,12 @@ export function TuningLab() {
           >
             Start a tuning session
           </MenuStartButton>
+          <MenuShellAction
+            onClick={() => setView('manual')}
+            disabled={!hydrated || !controlsHydrated}
+          >
+            Build tuning manually (sliders)
+          </MenuShellAction>
           <MenuShellAction onClick={() => setView('list')}>
             Saved tunings ({items.length})
           </MenuShellAction>
@@ -295,6 +317,22 @@ export function TuningLab() {
           <MenuShellAction onClick={() => setView('home')}>
             Back
           </MenuShellAction>
+        </>
+      ) : null}
+
+      {view === 'manual' ? (
+        <>
+          <h2 style={cardTitle}>Build tuning manually</h2>
+          <p style={cardCopy}>
+            Drag the sliders to dial in a setup, then save it to your library.
+            Skips the test loop and questionnaire.
+          </p>
+          <TuningManualBuilder
+            initialParams={initialParams}
+            initialControlType={initialControlType}
+            onSaved={handleManualSaved}
+            onCancel={() => setView('home')}
+          />
         </>
       ) : null}
 

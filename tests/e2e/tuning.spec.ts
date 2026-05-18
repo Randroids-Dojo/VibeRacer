@@ -20,6 +20,33 @@ test('/tune lets the user start a session and shows the countdown', async ({
   await expect(page.getByText('READY', { exact: true })).toBeVisible()
 })
 
+test('/tune exposes a manual slider builder that saves a named tuning', async ({
+  page,
+}) => {
+  await page.goto('/tune')
+  await page
+    .getByRole('button', { name: /build tuning manually \(sliders\)/i })
+    .click()
+  await expect(
+    page.getByRole('heading', { name: 'Build tuning manually' }),
+  ).toBeVisible()
+  // The save button is disabled until the user names the tuning.
+  const saveBtn = page.getByRole('button', { name: 'Save tuning' })
+  await expect(saveBtn).toBeDisabled()
+  await page.getByLabel('Name').fill('Manual sliders test')
+  await expect(saveBtn).toBeEnabled()
+  // Nudge the max speed slider so we know the params persist in addition to
+  // the metadata.
+  const slider = page.getByRole('slider', { name: /Max speed slider/i })
+  await slider.focus()
+  await slider.press('ArrowRight')
+  await saveBtn.click()
+  // After saving the lab returns to the saved-tunings list with the toast
+  // visible and the new row in the list.
+  await expect(page.getByText('Saved "Manual sliders test"')).toBeVisible()
+  await expect(page.getByText('Manual sliders test')).toBeVisible()
+})
+
 test('/tune home exposes the Recent changes view', async ({ page }) => {
   await page.goto('/tune')
   // The button shows the live history count even when empty so the player
