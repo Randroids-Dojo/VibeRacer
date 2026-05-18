@@ -17,12 +17,18 @@ import {
   cloneDefaultParams,
   isStockParams,
 } from '@/lib/tuningSettings'
+import { MenuShellAction, MenuStartButton } from './MenuUI'
+import { menuTheme } from './menuTheme'
 
 // Top-level manual tuning builder. Drives the same CarParams sliders the
 // in-race TuningPanel uses but skips the lab test + questionnaire loop:
 // the player names a setup, drags sliders, and saves it straight into the
-// shared library. Empty ratings / null lap / empty notes mark the row as a
-// hand-built tuning rather than a session output.
+// shared library. Empty ratings / null lap / empty notes mark the row as
+// a hand-built tuning rather than a session output.
+//
+// Visuals stay on the menu-shell cream-card family (cardBg + thick black
+// border + amber drop shadow) so this surface reads as part of Free Race
+// / Derby / Tour / Drag / Settings instead of a black dev panel.
 
 const CONTROL_OPTIONS: ControlType[] = [
   'keyboard',
@@ -96,7 +102,7 @@ export function TuningManualBuilder({
 
   return (
     <div style={wrap}>
-      <div style={metaSection}>
+      <div style={metaCard}>
         <div style={statusRow}>
           {stock ? (
             <span style={stockChip}>STOCK</span>
@@ -104,8 +110,7 @@ export function TuningManualBuilder({
             <span style={tunedChip}>TUNED</span>
           )}
           <span style={statusHint}>
-            Drag sliders to build a setup, then name it and save. No test loop
-            required.
+            Drag the sliders, name it, and save. No test loop required.
           </span>
         </div>
 
@@ -124,38 +129,25 @@ export function TuningManualBuilder({
         <div style={fieldLabel}>Control</div>
         <div style={chipRow}>
           {CONTROL_OPTIONS.map((c) => (
-            <button
+            <ToggleChip
               key={c}
-              type="button"
+              label={CONTROL_TYPE_LABELS[c]}
+              active={controlType === c}
               onClick={() => setControlType(c)}
-              style={{
-                ...chip,
-                background: controlType === c ? '#ff6b35' : '#1d1d1d',
-              }}
-            >
-              {CONTROL_TYPE_LABELS[c]}
-            </button>
+            />
           ))}
         </div>
 
         <div style={fieldLabel}>Track type tags (up to 4)</div>
         <div style={chipRow}>
-          {TAG_OPTIONS.map((t) => {
-            const active = trackTags.includes(t)
-            return (
-              <button
-                key={t}
-                type="button"
-                onClick={() => toggleTag(t)}
-                style={{
-                  ...chip,
-                  background: active ? '#ff6b35' : '#1d1d1d',
-                }}
-              >
-                {TRACK_TAG_LABELS[t]}
-              </button>
-            )
-          })}
+          {TAG_OPTIONS.map((t) => (
+            <ToggleChip
+              key={t}
+              label={TRACK_TAG_LABELS[t]}
+              active={trackTags.includes(t)}
+              onClick={() => toggleTag(t)}
+            />
+          ))}
         </div>
       </div>
 
@@ -171,28 +163,53 @@ export function TuningManualBuilder({
       </div>
 
       <div style={footer}>
-        <button type="button" onClick={onCancel} style={secondaryBtn}>
+        <MenuShellAction onClick={onCancel} style={footerBtn}>
           Back
-        </button>
-        <button
-          type="button"
+        </MenuShellAction>
+        <MenuShellAction
           onClick={resetAll}
-          style={secondaryBtn}
           disabled={stock}
+          style={footerBtn}
         >
           Reset to defaults
-        </button>
-        <button
-          type="button"
+        </MenuShellAction>
+        <MenuStartButton
           onClick={commitSave}
-          style={primaryBtn}
           disabled={saveDisabled}
-          aria-disabled={saveDisabled}
+          style={footerBtn}
         >
           Save tuning
-        </button>
+        </MenuStartButton>
       </div>
     </div>
+  )
+}
+
+function ToggleChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        ...chip,
+        background: active ? menuTheme.pickSelectedBg : menuTheme.cardBg,
+        color: active ? menuTheme.pickSelectedText : menuTheme.cardText,
+        borderColor: active
+          ? menuTheme.pickSelectedBorder
+          : menuTheme.cardBorder,
+      }}
+    >
+      {label}
+    </button>
   )
 }
 
@@ -263,16 +280,20 @@ const wrap: CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
   gap: 14,
-  color: 'white',
 }
-const metaSection: CSSProperties = {
+const cardBase: CSSProperties = {
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 12,
+  boxShadow: `0 4px 0 ${menuTheme.cardShadow}`,
+}
+const metaCard: CSSProperties = {
+  ...cardBase,
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
   padding: 14,
-  background: '#1d1d1d',
-  border: '1px solid #2a2a2a',
-  borderRadius: 10,
 }
 const statusRow: CSSProperties = {
   display: 'flex',
@@ -282,42 +303,46 @@ const statusRow: CSSProperties = {
 }
 const stockChip: CSSProperties = {
   fontSize: 10,
-  background: '#2a2a2a',
-  color: '#cfcfcf',
-  borderRadius: 3,
+  background: 'rgba(0,0,0,0.08)',
+  color: menuTheme.cardText,
+  border: '1px solid rgba(0,0,0,0.35)',
+  borderRadius: 4,
   padding: '2px 6px',
   letterSpacing: 1,
   fontWeight: 700,
 }
 const tunedChip: CSSProperties = {
   fontSize: 10,
-  background: '#ff6b35',
-  color: 'white',
-  borderRadius: 3,
+  background: menuTheme.ctaBg,
+  color: '#fff',
+  border: `1px solid ${menuTheme.ctaShadow}`,
+  borderRadius: 4,
   padding: '2px 6px',
   letterSpacing: 1,
   fontWeight: 700,
 }
 const statusHint: CSSProperties = {
   fontSize: 12,
-  opacity: 0.7,
+  color: menuTheme.cardMutedText,
   lineHeight: 1.4,
 }
 const fieldLabel: CSSProperties = {
   fontSize: 11,
   letterSpacing: 1.4,
   textTransform: 'uppercase',
-  opacity: 0.7,
+  color: menuTheme.cardMutedText,
+  fontWeight: 700,
   marginTop: 4,
 }
 const textField: CSSProperties = {
-  background: '#0e0e0e',
-  color: 'white',
-  border: '1px solid #3a3a3a',
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
   borderRadius: 8,
   padding: '10px 12px',
   fontFamily: 'inherit',
   fontSize: 14,
+  fontWeight: 600,
 }
 const chipRow: CSSProperties = {
   display: 'flex',
@@ -325,14 +350,14 @@ const chipRow: CSSProperties = {
   gap: 6,
 }
 const chip: CSSProperties = {
-  background: '#1d1d1d',
-  color: 'white',
-  border: '1px solid #2a2a2a',
   borderRadius: 999,
   padding: '8px 12px',
   fontSize: 12,
+  fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
+  border: '2px solid',
+  letterSpacing: 0.3,
 }
 const paramsSection: CSSProperties = {
   display: 'flex',
@@ -340,12 +365,11 @@ const paramsSection: CSSProperties = {
   gap: 10,
 }
 const row: CSSProperties = {
+  ...cardBase,
   display: 'flex',
   flexDirection: 'column',
   gap: 4,
-  padding: '10px 10px',
-  background: '#1d1d1d',
-  borderRadius: 8,
+  padding: '10px 12px',
 }
 const rowHeader: CSSProperties = {
   display: 'flex',
@@ -355,7 +379,8 @@ const rowHeader: CSSProperties = {
 }
 const rowLabel: CSSProperties = {
   fontSize: 14,
-  fontWeight: 600,
+  fontWeight: 700,
+  color: menuTheme.cardText,
 }
 const valueBlock: CSSProperties = {
   display: 'flex',
@@ -364,23 +389,25 @@ const valueBlock: CSSProperties = {
 }
 const numInput: CSSProperties = {
   width: 78,
-  background: '#0e0e0e',
-  color: 'white',
-  border: '1px solid #3a3a3a',
-  borderRadius: 4,
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 6,
   padding: '4px 6px',
   fontSize: 13,
   fontFamily: 'monospace',
+  fontWeight: 700,
   textAlign: 'right',
 }
 const unit: CSSProperties = {
   fontSize: 11,
-  opacity: 0.6,
+  color: menuTheme.cardMutedText,
+  fontWeight: 600,
   minWidth: 36,
 }
 const range: CSSProperties = {
   width: '100%',
-  accentColor: '#ff6b35',
+  accentColor: menuTheme.ctaBg,
 }
 const metaRow: CSSProperties = {
   display: 'flex',
@@ -389,49 +416,34 @@ const metaRow: CSSProperties = {
 }
 const metaText: CSSProperties = {
   fontSize: 10,
-  opacity: 0.5,
+  color: menuTheme.cardMutedText,
   fontFamily: 'monospace',
+  fontWeight: 600,
 }
 const resetFieldBtn: CSSProperties = {
   background: 'transparent',
-  color: '#9aa0a6',
+  color: menuTheme.ctaShadow,
   border: 'none',
   cursor: 'pointer',
   fontSize: 11,
+  fontWeight: 700,
   letterSpacing: 0.6,
   textDecoration: 'underline',
   fontFamily: 'inherit',
 }
 const hintText: CSSProperties = {
   fontSize: 11,
-  opacity: 0.55,
+  color: menuTheme.cardMutedText,
   lineHeight: 1.4,
 }
 const footer: CSSProperties = {
   display: 'flex',
-  justifyContent: 'space-between',
+  justifyContent: 'flex-end',
   gap: 8,
   flexWrap: 'wrap',
   marginTop: 4,
 }
-const primaryBtn: CSSProperties = {
-  background: '#ff6b35',
-  color: 'white',
-  border: 'none',
-  borderRadius: 8,
-  padding: '12px 18px',
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-}
-const secondaryBtn: CSSProperties = {
-  background: 'transparent',
-  color: '#cfcfcf',
-  border: '1px solid #3a3a3a',
-  borderRadius: 8,
-  padding: '12px 18px',
-  fontSize: 14,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
+const footerBtn: CSSProperties = {
+  flex: '1 1 140px',
+  minWidth: 0,
 }
