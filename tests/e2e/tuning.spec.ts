@@ -42,9 +42,14 @@ test('/tune exposes a manual slider builder that saves a named tuning', async ({
   await slider.press('ArrowRight')
   await saveBtn.click()
   // After saving the lab returns to the saved-tunings list with the toast
-  // visible and the new row in the list.
-  await expect(page.getByText('Saved "Manual sliders test"')).toBeVisible()
-  await expect(page.getByText('Manual sliders test')).toBeVisible()
+  // visible. Wait for the toast to disappear before asserting the list row
+  // so the row check cannot be satisfied by the toast text alone.
+  const toast = page.getByText('Saved "Manual sliders test"')
+  await expect(toast).toBeVisible()
+  await expect(toast).toBeHidden()
+  await expect(
+    page.getByText('Manual sliders test', { exact: true }),
+  ).toBeVisible()
 })
 
 test('/tune home exposes the Recent changes view', async ({ page }) => {
