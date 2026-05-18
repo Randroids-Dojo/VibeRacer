@@ -11,11 +11,13 @@ import {
   type SortBy,
   type TrackTag,
 } from '@/lib/tuningLab'
+import { menuTheme } from './menuTheme'
 
 interface Props {
   items: SavedTuning[]
   onApply: (t: SavedTuning) => void
-  onExport: (t: SavedTuning) => void
+  onShare: (t: SavedTuning) => void
+  onEdit: (t: SavedTuning) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
 }
@@ -45,7 +47,8 @@ const TAG_FILTERS: (TrackTag | 'all')[] = [
 export function TuningSavedList({
   items,
   onApply,
-  onExport,
+  onShare,
+  onEdit,
   onDelete,
   onRename,
 }: Props) {
@@ -92,13 +95,12 @@ export function TuningSavedList({
             f === 'all' ? 'Any control' : CONTROL_TYPE_LABELS[f as ControlType]
           const active = controlFilter === f
           return (
-            <button
+            <FilterChip
               key={f}
+              label={label}
+              active={active}
               onClick={() => setControlFilter(f)}
-              style={{ ...chip, background: active ? '#ff6b35' : '#1d1d1d' }}
-            >
-              {label}
-            </button>
+            />
           )
         })}
       </div>
@@ -109,13 +111,12 @@ export function TuningSavedList({
             f === 'all' ? 'Any track' : TRACK_TAG_LABELS[f as TrackTag]
           const active = tagFilter === f
           return (
-            <button
+            <FilterChip
               key={f}
+              label={label}
+              active={active}
               onClick={() => setTagFilter(f)}
-              style={{ ...chip, background: active ? '#ff6b35' : '#1d1d1d' }}
-            >
-              {label}
-            </button>
+            />
           )
         })}
       </div>
@@ -133,7 +134,8 @@ export function TuningSavedList({
               key={t.id}
               t={t}
               onApply={onApply}
-              onExport={onExport}
+              onShare={onShare}
+              onEdit={onEdit}
               onDelete={onDelete}
               onRename={onRename}
             />
@@ -144,16 +146,46 @@ export function TuningSavedList({
   )
 }
 
+function FilterChip({
+  label,
+  active,
+  onClick,
+}: {
+  label: string
+  active: boolean
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      aria-pressed={active}
+      style={{
+        ...chip,
+        background: active ? menuTheme.pickSelectedBg : menuTheme.cardBg,
+        color: active ? menuTheme.pickSelectedText : menuTheme.cardText,
+        borderColor: active
+          ? menuTheme.pickSelectedBorder
+          : menuTheme.cardBorder,
+      }}
+    >
+      {label}
+    </button>
+  )
+}
+
 function Row({
   t,
   onApply,
-  onExport,
+  onShare,
+  onEdit,
   onDelete,
   onRename,
 }: {
   t: SavedTuning
   onApply: (t: SavedTuning) => void
-  onExport: (t: SavedTuning) => void
+  onShare: (t: SavedTuning) => void
+  onEdit: (t: SavedTuning) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
 }) {
@@ -197,7 +229,11 @@ function Row({
           {[0, 1, 2, 3, 4].map((i) => (
             <span
               key={i}
-              style={{ ...dot, background: i < dots ? '#ff6b35' : '#3a3a3a' }}
+              style={{
+                ...dot,
+                background:
+                  i < dots ? menuTheme.ctaBg : 'rgba(0,0,0,0.18)',
+              }}
             />
           ))}
         </div>
@@ -221,8 +257,11 @@ function Row({
         <button onClick={() => onApply(t)} style={primaryBtn}>
           Use this setup
         </button>
-        <button onClick={() => onExport(t)} style={secondaryBtn}>
-          Copy JSON
+        <button onClick={() => onEdit(t)} style={secondaryBtn}>
+          Edit
+        </button>
+        <button onClick={() => onShare(t)} style={secondaryBtn}>
+          Share
         </button>
         <button
           onClick={() => {
@@ -249,22 +288,24 @@ const controls: CSSProperties = {
   gap: 8,
 }
 const searchField: CSSProperties = {
-  background: '#0e0e0e',
-  color: 'white',
-  border: '1px solid #3a3a3a',
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
   borderRadius: 8,
   padding: '10px 12px',
   fontFamily: 'inherit',
   fontSize: 14,
+  fontWeight: 600,
 }
 const selectField: CSSProperties = {
-  background: '#0e0e0e',
-  color: 'white',
-  border: '1px solid #3a3a3a',
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
   borderRadius: 8,
   padding: '10px 12px',
   fontFamily: 'inherit',
   fontSize: 13,
+  fontWeight: 600,
 }
 const filterRow: CSSProperties = {
   display: 'flex',
@@ -272,14 +313,14 @@ const filterRow: CSSProperties = {
   gap: 6,
 }
 const chip: CSSProperties = {
-  background: '#1d1d1d',
-  color: 'white',
-  border: '1px solid #2a2a2a',
+  border: '2px solid',
   borderRadius: 999,
   padding: '6px 12px',
   fontSize: 12,
+  fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
+  letterSpacing: 0.3,
 }
 const list: CSSProperties = {
   display: 'flex',
@@ -291,9 +332,11 @@ const row: CSSProperties = {
   flexDirection: 'column',
   gap: 8,
   padding: 12,
-  background: '#1d1d1d',
-  border: '1px solid #2a2a2a',
-  borderRadius: 10,
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 12,
+  boxShadow: `0 4px 0 ${menuTheme.cardShadow}`,
 }
 const rowHeader: CSSProperties = {
   display: 'flex',
@@ -304,22 +347,23 @@ const rowHeader: CSSProperties = {
 const rowName: CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: 'white',
+  color: menuTheme.cardText,
   fontSize: 16,
-  fontWeight: 700,
+  fontWeight: 800,
   cursor: 'pointer',
   textAlign: 'left',
   padding: 0,
   fontFamily: 'inherit',
 }
 const renameField: CSSProperties = {
-  background: '#0e0e0e',
-  color: 'white',
-  border: '1px solid #ff6b35',
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.ctaBg}`,
   borderRadius: 6,
   padding: '6px 8px',
   fontFamily: 'inherit',
   fontSize: 15,
+  fontWeight: 700,
   flex: 1,
 }
 const ratingDots: CSSProperties = {
@@ -340,15 +384,16 @@ const badges: CSSProperties = {
 const badge: CSSProperties = {
   fontSize: 11,
   padding: '3px 8px',
-  background: '#0e0e0e',
-  color: '#cfcfcf',
+  background: 'rgba(0,0,0,0.08)',
+  color: menuTheme.cardText,
+  border: '1px solid rgba(0,0,0,0.18)',
   borderRadius: 999,
   letterSpacing: 0.5,
+  fontWeight: 700,
 }
 const noteText: CSSProperties = {
   fontSize: 12,
-  opacity: 0.7,
-  color: 'white',
+  color: menuTheme.cardMutedText,
   lineHeight: 1.4,
 }
 const rowActions: CSSProperties = {
@@ -357,42 +402,46 @@ const rowActions: CSSProperties = {
   gap: 6,
 }
 const primaryBtn: CSSProperties = {
-  background: '#ff6b35',
-  color: 'white',
-  border: 'none',
-  borderRadius: 6,
+  background: menuTheme.ctaBg,
+  color: '#fff',
+  border: `2px solid ${menuTheme.ctaShadow}`,
+  borderRadius: 8,
+  padding: '8px 12px',
+  fontSize: 13,
+  fontWeight: 800,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  boxShadow: `0 3px 0 ${menuTheme.ctaShadow}`,
+}
+const secondaryBtn: CSSProperties = {
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 8,
   padding: '8px 12px',
   fontSize: 13,
   fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
 }
-const secondaryBtn: CSSProperties = {
-  background: 'transparent',
-  color: '#cfcfcf',
-  border: '1px solid #3a3a3a',
-  borderRadius: 6,
-  padding: '8px 12px',
-  fontSize: 13,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-}
 const dangerBtn: CSSProperties = {
-  background: 'transparent',
-  color: '#ff8a8a',
-  border: '1px solid #553030',
-  borderRadius: 6,
+  background: '#fffbe8',
+  color: menuTheme.ctaShadow,
+  border: `2px solid ${menuTheme.ctaShadow}`,
+  borderRadius: 8,
   padding: '8px 12px',
   fontSize: 13,
+  fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
 }
 const empty: CSSProperties = {
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
   fontSize: 13,
   fontStyle: 'italic',
   padding: 16,
   textAlign: 'center',
-  background: '#1d1d1d',
-  borderRadius: 8,
+  background: menuTheme.cardBg,
+  border: `2px dashed ${menuTheme.cardBorder}`,
+  borderRadius: 12,
 }

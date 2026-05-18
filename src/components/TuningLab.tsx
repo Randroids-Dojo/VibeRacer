@@ -36,11 +36,12 @@ import {
   MenuStartButton,
   menuTheme,
 } from './MenuUI'
+import { TuningEditor } from './TuningEditor'
 import { TuningSavedList } from './TuningSavedList'
 import { TuningSession } from './TuningSession'
 import { TuningHistoryList } from './TuningHistoryList'
 
-type View = 'home' | 'session' | 'list' | 'import' | 'history'
+type View = 'home' | 'session' | 'manual' | 'list' | 'import' | 'history'
 
 export function TuningLab() {
   const { settings, hydrated: controlsHydrated } = useControlSettings()
@@ -50,6 +51,13 @@ export function TuningLab() {
   const [toast, setToast] = useState<string | null>(null)
   const [importText, setImportText] = useState('')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  // When set, the manual view preloads from this entry and saves back to
+  // the same id. Cleared on entry into the home/list/import/history views
+  // and after a save so the next visit to manual starts from a clean slate.
+  const [editingTuning, setEditingTuning] = useState<SavedTuning | null>(null)
+  // Where Back / save returns to: 'home' when the player entered manual
+  // from the home menu, 'list' when they entered via Edit on a saved row.
+  const [manualReturnView, setManualReturnView] = useState<View>('home')
   const { history: tuningHistory, record: recordTuningChange } =
     useTuningRecorder()
 
@@ -98,6 +106,36 @@ export function TuningLab() {
     setView('home')
   }, [])
 
+  const handleManualSaved = useCallback((saved: SavedTuning) => {
+    upsertTuning(saved)
+    persistLabLastLoaded(saved.params)
+    setItems(readSavedTunings())
+    recordTuningChange({
+      next: saved.params,
+      source: 'savedApplied',
+      label: saved.name,
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
+    flashToast(`Saved "${saved.name}"`)
+    setEditingTuning(null)
+    setManualReturnView('home')
+    setView('list')
+  }, [recordTuningChange])
+
+  function startEdit(t: SavedTuning) {
+    setEditingTuning(t)
+    setManualReturnView('list')
+    setView('manual')
+  }
+
+  function leaveManual() {
+    const target = manualReturnView
+    setEditingTuning(null)
+    setManualReturnView('home')
+    setView(target)
+  }
+
   function applyToNextRace(t: SavedTuning) {
     applySavedAsLastLoaded(t)
     recordTuningChange({
@@ -126,8 +164,25 @@ export function TuningLab() {
     flashToast('Tuning reverted to next race')
   }
 
-  async function copyTuningToClipboard(t: SavedTuning) {
+  async function shareTuning(t: SavedTuning) {
     const text = JSON.stringify(t, null, 2)
+    const title = `VibeRacer tuning: ${t.name}`
+    // Prefer the native share sheet (mobile + supporting desktop browsers).
+    // Fall back to copying the JSON to the clipboard so the player can still
+    // paste it into a DM. A user-cancelled share also falls through silently.
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function'
+    ) {
+      try {
+        await navigator.share({ title, text })
+        flashToast(`Shared "${t.name}"`)
+        return
+      } catch (err) {
+        if ((err as DOMException | undefined)?.name === 'AbortError') return
+        // Any other failure: drop to the clipboard fallback.
+      }
+    }
     await safeClipboardWrite(text)
     flashToast('Tuning JSON copied to clipboard')
   }
@@ -264,6 +319,16 @@ export function TuningLab() {
           >
             Start a tuning session
           </MenuStartButton>
+          <MenuShellAction
+            onClick={() => {
+              setEditingTuning(null)
+              setManualReturnView('home')
+              setView('manual')
+            }}
+            disabled={!hydrated || !controlsHydrated}
+          >
+            Build tuning manually (sliders)
+          </MenuShellAction>
           <MenuShellAction onClick={() => setView('list')}>
             Saved tunings ({items.length})
           </MenuShellAction>
@@ -288,13 +353,34 @@ export function TuningLab() {
           <TuningSavedList
             items={items}
             onApply={applyToNextRace}
-            onExport={copyTuningToClipboard}
+            onShare={shareTuning}
+            onEdit={startEdit}
             onDelete={onDelete}
             onRename={onRename}
           />
           <MenuShellAction onClick={() => setView('home')}>
             Back
           </MenuShellAction>
+        </>
+      ) : null}
+
+      {view === 'manual' ? (
+        <>
+          <h2 style={cardTitle}>
+            {editingTuning ? `Edit "${editingTuning.name}"` : 'Build tuning manually'}
+          </h2>
+          <p style={cardCopy}>
+            {editingTuning
+              ? 'Drag the sliders to retune this setup. Saving overwrites the existing entry.'
+              : 'Drag the sliders to dial in a setup, then save it to your library. Skips the test loop and questionnaire.'}
+          </p>
+          <TuningEditor
+            params={initialParams}
+            initialControlType={initialControlType}
+            editing={editingTuning}
+            onSaved={handleManualSaved}
+            onClose={leaveManual}
+          />
         </>
       ) : null}
 
@@ -445,45 +531,51 @@ const ctaRow: CSSProperties = {
   marginTop: 6,
 }
 const importField: CSSProperties = {
-  background: menuTheme.inputBg,
-  color: 'white',
-  border: `1px solid ${menuTheme.ghostBorder}`,
-  borderRadius: 8,
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 12,
   padding: 10,
   fontFamily: 'monospace',
   fontSize: 12,
   resize: 'vertical',
   minHeight: 120,
+  fontWeight: 600,
 }
 const importPreview: CSSProperties = {
-  background: menuTheme.inputBg,
-  border: `1px solid ${menuTheme.panelBorder}`,
-  borderRadius: 8,
-  padding: 10,
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 12,
+  padding: 12,
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
   fontSize: 13,
-  color: 'white',
+  fontWeight: 600,
+  boxShadow: `0 3px 0 ${menuTheme.cardShadow}`,
 }
 const importError: CSSProperties = {
-  background: '#3a1d1d',
-  border: '1px solid #553030',
-  color: '#ff9090',
-  borderRadius: 8,
+  background: '#ffd9d9',
+  border: `2px solid ${menuTheme.ctaShadow}`,
+  color: menuTheme.ctaShadow,
+  borderRadius: 12,
   padding: 10,
   fontSize: 13,
+  fontWeight: 700,
 }
 const toastStyle: CSSProperties = {
   position: 'fixed',
   left: '50%',
   bottom: 24,
   transform: 'translateX(-50%)',
-  background: 'rgba(0,0,0,0.85)',
-  color: 'white',
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
   padding: '10px 16px',
   borderRadius: 999,
   fontSize: 13,
+  fontWeight: 700,
   zIndex: 1000,
-  boxShadow: '0 8px 30px rgba(0,0,0,0.5)',
+  boxShadow: `0 4px 0 ${menuTheme.cardShadow}, 0 8px 30px rgba(0,0,0,0.35)`,
 }

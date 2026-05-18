@@ -11,6 +11,7 @@ import {
   type TuningHistoryEntry,
 } from '@/lib/tuningHistory'
 import { formatTuningValue, getTuningParamMeta } from '@/lib/tuningSettings'
+import { menuTheme } from './menuTheme'
 
 export interface TuningHistoryListProps {
   entries: TuningHistoryEntry[]
@@ -23,14 +24,16 @@ export interface TuningHistoryListProps {
   emptyHint?: ReactNode
 }
 
+// Cartoony source pills. The accent picks the surface fill, and the text
+// always lands on dark ink so the pill reads on the cream card surface.
 const SOURCE_ACCENT: Record<TuningChangeSource, string> = {
-  slider: '#5fb4ff',
-  savedApplied: '#ff6b35',
-  recommended: '#a472ff',
-  reset: '#9aa0a6',
-  imported: '#7ad6a1',
-  leaderboard: '#ffd166',
-  historyRevert: '#cfcfcf',
+  slider: '#9fd3ff',
+  savedApplied: '#ffc89e',
+  recommended: '#d4b8ff',
+  reset: '#e5e5e5',
+  imported: '#b3ecc6',
+  leaderboard: '#ffe1a1',
+  historyRevert: '#f0e2c8',
 }
 
 export function TuningHistoryList({
@@ -65,14 +68,14 @@ export function TuningHistoryList({
         <div style={filterRow}>
           <button
             onClick={() => setShowAll(false)}
-            style={chip(!showAll)}
+            style={chipStyle(!showAll)}
             aria-pressed={!showAll}
           >
             This track
           </button>
           <button
             onClick={() => setShowAll(true)}
-            style={chip(showAll)}
+            style={chipStyle(showAll)}
             aria-pressed={showAll}
           >
             All tracks
@@ -94,9 +97,7 @@ export function TuningHistoryList({
             key={entry.id}
             style={{
               ...row,
-              borderLeft: isLive
-                ? '3px solid #ff6b35'
-                : '3px solid transparent',
+              borderLeftColor: isLive ? menuTheme.ctaBg : 'transparent',
             }}
           >
             <div style={rowHead}>
@@ -105,7 +106,6 @@ export function TuningHistoryList({
                 style={{
                   ...sourcePill,
                   background: SOURCE_ACCENT[entry.source],
-                  color: entry.source === 'reset' ? '#161616' : '#0e0e0e',
                 }}
               >
                 {TUNING_SOURCE_LABELS[entry.source]}
@@ -193,23 +193,25 @@ const filterRow: CSSProperties = {
   paddingBottom: 4,
 }
 
-function chip(active: boolean): CSSProperties {
+function chipStyle(active: boolean): CSSProperties {
   return {
-    background: active ? '#ff6b35' : '#1d1d1d',
-    color: active ? '#161616' : '#cfcfcf',
-    border: active ? '1px solid #ff6b35' : '1px solid #2a2a2a',
+    background: active ? menuTheme.pickSelectedBg : menuTheme.cardBg,
+    color: active ? menuTheme.pickSelectedText : menuTheme.cardText,
+    border: `2px solid ${active ? menuTheme.pickSelectedBorder : menuTheme.cardBorder}`,
     borderRadius: 999,
     padding: '4px 10px',
     fontSize: 12,
-    fontWeight: 600,
+    fontWeight: 700,
     cursor: 'pointer',
     fontFamily: 'inherit',
+    letterSpacing: 0.3,
   }
 }
 
 const countLabel: CSSProperties = {
   fontSize: 11,
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
+  fontWeight: 600,
 }
 
 const row: CSSProperties = {
@@ -217,9 +219,12 @@ const row: CSSProperties = {
   flexDirection: 'column',
   gap: 6,
   padding: '10px 12px',
-  background: '#1d1d1d',
-  border: '1px solid #2a2a2a',
-  borderRadius: 10,
+  background: menuTheme.cardBg,
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderLeft: '4px solid transparent',
+  borderRadius: 12,
+  boxShadow: `0 3px 0 ${menuTheme.cardShadow}`,
 }
 
 const rowHead: CSSProperties = {
@@ -231,46 +236,51 @@ const rowHead: CSSProperties = {
 
 const timeStamp: CSSProperties = {
   fontSize: 12,
-  color: '#cfcfcf',
-  fontWeight: 600,
+  color: menuTheme.cardText,
+  fontWeight: 700,
 }
 
 const sourcePill: CSSProperties = {
   fontSize: 10,
-  fontWeight: 700,
+  fontWeight: 800,
   letterSpacing: 0.6,
   textTransform: 'uppercase',
   padding: '2px 8px',
   borderRadius: 999,
+  color: '#1b1b1b',
+  border: '1px solid rgba(0,0,0,0.35)',
 }
 
 const labelText: CSSProperties = {
   fontSize: 12,
-  color: '#fff',
-  opacity: 0.85,
+  color: menuTheme.cardText,
+  fontWeight: 600,
 }
 
 const liveTag: CSSProperties = {
   fontSize: 10,
-  fontWeight: 700,
+  fontWeight: 800,
   letterSpacing: 0.8,
-  color: '#161616',
-  background: '#ff6b35',
+  color: '#fff',
+  background: menuTheme.ctaBg,
+  border: `1px solid ${menuTheme.ctaShadow}`,
   padding: '2px 6px',
   borderRadius: 4,
 }
 
 const slugText: CSSProperties = {
   fontSize: 10,
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
   fontFamily: 'ui-monospace, monospace',
+  fontWeight: 700,
 }
 
 const summaryBtn: CSSProperties = {
   background: 'transparent',
   border: 'none',
-  color: '#cfcfcf',
+  color: menuTheme.cardText,
   fontSize: 12,
+  fontWeight: 600,
   textAlign: 'left',
   padding: 0,
   cursor: 'pointer',
@@ -282,7 +292,7 @@ const summaryBtn: CSSProperties = {
 
 const chevron: CSSProperties = {
   fontSize: 10,
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
 }
 
 const deltaWrap: CSSProperties = {
@@ -290,8 +300,8 @@ const deltaWrap: CSSProperties = {
   flexDirection: 'column',
   gap: 4,
   padding: '6px 8px',
-  background: '#0e0e0e',
-  border: '1px solid #2a2a2a',
+  background: '#fffbe8',
+  border: `1px solid ${menuTheme.cardBorder}`,
   borderRadius: 6,
   fontSize: 12,
 }
@@ -303,7 +313,8 @@ const deltaRow: CSSProperties = {
 }
 
 const deltaLabel: CSSProperties = {
-  color: '#cfcfcf',
+  color: menuTheme.cardText,
+  fontWeight: 600,
 }
 
 const deltaNums: CSSProperties = {
@@ -314,20 +325,20 @@ const deltaNums: CSSProperties = {
 }
 
 const deltaFrom: CSSProperties = {
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
 }
 
 const deltaArrow: CSSProperties = {
-  color: '#9aa0a6',
+  color: menuTheme.cardMutedText,
 }
 
 const deltaTo: CSSProperties = {
-  color: '#fff',
-  fontWeight: 600,
+  color: menuTheme.cardText,
+  fontWeight: 700,
 }
 
 const deltaUnit: CSSProperties = {
-  color: '#666',
+  color: menuTheme.cardMutedText,
   fontSize: 10,
 }
 
@@ -338,34 +349,37 @@ const actions: CSSProperties = {
 }
 
 const applyBtn: CSSProperties = {
-  background: '#ff6b35',
-  color: '#161616',
-  border: 'none',
-  borderRadius: 6,
+  background: menuTheme.ctaBg,
+  color: '#fff',
+  border: `2px solid ${menuTheme.ctaShadow}`,
+  borderRadius: 8,
   padding: '6px 12px',
+  fontSize: 12,
+  fontWeight: 800,
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+  boxShadow: `0 3px 0 ${menuTheme.ctaShadow}`,
+}
+
+const ghostBtn: CSSProperties = {
+  background: '#fffbe8',
+  color: menuTheme.cardText,
+  border: `2px solid ${menuTheme.cardBorder}`,
+  borderRadius: 8,
+  padding: '6px 10px',
   fontSize: 12,
   fontWeight: 700,
   cursor: 'pointer',
   fontFamily: 'inherit',
 }
 
-const ghostBtn: CSSProperties = {
-  background: 'transparent',
-  color: '#cfcfcf',
-  border: '1px solid #3a3a3a',
-  borderRadius: 6,
-  padding: '6px 10px',
-  fontSize: 12,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-}
-
 const emptyBox: CSSProperties = {
   padding: 12,
-  background: '#1d1d1d',
-  border: '1px dashed #2a2a2a',
-  borderRadius: 8,
-  color: '#9aa0a6',
+  background: menuTheme.cardBg,
+  border: `2px dashed ${menuTheme.cardBorder}`,
+  borderRadius: 12,
+  color: menuTheme.cardMutedText,
   fontSize: 12,
   lineHeight: 1.4,
+  fontWeight: 600,
 }
