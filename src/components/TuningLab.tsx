@@ -36,7 +36,7 @@ import {
   MenuStartButton,
   menuTheme,
 } from './MenuUI'
-import { TuningManualBuilder } from './TuningManualBuilder'
+import { TuningEditor } from './TuningEditor'
 import { TuningSavedList } from './TuningSavedList'
 import { TuningSession } from './TuningSession'
 import { TuningHistoryList } from './TuningHistoryList'
@@ -55,6 +55,9 @@ export function TuningLab() {
   // the same id. Cleared on entry into the home/list/import/history views
   // and after a save so the next visit to manual starts from a clean slate.
   const [editingTuning, setEditingTuning] = useState<SavedTuning | null>(null)
+  // Where Back / save returns to: 'home' when the player entered manual
+  // from the home menu, 'list' when they entered via Edit on a saved row.
+  const [manualReturnView, setManualReturnView] = useState<View>('home')
   const { history: tuningHistory, record: recordTuningChange } =
     useTuningRecorder()
 
@@ -116,17 +119,21 @@ export function TuningLab() {
     })
     flashToast(`Saved "${saved.name}"`)
     setEditingTuning(null)
+    setManualReturnView('home')
     setView('list')
   }, [recordTuningChange])
 
   function startEdit(t: SavedTuning) {
     setEditingTuning(t)
+    setManualReturnView('list')
     setView('manual')
   }
 
   function leaveManual() {
+    const target = manualReturnView
     setEditingTuning(null)
-    setView('home')
+    setManualReturnView('home')
+    setView(target)
   }
 
   function applyToNextRace(t: SavedTuning) {
@@ -315,6 +322,7 @@ export function TuningLab() {
           <MenuShellAction
             onClick={() => {
               setEditingTuning(null)
+              setManualReturnView('home')
               setView('manual')
             }}
             disabled={!hydrated || !controlsHydrated}
@@ -366,12 +374,12 @@ export function TuningLab() {
               ? 'Drag the sliders to retune this setup. Saving overwrites the existing entry.'
               : 'Drag the sliders to dial in a setup, then save it to your library. Skips the test loop and questionnaire.'}
           </p>
-          <TuningManualBuilder
-            initialParams={initialParams}
+          <TuningEditor
+            params={initialParams}
             initialControlType={initialControlType}
             editing={editingTuning}
             onSaved={handleManualSaved}
-            onCancel={leaveManual}
+            onClose={leaveManual}
           />
         </>
       ) : null}
