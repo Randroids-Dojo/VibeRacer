@@ -98,13 +98,12 @@ import {
 import { useAudioSettings } from '@/hooks/useAudioSettings'
 import {
   MenuButton,
-  MenuHeader,
   MenuHint,
-  MenuOverlay,
-  MenuPanel,
   MenuSection,
   MenuSettingRow,
   MenuSlider,
+  MenuStageOverlay,
+  MenuStartButton,
   MenuTabBar,
   MenuToggle,
   menuTheme,
@@ -113,7 +112,7 @@ import {
 import { FeatureListOverlay } from './FeatureListOverlay'
 import { SettingsAudioTab } from './SettingsAudioTab'
 import { SettingsGhostTab } from './SettingsGhostTab'
-import { useMenuNav, useRegisterFocusable } from './MenuNav'
+import { MenuNavProvider, useMenuNav, useRegisterFocusable } from './MenuNav'
 
 interface SettingsPaneProps {
   settings: ControlSettings
@@ -125,6 +124,11 @@ interface SettingsPaneProps {
   inRace?: boolean
   onSetup?: () => void
   slug?: string
+  // 'modal' (default) renders the dark MenuOverlay+MenuPanel chrome used by
+  // the in-game pause settings. 'page' strips that chrome so the caller can
+  // embed the tab strip + content + footer inside a MenuPageShell on a
+  // full-page route with the shared blue background.
+  mode?: 'modal' | 'page'
 }
 
 interface CaptureTarget {
@@ -170,6 +174,7 @@ export function SettingsPane({
   inRace,
   onSetup,
   slug,
+  mode = 'modal',
 }: SettingsPaneProps) {
   const router = useRouter()
   const [activeTab, setActiveTab] = useState<SettingsTabId>('profile')
@@ -633,31 +638,25 @@ export function SettingsPane({
   }))
 
   const captureActive = capture !== null || padCapture !== null
+  const isPage = mode === 'page'
 
-  return (
-    <MenuOverlay
-      zIndex={110}
-      onBack={onClose}
-      onTabPrev={() => shiftTab(-1)}
-      onTabNext={() => shiftTab(1)}
-    >
+  const body = (
+    <>
       <CaptureSuppression active={captureActive} />
-      <MenuPanel width="wide" overflow="hidden">
-        <MenuHeader title="SETTINGS" onClose={onClose} />
 
-        <MenuTabBar
-          tabs={tabBarTabs}
-          value={activeTab}
-          onChange={selectTab}
-          ariaLabel="Settings sections"
-        />
+      <MenuTabBar
+        tabs={tabBarTabs}
+        value={activeTab}
+        onChange={selectTab}
+        ariaLabel="Settings sections"
+      />
 
-        <div
-          id={`settings-panel-${activeTab}`}
-          role="tabpanel"
-          aria-labelledby={`settings-tab-${activeTab}`}
-          style={tabPanel}
-        >
+      <div
+        id={`settings-panel-${activeTab}`}
+        role="tabpanel"
+        aria-labelledby={`settings-tab-${activeTab}`}
+        style={tabPanelStyle}
+      >
           {activeTab === 'profile' ? (
             <>
               <MenuSection title="Identity">
@@ -1491,20 +1490,49 @@ export function SettingsPane({
           <MenuButton variant="ghost" fullWidth={false} onClick={resetAll}>
             Reset to defaults
           </MenuButton>
-          <MenuButton
-            variant="primary"
-            click="confirm"
-            fullWidth={false}
-            onClick={onClose}
-          >
-            Done
-          </MenuButton>
+          {isPage ? null : (
+            <MenuStartButton onClick={onClose} style={doneBtnStyle}>
+              Done
+            </MenuStartButton>
+          )}
         </div>
-      </MenuPanel>
+    </>
+  )
+
+  // Page mode hosts the body inline so the caller (e.g. /settings) can
+  // wrap it in MenuPageShell directly. Modal mode hosts the body inside
+  // a MenuStageOverlay so the in-game pause Settings inherits the same
+  // sky-blue + dark-translucent + cream-card menu shell look the route
+  // already uses.
+  if (isPage) {
+    return (
+      <MenuNavProvider
+        onBack={onClose}
+        onTabPrev={() => shiftTab(-1)}
+        onTabNext={() => shiftTab(1)}
+      >
+        {body}
+        {featureListOpen ? (
+          <FeatureListOverlay onClose={closeFeatureList} />
+        ) : null}
+      </MenuNavProvider>
+    )
+  }
+
+  return (
+    <MenuStageOverlay
+      title="SETTINGS"
+      zIndex={110}
+      onBack={onClose}
+      onTabPrev={() => shiftTab(-1)}
+      onTabNext={() => shiftTab(1)}
+      width="wide"
+    >
+      {body}
       {featureListOpen ? (
         <FeatureListOverlay onClose={closeFeatureList} />
       ) : null}
-    </MenuOverlay>
+    </MenuStageOverlay>
   )
 }
 
@@ -1545,6 +1573,11 @@ function InitialsInput({
       ref={ref}
       value={value}
       maxLength={3}
+      // size={3} caps the input's intrinsic content-based min-width so a
+      // narrow mobile viewport doesn't blow out the parent flex container
+      // (the default size=20 + monospace 28 + letter-spacing 8 demanded
+      // ~400px and forced the whole Settings panel to overflow).
+      size={3}
       onChange={(e) =>
         onChangeValue(e.target.value.toUpperCase().replace(/[^A-Z]/g, ''))
       }
@@ -1960,16 +1993,26 @@ const subTitle: React.CSSProperties = {
   fontSize: 15,
   fontWeight: 700,
 }
-const tabPanel: React.CSSProperties = {
+// Both modal and page hosts (MenuStageOverlay / MenuPageShell) scroll
+// naturally on overflow now, so the tab panel itself does not need a
+// nested scroll container. Long tabs (Vehicle, World, Controls) just
+// extend the outer page / overlay scroll.
+const tabPanelStyle: React.CSSProperties = {
   display: 'flex',
   flexDirection: 'column',
-  gap: 14,
-  flex: '1 1 auto',
-  minHeight: 0,
-  overflowY: 'auto',
-  overscrollBehavior: 'contain',
-  paddingRight: 4,
+  gap: 12,
   paddingTop: 4,
+}
+
+// Compact red-pink "Done" button. Reuses MenuStartButton (so the click
+// sfx + focus ring stay consistent) but overrides the CTA padding so a
+// footer-right Done sits at the same size as the ghost "Reset" beside
+// it instead of swelling to the size of the bottom-of-page Start CTAs.
+const doneBtnStyle: React.CSSProperties = {
+  padding: '10px 16px',
+  fontSize: 16,
+  width: 'auto',
+  boxShadow: `0 4px 0 ${menuTheme.ctaShadow}`,
 }
 const bindingTable: React.CSSProperties = {
   display: 'flex',
@@ -2037,6 +2080,9 @@ const initialsRow: React.CSSProperties = {
 }
 const initialsInput: React.CSSProperties = {
   flex: 1,
+  // min-width: 0 so the input shrinks below its intrinsic content size
+  // when the flex parent is narrower than 3 letter-spaced 28px chars.
+  minWidth: 0,
   fontFamily: 'monospace',
   fontSize: 28,
   textAlign: 'center',

@@ -1,5 +1,6 @@
-import Link from 'next/link'
 import type { ReactNode } from 'react'
+import { MenuShellStage } from './MenuUI'
+import { menuTheme } from './menuTheme'
 
 interface Props {
   title: string
@@ -18,9 +19,10 @@ interface Props {
 }
 
 // Shared chrome for every game-mode menu page so Free Race, Derby,
-// World Tour, Drag, and the Derby vehicle picker all read as the same
-// family. Sky-blue background, dark translucent header bar with CLOSE
-// pill, and a dark translucent main panel wrapping the page content.
+// World Tour, Drag, the Derby vehicle picker, and Settings all read as
+// the same family. The two-piece header + body panel is delegated to
+// MenuShellStage so the same primitive is reused by PreRaceSetup and
+// DragGarage's full-page modals.
 export function MenuPageShell({
   title,
   blurb,
@@ -31,18 +33,15 @@ export function MenuPageShell({
 }: Props) {
   return (
     <main style={pageStyle}>
-      <div style={width === 'wide' ? stageStyleWide : stageStyleNarrow}>
-        <header style={headerStyle}>
-          <h1 style={titleStyle}>{title}</h1>
-          <Link href={closeHref} style={closeBtnStyle} aria-label={closeLabel}>
-            {closeLabel}
-          </Link>
-        </header>
-        <div style={menuStyle}>
-          {blurb ? <p style={blurbStyle}>{blurb}</p> : null}
-          {children}
-        </div>
-      </div>
+      <MenuShellStage
+        title={title}
+        closeHref={closeHref}
+        closeLabel={closeLabel}
+        width={width}
+      >
+        {blurb ? <p style={blurbStyle}>{blurb}</p> : null}
+        {children}
+      </MenuShellStage>
     </main>
   )
 }
@@ -53,64 +52,15 @@ const pageStyle: React.CSSProperties = {
   display: 'flex',
   alignItems: 'flex-start',
   justifyContent: 'center',
-  padding: 24,
-  background: '#9ad8ff',
+  padding: 20,
+  background: menuTheme.pageBg,
   color: 'white',
   fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
   boxSizing: 'border-box',
 }
-const stageStyleNarrow: React.CSSProperties = {
-  position: 'relative',
-  width: 'min(480px, 100%)',
-  display: 'grid',
-  gap: 14,
-}
-const stageStyleWide: React.CSSProperties = {
-  ...stageStyleNarrow,
-  width: 'min(640px, 100%)',
-}
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  padding: '12px 18px',
-  background: 'rgba(0,0,0,0.55)',
-  borderRadius: 12,
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-}
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 24,
-  fontWeight: 800,
-  letterSpacing: 1,
-}
-const closeBtnStyle: React.CSSProperties = {
-  padding: '8px 12px',
-  background: 'rgba(255,255,255,0.1)',
-  color: 'white',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 10,
-  fontSize: 13,
-  letterSpacing: 1,
-  fontFamily: 'inherit',
-  fontWeight: 600,
-  cursor: 'pointer',
-  textDecoration: 'none',
-}
-const menuStyle: React.CSSProperties = {
-  background: 'rgba(0,0,0,0.45)',
-  padding: 24,
-  borderRadius: 18,
-  display: 'grid',
-  gap: 18,
-  boxShadow: '0 20px 50px rgba(0,0,0,0.35)',
-  backdropFilter: 'blur(4px)',
-  WebkitBackdropFilter: 'blur(4px)',
-}
 const blurbStyle: React.CSSProperties = {
   margin: 0,
-  fontSize: 14,
+  fontSize: 13,
   opacity: 0.85,
   lineHeight: 1.4,
 }
@@ -123,60 +73,61 @@ const blurbStyle: React.CSSProperties = {
 export const menuStyles = {
   primaryBtn: {
     display: 'block',
-    padding: '18px 24px',
-    background: '#e84a5f',
+    padding: '14px 20px',
+    background: menuTheme.ctaBg,
     color: 'white',
     textDecoration: 'none',
     borderRadius: 12,
-    fontSize: 22,
+    fontSize: 20,
     fontWeight: 700,
     letterSpacing: 0.5,
     textAlign: 'center',
-    boxShadow: '0 6px 0 #9c2a3c',
+    boxShadow: `0 6px 0 ${menuTheme.ctaShadow}`,
     border: 'none',
     cursor: 'pointer',
     fontFamily: 'inherit',
   } satisfies React.CSSProperties,
   section: {
-    paddingTop: 8,
+    paddingTop: 6,
   } satisfies React.CSSProperties,
   sectionHeader: {
     fontSize: 12,
     letterSpacing: 1.5,
     textTransform: 'uppercase',
     opacity: 0.75,
-    marginBottom: 10,
+    marginBottom: 8,
     fontWeight: 600,
   } satisfies React.CSSProperties,
   cardGrid: {
     display: 'grid',
     gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-    gap: 12,
+    gap: 10,
   } satisfies React.CSSProperties,
   card: {
     display: 'flex',
     flexDirection: 'column',
-    gap: 8,
-    padding: 16,
-    background: '#161616',
-    border: '1px solid #2a2a2a',
+    gap: 6,
+    padding: 14,
+    background: menuTheme.cardBg,
+    border: `2px solid ${menuTheme.cardBorder}`,
     borderRadius: 12,
-    color: '#fff',
+    color: menuTheme.cardText,
     textDecoration: 'none',
     fontFamily: 'inherit',
     textAlign: 'left',
     cursor: 'pointer',
-    boxShadow: '0 6px 0 rgba(0,0,0,0.55)',
+    boxShadow: menuTheme.cardShadow,
     transition: 'transform 80ms ease, border-color 80ms ease',
+    minWidth: 0,
   } satisfies React.CSSProperties,
   cardTitle: {
-    fontSize: 18,
+    fontSize: 17,
     fontWeight: 800,
     letterSpacing: 0.5,
   } satisfies React.CSSProperties,
   cardBlurb: {
-    fontSize: 13,
-    color: 'rgba(255,255,255,0.7)',
+    fontSize: 12,
+    color: menuTheme.cardMutedText,
     lineHeight: 1.4,
   } satisfies React.CSSProperties,
   pillRow: {
@@ -188,15 +139,15 @@ export const menuStyles = {
   pill: {
     padding: '2px 8px',
     borderRadius: 999,
-    background: 'rgba(255,255,255,0.08)',
-    border: '1px solid rgba(255,255,255,0.08)',
+    background: 'rgba(0,0,0,0.08)',
+    border: '1px solid rgba(0,0,0,0.18)',
     textTransform: 'capitalize',
     letterSpacing: 0.3,
   } satisfies React.CSSProperties,
   cardFooter: {
-    marginTop: 4,
+    marginTop: 2,
     fontSize: 12,
-    color: 'rgba(255,255,255,0.85)',
+    color: 'rgba(0,0,0,0.85)',
     fontVariantNumeric: 'tabular-nums',
   } satisfies React.CSSProperties,
 }

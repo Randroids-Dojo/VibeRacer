@@ -16,11 +16,9 @@ import {
   type TouchMode,
 } from '@/lib/controlSettings'
 import {
-  MenuButton,
-  MenuHeader,
-  MenuOverlay,
-  MenuPanel,
   MenuSection,
+  MenuStageOverlay,
+  MenuStartButton,
   menuTheme,
 } from './MenuUI'
 
@@ -45,56 +43,55 @@ export function HowToPlay({
   const gamepadRows = buildGamepadHelpRows(gamepadBindings)
   const touch = buildTouchHelp(touchMode)
   return (
-    <MenuOverlay zIndex={120} onBack={onClose}>
-      <MenuPanel width="wide">
-        <MenuHeader title="HOW TO PLAY" onClose={onClose} />
+    <MenuStageOverlay
+      title="HOW TO PLAY"
+      zIndex={120}
+      onBack={onClose}
+      width="wide"
+    >
+      <MenuSection title={HOW_TO_PLAY_GOAL_TITLE}>
+        <p style={paragraphStyle}>{HOW_TO_PLAY_GOAL_BODY}</p>
+      </MenuSection>
 
-        <MenuSection title={HOW_TO_PLAY_GOAL_TITLE}>
-          <p style={paragraphStyle}>{HOW_TO_PLAY_GOAL_BODY}</p>
-        </MenuSection>
+      <MenuSection title="Keyboard">
+        <KeyboardTable rows={keyboardRows} />
+      </MenuSection>
 
-        <MenuSection title="Keyboard">
-          <KeyboardTable rows={keyboardRows} />
-        </MenuSection>
+      <MenuSection title="Touch">
+        <p style={subTitleStyle}>{touch.modeLabel}</p>
+        <p style={paragraphStyle}>{touch.intro}</p>
+        <ul style={bulletList}>
+          {touch.bullets.map((b, i) => (
+            <li key={i} style={bulletItem}>
+              {b}
+            </li>
+          ))}
+        </ul>
+        <p style={hintStyle}>
+          Switch single-stick or dual-stick in Settings.
+        </p>
+      </MenuSection>
 
-        <MenuSection title="Touch">
-          <p style={subTitleStyle}>{touch.modeLabel}</p>
-          <p style={paragraphStyle}>{touch.intro}</p>
-          <ul style={bulletList}>
-            {touch.bullets.map((b, i) => (
-              <li key={i} style={bulletItem}>
-                {b}
-              </li>
-            ))}
-          </ul>
-          <p style={hintStyle}>
-            Switch single-stick or dual-stick in Settings.
-          </p>
-        </MenuSection>
+      <MenuSection title="Gamepad">
+        <GamepadTable rows={gamepadRows} />
+        <p style={hintStyle}>
+          Steering uses the left analog stick (or the d-pad). Plug in any
+          Standard layout controller and press a button to wake it up.
+        </p>
+      </MenuSection>
 
-        <MenuSection title="Gamepad">
-          <GamepadTable rows={gamepadRows} />
-          <p style={hintStyle}>
-            Steering uses the left analog stick (or the d-pad). Plug in any
-            Standard layout controller and press a button to wake it up.
-          </p>
-        </MenuSection>
+      <MenuSection title="Pro tips">
+        <ul style={bulletList}>
+          {HOW_TO_PLAY_TIPS.map((tip, i) => (
+            <li key={i} style={bulletItem}>
+              {tip}
+            </li>
+          ))}
+        </ul>
+      </MenuSection>
 
-        <MenuSection title="Pro tips">
-          <ul style={bulletList}>
-            {HOW_TO_PLAY_TIPS.map((tip, i) => (
-              <li key={i} style={bulletItem}>
-                {tip}
-              </li>
-            ))}
-          </ul>
-        </MenuSection>
-
-        <MenuButton click="back" onClick={onClose}>
-          Done
-        </MenuButton>
-      </MenuPanel>
-    </MenuOverlay>
+      <MenuStartButton onClick={onClose}>Done</MenuStartButton>
+    </MenuStageOverlay>
   )
 }
 
@@ -187,21 +184,24 @@ const tableStyle: React.CSSProperties = {
   gap: 6,
 }
 
+// Cream rows so the binding table reads as part of the menu-shell card
+// family (matches MenuPickRow / menuStyles.card). Each row is a small
+// cream pill with dark text and a black outline.
 const rowStyle: React.CSSProperties = {
   display: 'grid',
   gridTemplateColumns: '1fr auto',
   gap: 12,
   alignItems: 'center',
-  background: menuTheme.rowBg,
-  padding: '8px 10px',
+  background: menuTheme.cardBg,
+  padding: '8px 12px',
   borderRadius: 8,
-  border: `1px solid ${menuTheme.panelBorder}`,
+  border: `2px solid ${menuTheme.cardBorder}`,
 }
 
 const actionLabelStyle: React.CSSProperties = {
   fontSize: 14,
   fontWeight: 600,
-  color: menuTheme.textPrimary,
+  color: menuTheme.cardText,
 }
 
 const keysCellStyle: React.CSSProperties = {
@@ -215,11 +215,11 @@ const keycapStyle: React.CSSProperties = {
   display: 'inline-block',
   padding: '3px 8px',
   borderRadius: 6,
-  background: '#0e0e0e',
-  border: `1px solid ${menuTheme.ghostBorder}`,
+  background: 'rgba(0,0,0,0.08)',
+  border: '1px solid rgba(0,0,0,0.35)',
   fontSize: 12,
   fontFamily: 'monospace',
-  color: menuTheme.textPrimary,
+  color: menuTheme.cardText,
   minWidth: 28,
   textAlign: 'center',
   letterSpacing: 0.5,
@@ -227,6 +227,6 @@ const keycapStyle: React.CSSProperties = {
 
 const emptyKeyStyle: React.CSSProperties = {
   fontSize: 12,
-  color: menuTheme.textMuted,
+  color: menuTheme.cardMutedText,
   fontStyle: 'italic',
 }

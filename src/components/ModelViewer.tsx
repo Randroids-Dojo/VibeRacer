@@ -1,6 +1,5 @@
 'use client'
 
-import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { Group, type Object3D } from 'three'
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -12,6 +11,8 @@ import { createDamageVisualizer } from '@/game/derbyDamageVisuals'
 import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
 import type { DerbyVehicleType } from '@/lib/schemas'
 import type { DerbyCarState } from '@/game/derbyVehicleState'
+import { MenuPageShell } from './MenuPageShell'
+import { MenuShellAction, menuTheme } from './MenuUI'
 import { ModelTile } from './ModelTile'
 import { SharedModelStage } from './SharedModelStage'
 
@@ -268,114 +269,88 @@ export function ModelViewer() {
 
   return (
     <SharedModelStage>
-    <main style={pageStyle}>
-      <header style={headerStyle}>
-        <Link href="/" style={backLinkStyle}>
-          ‹ home
-        </Link>
-        <h1 style={titleStyle}>Model Viewer</h1>
+      <MenuPageShell title="Model Viewer" closeHref="/" width="wide">
         <div style={navStyle}>
-          <button type="button" onClick={prev} style={navBtnStyle}>
+          <MenuShellAction onClick={prev} style={navBtnStyle}>
             ‹ prev
-          </button>
-          <button type="button" onClick={next} style={navBtnStyle}>
+          </MenuShellAction>
+          <MenuShellAction onClick={next} style={navBtnStyle}>
             next ›
-          </button>
+          </MenuShellAction>
         </div>
-      </header>
 
-      <div style={chipRowStyle}>
-        {chips.map((c) => (
-          <button
-            key={c.id}
-            type="button"
-            onClick={c.onClick}
-            aria-pressed={c.isActive}
-            style={{
-              ...chipStyle,
-              background: c.isActive ? '#e84a5f' : 'rgba(255,255,255,0.08)',
-              borderColor: c.isActive ? '#e84a5f' : 'rgba(255,255,255,0.15)',
-            }}
-          >
-            {c.label}
-          </button>
-        ))}
-      </div>
+        <div style={chipRowStyle}>
+          {chips.map((c) => (
+            <button
+              key={c.id}
+              type="button"
+              onClick={c.onClick}
+              aria-pressed={c.isActive}
+              style={{
+                ...chipStyle,
+                background: c.isActive
+                  ? menuTheme.ctaBg
+                  : 'rgba(255,255,255,0.12)',
+                borderColor: c.isActive
+                  ? menuTheme.ctaBg
+                  : 'rgba(255,255,255,0.2)',
+              }}
+            >
+              {c.label}
+            </button>
+          ))}
+        </div>
 
-      {error && <div style={errorStyle}>{error}</div>}
+        {error && <div style={errorStyle}>{error}</div>}
 
-      {loaded && (
-        <>
-          <section style={heroRowStyle}>
-            <ModelTile object={loaded.pristine} label="Assembled" size={360} />
-            <ModelTile
-              object={loaded.destroyed ?? loaded.pristine}
-              label="Destroyed"
-              size={360}
-              background={loaded.destroyed ? '#1a1a22' : '#2a2a32'}
-              caption={loaded.destroyed ? undefined : 'No damage system'}
-            />
-          </section>
-
-          <h2 style={subtitleStyle}>Individual parts</h2>
-          <section style={partsGridStyle}>
-            {loaded.parts.map((p, i) => (
+        {loaded && (
+          <>
+            <section style={heroRowStyle}>
+              <ModelTile object={loaded.pristine} label="Assembled" size={360} />
               <ModelTile
-                key={`${entry.id}:${p.name}:${i}`}
-                object={p.node}
-                label={p.name}
-                size={170}
-                background="#1f1f25"
+                object={loaded.destroyed ?? loaded.pristine}
+                label="Destroyed"
+                size={360}
+                background={loaded.destroyed ? '#1a1a22' : '#2a2a32'}
+                caption={loaded.destroyed ? undefined : 'No damage system'}
               />
-            ))}
-          </section>
-        </>
-      )}
+            </section>
 
-      {!loaded && !error && <div style={loadingStyle}>Loading {entry.label}…</div>}
-    </main>
+            <h2 style={subtitleStyle}>Individual parts</h2>
+            <section style={partsGridStyle}>
+              {loaded.parts.map((p, i) => (
+                <ModelTile
+                  key={`${entry.id}:${p.name}:${i}`}
+                  object={p.node}
+                  label={p.name}
+                  size={170}
+                  background="#1f1f25"
+                />
+              ))}
+            </section>
+          </>
+        )}
+
+        {!loaded && !error && (
+          <div style={loadingStyle}>Loading {entry.label}…</div>
+        )}
+      </MenuPageShell>
     </SharedModelStage>
   )
 }
 
-const pageStyle: React.CSSProperties = {
-  minHeight: '100vh',
-  background: '#0c0c10',
-  color: 'white',
-  fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
-  padding: '32px 28px 64px',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 24,
-}
-const headerStyle: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  gap: 16,
-  flexWrap: 'wrap',
-}
-const backLinkStyle: React.CSSProperties = {
-  color: '#e84a5f',
-  textDecoration: 'none',
-  fontWeight: 600,
-}
-const titleStyle: React.CSSProperties = {
-  margin: 0,
-  fontSize: 36,
-  fontWeight: 700,
-  flex: 1,
-}
+// Prev / next navigation sits inline above the chip row. Tight gap so
+// the two buttons read as a single pager segment.
 const navStyle: React.CSSProperties = { display: 'flex', gap: 8 }
+// MenuShellAction's default cream-card sizing is overkill for a small
+// pager button; shrink padding + font so prev / next look like inline
+// nav controls rather than primary actions.
 const navBtnStyle: React.CSSProperties = {
-  padding: '10px 18px',
-  background: 'rgba(255,255,255,0.08)',
-  border: '1px solid rgba(255,255,255,0.15)',
-  borderRadius: 10,
-  color: 'white',
-  fontFamily: 'inherit',
-  fontSize: 15,
-  fontWeight: 600,
-  cursor: 'pointer',
+  padding: '8px 14px',
+  fontSize: 14,
+  letterSpacing: 0.2,
+  boxShadow: '0 3px 0 rgba(0,0,0,0.35)',
+  width: 'auto',
 }
 const chipRowStyle: React.CSSProperties = {
   display: 'flex',

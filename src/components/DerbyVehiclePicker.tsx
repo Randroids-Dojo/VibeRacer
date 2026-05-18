@@ -93,8 +93,8 @@ const statRowStyle: React.CSSProperties = {
   marginTop: 4,
 }
 const statBlock: React.CSSProperties = {
-  background: 'rgba(255,255,255,0.05)',
-  border: '1px solid rgba(255,255,255,0.07)',
+  background: 'rgba(0,0,0,0.06)',
+  border: '1px solid rgba(0,0,0,0.15)',
   borderRadius: 8,
   padding: '6px 8px',
   textAlign: 'center',
@@ -103,7 +103,7 @@ const statBlock: React.CSSProperties = {
 const statLabel: React.CSSProperties = {
   fontSize: 10,
   letterSpacing: 1,
-  color: 'rgba(255,255,255,0.5)',
+  color: 'rgba(0,0,0,0.55)',
 }
 const statValue: React.CSSProperties = {
   fontSize: 16,

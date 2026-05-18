@@ -47,18 +47,18 @@ test.describe('gamepad menu nav', () => {
     await page.addInitScript(STUB_INIT)
   })
 
-  test('B button closes the Settings overlay', async ({ page }) => {
+  test('B button closes the Settings page', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Settings' }).click()
     await expect(page.getByRole('tab', { name: 'Profile' })).toBeVisible()
     // B = button 1.
     await press(page, 1)
     await expect(page.getByRole('tab', { name: 'Profile' })).toHaveCount(0)
   })
 
-  test('RB switches tabs in the Settings overlay', async ({ page }) => {
+  test('RB switches tabs in the Settings page', async ({ page }) => {
     await page.goto('/')
-    await page.getByRole('button', { name: 'Settings' }).click()
+    await page.getByRole('link', { name: 'Settings' }).click()
     await expect(page.getByRole('tab', { name: 'Profile' })).toHaveAttribute(
       'aria-selected',
       'true',

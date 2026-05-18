@@ -6,7 +6,6 @@ import {
   useState,
   type CSSProperties,
 } from 'react'
-import Link from 'next/link'
 import {
   TUNING_LAB_KEY,
   TUNING_LAB_SYNTHETIC_SLUG,
@@ -31,6 +30,12 @@ import {
   applyTuningHistoryEntry,
   type TuningHistoryEntry,
 } from '@/lib/tuningHistory'
+import { MenuPageShell } from './MenuPageShell'
+import {
+  MenuShellAction,
+  MenuStartButton,
+  menuTheme,
+} from './MenuUI'
 import { TuningSavedList } from './TuningSavedList'
 import { TuningSession } from './TuningSession'
 import { TuningHistoryList } from './TuningHistoryList'
@@ -224,46 +229,14 @@ export function TuningLab() {
     }
   }
 
-  return (
-    <div style={shell}>
-      {view !== 'session' ? (
-        <header style={shellHeader}>
-          <Link href="/" style={backLink}>
-            ← Back to title
-          </Link>
-          <h1 style={shellTitle}>Tuning Lab</h1>
-          <p style={shellTag}>
-            Drive a short test loop, rate the feel, and have the lab suggest
-            new params. Save what works.
-          </p>
-        </header>
-      ) : null}
-
-      {view === 'home' ? (
-        <div style={card}>
-          <button
-            onClick={() => setView('session')}
-            style={primaryBtn}
-            disabled={!hydrated || !controlsHydrated}
-          >
-            Start a tuning session
-          </button>
-          <button onClick={() => setView('list')} style={secondaryBtn}>
-            Saved tunings ({items.length})
-          </button>
-          <button onClick={() => setView('history')} style={secondaryBtn}>
-            Recent changes ({tuningHistory.length})
-          </button>
-          <button onClick={() => setView('import')} style={secondaryBtn}>
-            Import JSON
-          </button>
-          <button onClick={copySessionToClipboard} style={tertiaryBtn}>
-            Copy all saved tunings to clipboard
-          </button>
-        </div>
-      ) : null}
-
-      {view === 'session' ? (
+  // Session mode hands the screen to TuningSession (which has its own
+  // chrome). Every other view sits inside the shared MenuPageShell so the
+  // Tuning Lab matches Free Race / Derby / Drag / Tour / Settings: blue
+  // page background, dark-translucent header strip with the title +
+  // CLOSE pill, and a dark-translucent body panel for the content.
+  if (view === 'session') {
+    return (
+      <div style={sessionShellStyle}>
         <TuningSession
           initialParams={initialParams}
           initialControlType={initialControlType}
@@ -271,10 +244,47 @@ export function TuningLab() {
           onSaved={handleSaved}
           onDiscard={handleDiscard}
         />
+        {toast ? <div style={toastStyle}>{toast}</div> : null}
+      </div>
+    )
+  }
+
+  return (
+    <MenuPageShell
+      title="Tuning Lab"
+      blurb="Drive a short test loop, rate the feel, and have the lab suggest new params. Save what works."
+      closeHref="/"
+      width="narrow"
+    >
+      {view === 'home' ? (
+        <>
+          <MenuStartButton
+            onClick={() => setView('session')}
+            disabled={!hydrated || !controlsHydrated}
+          >
+            Start a tuning session
+          </MenuStartButton>
+          <MenuShellAction onClick={() => setView('list')}>
+            Saved tunings ({items.length})
+          </MenuShellAction>
+          <MenuShellAction onClick={() => setView('history')}>
+            Recent changes ({tuningHistory.length})
+          </MenuShellAction>
+          <MenuShellAction onClick={() => setView('import')}>
+            Import JSON
+          </MenuShellAction>
+          <button
+            type="button"
+            onClick={copySessionToClipboard}
+            style={tertiaryBtn}
+          >
+            Copy all saved tunings to clipboard
+          </button>
+        </>
       ) : null}
 
       {view === 'list' ? (
-        <div style={card}>
+        <>
           <TuningSavedList
             items={items}
             onApply={applyToNextRace}
@@ -282,16 +292,14 @@ export function TuningLab() {
             onDelete={onDelete}
             onRename={onRename}
           />
-          <div style={ctaRow}>
-            <button onClick={() => setView('home')} style={secondaryBtn}>
-              Back
-            </button>
-          </div>
-        </div>
+          <MenuShellAction onClick={() => setView('home')}>
+            Back
+          </MenuShellAction>
+        </>
       ) : null}
 
       {view === 'history' ? (
-        <div style={card}>
+        <>
           <h2 style={cardTitle}>Recent changes</h2>
           <p style={cardCopy}>
             Every tuning change you make lands here. Apply any prior snapshot
@@ -305,16 +313,14 @@ export function TuningLab() {
             onApply={applyHistoryEntryFromLab}
             scopeSlug={null}
           />
-          <div style={ctaRow}>
-            <button onClick={() => setView('home')} style={secondaryBtn}>
-              Back
-            </button>
-          </div>
-        </div>
+          <MenuShellAction onClick={() => setView('home')}>
+            Back
+          </MenuShellAction>
+        </>
       ) : null}
 
       {view === 'import' ? (
-        <div style={card}>
+        <>
           <h2 style={cardTitle}>Import JSON</h2>
           <p style={cardCopy}>
             Paste a tuning or a full session log. Sessions import the final
@@ -328,12 +334,10 @@ export function TuningLab() {
             rows={8}
           />
           <div style={ctaRow}>
-            <button onClick={() => setView('home')} style={secondaryBtn}>
+            <MenuShellAction onClick={() => setView('home')}>
               Back
-            </button>
-            <button onClick={tryParseImport} style={primaryBtn}>
-              Parse
-            </button>
+            </MenuShellAction>
+            <MenuStartButton onClick={tryParseImport}>Parse</MenuStartButton>
           </div>
           {importResult ? (
             importResult.kind === 'error' ? (
@@ -341,9 +345,9 @@ export function TuningLab() {
             ) : importResult.kind === 'tuning' ? (
               <div style={importPreview}>
                 <div>Tuning: {importResult.saved.name}</div>
-                <button onClick={commitImport} style={primaryBtn}>
+                <MenuStartButton onClick={commitImport}>
                   Save tuning
-                </button>
+                </MenuStartButton>
               </div>
             ) : (
               <div style={importPreview}>
@@ -351,17 +355,17 @@ export function TuningLab() {
                   Session: {importResult.session.rounds.length} rounds, control{' '}
                   {importResult.session.controlType}
                 </div>
-                <button onClick={commitImport} style={primaryBtn}>
+                <MenuStartButton onClick={commitImport}>
                   Save final round
-                </button>
+                </MenuStartButton>
               </div>
             )
           ) : null}
-        </div>
+        </>
       ) : null}
 
       {toast ? <div style={toastStyle}>{toast}</div> : null}
-    </div>
+    </MenuPageShell>
   )
 }
 
@@ -392,7 +396,10 @@ async function safeClipboardWrite(text: string) {
   document.body.removeChild(ta)
 }
 
-const shell: CSSProperties = {
+// Session view skips MenuPageShell because TuningSession provides its
+// own chrome (track HUD, sliders, recorder). Keep the dark stage so the
+// recorder reads correctly during the test loop.
+const sessionShellStyle: CSSProperties = {
   position: 'relative',
   minHeight: '100vh',
   width: '100%',
@@ -403,84 +410,25 @@ const shell: CSSProperties = {
   gap: 16,
   fontFamily: 'system-ui, sans-serif',
   color: 'white',
-  background:
-    'linear-gradient(180deg, #1f2330 0%, #0c1018 100%)',
-}
-const shellHeader: CSSProperties = {
-  width: '100%',
-  maxWidth: 520,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 4,
-}
-const shellTitle: CSSProperties = {
-  margin: 0,
-  fontSize: 30,
-  fontWeight: 800,
-  letterSpacing: 1,
-  color: '#fff7b0',
-  WebkitTextStroke: '1.5px #1b1b1b',
-}
-const shellTag: CSSProperties = {
-  margin: 0,
-  fontSize: 13,
-  opacity: 0.8,
-  lineHeight: 1.4,
-}
-const backLink: CSSProperties = {
-  fontSize: 12,
-  letterSpacing: 1,
-  color: '#cfcfcf',
-  textDecoration: 'none',
-  alignSelf: 'flex-start',
-}
-const card: CSSProperties = {
-  width: '100%',
-  maxWidth: 520,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 10,
-  padding: 16,
-  background: '#161616',
-  border: '1px solid #2a2a2a',
-  borderRadius: 12,
+  background: 'linear-gradient(180deg, #1f2330 0%, #0c1018 100%)',
 }
 const cardTitle: CSSProperties = {
   margin: 0,
   fontSize: 18,
   fontWeight: 800,
   letterSpacing: 1,
+  color: 'white',
 }
 const cardCopy: CSSProperties = {
   margin: 0,
   fontSize: 13,
-  opacity: 0.8,
+  opacity: 0.85,
   lineHeight: 1.4,
-}
-const primaryBtn: CSSProperties = {
-  background: '#ff6b35',
   color: 'white',
-  border: 'none',
-  borderRadius: 10,
-  padding: '12px 18px',
-  fontSize: 15,
-  fontWeight: 700,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-}
-const secondaryBtn: CSSProperties = {
-  background: 'transparent',
-  color: '#cfcfcf',
-  border: '1px solid #3a3a3a',
-  borderRadius: 10,
-  padding: '10px 16px',
-  fontSize: 14,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
 }
 const tertiaryBtn: CSSProperties = {
   background: 'transparent',
-  color: '#9aa0a6',
+  color: 'rgba(255,255,255,0.65)',
   border: 'none',
   borderRadius: 6,
   padding: '8px',
@@ -492,13 +440,14 @@ const tertiaryBtn: CSSProperties = {
 const ctaRow: CSSProperties = {
   display: 'flex',
   justifyContent: 'space-between',
+  alignItems: 'stretch',
   gap: 8,
   marginTop: 6,
 }
 const importField: CSSProperties = {
-  background: '#0e0e0e',
+  background: menuTheme.inputBg,
   color: 'white',
-  border: '1px solid #3a3a3a',
+  border: `1px solid ${menuTheme.ghostBorder}`,
   borderRadius: 8,
   padding: 10,
   fontFamily: 'monospace',
@@ -507,14 +456,15 @@ const importField: CSSProperties = {
   minHeight: 120,
 }
 const importPreview: CSSProperties = {
-  background: '#0e0e0e',
-  border: '1px solid #2a2a2a',
+  background: menuTheme.inputBg,
+  border: `1px solid ${menuTheme.panelBorder}`,
   borderRadius: 8,
   padding: 10,
   display: 'flex',
   flexDirection: 'column',
   gap: 8,
   fontSize: 13,
+  color: 'white',
 }
 const importError: CSSProperties = {
   background: '#3a1d1d',

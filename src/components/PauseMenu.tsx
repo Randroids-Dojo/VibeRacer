@@ -1,7 +1,12 @@
 'use client'
 
 import type { Piece } from '@/lib/schemas'
-import { MenuButton, MenuOverlay, MenuPanel, MenuTitle } from './MenuUI'
+import {
+  MenuShellAction,
+  MenuStageOverlay,
+  MenuStartButton,
+  menuTheme,
+} from './MenuUI'
 import { TrackDifficultyBadge } from './TrackDifficultyBadge'
 
 interface PauseMenuProps {
@@ -35,6 +40,10 @@ interface PauseMenuProps {
   onExit: () => void
 }
 
+// In-game pause menu. Hosted inside a MenuStageOverlay so it shares the
+// sky-blue + dark-translucent shell with PreRaceSetup, the Drag Garage,
+// the in-game Settings overlay, and the menu hubs. Resume is the red-pink
+// CTA at the top; every other entry is a cream-card MenuShellAction.
 export function PauseMenu({
   onResume,
   onRestart,
@@ -48,74 +57,85 @@ export function PauseMenu({
   pieces,
   onExit,
 }: PauseMenuProps) {
+  const hasPieces = pieces && pieces.length > 0
   return (
-    <MenuOverlay zIndex={100} onBack={onResume}>
-      <MenuPanel>
-        <MenuTitle>PAUSED</MenuTitle>
-        {pieces && pieces.length > 0 ? (
-          <div
-            style={{
-              display: 'flex',
-              justifyContent: 'center',
-              marginTop: -4,
-              marginBottom: 6,
-            }}
-          >
-            <TrackDifficultyBadge pieces={pieces} size="md" />
-          </div>
-        ) : null}
-        <MenuButton variant="primary" click="confirm" onClick={onResume}>
-          Resume
-        </MenuButton>
-        <MenuButton click="confirm" onClick={onRestartLap}>
-          Restart Lap
-        </MenuButton>
-        <MenuButton click="confirm" onClick={onRestart}>
-          Restart
-        </MenuButton>
-        <MenuButton onClick={onRace}>Race</MenuButton>
-        <MenuButton onClick={onEditTrack}>Edit Track</MenuButton>
-        <MenuButton click="confirm" onClick={onChangeSetup}>
-          Change car setup
-        </MenuButton>
-        <MenuButton click="confirm" onClick={onTuningLab}>
-          Tuning Lab
-        </MenuButton>
-        <MenuButton onClick={onSettings}>Settings</MenuButton>
-        <MenuButton click="back" onClick={onExit}>
-          Exit to title
-        </MenuButton>
-        {trackMoodLabel ? (
-          <div
-            style={{
-              fontSize: 11,
-              opacity: 0.7,
-              textAlign: 'center',
-              marginTop: 8,
-              padding: '6px 10px',
-              border: '1px solid rgba(154, 216, 255, 0.35)',
-              borderRadius: 6,
-              background: 'rgba(154, 216, 255, 0.08)',
-              color: '#9ad8ff',
-              letterSpacing: 0.6,
-            }}
-            title="The track author baked in this mood. Turn off Respect track mood in Settings to use your own picks."
-          >
-            Track mood: {trackMoodLabel}
-          </div>
-        ) : null}
-        <div
-          style={{
-            fontSize: 11,
-            opacity: 0.55,
-            textAlign: 'center',
-            marginTop: 4,
-            letterSpacing: 1.2,
-          }}
-        >
-          Esc / B to resume
+    <MenuStageOverlay
+      title="PAUSED"
+      zIndex={100}
+      onBack={onResume}
+      width="narrow"
+    >
+      {hasPieces ? (
+        <div style={badgeRowStyle}>
+          <TrackDifficultyBadge pieces={pieces!} size="md" />
         </div>
-      </MenuPanel>
-    </MenuOverlay>
+      ) : null}
+      <MenuStartButton onClick={onResume}>Resume</MenuStartButton>
+      <MenuShellAction click="confirm" onClick={onRestartLap}>
+        Restart Lap
+      </MenuShellAction>
+      <MenuShellAction click="confirm" onClick={onRestart}>
+        Restart
+      </MenuShellAction>
+      <MenuShellAction onClick={onRace}>Race</MenuShellAction>
+      <MenuShellAction onClick={onEditTrack}>Edit Track</MenuShellAction>
+      <MenuShellAction click="confirm" onClick={onChangeSetup}>
+        Change car setup
+      </MenuShellAction>
+      <MenuShellAction click="confirm" onClick={onTuningLab}>
+        Tuning Lab
+      </MenuShellAction>
+      <MenuShellAction onClick={onSettings}>Settings</MenuShellAction>
+      <MenuShellAction click="back" onClick={onExit} style={exitBtnStyle}>
+        Exit to title
+      </MenuShellAction>
+      {trackMoodLabel ? (
+        <div
+          style={moodStyle}
+          title="The track author baked in this mood. Turn off Respect track mood in Settings to use your own picks."
+        >
+          Track mood: {trackMoodLabel}
+        </div>
+      ) : null}
+      <div style={hintStyle}>Esc / B to resume</div>
+    </MenuStageOverlay>
   )
+}
+
+const badgeRowStyle: React.CSSProperties = {
+  display: 'flex',
+  justifyContent: 'center',
+  marginTop: -2,
+  marginBottom: 2,
+}
+
+// Exit-to-title gets a muted treatment so it doesn't compete with the
+// confirm-style actions above it. Same cream-card silhouette, just
+// drained of saturation so the visual weight stops at "Settings".
+const exitBtnStyle: React.CSSProperties = {
+  background: 'rgba(255,255,255,0.85)',
+  color: 'rgba(0,0,0,0.7)',
+  boxShadow: '0 4px 0 rgba(0,0,0,0.25)',
+}
+
+const moodStyle: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.85,
+  textAlign: 'center',
+  marginTop: 6,
+  padding: '6px 10px',
+  border: `1px solid ${menuTheme.pageBg}`,
+  borderRadius: 6,
+  background: 'rgba(154, 216, 255, 0.18)',
+  color: menuTheme.pageBg,
+  letterSpacing: 0.6,
+}
+
+const hintStyle: React.CSSProperties = {
+  fontSize: 11,
+  opacity: 0.7,
+  textAlign: 'center',
+  marginTop: 2,
+  letterSpacing: 1.2,
+  color: 'white',
 }

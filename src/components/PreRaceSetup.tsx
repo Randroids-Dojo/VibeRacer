@@ -1,5 +1,5 @@
 'use client'
-import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
+import { useEffect, useMemo, useState, type CSSProperties } from 'react'
 import { useRouter } from 'next/navigation'
 import {
   isStockParams,
@@ -18,13 +18,12 @@ import {
 import {
   MenuButton,
   MenuHint,
-  MenuOverlay,
-  MenuPanel,
-  MenuTitle,
+  MenuPickRow,
+  MenuStageOverlay,
+  MenuStartButton,
   MenuToggle,
   menuTheme,
 } from './MenuUI'
-import { useRegisterFocusable } from './MenuNav'
 
 export interface PreRaceSetupResult {
   params: CarParams
@@ -44,12 +43,16 @@ interface Props {
 const OPEN_LAB_PROMPT =
   'Leave this race to open the Tuning Lab? You can pick a setup again when you come back.'
 
-// Player-facing pre-race tuning picker. The picker now spells out the name
-// of every choice (no more "Saved setup for this track" mystery box) and
+// Player-facing pre-race tuning picker. The picker spells out the name of
+// every choice (no more "Saved setup for this track" mystery box) and
 // shows the highlighted choice in a header strip so it is always obvious
 // which setup is about to drive the race. Pinning a track suppresses this
 // modal entirely on the next visit; the pause menu's "Change car setup"
 // action is the explicit override.
+//
+// Layout is delegated to MenuStageOverlay so the modal sits in the same
+// blue-page + dark-translucent header/body shell as Free Race, Derby,
+// Drag, Tour, Settings, and the Drag Garage.
 export function PreRaceSetup({
   slug,
   versionHash,
@@ -139,43 +142,41 @@ export function PreRaceSetup({
   }
 
   return (
-    <MenuOverlay zIndex={150} autoFocus>
-      <MenuPanel width="narrow">
-        <MenuTitle>SETUP</MenuTitle>
-        <SelectedBanner option={selected} />
-        <MenuHint>
-          The highlighted setup is what your car will use this race. Toggle
-          {' '}
-          <strong>Always use this setup</strong> below to skip this picker on
-          your next visit.
-        </MenuHint>
+    <MenuStageOverlay title="SETUP" zIndex={150} autoFocus width="narrow">
+      <SelectedBanner option={selected} />
+      <MenuHint>
+        The highlighted setup is what your car will use this race. Toggle
+        {' '}
+        <strong>Always use this setup</strong> below to skip this picker
+        on your next visit.
+      </MenuHint>
 
-        <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
-          {options.map((o) => (
-            <RadioRow
-              key={o.id}
-              option={o}
-              selected={o.id === pickId}
-              onPick={() => setPickId(o.id)}
-            />
-          ))}
-        </div>
+      <div style={radioListStyle} role="radiogroup" aria-label="Race setup">
+        {options.map((o) => (
+          <MenuPickRow
+            key={o.id}
+            label={o.label}
+            sublabel={o.sublabel}
+            tag={isStockParams(o.params) ? 'STOCK' : undefined}
+            selected={o.id === pickId}
+            onPick={() => setPickId(o.id)}
+            ariaLabel={`Pick setup: ${o.label}`}
+          />
+        ))}
+      </div>
 
-        <MenuButton variant="ghost" onClick={handleOpenLab}>
-          Create a new tuning in the Lab
-        </MenuButton>
+      <MenuButton variant="ghost" onClick={handleOpenLab}>
+        Create a new tuning in the Lab
+      </MenuButton>
 
-        <MenuToggle
-          label="Always use this setup for this track"
-          value={pin}
-          onChange={setPin}
-        />
+      <MenuToggle
+        label="Always use this setup for this track"
+        value={pin}
+        onChange={setPin}
+      />
 
-        <MenuButton variant="primary" onClick={handleRace}>
-          Start race
-        </MenuButton>
-      </MenuPanel>
-    </MenuOverlay>
+      <MenuStartButton onClick={handleRace}>Start race</MenuStartButton>
+    </MenuStageOverlay>
   )
 }
 
@@ -188,51 +189,6 @@ function SelectedBanner({ option }: { option: PreRaceSetupOption }) {
         <span style={stockTagStyle}>STOCK</span>
       ) : null}
     </div>
-  )
-}
-
-function RadioRow({
-  option,
-  selected,
-  onPick,
-}: {
-  option: PreRaceSetupOption
-  selected: boolean
-  onPick: () => void
-}) {
-  const ref = useRef<HTMLButtonElement | null>(null)
-  useRegisterFocusable(ref, { axis: 'vertical', onActivate: onPick })
-  const stock = isStockParams(option.params)
-  return (
-    <button
-      ref={ref}
-      type="button"
-      role="radio"
-      aria-checked={selected}
-      onClick={onPick}
-      className="menuui-focusable"
-      style={{
-        ...radioRowStyle,
-        background: selected ? menuTheme.accentBg : menuTheme.rowBg,
-        color: selected ? menuTheme.accentText : 'white',
-        borderColor: selected ? menuTheme.accentBg : menuTheme.panelBorder,
-      }}
-    >
-      <span style={radioRowTextStyle}>
-        <span style={radioRowLabelStyle}>{option.label}</span>
-        {option.sublabel ? (
-          <span
-            style={{
-              ...radioRowSublabelStyle,
-              opacity: selected ? 0.85 : 0.6,
-            }}
-          >
-            {option.sublabel}
-          </span>
-        ) : null}
-      </span>
-      {stock ? <span style={stockTagStyle}>STOCK</span> : null}
-    </button>
   )
 }
 
@@ -263,54 +219,22 @@ const radioListStyle: CSSProperties = {
   maxHeight: 260,
   overflowY: 'auto',
   paddingRight: 4,
-}
-
-const radioRowStyle: CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'space-between',
-  gap: 8,
-  padding: '10px 14px',
-  borderRadius: 8,
-  border: '1px solid',
-  cursor: 'pointer',
-  textAlign: 'left',
-  fontFamily: 'inherit',
-}
-
-const radioRowTextStyle: CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 2,
   minWidth: 0,
 }
 
-const radioRowLabelStyle: CSSProperties = {
-  fontSize: 14,
-  fontWeight: 600,
-}
-
-const radioRowSublabelStyle: CSSProperties = {
-  fontSize: 11,
-  fontWeight: 500,
-  letterSpacing: 0.2,
-}
-
-const stockTagStyle: CSSProperties = {
-  fontSize: 10,
-  fontWeight: 700,
-  letterSpacing: 1.2,
-  opacity: 0.7,
-}
-
+// Banner that echoes the currently-selected option at the top of the
+// modal. Borrows the menu shell's red-pink (ctaBg / pickSelectedBg)
+// instead of orange so the highlight stays in the cream + red-pink
+// palette the rest of the picker uses.
 const selectedBannerStyle: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   gap: 10,
   padding: '8px 12px',
   borderRadius: 8,
-  border: `1px solid ${menuTheme.accentBg}`,
-  background: 'rgba(255, 107, 53, 0.12)',
+  border: `1px solid ${menuTheme.pickSelectedBg}`,
+  background: 'rgba(232, 74, 95, 0.15)',
+  minWidth: 0,
 }
 
 const selectedLabelStyle: CSSProperties = {
@@ -318,7 +242,7 @@ const selectedLabelStyle: CSSProperties = {
   fontWeight: 700,
   letterSpacing: 1.6,
   textTransform: 'uppercase',
-  color: menuTheme.accent,
+  color: menuTheme.pickSelectedBg,
 }
 
 const selectedNameStyle: CSSProperties = {
@@ -330,4 +254,11 @@ const selectedNameStyle: CSSProperties = {
   overflow: 'hidden',
   textOverflow: 'ellipsis',
   whiteSpace: 'nowrap',
+}
+
+const stockTagStyle: CSSProperties = {
+  fontSize: 10,
+  fontWeight: 700,
+  letterSpacing: 1.2,
+  opacity: 0.7,
 }
