@@ -41,6 +41,11 @@ interface Props {
   initialParams: CarParams
   initialControlType: ControlType
   initialTrackTags?: TrackTag[]
+  // When set, the form preloads from this saved tuning and saves back to
+  // the same id so the edit replaces the existing library row rather than
+  // creating a duplicate. The original createdAt and any prior ratings /
+  // notes / lap time carry through unchanged.
+  editing?: SavedTuning | null
   onSaved: (saved: SavedTuning) => void
   onCancel: () => void
 }
@@ -49,15 +54,20 @@ export function TuningManualBuilder({
   initialParams,
   initialControlType,
   initialTrackTags = [],
+  editing = null,
   onSaved,
   onCancel,
 }: Props) {
   const [params, setParams] = useState<CarParams>(() =>
-    clampParams(initialParams),
+    clampParams(editing?.params ?? initialParams),
   )
-  const [name, setName] = useState('')
-  const [controlType, setControlType] = useState<ControlType>(initialControlType)
-  const [trackTags, setTrackTags] = useState<TrackTag[]>(initialTrackTags)
+  const [name, setName] = useState(editing?.name ?? '')
+  const [controlType, setControlType] = useState<ControlType>(
+    editing?.controlType ?? initialControlType,
+  )
+  const [trackTags, setTrackTags] = useState<TrackTag[]>(
+    editing?.trackTags ?? initialTrackTags,
+  )
 
   const stock = useMemo(() => isStockParams(params), [params])
 
@@ -84,21 +94,26 @@ export function TuningManualBuilder({
     if (trimmed === '') return
     const round: RoundLog = {
       params,
-      ratings: {},
-      notes: '',
-      lapTimeMs: null,
+      ratings: editing?.ratings ?? {},
+      notes: editing?.notes ?? '',
+      lapTimeMs: editing?.lapTimeMs ?? null,
     }
     const saved = makeSavedTuning({
-      id: makeTuningId(),
+      id: editing?.id ?? makeTuningId(),
       name: trimmed,
       round,
       controlType,
       trackTags,
     })
-    onSaved(saved)
+    onSaved(
+      editing
+        ? { ...saved, createdAt: editing.createdAt }
+        : saved,
+    )
   }
 
   const saveDisabled = name.trim() === ''
+  const isEditing = editing !== null
 
   return (
     <div style={wrap}>
@@ -178,7 +193,7 @@ export function TuningManualBuilder({
           disabled={saveDisabled}
           style={footerBtn}
         >
-          Save tuning
+          {isEditing ? 'Save changes' : 'Save tuning'}
         </MenuStartButton>
       </div>
     </div>

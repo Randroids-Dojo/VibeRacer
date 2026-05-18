@@ -16,7 +16,8 @@ import { menuTheme } from './menuTheme'
 interface Props {
   items: SavedTuning[]
   onApply: (t: SavedTuning) => void
-  onExport: (t: SavedTuning) => void
+  onShare: (t: SavedTuning) => void
+  onEdit: (t: SavedTuning) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
 }
@@ -46,7 +47,8 @@ const TAG_FILTERS: (TrackTag | 'all')[] = [
 export function TuningSavedList({
   items,
   onApply,
-  onExport,
+  onShare,
+  onEdit,
   onDelete,
   onRename,
 }: Props) {
@@ -132,7 +134,8 @@ export function TuningSavedList({
               key={t.id}
               t={t}
               onApply={onApply}
-              onExport={onExport}
+              onShare={onShare}
+              onEdit={onEdit}
               onDelete={onDelete}
               onRename={onRename}
             />
@@ -174,13 +177,15 @@ function FilterChip({
 function Row({
   t,
   onApply,
-  onExport,
+  onShare,
+  onEdit,
   onDelete,
   onRename,
 }: {
   t: SavedTuning
   onApply: (t: SavedTuning) => void
-  onExport: (t: SavedTuning) => void
+  onShare: (t: SavedTuning) => void
+  onEdit: (t: SavedTuning) => void
   onDelete: (id: string) => void
   onRename: (id: string, name: string) => void
 }) {
@@ -252,8 +257,11 @@ function Row({
         <button onClick={() => onApply(t)} style={primaryBtn}>
           Use this setup
         </button>
-        <button onClick={() => onExport(t)} style={secondaryBtn}>
-          Copy JSON
+        <button onClick={() => onEdit(t)} style={secondaryBtn}>
+          Edit
+        </button>
+        <button onClick={() => onShare(t)} style={secondaryBtn}>
+          Share
         </button>
         <button
           onClick={() => {

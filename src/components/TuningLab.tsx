@@ -51,6 +51,10 @@ export function TuningLab() {
   const [toast, setToast] = useState<string | null>(null)
   const [importText, setImportText] = useState('')
   const [importResult, setImportResult] = useState<ImportResult | null>(null)
+  // When set, the manual view preloads from this entry and saves back to
+  // the same id. Cleared on entry into the home/list/import/history views
+  // and after a save so the next visit to manual starts from a clean slate.
+  const [editingTuning, setEditingTuning] = useState<SavedTuning | null>(null)
   const { history: tuningHistory, record: recordTuningChange } =
     useTuningRecorder()
 
@@ -111,8 +115,19 @@ export function TuningLab() {
       immediate: true,
     })
     flashToast(`Saved "${saved.name}"`)
+    setEditingTuning(null)
     setView('list')
   }, [recordTuningChange])
+
+  function startEdit(t: SavedTuning) {
+    setEditingTuning(t)
+    setView('manual')
+  }
+
+  function leaveManual() {
+    setEditingTuning(null)
+    setView('home')
+  }
 
   function applyToNextRace(t: SavedTuning) {
     applySavedAsLastLoaded(t)
@@ -142,8 +157,25 @@ export function TuningLab() {
     flashToast('Tuning reverted to next race')
   }
 
-  async function copyTuningToClipboard(t: SavedTuning) {
+  async function shareTuning(t: SavedTuning) {
     const text = JSON.stringify(t, null, 2)
+    const title = `VibeRacer tuning: ${t.name}`
+    // Prefer the native share sheet (mobile + supporting desktop browsers).
+    // Fall back to copying the JSON to the clipboard so the player can still
+    // paste it into a DM. A user-cancelled share also falls through silently.
+    if (
+      typeof navigator !== 'undefined' &&
+      typeof navigator.share === 'function'
+    ) {
+      try {
+        await navigator.share({ title, text })
+        flashToast(`Shared "${t.name}"`)
+        return
+      } catch (err) {
+        if ((err as DOMException | undefined)?.name === 'AbortError') return
+        // Any other failure: drop to the clipboard fallback.
+      }
+    }
     await safeClipboardWrite(text)
     flashToast('Tuning JSON copied to clipboard')
   }
@@ -281,7 +313,10 @@ export function TuningLab() {
             Start a tuning session
           </MenuStartButton>
           <MenuShellAction
-            onClick={() => setView('manual')}
+            onClick={() => {
+              setEditingTuning(null)
+              setView('manual')
+            }}
             disabled={!hydrated || !controlsHydrated}
           >
             Build tuning manually (sliders)
@@ -310,7 +345,8 @@ export function TuningLab() {
           <TuningSavedList
             items={items}
             onApply={applyToNextRace}
-            onExport={copyTuningToClipboard}
+            onShare={shareTuning}
+            onEdit={startEdit}
             onDelete={onDelete}
             onRename={onRename}
           />
@@ -322,16 +358,20 @@ export function TuningLab() {
 
       {view === 'manual' ? (
         <>
-          <h2 style={cardTitle}>Build tuning manually</h2>
+          <h2 style={cardTitle}>
+            {editingTuning ? `Edit "${editingTuning.name}"` : 'Build tuning manually'}
+          </h2>
           <p style={cardCopy}>
-            Drag the sliders to dial in a setup, then save it to your library.
-            Skips the test loop and questionnaire.
+            {editingTuning
+              ? 'Drag the sliders to retune this setup. Saving overwrites the existing entry.'
+              : 'Drag the sliders to dial in a setup, then save it to your library. Skips the test loop and questionnaire.'}
           </p>
           <TuningManualBuilder
             initialParams={initialParams}
             initialControlType={initialControlType}
+            editing={editingTuning}
             onSaved={handleManualSaved}
-            onCancel={() => setView('home')}
+            onCancel={leaveManual}
           />
         </>
       ) : null}
