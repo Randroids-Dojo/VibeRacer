@@ -8,8 +8,11 @@ import { IDENTITY_DRIVABILITY } from '@/game/destruction/drivability'
 import type { PhysicsState } from '@/game/physics'
 
 function freshState(overrides: Partial<PhysicsState> = {}): PhysicsState {
+  // Spawn the test car on the AI's circle. heading=PI/2 is tangent to
+  // a CCW circle at that bearing, so the AI returns zero steer on this
+  // baseline.
   return {
-    x: 18,
+    x: DEFAULT_CIRCLE.radius,
     z: 0,
     heading: Math.PI / 2,
     speed: 0,

@@ -26,7 +26,6 @@ const DECAL_DEPTH = 0.45
 
 interface DecalEntry {
   mesh: Mesh
-  addedAtMs: number
 }
 
 export interface DecalPool {
@@ -83,7 +82,6 @@ export function createDecalPool(
 
   const items: DecalEntry[] = []
   let pickFlip = false
-  let lastAddedAt = 0
 
   function addDecal(
     surface: Mesh,
@@ -113,8 +111,7 @@ export function createDecalPool(
     const mesh = new Mesh(geom, material)
     mesh.name = 'destruction.decal'
     group.add(mesh)
-    lastAddedAt = performance.now()
-    items.push({ mesh, addedAtMs: lastAddedAt })
+    items.push({ mesh })
     while (items.length > cap) {
       const dead = items.shift()
       if (dead) {

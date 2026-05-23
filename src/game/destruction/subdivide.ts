@@ -1,4 +1,4 @@
-import { BufferAttribute, BufferGeometry, Float32BufferAttribute, Uint32BufferAttribute } from 'three'
+import { BufferGeometry, Float32BufferAttribute, Uint32BufferAttribute } from 'three'
 
 // One pass of triangle subdivision. Each input triangle becomes four
 // child triangles by inserting an edge midpoint on each of its three
@@ -116,7 +116,3 @@ export function subdivideN(input: BufferGeometry, passes: number): BufferGeometr
   }
   return geom
 }
-
-// Re-export so test files can construct attributes without pulling
-// three directly. Convenience only; production code imports from three.
-export { BufferAttribute, BufferGeometry }

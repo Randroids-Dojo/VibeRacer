@@ -31,7 +31,6 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
-import { cameraLerpsFor } from '@/lib/controlSettings'
 import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
@@ -122,15 +121,23 @@ export function DestructionLab() {
   // Cockpit, etc.). Players who want a different framing on mobile
   // switch their saved preset in Settings, the same way race mode
   // handles per-device camera choice.
+  //
+  // The one deviation: positionLerp and targetLerp are forced to 1
+  // (snap-to) instead of the user's follow speed. The lab uses a
+  // self-driving AI that turns continuously, and on narrow portrait
+  // viewports the standard followSpeed=1 lerp (positionLerp=0.12)
+  // trails far enough behind the heading change to push the car
+  // entirely out of frame. Race mode handles this naturally because
+  // the player tends to drive in mostly straight lines along the
+  // track and any lateral lag is hidden by the road extending ahead.
   const cameraRigRef = useRef<CameraRigParams | null>(null)
   {
-    const lerps = cameraLerpsFor(settings.camera.followSpeed)
     cameraRigRef.current = {
       height: settings.camera.height,
       distance: settings.camera.distance,
       lookAhead: settings.camera.lookAhead,
-      positionLerp: lerps.positionLerp,
-      targetLerp: lerps.targetLerp,
+      positionLerp: 1,
+      targetLerp: 1,
       cameraForward: settings.camera.cameraForward,
       targetHeight: settings.camera.targetHeight,
       fov: settings.camera.fov,
@@ -154,7 +161,13 @@ export function DestructionLab() {
 
     const renderer = new WebGLRenderer({ antialias: true })
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
-    renderer.setSize(container.clientWidth, container.clientHeight, false)
+    // setSize must update the canvas CSS dimensions too (default
+    // updateStyle = true). Passing false leaves the canvas styled at
+    // its WebGL framebuffer size (CSS px = w * DPR), which on DPR=2
+    // mobile devices overflows the container by 2x and the visible
+    // top-left quarter shows what should be frame center at the
+    // bottom-right corner.
+    renderer.setSize(container.clientWidth, container.clientHeight)
     renderer.domElement.dataset.testid = 'destruction-canvas'
     renderer.domElement.style.touchAction = 'none'
     container.appendChild(renderer.domElement)
@@ -188,8 +201,21 @@ export function DestructionLab() {
       500,
     )
 
+    // Two-group rig matching RaceCanvas's `buildCarFrame`. The outer
+    // group is rotated to the physics heading every frame. The inner
+    // group is pre-rotated by CAR_MODEL_YAW_OFFSET (π/2) so the GLB's
+    // default orientation (nose at -Z) aligns with the physics
+    // convention (heading=0 -> nose at +X). Without this inner offset
+    // the chase camera ended up to the side of the car instead of
+    // behind it, because the camera's "behind" direction came from
+    // cos/sin of the physics heading while the visible mesh pointed
+    // somewhere else.
     const carGroup = new Group()
     carGroup.name = 'destruction.car.root'
+    const carInner = new Group()
+    carInner.name = 'destruction.car.inner'
+    carInner.rotation.y = Math.PI / 2
+    carGroup.add(carInner)
     scene.add(carGroup)
 
     // Physics state. stepPhysics returns a fresh state object every
@@ -197,8 +223,11 @@ export function DestructionLab() {
     // each frame so the next tick sees the updated position. Tracking
     // this as `let` matches how RaceCanvas threads its game state
     // through the rAF loop.
+    //
+    // Spawn on the AI circle so the controller does not have to chase
+    // a far-off target on frame one.
     let physicsState: PhysicsState = {
-      x: 18,
+      x: 60,
       z: 0,
       heading: Math.PI / 2,
       speed: 0,
@@ -241,7 +270,7 @@ export function DestructionLab() {
             return
           }
           asset = loaded
-          carGroup.add(loaded.group)
+          carInner.add(loaded.group)
           car = createDestructionCar({
             asset: loaded,
             scene,
@@ -380,7 +409,7 @@ export function DestructionLab() {
         const spawn = new Vector3(0, 1.0, -1.4)
         spawn.applyEuler(carGroup.rotation)
         spawn.add(carGroup.position)
-        car.tick(dt, performance.now(), { x: spawn.x, y: spawn.y, z: spawn.z })
+        car.tick(dt, { x: spawn.x, y: spawn.y, z: spawn.z })
       }
 
       tickFreeBodies(freeBodies, dt)
@@ -459,7 +488,7 @@ export function DestructionLab() {
     function onResize() {
       const w = container.clientWidth
       const h = container.clientHeight
-      renderer.setSize(w, h, false)
+      renderer.setSize(w, h)
       camera.aspect = w / h
       camera.updateProjectionMatrix()
     }

@@ -8,8 +8,8 @@ import {
 import { createPanelDeformer, inwardLocalNormal, type PanelDeformer } from './deform'
 import { applyWear, createWearHandle, disposeWearHandle, type WearHandle } from './wear'
 import { applyPanelDamage, engineBleedFor, fractionOf, initAllPanels, PANELS, type PanelId, type PanelState } from './panels'
-import { createDecalPool, type DecalPool } from './decals'
-import { createEmitter, type Emitter } from './smoke'
+import { createDecalPool } from './decals'
+import { createEmitter } from './smoke'
 import { derive, fireIntensity, IDENTITY_DRIVABILITY, smokeIntensity, type Drivability } from './drivability'
 import type { DestructionAsset } from './asset'
 import { spawnFreeBody, type FreeBody } from './freeBody'
@@ -45,7 +45,7 @@ export interface HitInput {
 
 export interface DestructionCar {
   applyHit(hit: HitInput): { detached: Object3D | null }
-  tick(dtSec: number, nowMs: number, spawnPos?: { x: number; y: number; z: number }): void
+  tick(dtSec: number, spawnPos?: { x: number; y: number; z: number }): void
   repair(): void
   detonate(nowMs: number, rng: () => number): Object3D[]
   getDrivability(): Drivability
@@ -100,9 +100,7 @@ export function createDestructionCar(opts: CarOptions): DestructionCar {
     if (!panel) return { detached: null }
     if (panel.detached) return { detached: null }
     totalHits += 1
-    const before = panel.hp
     const result = applyPanelDamage(panel, hit.amount)
-    void before
     // Engine bleed: front-end and body damage erodes the engine. This
     // is what eventually stalls the car even though the player never
     // hits an "engine" point directly.
@@ -205,10 +203,8 @@ export function createDestructionCar(opts: CarOptions): DestructionCar {
 
   function tick(
     dtSec: number,
-    nowMs: number,
     spawnPos: { x: number; y: number; z: number } = { x: 0, y: 1.2, z: 0 },
   ): void {
-    void nowMs
     // Recompute every dirty deformer. The deformer itself skips work
     // when nothing changed since the last call.
     for (const id of Object.keys(deformers) as PanelId[]) {
