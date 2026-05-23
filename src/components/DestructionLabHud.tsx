@@ -235,7 +235,11 @@ export function DestructionLabHud({
             <div style={controlsHintStyle}>
               Drag the screen to drive on touch. Or WASD on keyboard, space handbrake.
             </div>
-          ) : null}
+          ) : (
+            <div style={controlsHintStyle}>
+              Pinch or scroll to zoom the overhead camera. Tap the car to damage it.
+            </div>
+          )}
         </div>
       ) : null}
     </>

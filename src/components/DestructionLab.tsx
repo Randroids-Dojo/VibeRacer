@@ -29,6 +29,12 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import {
+  OVERHEAD_DEFAULT_HEIGHT,
+  clampOverheadHeight,
+  heightAfterPinch,
+  heightAfterWheel,
+} from '@/game/destruction/overheadCamera'
 import { buildArenaMesh, type DerbyArenaMesh } from '@/game/derbyArena'
 import {
   buildDerbyScenery,
@@ -92,6 +98,15 @@ interface PointerSession {
   startY: number
   startTs: number
   isTouch: boolean
+  // Flips true the moment a second pointer arrives so we know to
+  // suppress the click-to-damage release. A pinch gesture that ends
+  // back at one pointer must not register as a tap.
+  wasPinching: boolean
+}
+
+interface PinchSession {
+  initialDistance: number
+  initialHeight: number
 }
 
 // `mulberry32` seeded RNG. Local copy so the destruction lab does not
@@ -119,6 +134,10 @@ export function DestructionLab() {
   // request without re-mounting on every state change.
   const requestRepairRef = useRef(false)
   const requestDetonateRef = useRef(false)
+  // Overhead-camera height. Lives in a ref so the wheel + pinch
+  // handlers and the rAF loop can read/write without triggering a
+  // React re-render every notch.
+  const overheadHeightRef = useRef(OVERHEAD_DEFAULT_HEIGHT)
 
   // The camera rig is derived from the player's saved Settings each
   // render so a tweak in SettingsPane lands on the next frame, exactly
@@ -264,7 +283,15 @@ export function DestructionLab() {
     let prev = performance.now()
     const raycaster = new Raycaster()
     const tmpNdc = new Vector2()
-    let activePointer: PointerSession | null = null
+    // Multi-pointer tracker so two simultaneous touches can drive
+    // the pinch zoom in overhead mode. The Map keeps the live
+    // pointer positions; `pointerSessions` keeps per-pointer
+    // click-vs-drag metadata; `pinchSession` is non-null while
+    // exactly two pointers are down.
+    const pointerSessions = new Map<number, PointerSession>()
+    const pointerPositions = new Map<number, { x: number; y: number }>()
+    let pinchSession: PinchSession | null = null
+    let lastCameraMode: 'ai' | 'player' | null = null
     const rng = makeRng(0x1234abcd)
 
     function loadAsset() {
@@ -423,9 +450,9 @@ export function DestructionLab() {
 
       tickFreeBodies(freeBodies, dt)
 
-      // Chase camera rig: identical math to RaceCanvas. Re-read the
-      // current params each frame so a Settings slider lands without a
-      // remount, and reapply the FOV when it changes.
+      // Camera: AI mode uses the top-down arena view (height is in
+      // the ref, modified by wheel + pinch); player mode uses the
+      // shared chase rig identical to RaceCanvas.
       const liveRig = cameraRigRef.current ?? DEFAULT_CAMERA_RIG
       const liveFov = liveRig.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70
       if (liveFov !== lastAppliedFov) {
@@ -433,14 +460,54 @@ export function DestructionLab() {
         camera.updateProjectionMatrix()
         lastAppliedFov = liveFov
       }
-      updateCameraRig(
-        rig,
-        physicsState.x,
-        physicsState.z,
-        physicsState.heading,
-        liveRig,
-      )
-      applyCameraRig(camera, rig)
+      const mode = driveModeRef.current
+      const modeChanged = lastCameraMode !== mode
+      lastCameraMode = mode
+      if (mode === 'ai') {
+        // Looking straight down: Three's default `up` (0, 1, 0) is
+        // parallel to the camera's forward direction, producing an
+        // undefined orientation. Pick world -Z as the screen-up
+        // direction so the arena reads with a stable orientation
+        // regardless of how many laps the car has done.
+        if (modeChanged) camera.up.set(0, 0, -1)
+        const h = clampOverheadHeight(overheadHeightRef.current)
+        overheadHeightRef.current = h
+        // Derby arenas are always centered at the world origin; the
+        // config carries no centerX/centerZ. Hardcoding (0, 0) here
+        // keeps the camera at the canonical center; if a future
+        // arena offsets the disk this is the single place to wire
+        // in the new center.
+        camera.position.set(0, h, 0)
+        camera.lookAt(0, 0, 0)
+      } else {
+        // Restore the default up vector before handing back to the
+        // chase rig; applyCameraRig writes position+quaternion but
+        // does not touch `up`, so a stale (0, 0, -1) would skew the
+        // chase camera's roll on the first frame after the switch.
+        if (modeChanged) {
+          camera.up.set(0, 1, 0)
+          // Reseed the chase rig at the car's current pose so the
+          // snap-to lerps land cleanly instead of carrying any
+          // residual state from a previous chase session.
+          Object.assign(
+            rig,
+            initCameraRig(
+              physicsState.x,
+              physicsState.z,
+              physicsState.heading,
+              liveRig,
+            ),
+          )
+        }
+        updateCameraRig(
+          rig,
+          physicsState.x,
+          physicsState.z,
+          physicsState.heading,
+          liveRig,
+        )
+        applyCameraRig(camera, rig)
+      }
 
       if (now - lastHudPushMs > 100) {
         lastHudPushMs = now
@@ -458,41 +525,112 @@ export function DestructionLab() {
       return e.pointerType === 'touch' || e.pointerType === 'pen'
     }
 
-    // Pointer flow: every short tap that does not drift more than a few
-    // px is treated as a hit attempt. The chase camera owns the view
-    // so there is no orbit gesture to disambiguate from a click.
+    function pointerDistance(): number {
+      if (pointerPositions.size !== 2) return 0
+      const [a, b] = Array.from(pointerPositions.values())
+      return Math.hypot(a.x - b.x, a.y - b.y)
+    }
+
+    function endPinchIfActive() {
+      pinchSession = null
+      // A pinch participates in BOTH pointers' sessions; mark them
+      // both so neither registers a click on release.
+      for (const session of pointerSessions.values()) {
+        session.wasPinching = true
+      }
+    }
+
     function onPointerDown(e: PointerEvent) {
-      activePointer = {
+      pointerSessions.set(e.pointerId, {
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
         startTs: performance.now(),
         isTouch: isTouchEvent(e),
+        wasPinching: false,
+      })
+      pointerPositions.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      // Second pointer arrives: start a pinch session. Only meaningful
+      // in overhead mode; in chase mode the second pointer is ignored
+      // for zoom but still flags the first pointer as non-click.
+      if (pointerPositions.size === 2) {
+        for (const session of pointerSessions.values()) {
+          session.wasPinching = true
+        }
+        pinchSession = {
+          initialDistance: pointerDistance(),
+          initialHeight: overheadHeightRef.current,
+        }
+      } else if (pointerPositions.size > 2) {
+        // More than two pointers: pinch is ambiguous, drop it.
+        pinchSession = null
       }
     }
 
-    function onPointerUp(e: PointerEvent) {
-      if (!activePointer || activePointer.pointerId !== e.pointerId) return
-      const dx = e.clientX - activePointer.startX
-      const dy = e.clientY - activePointer.startY
+    function onPointerMove(e: PointerEvent) {
+      if (!pointerPositions.has(e.pointerId)) return
+      pointerPositions.set(e.pointerId, { x: e.clientX, y: e.clientY })
+      if (
+        pinchSession &&
+        pointerPositions.size === 2 &&
+        driveModeRef.current === 'ai'
+      ) {
+        const current = pointerDistance()
+        overheadHeightRef.current = heightAfterPinch(
+          pinchSession.initialHeight,
+          pinchSession.initialDistance,
+          current,
+        )
+      }
+    }
+
+    function onPointerUpOrCancel(e: PointerEvent) {
+      const session = pointerSessions.get(e.pointerId)
+      pointerSessions.delete(e.pointerId)
+      pointerPositions.delete(e.pointerId)
+      if (pointerPositions.size < 2 && pinchSession) {
+        endPinchIfActive()
+      }
+      if (!session) return
+      // Only the FIRST pointer of a session can become a click. A
+      // pinch poisons every active session's `wasPinching` flag so
+      // none of them release as a tap.
+      const dx = e.clientX - session.startX
+      const dy = e.clientY - session.startY
       const distance = Math.hypot(dx, dy)
-      const threshold = activePointer.isTouch
+      const threshold = session.isTouch
         ? DRAG_THRESHOLD_PX_TOUCH
         : DRAG_THRESHOLD_PX_MOUSE
-      const duration = performance.now() - activePointer.startTs
-      const isClick = distance <= threshold && duration <= CLICK_WINDOW_MS
+      const duration = performance.now() - session.startTs
+      const isClick =
+        !session.wasPinching &&
+        distance <= threshold &&
+        duration <= CLICK_WINDOW_MS
       if (isClick) {
         const rect = dom.getBoundingClientRect()
         const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
         const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
         attemptHit(ndcX, ndcY)
       }
-      activePointer = null
+    }
+
+    function onWheel(e: WheelEvent) {
+      // Only the overhead view consumes wheel events; in chase mode
+      // the wheel is ignored so future Settings-driven zoom does not
+      // collide with this surface.
+      if (driveModeRef.current !== 'ai') return
+      e.preventDefault()
+      overheadHeightRef.current = heightAfterWheel(
+        overheadHeightRef.current,
+        e.deltaY,
+      )
     }
 
     dom.addEventListener('pointerdown', onPointerDown)
-    dom.addEventListener('pointerup', onPointerUp)
-    dom.addEventListener('pointercancel', onPointerUp)
+    dom.addEventListener('pointermove', onPointerMove)
+    dom.addEventListener('pointerup', onPointerUpOrCancel)
+    dom.addEventListener('pointercancel', onPointerUpOrCancel)
+    dom.addEventListener('wheel', onWheel, { passive: false })
 
     function onResize() {
       const w = container.clientWidth
@@ -507,8 +645,10 @@ export function DestructionLab() {
       cancelled = true
       cancelAnimationFrame(raf)
       dom.removeEventListener('pointerdown', onPointerDown)
-      dom.removeEventListener('pointerup', onPointerUp)
-      dom.removeEventListener('pointercancel', onPointerUp)
+      dom.removeEventListener('pointermove', onPointerMove)
+      dom.removeEventListener('pointerup', onPointerUpOrCancel)
+      dom.removeEventListener('pointercancel', onPointerUpOrCancel)
+      dom.removeEventListener('wheel', onWheel)
       window.removeEventListener('resize', onResize)
       if (car) car.dispose()
       if (asset) asset.dispose()
