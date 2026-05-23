@@ -7,12 +7,12 @@
 
 export type CompassDir = 'N' | 'S' | 'E' | 'W'
 
-// Distance from car center to camera, in metres. 6.5 m is wide
-// enough to frame the ~4 m Kenney sedan with margin so the player
-// can see hits on the corners and detached panels arcing out, but
-// close enough that the body fills a sensible portion of the
-// viewport on portrait phones.
-export const CARDINAL_DISTANCE = 6.5
+// Distance from car center to camera, in metres. 12 m frames the
+// ~4 m Kenney sedan with comfortable margin on portrait phones so
+// the whole car silhouette (roof to tyres) stays in frame and the
+// player can see hits on the corners and detached panels arcing
+// out, without the body filling the entire viewport.
+export const CARDINAL_DISTANCE = 12
 
 // Camera Y in metres. Slightly above the car's mid-body height so
 // the roof reads as part of the silhouette rather than disappearing
