@@ -18,7 +18,7 @@ describe('destruction lab tick loop', () => {
     let state: PhysicsState = {
       x: DEFAULT_CIRCLE.radius,
       z: 0,
-      heading: Math.PI / 2,
+      heading: -Math.PI / 2,
       speed: 0,
       angularVelocity: 0,
     }
@@ -51,7 +51,7 @@ describe('destruction lab tick loop', () => {
     let state: PhysicsState = {
       x: DEFAULT_CIRCLE.radius,
       z: 0,
-      heading: Math.PI / 2,
+      heading: -Math.PI / 2,
       speed: 0,
       angularVelocity: 0,
     }

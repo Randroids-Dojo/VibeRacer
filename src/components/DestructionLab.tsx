@@ -231,12 +231,14 @@ export function DestructionLab() {
     // this as `let` matches how RaceCanvas threads its game state
     // through the rAF loop.
     //
-    // Spawn on the AI circle so the controller does not have to chase
-    // a far-off target on frame one.
+    // Spawn on the AI circle, facing the CCW tangent so the controller
+    // does not have to chase a far-off target on frame one. At (36, 0)
+    // the CCW tangent is +Z, which in the physics module's
+    // forward = (cos h, -sin h) convention requires heading = -PI/2.
     let physicsState: PhysicsState = {
-      x: 40,
+      x: 36,
       z: 0,
-      heading: Math.PI / 2,
+      heading: -Math.PI / 2,
       speed: 0,
       angularVelocity: 0,
     }
