@@ -32,6 +32,7 @@ import {
   type CameraRigState,
 } from '@/game/sceneBuilder'
 import { cameraLerpsFor } from '@/lib/controlSettings'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
   loadDestructionCar,
@@ -116,7 +117,11 @@ export function DestructionLab() {
 
   // The camera rig is derived from the player's saved Settings each
   // render so a tweak in SettingsPane lands on the next frame, exactly
-  // like RaceCanvas does it via Game.tsx.
+  // like RaceCanvas does it via Game.tsx. The lab respects whichever
+  // preset the player picked for race mode (Chase far, Chase close,
+  // Cockpit, etc.). Players who want a different framing on mobile
+  // switch their saved preset in Settings, the same way race mode
+  // handles per-device camera choice.
   const cameraRigRef = useRef<CameraRigParams | null>(null)
   {
     const lerps = cameraLerpsFor(settings.camera.followSpeed)
@@ -500,13 +505,13 @@ export function DestructionLab() {
   )
 }
 
+// Same mobile-safe surface contract as Game.tsx / DragRace.tsx / DerbyRound:
+// fixed full-viewport, touchAction none, no text selection, no iOS callout.
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   background: '#9ad8ff',
   color: 'white',
   fontFamily: 'var(--font-cartoony), system-ui, sans-serif',
-  overflow: 'hidden',
 }
 const canvasContainerStyle: React.CSSProperties = {
   position: 'absolute',

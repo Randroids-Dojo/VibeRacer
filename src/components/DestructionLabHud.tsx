@@ -1,6 +1,7 @@
 'use client'
 
 import Link from 'next/link'
+import { useEffect, useState } from 'react'
 import { useClickSfx } from '@/hooks/useClickSfx'
 import { menuTheme } from './menuTheme'
 
@@ -9,6 +10,11 @@ import { menuTheme } from './menuTheme'
 // ~100ms). The HUD has no scene knowledge; it just renders bars +
 // stats and surfaces three buttons (Repair, Detonate, Take the Wheel)
 // the parent wires to refs.
+//
+// On portrait / small-screen viewports the HUD defaults to a compact
+// chip so the destruction canvas keeps the upper half of the screen
+// free for the chase camera. Tapping the chip expands the full panel
+// with the per-panel bars and the action buttons.
 
 export interface PanelHudState {
   hp: number
@@ -51,6 +57,21 @@ const PANEL_LABELS: Record<keyof DestructionHudState['panels'], string> = {
   engine: 'Engine',
 }
 
+// Aggregate HP across the panels so the collapsed chip can show one
+// readable health number. We weight by max HP so the engine contributes
+// proportionally to its share of the wreck's total durability.
+function aggregateHp(state: DestructionHudState): number {
+  let totalHp = 0
+  let totalMax = 0
+  for (const key of Object.keys(state.panels) as Array<
+    keyof DestructionHudState['panels']
+  >) {
+    totalHp += state.panels[key].hp
+    totalMax += state.panels[key].max
+  }
+  return totalMax > 0 ? totalHp / totalMax : 0
+}
+
 export function DestructionLabHud({
   state,
   onRepair,
@@ -59,99 +80,164 @@ export function DestructionLabHud({
 }: Props) {
   const click = useClickSfx('confirm')
   const clickBack = useClickSfx('back')
+  // Track whether the viewport is small enough that the HUD should
+  // default to collapsed. We do not auto-expand on resize, so an
+  // explicit open from the user persists across rotation.
+  const [isSmall, setIsSmall] = useState(false)
+  const [expanded, setExpanded] = useState(true)
+  useEffect(() => {
+    function refresh() {
+      const small = window.innerWidth < 720 || window.innerHeight > window.innerWidth
+      setIsSmall(small)
+      // First call seeds the collapsed default on small screens.
+      if (small) setExpanded((prev) => prev)
+    }
+    refresh()
+    setExpanded(!(window.innerWidth < 720 || window.innerHeight > window.innerWidth))
+    window.addEventListener('resize', refresh)
+    window.addEventListener('orientationchange', refresh)
+    return () => {
+      window.removeEventListener('resize', refresh)
+      window.removeEventListener('orientationchange', refresh)
+    }
+  }, [])
+
+  const aggregate = aggregateHp(state)
+  const aggregatePct = Math.round(aggregate * 100)
+
   return (
     <>
       <Link href="/" style={closeStyle} aria-label="Close Destruction Lab">
         CLOSE
       </Link>
-      <div style={hintStyle} role="note">
-        Tap or click the car to apply localized damage. Drag to orbit.
-        Scroll or pinch to zoom.
-      </div>
-      <div style={panelBoxStyle} role="status" aria-live="polite">
-        <div style={titleRowStyle}>
-          <div style={titleStyle}>DESTRUCTION LAB</div>
-          <div style={experimentalPillStyle}>EXPERIMENTAL</div>
-        </div>
-        <div style={subtitleStyle}>
-          Hits: <strong>{state.totalHits}</strong>
-          {state.drivability.stalled ? (
-            <span style={stalledStyle}> STALLED</span>
-          ) : null}
-        </div>
-        <div style={partListStyle}>
-          {(Object.keys(state.panels) as Array<keyof DestructionHudState['panels']>).map(
-            (key) => {
-              const panel = state.panels[key]
-              const pct = panel.max > 0 ? panel.hp / panel.max : 0
-              return (
-                <PanelBar
-                  key={key}
-                  label={PANEL_LABELS[key]}
-                  pct={pct}
-                  detached={panel.detached}
-                />
-              )
-            },
-          )}
-        </div>
-        <div style={statsRowStyle}>
-          <StatChip
-            label="Throttle"
-            value={`${Math.round(state.drivability.accelFactor * 100)}%`}
-          />
-          <StatChip
-            label="Top speed"
-            value={`${Math.round(state.drivability.maxSpeedFactor * 100)}%`}
-          />
-          <StatChip
-            label="Steer bias"
-            value={`${
-              state.drivability.steerBias === 0
-                ? '0'
-                : `${state.drivability.steerBias > 0 ? '+' : ''}${state.drivability.steerBias.toFixed(2)}`
-            }`}
-          />
-        </div>
-        <div style={buttonRowStyle}>
-          <button
-            type="button"
-            onClick={() => {
-              click()
-              onRepair()
-            }}
-            style={primaryBtnStyle}
-          >
-            Repair
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              clickBack()
-              onDetonate()
-            }}
-            style={dangerBtnStyle}
-          >
-            Detonate
-          </button>
-        </div>
+      {!expanded ? (
         <button
           type="button"
           onClick={() => {
             click()
-            onToggleDriveMode()
+            setExpanded(true)
           }}
-          style={toggleBtnStyle}
-          aria-pressed={state.driveMode === 'player'}
+          style={collapsedChipStyle}
+          aria-expanded={false}
+          aria-label="Open Destruction Lab readout"
         >
-          {state.driveMode === 'ai' ? 'Take the Wheel' : 'Return to AI'}
+          <span style={chipTitleStyle}>DESTRUCTION LAB</span>
+          <span style={chipExpStyle}>EXPERIMENTAL</span>
+          <span style={chipStatsStyle}>
+            <span>HP {aggregatePct}%</span>
+            <span style={{ opacity: 0.5 }}>|</span>
+            <span>Hits {state.totalHits}</span>
+            {state.drivability.stalled ? (
+              <span style={stalledChipStyle}>STALLED</span>
+            ) : null}
+          </span>
         </button>
-        {state.driveMode === 'player' ? (
-          <div style={controlsHintStyle}>
-            Drag the screen to drive on touch. Or WASD on keyboard, space handbrake.
+      ) : null}
+      {expanded ? (
+        <div
+          style={isSmall ? panelBoxStyleMobile : panelBoxStyle}
+          role="status"
+          aria-live="polite"
+        >
+          <div style={titleRowStyle}>
+            <div style={titleStyle}>DESTRUCTION LAB</div>
+            <div style={titleRightStyle}>
+              <div style={experimentalPillStyle}>EXPERIMENTAL</div>
+              {isSmall ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clickBack()
+                    setExpanded(false)
+                  }}
+                  style={hideBtnStyle}
+                  aria-label="Hide Destruction Lab readout"
+                >
+                  ×
+                </button>
+              ) : null}
+            </div>
           </div>
-        ) : null}
-      </div>
+          <div style={subtitleStyle}>
+            Hits: <strong>{state.totalHits}</strong>
+            {state.drivability.stalled ? (
+              <span style={stalledStyle}> STALLED</span>
+            ) : null}
+          </div>
+          <div style={partListStyle}>
+            {(Object.keys(state.panels) as Array<keyof DestructionHudState['panels']>).map(
+              (key) => {
+                const panel = state.panels[key]
+                const pct = panel.max > 0 ? panel.hp / panel.max : 0
+                return (
+                  <PanelBar
+                    key={key}
+                    label={PANEL_LABELS[key]}
+                    pct={pct}
+                    detached={panel.detached}
+                  />
+                )
+              },
+            )}
+          </div>
+          <div style={statsRowStyle}>
+            <StatChip
+              label="Throttle"
+              value={`${Math.round(state.drivability.accelFactor * 100)}%`}
+            />
+            <StatChip
+              label="Top speed"
+              value={`${Math.round(state.drivability.maxSpeedFactor * 100)}%`}
+            />
+            <StatChip
+              label="Steer bias"
+              value={`${
+                state.drivability.steerBias === 0
+                  ? '0'
+                  : `${state.drivability.steerBias > 0 ? '+' : ''}${state.drivability.steerBias.toFixed(2)}`
+              }`}
+            />
+          </div>
+          <div style={buttonRowStyle}>
+            <button
+              type="button"
+              onClick={() => {
+                click()
+                onRepair()
+              }}
+              style={primaryBtnStyle}
+            >
+              Repair
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                clickBack()
+                onDetonate()
+              }}
+              style={dangerBtnStyle}
+            >
+              Detonate
+            </button>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              click()
+              onToggleDriveMode()
+            }}
+            style={toggleBtnStyle}
+            aria-pressed={state.driveMode === 'player'}
+          >
+            {state.driveMode === 'ai' ? 'Take the Wheel' : 'Return to AI'}
+          </button>
+          {state.driveMode === 'player' ? (
+            <div style={controlsHintStyle}>
+              Drag the screen to drive on touch. Or WASD on keyboard, space handbrake.
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </>
   )
 }
@@ -221,20 +307,48 @@ const closeStyle: React.CSSProperties = {
   border: '1px solid rgba(255,255,255,0.18)',
   zIndex: 10,
 }
-const hintStyle: React.CSSProperties = {
+const collapsedChipStyle: React.CSSProperties = {
   position: 'fixed',
   top: 16,
-  left: '50%',
-  transform: 'translateX(-50%)',
-  padding: '8px 14px',
-  background: 'rgba(0,0,0,0.5)',
-  borderRadius: 8,
+  right: 16,
+  display: 'flex',
+  flexDirection: 'column',
+  alignItems: 'flex-end',
+  gap: 4,
+  padding: '8px 12px',
+  background: 'rgba(0,0,0,0.55)',
+  border: '1px solid rgba(255,255,255,0.18)',
+  borderRadius: 10,
+  color: 'white',
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  zIndex: 10,
+}
+const chipTitleStyle: React.CSSProperties = {
   fontSize: 12,
-  color: 'rgba(255,255,255,0.92)',
-  maxWidth: 360,
-  textAlign: 'center',
-  zIndex: 9,
-  pointerEvents: 'none',
+  fontWeight: 800,
+  letterSpacing: 1.2,
+}
+const chipExpStyle: React.CSSProperties = {
+  fontSize: 9,
+  letterSpacing: 1.5,
+  padding: '1px 6px',
+  borderRadius: 999,
+  background: menuTheme.ctaBg,
+  color: 'white',
+  fontWeight: 700,
+}
+const chipStatsStyle: React.CSSProperties = {
+  display: 'flex',
+  gap: 6,
+  fontSize: 12,
+  fontVariantNumeric: 'tabular-nums',
+  alignItems: 'center',
+}
+const stalledChipStyle: React.CSSProperties = {
+  color: '#ff8855',
+  fontWeight: 700,
+  letterSpacing: 1,
 }
 const panelBoxStyle: React.CSSProperties = {
   position: 'fixed',
@@ -251,6 +365,48 @@ const panelBoxStyle: React.CSSProperties = {
   zIndex: 10,
   backdropFilter: 'blur(4px)',
   WebkitBackdropFilter: 'blur(4px)',
+}
+// Mobile expansion. Fills the bottom of the screen instead of the
+// right column so the chase camera keeps the upper half of the canvas
+// uncovered. The user can still close it via the hide button.
+const panelBoxStyleMobile: React.CSSProperties = {
+  position: 'fixed',
+  left: 12,
+  right: 12,
+  bottom: 12,
+  padding: 12,
+  background: 'rgba(0,0,0,0.65)',
+  borderRadius: 12,
+  border: '1px solid rgba(255,255,255,0.18)',
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  zIndex: 10,
+  backdropFilter: 'blur(4px)',
+  WebkitBackdropFilter: 'blur(4px)',
+  maxHeight: '70vh',
+  overflowY: 'auto',
+}
+const titleRightStyle: React.CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 6,
+}
+const hideBtnStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  background: 'rgba(255,255,255,0.1)',
+  border: '1px solid rgba(255,255,255,0.22)',
+  borderRadius: 6,
+  color: 'white',
+  fontSize: 18,
+  lineHeight: 1,
+  fontFamily: 'inherit',
+  cursor: 'pointer',
+  padding: 0,
 }
 const titleRowStyle: React.CSSProperties = {
   display: 'flex',
