@@ -2,6 +2,15 @@
 
 Newest entries first. Every implementation slice adds an entry.
 
+## 2026-05-23, Destruction Lab (experimental)
+
+- Branch: `claude/destruction-demo-mode-UQzwj`
+- Changed: shipped a new experimental mode at `/destruction` accessible from the title screen. The lab is an interactive sandbox where one Kenney sedan self-drives a slow CCW circle (or yields to WASD when the player toggles Take the Wheel) and the player clicks or taps anywhere on the car to apply localized damage. The damage stack follows the deep-research report's MVP recipe: a click goes through a raycast against the visible mesh, resolves to a contract panel id, and runs the full pipeline of (1) per-panel HP, (2) CPU vertex denting against subdivided panel geometry with cumulative Gaussian splats, (3) DecalGeometry scuff projection on the hit panel, (4) PBR material wear that raises roughness and darkens the paint as HP drops, (5) threshold-based panel detach into a new ballistic free-body integrator, (6) sprite billboard smoke + fire emitter tied to the engine HP, (7) drivability degradation that feeds back into stepPhysics via `accelFactor`, `maxSpeedFactor`, and a steer bias the AI and player share.
+- Files: new `src/game/destruction/{panels,subdivide,deform,wear,drivability,ai,playerInput,freeBody,decals,smoke,asset,car}.ts`, new `src/components/{DestructionLab,DestructionLabHud}.tsx`, new route `src/app/destruction/page.tsx`, title screen link in `src/app/page.tsx`. Existing derby damage code (`derbyDamageVisuals.ts`, `derbyDebris.ts`) is left untouched; the lab is intentionally independent so the experimental damage system can iterate without disturbing the shipping derby loop.
+- Tests: new Vitest suites for the eight pure helper modules (64 tests), e2e Playwright smoke under `tests/e2e/destruction.spec.ts`. Headless-chromium verification on the running dev server confirmed visible vertex denting, the wear darkening, trunk detach to free-body simulation, drivability dropping (51% throttle / 60% top speed after 16 hits), and HUD live updates.
+- Followups: morph-target authored damage states, LOD damage swaps, KTX2 / Basis compression pass, mobile-class shader-displacement fallback, `three-mesh-bvh` for accelerated repeated picking, switching between the four Kenney variants, damageable obstacle props, persistence across page reloads.
+- GDD coverage: added a new "Destruction Lab (experimental)" section and a matching entry to `docs/GDD_COVERAGE.json`.
+
 ## 2026-05-14, Current PR Merge Sweep
 
 - Branch: `docs/current-status-after-pr-merge`

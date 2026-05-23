@@ -14,6 +14,17 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 
 - Gamepad rumble: collision-magnitude impulses. Blocked until gameplay has a real collision event source. Current barriers, cones, trees, and decorations are visual-only, and the physics integrator only emits off-track drag state. Once the vehicle can hit a wall or obstacle, emit an impact magnitude so the rumble path can scale a one-shot cue to contact strength. Derby's car-car contact stream in `derbyTick.ts` is now the natural event source; the rumble wiring still needs to plumb hit events out to `useGamepad`.
 
+## Destruction Lab followups
+
+- Morph-target authored damage states. The CPU vertex deformer covers free-form click damage; a small library of authored crumples (`light_crumple`, `hard_crumple`, `hinge_bend`) per panel would handle the major-state transitions the deep-research report calls out. Requires Blender shape keys on the sliced GLB plus a small runtime that animates morph weights when a panel HP crosses a threshold.
+- LOD damage swaps. The lab runs one hero car at all times. For a derby-on-roids future where multiple destroyed cars are visible at once, swap to a lower-detail damaged mesh past a distance threshold; switch CPU dents off on the LOD'd mesh entirely.
+- KTX2 / Basis texture compression pass. The lab uses procedural canvas textures for decals + smoke so the asset budget is tiny today; the moment we add authored decal art, route it through `KTX2Loader` and the GLB-side `setKTX2Loader()` hook.
+- Mobile-class fallback. On weaker devices, skip the CPU vertex deformer and rely on shader displacement plus a decal-only wear path. The lab already has the panel state, deformer disposal, and wear handles factored out so the swap is local.
+- `three-mesh-bvh` for accelerated repeated picking against subdivided panels. Today the panels are small enough that the default raycaster is fine; if a future slice triples the subdivision depth or adds many parked cars to the lab, BVH-accelerated picking is the obvious next step.
+- Switching between the four Kenney variants in the lab. The asset loader is parameterised on `modelUrl`; surfacing a picker chip row in the HUD would let the player audition the destruction stack against the sedan, ambulance, pickup, and racecar.
+- Damageable obstacle props. Today the player damages the car only via clicks; once the destruction stack proves out, add cones, barrels, and pylons whose collision with the car drives damage so a take-the-wheel session naturally accumulates wear.
+- Persistence across page reloads. The lab currently resets on navigation. A "leave the wreck" mode that persists the panel HP and detached free bodies in `localStorage` (or signed cookies) would let players come back to their own destruction.
+
 ## Derby mode followups
 
 - Improve the current authored Derby GLBs with richer destructible model variants. The `derbyVehicleLoader` named-submesh contract is in place (`body`, `door_l/r`, `hood`, `trunk`, `headlight_l/r`, `taillight_l/r`, `wheel_*`), authored GLBs already ship under `public/models/derby/`, and `assertVehicleContract` catches missing submeshes at load time. A future art pass can swap in higher-fidelity sourced models while preserving the contract.

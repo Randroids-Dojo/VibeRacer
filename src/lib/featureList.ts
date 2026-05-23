@@ -301,6 +301,20 @@ export const FEATURE_LIST: readonly FeatureCategory[] = [
     ],
   },
   {
+    title: 'Destruction Lab (experimental)',
+    items: [
+      'Interactive sandbox for the destructible-car stack.',
+      'Self-driving sedan circles a flat pad; click or tap anywhere on the car to apply localized damage.',
+      'CPU vertex denting on hood, trunk, doors, and body.',
+      'Procedural scuff decals on every hit.',
+      'PBR paint wear: roughness rises and color darkens as HP drops.',
+      'Threshold-based panel detach into a ballistic free-body integrator.',
+      'Engine smoke ramps up with front-end damage; fire ignites on stall.',
+      'Drivability degrades with damage: throttle, top speed, steer bias.',
+      'Take the Wheel toggle hands the car to WASD or arrows so you can feel the wreck drive.',
+    ],
+  },
+  {
     title: 'Menus And Player Tools',
     items: [
       'Title screen.',

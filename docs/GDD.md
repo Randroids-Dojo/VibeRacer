@@ -1119,3 +1119,43 @@ Persistence lives at `src/app/api/derby/{start,submit,leaderboard}`. `start` min
 The HUD (`src/components/DerbyHUD.tsx`) lays out three chips and a vertical health bar matching the reference screenshot: place + score top-left (score = `kills * 200 + floor(aliveMs / 10000) * 100`, HUD only; the leaderboard ranks by round time alone), cars-left top-right, vertical health bar bottom-right with green / yellow / orange / red color tiers. A pool of 8 absolute-positioned divs anchored to projected impact points fades out damage popups over 700 ms.
 
 Wired in `src/app/derby/page.tsx` (hub), `src/app/derby/[arena]/page.tsx` (per-arena route), `src/components/DerbyVehiclePicker.tsx` (vehicle picker), `src/components/DerbyRound.tsx` (orchestrator), `src/components/DerbyCanvas.tsx` (Three.js host, rAF loop, camera). The title screen gains a Derby tile next to Drag Racing.
+
+
+## 21. Destruction Lab (experimental)
+
+**Status.** Shipped as a new top-level mode at `/destruction`, reached from a "Destruction Lab" link on the title screen with an "EXPERIMENTAL" chip. The lab is an interactive sandbox for the destruction stack described in the deep-research report: one Kenney sedan (`public/models/derby/car.glb`, asset only) self-drives a 40 m circle inside Derby's Dust Bowl arena (`buildArenaMesh` + `buildDerbyScenery` + `buildDerbyStadium` from `src/game/derbyArena.ts` / `derbyScenery.ts` / `derbyStadium.ts`, with the `dust-bowl` config from `derbyArenas.ts`). The player clicks or taps anywhere on the car to apply localized damage, and a full per-part damage pipeline runs on every hit. A "Take the Wheel" toggle in the HUD swaps the AI for direct WASD / arrow / space (or the shared `TouchControls` virtual joystick on mobile) player control so the drivability degradation is felt as well as seen.
+
+The lab is intentionally independent from Derby mode. Existing derby damage code (`derbyDamageVisuals.ts`, `derbyDebris.ts`) is untouched; the lab ships its own deformer, decals, wear, smoke, free-body integrator, and orchestrator under `src/game/destruction/` so the experimental system can iterate without disturbing the shipping derby loop.
+
+The damage pipeline on every hit:
+
+1. Pointerdown / pointerup arbitration on the canvas distinguishes a short tap (damage hit) from a longer drag (ignored, so a touch-scroll attempt does not register as a damage hit). Camera framing is locked to the shared chase rig; there is no orbit gesture.
+2. `Raycaster` against the car group resolves the visible mesh, the panel id (via the GLB's contract submesh names), and the world-space contact point + face normal.
+3. The orchestrator applies per-panel HP via the panel state catalogue, then dispatches:
+   - **CPU vertex denting**: one-pass triangle subdivision happens once at load so Kenney panels have enough verts to dent; the deformer keeps a clone of the base positions and pushes a Gaussian-falloff "splat" inward each hit, recomputes vertex normals + bounds, and saturates per-vertex displacement at `MAX_DENT_DEPTH`.
+   - **Decal**: `DecalGeometry` projects a procedural scuff (canvas-baked radial gradient + scratch strokes, two tints alternating) onto the hit panel; the decal is parented to the car group so it rides the chassis.
+   - **PBR wear**: per-panel material is cloned on first damage; `roughness` lerps toward 0.95 and `color` toward a sooty target as HP drops.
+   - **Threshold-based detach**: when the panel's HP crosses its threshold (0 for hood / trunk / doors; body and engine never detach), the panel's world transform is captured, the mesh is reparented to the scene root, and a free-body integrator pushes it outward with gravity, ground bounce, and angular damping.
+   - **Engine bleed**: hood and body hits forward 35% of their damage to a synthetic engine HP pool.
+4. Drivability is re-derived from the current per-panel HPs as `{ accelFactor, maxSpeedFactor, steerBias, stalled }`. These feed straight into `stepPhysics` via its existing `accelFactor` / `maxSpeedFactor` arguments and into the AI + player input mixers via the steer bias.
+5. Smoke + fire emitter intensities update: smoke starts when hood or engine drops below 60% and ramps to maximum at zero; fire turns on only when the engine reaches zero.
+
+### Drivability mapping
+
+| Source | Effect |
+|---|---|
+| Hood HP | accelFactor lerps from 1.0 to a 0.55 floor; loud smoke when below ~25% |
+| Trunk HP | Cosmetic only. Detach at zero. |
+| Door_l HP | steerBias becomes positive (car drifts left) |
+| Door_r HP | steerBias becomes negative (car drifts right) |
+| Body HP | maxSpeedFactor lerps from 1.0 to a 0.6 floor |
+| Engine HP | At zero: stalled, throttle clamped to zero, fire emitter on |
+
+### Build log
+
+- Pure modules under `src/game/destruction/`: `panels.ts` (catalogue + per-panel state + engine-bleed table), `subdivide.ts` (one-pass triangle subdivision preserving UVs and shared edges), `deform.ts` (CPU vertex deformer with cumulative Gaussian splats and per-vertex saturation), `wear.ts` (worn roughness + color curves, material handle), `drivability.ts` (per-panel HP -> drivability scalars + smoke / fire intensities), `ai.ts` (proportional-controller self-driving circle that honors the steer bias and stops on stall), `playerInput.ts` (wraps the shared `readPlayerInput` and folds in stall + steer bias), `freeBody.ts` (ballistic integrator with ground bounce + angular damping; distinct from `derbyDebris.ts`), `decals.ts` (DecalGeometry pool with procedural scratch textures), `smoke.ts` (sprite billboard emitter for smoke + fire), `asset.ts` (independent GLB loader that subdivides deformable panels on load + wraps wheels in steer / spin pivots), and `car.ts` (the orchestrator).
+- Client component `src/components/DestructionLab.tsx`: WebGLRenderer + scene + ground pad + the shared chase camera rig (`initCameraRig` / `updateCameraRig` / `applyCameraRig` from `sceneBuilder.ts`) sourced from `useControlSettings().camera`. The rig overrides positionLerp + targetLerp to 1 (snap-to) so the AI's continuous turn does not push the car off-frame on narrow portrait viewports the way a standard followSpeed lerp would. The car mesh is wrapped in an outer + inner Group pair matching `buildCarFrame` in `sceneBuilder.ts`, with `inner.rotation.y = π/2` (`CAR_MODEL_YAW_OFFSET`) so the GLB's default nose-at-`-Z` orientation aligns with the physics module's heading-0 = forward-`+X` convention; without this offset the chase camera ends up to the side of the visible car. `renderer.setSize` is called with the default `updateStyle = true` so the canvas CSS dimensions match the WebGL framebuffer on high-DPR mobile devices; with `false` the canvas overflows its container by DPR and the visible top-left quarter shows frame-center as the bottom-right corner. The rAF loop reassigns `physicsState = stepPhysics(...)` every tick (`stepPhysics` returns a new state object and does not mutate the input). HUD `src/components/DestructionLabHud.tsx` renders per-panel HP bars, drivability stat chips, total hit count, and the Repair / Detonate / Take the Wheel buttons; on narrow / portrait viewports it collapses to a compact top-right chip showing aggregate HP + hit count.
+- Route at `src/app/destruction/page.tsx`. Title screen link in `src/app/page.tsx`.
+- Tests: eight Vitest suites covering subdivision, deformation falloff + accumulation + reset, worn roughness + color curves, drivability derivation (including engine-zero stall and asymmetric door bias), AI inputs on / off the circle, player input including stall clamp and steer-bias folding, free-body gravity + bounce + settle, panel damage + detach threshold + engine bleed. 64 tests, all green.
+- Verification: type-check clean, lint clean (no new warnings), `npm run build` ships the `/destruction` route at 11.4 kB. Headless-chromium dev-server verification with grid-clicks on the canvas observed visible CPU dents, paint darkening, trunk detach to free-body simulation, drivability dropping to 51% throttle / 60% top speed after 16 hits, and HUD live updates.
+- Followups (recorded in `docs/FOLLOWUPS.md`): morph-target authored damage states, LOD damage swaps, KTX2 / Basis compression pass, mobile-class shader-displacement fallback, `three-mesh-bvh` for accelerated repeated picking, switching between the four Kenney variants, damageable obstacle props, persistence across page reloads.

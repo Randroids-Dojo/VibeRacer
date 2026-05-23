@@ -175,6 +175,46 @@ When adding auto-scrolling, credits, animated overlays, portals, or modal UI:
 - Preserve normal keyboard activation on focused buttons and form controls. Do not let global Space or Enter handlers swallow native button behavior.
 - Expose toggle state with `aria-pressed` or equivalent accessible state.
 
+## RULE 11: Reuse the shared game primitives. Do not reinvent them.
+
+Before writing new code for any of the following, search the repo for the
+existing helper and use it. Inventing a parallel implementation forks the
+behavior across modes, makes a slider in Settings stop working in your new
+mode, and is the kind of thing that gets called out in review.
+
+- **Camera rig.** Use `initCameraRig`, `updateCameraRig`, `applyCameraRig`, `CameraRigParams`, and `DEFAULT_CAMERA_RIG` from `src/game/sceneBuilder.ts`. Source the params from `useControlSettings().camera` plus `cameraLerpsFor(followSpeed)` from `src/lib/controlSettings.ts`. The user-tunable camera sliders and the six camera presets (Chase far, Chase close, Cockpit, Dashboard, Hood, Bumper) live in `src/lib/cameraPresets.ts` and are the single source of truth for "how the camera frames the car". Do not invent aspect-aware or mode-specific overrides; if a preset does not fit your mode, add the preset, do not override per-mode.
+- **Mobile-safe surface.** Spread `MOBILE_GAME_SURFACE_STYLES` from `src/lib/mobileGameSurface.ts` onto the root of any full-screen game surface. It carries the touch-action, user-select, and iOS callout suppressions that every other mode (`Game.tsx`, `DragRace.tsx`, `DerbyRound.tsx`, `TuningSession.tsx`) shares. Do not hand-roll those styles.
+- **Input.** Read keyboard / gamepad / touch through `useKeyboard(bindings)` from `src/hooks/useKeyboard.ts` and translate to `PhysicsInput` via `readPlayerInput` from `src/game/playerInput.ts`. Mount the on-screen joystick via `<TouchControls keys={keysRef} enabled={...} mode={settings.touchMode} />`. Bindings come from `useControlSettings().keyBindings`.
+- **Physics integrator.** `stepPhysics` from `src/game/physics.ts` is the only car integrator. See RULE 12 for its call contract.
+- **Menu shell + tokens.** Page chrome uses `MenuPageShell`, `MenuShellStage`, `MenuShellAction`, and the `menuStyles` / `menuTheme` exports from `src/components/MenuPageShell.tsx`, `MenuUI.tsx`, and `menuTheme.ts`. Click SFX uses `useClickSfx` from `src/hooks/useClickSfx.ts`.
+- **Seeded RNG.** For deterministic random streams in a tick loop, use the project's `mulberry32` pattern (see `src/game/derbyRoundState.ts`). Do not pull `Math.random` into pure game logic.
+
+If you are about to write a hook, helper, or style block that one of the
+existing modes already has, stop and import the existing one. If the
+existing one is missing a feature you need, extend it in place so every
+mode picks up the improvement.
+
+## RULE 12: stepPhysics returns a new state. It does not mutate.
+
+`stepPhysics(state, input, dt, onTrack, params?, accelFactor?, maxSpeedFactor?, externalLongitudinalAccel?, accelTaperExponent?)` returns a fresh `PhysicsState` object every call. The input state is NOT mutated. Every caller in the codebase reassigns the return value:
+
+```ts
+state = stepPhysics(state, input, dt, onTrack)
+```
+
+If you write `stepPhysics(state, ...)` without capturing the return value, the car will sit still forever, the camera will appear frozen, the AI will read a stuck state, and the bug is invisible to type-check and unit tests because the call signature is valid. The same applies to any other pure step function in `src/game/` whose signature is `(state, ...) => state`; treat the return value as the new truth.
+
+When fixing a "the simulation is not moving" symptom, this is the first thing to check. Add a one-shot console log of `state.x, state.z, state.speed` at tick 60 if you are unsure.
+
+## RULE 13: Verify the feature actually plays, not just that it compiles.
+
+For any change that touches a rendered game surface (camera, input, AI, physics, HUD), running `npm run type-check`, `npm run lint`, and `npm test` is not enough. Those checks have all passed while the car sat still and the camera was frozen. Before declaring a slice done:
+
+- Boot the dev server (`npm run dev`).
+- Drive the feature in a real browser. On a UI change that is supposed to animate or move, capture two screenshots a few seconds apart and confirm the pixels differ. A byte-identical second screenshot means the scene is dead even if the renderer is mounted.
+- Confirm the golden path AND the easy regression. For the destruction lab that meant: car drives itself at start, camera follows it, click damages it, panel detaches, HUD updates. If even one of those is broken, the slice is not done.
+- If you cannot test the UI in a browser (network policy, missing Playwright browser, etc.), say so explicitly. Do not claim "verified" from type-check + unit tests alone.
+
 ---
 
 ## Quick pre-commit checklist
@@ -182,5 +222,7 @@ When adding auto-scrolling, credits, animated overlays, portals, or modal UI:
 1. No em-dashes. Run `grep -rn $'\u2014' .` (checks for codepoint U+2014). Must return nothing.
 2. No AI attribution in the commit message.
 3. Tests pass locally.
-4. GDD is still accurate, or updated.
-5. No secrets in the diff.
+4. For any tick-loop change, the simulation actually advances (RULE 12 + RULE 13).
+5. No shared primitive was reinvented (RULE 11). Imports from `sceneBuilder`, `mobileGameSurface`, `controlSettings`, `useKeyboard`, `playerInput`, `MenuUI` instead of a local copy.
+6. GDD is still accurate, or updated.
+7. No secrets in the diff.
