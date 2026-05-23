@@ -63,6 +63,25 @@ Do not introduce new dependencies in these categories without explicit user appr
 
 ---
 
+## RULE 3.5: Stay on theme. Reuse the design system.
+
+VibeRacer is a colorful cartoony game, not a dev console. Every player-facing surface MUST live inside the shared menu-shell family: sky-blue page background, dark-translucent header / body panels (`MenuPageShell`), cream pick-row cards with thick black outlines and amber drop shadows, red-pink "go" CTAs.
+
+**Before you build any UI:**
+
+1. **Read the existing primitives first.** The shared building blocks live in:
+   - `src/components/menuTheme.ts` (design tokens: cardBg, cardBorder, cardShadow, ctaBg, ctaShadow, pickSelectedBg, pageBg, shellHeaderBg, shellPanelBg, etc.)
+   - `src/components/MenuUI.tsx` (`MenuStartButton`, `MenuShellAction`, `MenuPickRow`, `MenuPanel`, `MenuOverlay`, `MenuHeader`, `MenuSection`, `MenuHint`, etc.)
+   - `src/components/MenuPageShell.tsx` (page chrome + `menuStyles` tokens for cards, pills, sectionHeader)
+2. **Reuse these components.** Do not hand-roll a new button, card, pill, modal, or input style when one of the primitives already covers it. If a primitive is 80% right, extend it (or add a sibling that shares its tokens) instead of forking a one-off dark panel.
+3. **Pull all colors, radii, shadows, and font choices from `menuTheme`.** No hard-coded hex values like `#1d1d1d`, `#161616`, or `#0e0e0e` for new player-facing UI. Dev-only consoles can use the dark palette, but anything reachable from the title screen must read as part of the menu family.
+4. **Primary CTA = `MenuStartButton`** (red-pink). **Secondary action = `MenuShellAction`** (cream card with black outline). **Selection rows = `MenuPickRow`**. Picking the wrong primitive is the same kind of bug as picking the wrong color.
+5. **When in doubt, open Free Race, Derby, Tour, Drag, Settings, and PreRaceSetup, and confirm your new surface looks like it belongs in that family.** If it doesn't, fix it before you push.
+
+A hand-rolled dark panel inside a menu page is treated as a regression even if it functions correctly. Stay on theme.
+
+---
+
 ## RULE 4: Commit messages and PR descriptions
 
 - Write them as a human would.

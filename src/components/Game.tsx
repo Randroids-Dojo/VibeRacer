@@ -51,7 +51,8 @@ import { RacePane } from './RacePane'
 import { FeedbackFab } from './FeedbackFab'
 import { TouchControls } from './TouchControls'
 import { SettingsPane } from './SettingsPane'
-import { TuningPanel } from './TuningPanel'
+import { TuningEditor } from './TuningEditor'
+import { MenuStageOverlay } from './MenuUI'
 import { Minimap, type MinimapPose } from './Minimap'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { Speedometer } from './Speedometer'
@@ -869,7 +870,7 @@ function GameSession({
   // re-renders into the rest of the HUD tree.
   const speedRef = useRef<number>(0)
   // Mirrors the live tuning's maxSpeed for the gauge needle. Updated each
-  // render from `tuning` so a slider tweak in TuningPanel reshapes the dial
+  // render from `tuning` so a slider tweak in TuningEditor reshapes the dial
   // immediately. Scaled by the extendedTopSpeed multiplier so the dial
   // dome matches the actual cap when that flag is on; otherwise the needle
   // would peg at half-deflection forever during the upper half of a pull.
@@ -2941,20 +2942,29 @@ function GameSession({
               onBack={() => setPauseView('race')}
             />
           ) : pauseView === 'tuning' ? (
-            <TuningPanel
-              params={tuning}
-              onChange={setTuning}
-              onReset={resetTuning}
-              onClose={() => {
-                // Flush any pending slider drag so the most-recent tweak
-                // lands as a history entry before the panel disappears.
+            <MenuStageOverlay
+              title="SETUP"
+              onBack={() => {
                 flushTuningHistory()
                 setPauseView('menu')
               }}
-              history={tuningHistory}
-              liveSlug={slug}
-              onApplyHistoryEntry={handleApplyHistoryEntry}
-            />
+            >
+              <TuningEditor
+                params={tuning}
+                onChange={setTuning}
+                onReset={resetTuning}
+                onClose={() => {
+                  // Flush any pending slider drag so the most-recent tweak
+                  // lands as a history entry before the editor disappears.
+                  flushTuningHistory()
+                  setPauseView('menu')
+                }}
+                closeLabel="Done"
+                history={tuningHistory}
+                liveSlug={slug}
+                onApplyHistoryEntry={handleApplyHistoryEntry}
+              />
+            </MenuStageOverlay>
           ) : pauseView === 'howToPlay' ? (
             <HowToPlay
               keyBindings={settings.keyBindings}

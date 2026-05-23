@@ -20,6 +20,93 @@ test('/tune lets the user start a session and shows the countdown', async ({
   await expect(page.getByText('READY', { exact: true })).toBeVisible()
 })
 
+test('/tune exposes a manual slider builder that saves a named tuning', async ({
+  page,
+}) => {
+  await page.goto('/tune')
+  await page
+    .getByRole('button', { name: /build tuning manually \(sliders\)/i })
+    .click()
+  await expect(
+    page.getByRole('heading', { name: 'Build tuning manually' }),
+  ).toBeVisible()
+  // The save button is disabled until the user names the tuning.
+  const saveBtn = page.getByRole('button', { name: 'Save tuning' })
+  await expect(saveBtn).toBeDisabled()
+  await page.getByLabel('Name').fill('Manual sliders test')
+  await expect(saveBtn).toBeEnabled()
+  // Nudge the max speed slider so we know the params persist in addition to
+  // the metadata.
+  const slider = page.getByRole('slider', { name: /Max speed slider/i })
+  await slider.focus()
+  await slider.press('ArrowRight')
+  await saveBtn.click()
+  // After saving the lab returns to the saved-tunings list with the toast
+  // visible. Wait for the toast to disappear before asserting the list row
+  // so the row check cannot be satisfied by the toast text alone.
+  const toast = page.getByText('Saved "Manual sliders test"')
+  await expect(toast).toBeVisible()
+  await expect(toast).toBeHidden()
+  await expect(
+    page.getByText('Manual sliders test', { exact: true }),
+  ).toBeVisible()
+})
+
+test('/tune saved row Edit opens the manual builder preloaded for in-place save', async ({
+  page,
+}) => {
+  // Seed a saved tuning so the saved-list has something to edit.
+  await page.addInitScript(() => {
+    const tuning = {
+      id: 't-edit-seed',
+      name: 'Editable seed',
+      params: {
+        maxSpeed: 28,
+        maxReverseSpeed: 8,
+        accel: 18,
+        brake: 30,
+        reverseAccel: 10,
+        rollingFriction: 2,
+        steerRateLow: 2.5,
+        steerRateHigh: 2.0,
+        minSpeedForSteering: 0.5,
+        offTrackMaxSpeed: 8,
+        offTrackDrag: 12,
+      },
+      ratings: {},
+      controlType: 'keyboard',
+      trackTags: ['fast'],
+      lapTimeMs: null,
+      notes: '',
+      createdAt: '2026-04-25T00:00:00.000Z',
+      updatedAt: '2026-04-25T00:00:00.000Z',
+    }
+    window.localStorage.setItem(
+      'viberacer.tuningLab.saved',
+      JSON.stringify([tuning]),
+    )
+  })
+  await page.goto('/tune')
+  await page.getByRole('button', { name: /saved tunings \(\d+\)/i }).click()
+  await page.getByRole('button', { name: 'Edit' }).click()
+  await expect(
+    page.getByRole('heading', { name: /Edit "Editable seed"/ }),
+  ).toBeVisible()
+  // The name field comes preloaded so saving in place keeps the same id.
+  await expect(page.getByLabel('Name')).toHaveValue('Editable seed')
+  const saveBtn = page.getByRole('button', { name: 'Save changes' })
+  await expect(saveBtn).toBeEnabled()
+  await saveBtn.click()
+  const toast = page.getByText('Saved "Editable seed"')
+  await expect(toast).toBeVisible()
+  await expect(toast).toBeHidden()
+  // Only one row in the saved list after the edit, since the same id was
+  // upserted instead of cloned.
+  await expect(
+    page.getByText('Editable seed', { exact: true }),
+  ).toHaveCount(1)
+})
+
 test('/tune home exposes the Recent changes view', async ({ page }) => {
   await page.goto('/tune')
   // The button shows the live history count even when empty so the player
