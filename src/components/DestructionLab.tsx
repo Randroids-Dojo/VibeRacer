@@ -37,6 +37,10 @@ import {
   heightAfterWheel,
   pixelDragToPanDelta,
 } from '@/game/destruction/overheadCamera'
+import {
+  cardinalCameraPose,
+  type CompassDir,
+} from '@/game/destruction/cardinalCamera'
 import { buildArenaMesh, type DerbyArenaMesh } from '@/game/derbyArena'
 import {
   buildDerbyScenery,
@@ -61,6 +65,7 @@ import { step as aiStep } from '@/game/destruction/ai'
 import { step as playerInputStep } from '@/game/destruction/playerInput'
 import { useKeyboard } from '@/hooks/useKeyboard'
 import { TouchControls } from './TouchControls'
+import { DestructionCompass } from './DestructionCompass'
 import { DestructionLabHud, type DestructionHudState } from './DestructionLabHud'
 
 // Destruction Lab client component. Mounts a Three.js renderer over the
@@ -149,6 +154,14 @@ export function DestructionLab() {
   const [aiPaused, setAiPaused] = useState(false)
   const aiPausedRef = useRef(aiPaused)
   aiPausedRef.current = aiPaused
+  // Camera compass selection. null = overhead view (with pan + zoom);
+  // otherwise the camera locks to the car-relative side and follows
+  // through the AI's circle. Persists across driveMode toggles so the
+  // user does not lose their view when handing control to the player
+  // and back.
+  const [compassDir, setCompassDir] = useState<CompassDir | null>(null)
+  const compassDirRef = useRef(compassDir)
+  compassDirRef.current = compassDir
   const { settings } = useControlSettings()
   const keysRef = useKeyboard(settings.keyBindings)
   const [hud, setHud] = useState<DestructionHudState | null>(null)
@@ -331,7 +344,7 @@ export function DestructionLab() {
     const pointerPositions = new Map<number, { x: number; y: number }>()
     let pinchSession: PinchSession | null = null
     let rightDrag: RightDragSession | null = null
-    let lastCameraMode: 'ai' | 'player' | null = null
+    let lastCameraMode: 'overhead' | 'cardinal' | 'chase' | null = null
     const rng = makeRng(0x1234abcd)
 
     function loadAsset() {
@@ -508,15 +521,24 @@ export function DestructionLab() {
         lastAppliedFov = liveFov
       }
       const mode = driveModeRef.current
-      const modeChanged = lastCameraMode !== mode
-      lastCameraMode = mode
-      if (mode === 'ai') {
+      const compass = compassDirRef.current
+      // Three sub-modes inside AI: overhead (no compass) needs the
+      // (0, 0, -1) up vector and pan/zoom support; the four
+      // cardinal views are level horizontal-ish cameras with the
+      // default (0, 1, 0) up; player mode is the chase rig with the
+      // default up. Track the effective camera sub-mode so the
+      // transitions can reset `up` cleanly.
+      const effective: 'overhead' | 'cardinal' | 'chase' =
+        mode === 'player' ? 'chase' : compass ? 'cardinal' : 'overhead'
+      const subChanged = lastCameraMode !== effective
+      lastCameraMode = effective
+      if (mode === 'ai' && !compass) {
         // Looking straight down: Three's default `up` (0, 1, 0) is
         // parallel to the camera's forward direction, producing an
         // undefined orientation. Pick world -Z as the screen-up
         // direction so the arena reads with a stable orientation
         // regardless of how many laps the car has done.
-        if (modeChanged) camera.up.set(0, 0, -1)
+        if (subChanged) camera.up.set(0, 0, -1)
         const h = clampOverheadHeight(overheadHeightRef.current)
         overheadHeightRef.current = h
         // Derby arenas are always centered at the world origin; the
@@ -531,12 +553,26 @@ export function DestructionLab() {
         overheadPanRef.current = pan
         camera.position.set(pan.x, h, pan.z)
         camera.lookAt(pan.x, 0, pan.z)
+      } else if (mode === 'ai' && compass) {
+        // Cardinal compass view. Camera tracks the car at the
+        // selected side, looking at the car's mid-body. Uses the
+        // standard up vector since the camera looks roughly
+        // horizontally (not straight down).
+        if (subChanged) camera.up.set(0, 1, 0)
+        const pose = cardinalCameraPose(
+          compass,
+          physicsState.x,
+          physicsState.z,
+          physicsState.heading,
+        )
+        camera.position.set(pose.position.x, pose.position.y, pose.position.z)
+        camera.lookAt(pose.lookAt.x, pose.lookAt.y, pose.lookAt.z)
       } else {
         // Restore the default up vector before handing back to the
         // chase rig; applyCameraRig writes position+quaternion but
         // does not touch `up`, so a stale (0, 0, -1) would skew the
         // chase camera's roll on the first frame after the switch.
-        if (modeChanged) {
+        if (subChanged) {
           camera.up.set(0, 1, 0)
           // Reseed the chase rig at the car's current pose so the
           // snap-to lerps land cleanly instead of carrying any
@@ -608,7 +644,11 @@ export function DestructionLab() {
     // pan, write the clamped result back to overheadPanRef. Shared
     // between right-click drag and two-finger drag.
     function applyPanDrag(dxPx: number, dyPx: number): void {
+      // Pan only makes sense in the overhead view; the cardinal
+      // compass views and the player chase camera both follow the
+      // car at a fixed offset and have nothing to pan.
       if (driveModeRef.current !== 'ai') return
+      if (compassDirRef.current !== null) return
       const w = container.clientWidth
       const h = container.clientHeight
       const fovDeg = camera.fov
@@ -686,7 +726,8 @@ export function DestructionLab() {
       if (
         pinchSession &&
         pointerPositions.size === 2 &&
-        driveModeRef.current === 'ai'
+        driveModeRef.current === 'ai' &&
+        compassDirRef.current === null
       ) {
         const currentDistance = pointerDistance()
         overheadHeightRef.current = heightAfterPinch(
@@ -748,10 +789,11 @@ export function DestructionLab() {
     }
 
     function onWheel(e: WheelEvent) {
-      // Only the overhead view consumes wheel events; in chase mode
-      // the wheel is ignored so future Settings-driven zoom does not
-      // collide with this surface.
+      // Only the overhead view consumes wheel events; the cardinal
+      // compass views are at a fixed distance from the car and chase
+      // mode owns its own framing.
       if (driveModeRef.current !== 'ai') return
+      if (compassDirRef.current !== null) return
       e.preventDefault()
       overheadHeightRef.current = heightAfterWheel(
         overheadHeightRef.current,
@@ -819,6 +861,9 @@ export function DestructionLab() {
     <div style={pageStyle}>
       <div ref={containerRef} style={canvasContainerStyle} />
       {overlay}
+      {driveMode === 'ai' ? (
+        <DestructionCompass selected={compassDir} onSelect={setCompassDir} />
+      ) : null}
       <TouchControls
         keys={keysRef}
         enabled={driveMode === 'player'}
