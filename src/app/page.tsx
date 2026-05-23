@@ -33,6 +33,11 @@ export default function HomePage() {
             Derby
           </Link>
 
+          <Link href="/destruction" style={primaryBtnStyle}>
+            <span>Destruction Lab</span>
+            <span style={experimentalChipStyle}>EXPERIMENTAL</span>
+          </Link>
+
           <Link href="/tour" style={primaryBtnStyle}>
             World Tour
           </Link>
@@ -117,7 +122,10 @@ const menuStyle: React.CSSProperties = {
   WebkitBackdropFilter: menuTheme.shellBlur,
 }
 const primaryBtnStyle: React.CSSProperties = {
-  display: 'block',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  gap: 8,
   padding: '14px 20px',
   background: menuTheme.ctaBg,
   color: 'white',
@@ -128,6 +136,15 @@ const primaryBtnStyle: React.CSSProperties = {
   letterSpacing: 0.5,
   textAlign: 'center',
   boxShadow: `0 6px 0 ${menuTheme.ctaShadow}`,
+}
+const experimentalChipStyle: React.CSSProperties = {
+  fontSize: 10,
+  letterSpacing: 1.5,
+  fontWeight: 800,
+  padding: '2px 6px',
+  borderRadius: 999,
+  background: 'rgba(0,0,0,0.35)',
+  color: 'white',
 }
 const settingsBtnStyle: React.CSSProperties = {
   padding: '12px 16px',

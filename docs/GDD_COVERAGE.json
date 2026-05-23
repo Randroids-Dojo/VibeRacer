@@ -601,6 +601,63 @@
         "Leaderboard pagination panel and post-round initials editor",
         "Per-vehicle leaderboard tabs (only if single-board metrics show one vehicle dominating)"
       ]
+    },
+    {
+      "id": "21",
+      "title": "Destruction Lab (experimental)",
+      "status": "done",
+      "implemented": [
+        "click or tap to apply localized damage to a self-driving sedan",
+        "two-stage hit pipeline: pointer to raycaster to panel id to local-space dent",
+        "CPU vertex denting with cumulative Gaussian splats on subdivided panel geometry",
+        "DecalGeometry scuff projection on every hit, capped pool",
+        "PBR material wear (roughness toward 0.95, color toward sooty target) keyed to per-panel HP",
+        "threshold-based panel detach into a ballistic free-body integrator (gravity + bounce + damping)",
+        "sprite billboard smoke + fire emitter tied to engine and hood HP",
+        "drivability degradation feeds stepPhysics via accelFactor + maxSpeedFactor + steer bias",
+        "engine bleed: front-end and body damage drains engine HP",
+        "self-driving CCW circle AI; respects drivability and stops on stall",
+        "Take the Wheel toggle hands control to WASD / arrows / space",
+        "chase camera with drag-to-orbit and wheel zoom",
+        "per-panel HP bars, drivability stat chips, Repair + Detonate + drive-mode toggle"
+      ],
+      "evidence": [
+        "src/app/destruction/page.tsx",
+        "src/app/page.tsx",
+        "src/components/DestructionLab.tsx",
+        "src/components/DestructionLabHud.tsx",
+        "src/game/destruction/panels.ts",
+        "src/game/destruction/subdivide.ts",
+        "src/game/destruction/deform.ts",
+        "src/game/destruction/wear.ts",
+        "src/game/destruction/drivability.ts",
+        "src/game/destruction/ai.ts",
+        "src/game/destruction/playerInput.ts",
+        "src/game/destruction/freeBody.ts",
+        "src/game/destruction/decals.ts",
+        "src/game/destruction/smoke.ts",
+        "src/game/destruction/asset.ts",
+        "src/game/destruction/car.ts",
+        "tests/unit/destructionSubdivide.test.ts",
+        "tests/unit/destructionDeform.test.ts",
+        "tests/unit/destructionWear.test.ts",
+        "tests/unit/destructionDrivability.test.ts",
+        "tests/unit/destructionAi.test.ts",
+        "tests/unit/destructionPlayerInput.test.ts",
+        "tests/unit/destructionFreeBody.test.ts",
+        "tests/unit/destructionPanels.test.ts",
+        "tests/e2e/destruction.spec.ts"
+      ],
+      "remainingGaps": [
+        "morph-target authored damage states",
+        "LOD damage swaps",
+        "KTX2 / Basis texture compression pass",
+        "mobile-class shader-displacement fallback",
+        "three-mesh-bvh for accelerated repeated picking",
+        "switching between the four Kenney variants in the lab",
+        "damageable obstacle props",
+        "persistence across page reloads"
+      ]
     }
   ]
 }
