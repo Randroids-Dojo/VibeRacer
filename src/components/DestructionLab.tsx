@@ -24,6 +24,16 @@ import {
 } from 'three'
 import { stepPhysics, type PhysicsState } from '@/game/physics'
 import {
+  applyCameraRig,
+  DEFAULT_CAMERA_RIG,
+  initCameraRig,
+  updateCameraRig,
+  type CameraRigParams,
+  type CameraRigState,
+} from '@/game/sceneBuilder'
+import { cameraLerpsFor } from '@/lib/controlSettings'
+import { useControlSettings } from '@/hooks/useControlSettings'
+import {
   loadDestructionCar,
   type DestructionAsset,
 } from '@/game/destruction/asset'
@@ -36,12 +46,22 @@ import { tickFreeBodies, type FreeBody } from '@/game/destruction/freeBody'
 import { step as aiStep } from '@/game/destruction/ai'
 import { step as playerInputStep } from '@/game/destruction/playerInput'
 import { useKeyboard } from '@/hooks/useKeyboard'
+import { TouchControls } from './TouchControls'
 import { DestructionLabHud, type DestructionHudState } from './DestructionLabHud'
 
 // Destruction Lab client component. Mounts a Three.js renderer over the
 // full viewport, loads the Kenney sedan once, drives it either via the
-// circle AI or via direct keyboard input depending on the user's mode
-// toggle, and routes pointer clicks through the destruction stack.
+// circle AI or via direct keyboard / touch / gamepad input depending on
+// the user's mode toggle, and routes pointer clicks through the
+// destruction stack.
+//
+// The chase camera is the same rig the main racing mode (RaceCanvas)
+// uses, sourced from `sceneBuilder.initCameraRig` and tuned via the
+// player's saved Settings via `useControlSettings`. The drive controls
+// reuse the shared `useKeyboard` snapshot plus the same `TouchControls`
+// virtual joystick that ships on the loop / drag / derby modes, so
+// mobile users see exactly the same on-screen stick they get on the
+// title-screen-launched Free Race.
 //
 // rAF loop responsibilities:
 //   1. Read input snapshot (AI or player) and fold drivability into it.
@@ -49,21 +69,11 @@ import { DestructionLabHud, type DestructionHudState } from './DestructionLabHud
 //   3. Mirror physics state onto the car group's transform.
 //   4. Tick the destruction car (deformers, decals already updated, emitter).
 //   5. Tick free bodies (detached panels).
-//   6. Update the chase camera.
+//   6. Update the chase camera rig.
 //   7. Render.
-//
-// Pointer handling owns the click-vs-drag arbitration so a tap or
-// click both land cleanly on touch and desktop. The raycast happens in
-// pointerup so drag gestures (which the user uses for camera orbit)
-// never trigger a hit.
 
 const MODEL_URL = '/models/derby/car.glb'
 const PAINT_COLOR = 0xff5544
-const CAMERA_MIN_DIST = 8
-const CAMERA_MAX_DIST = 30
-const DEFAULT_PITCH_DEG = 28
-const PITCH_MIN_DEG = 10
-const PITCH_MAX_DEG = 70
 const DRAG_THRESHOLD_PX_MOUSE = 6
 const DRAG_THRESHOLD_PX_TOUCH = 12
 const CLICK_WINDOW_MS = 350
@@ -76,15 +86,6 @@ interface PointerSession {
   startY: number
   startTs: number
   isTouch: boolean
-  isDragging: boolean
-  lastX: number
-  lastY: number
-}
-
-interface CameraOrbit {
-  yawRad: number
-  pitchRad: number
-  distance: number
 }
 
 // `mulberry32` seeded RNG. Local copy so the destruction lab does not
@@ -105,12 +106,31 @@ export function DestructionLab() {
   const [driveMode, setDriveMode] = useState<'ai' | 'player'>('ai')
   const driveModeRef = useRef(driveMode)
   driveModeRef.current = driveMode
-  const keysRef = useKeyboard()
+  const { settings } = useControlSettings()
+  const keysRef = useKeyboard(settings.keyBindings)
   const [hud, setHud] = useState<DestructionHudState | null>(null)
   // Mutable refs for buttons -> rAF loop so the loop sees the latest
   // request without re-mounting on every state change.
   const requestRepairRef = useRef(false)
   const requestDetonateRef = useRef(false)
+
+  // The camera rig is derived from the player's saved Settings each
+  // render so a tweak in SettingsPane lands on the next frame, exactly
+  // like RaceCanvas does it via Game.tsx.
+  const cameraRigRef = useRef<CameraRigParams | null>(null)
+  {
+    const lerps = cameraLerpsFor(settings.camera.followSpeed)
+    cameraRigRef.current = {
+      height: settings.camera.height,
+      distance: settings.camera.distance,
+      lookAhead: settings.camera.lookAhead,
+      positionLerp: lerps.positionLerp,
+      targetLerp: lerps.targetLerp,
+      cameraForward: settings.camera.cameraForward,
+      targetHeight: settings.camera.targetHeight,
+      fov: settings.camera.fov,
+    }
+  }
 
   const requestRepair = useCallback(() => {
     requestRepairRef.current = true
@@ -125,9 +145,6 @@ export function DestructionLab() {
   useEffect(() => {
     const containerRaw = containerRef.current
     if (!containerRaw) return
-    // Aliasing into a non-nullable local that the inner closures can
-    // read without re-narrowing. TS does not propagate the early-return
-    // narrowing into hoisted function declarations.
     const container: HTMLDivElement = containerRaw
 
     const renderer = new WebGLRenderer({ antialias: true })
@@ -158,8 +175,9 @@ export function DestructionLab() {
     ground.position.y = 0
     scene.add(ground)
 
+    const initialRig = cameraRigRef.current ?? DEFAULT_CAMERA_RIG
     const camera = new PerspectiveCamera(
-      55,
+      initialRig.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70,
       container.clientWidth / container.clientHeight,
       0.1,
       500,
@@ -177,16 +195,22 @@ export function DestructionLab() {
       angularVelocity: 0,
     }
 
+    // Chase camera rig matching the main race mode. We seed it at the
+    // car's spawn so the first frame is already in pose; the rAF loop
+    // ticks it from the car's current physics state each frame.
+    const rig: CameraRigState = initCameraRig(
+      physicsState.x,
+      physicsState.z,
+      physicsState.heading,
+      cameraRigRef.current ?? undefined,
+    )
+    applyCameraRig(camera, rig)
+    let lastAppliedFov = camera.fov
+
     const freeBodies: FreeBody[] = []
     let car: DestructionCar | null = null
     let asset: DestructionAsset | null = null
     let cancelled = false
-
-    const orbit: CameraOrbit = {
-      yawRad: 0,
-      pitchRad: (DEFAULT_PITCH_DEG * Math.PI) / 180,
-      distance: 14,
-    }
 
     let raf = 0
     let prev = performance.now()
@@ -213,8 +237,6 @@ export function DestructionLab() {
             scene,
             freeBodies,
           })
-          // Initial HUD snapshot so the bars render at full HP before
-          // the first frame fires.
           publishHud()
         })
         .catch((err) => {
@@ -268,8 +290,6 @@ export function DestructionLab() {
       const panelId = panelIdForMesh(asset, mesh)
       if (!panelId) return
       const worldPoint = hit.point.clone()
-      // Use the interpolated face normal (in object space) transformed
-      // into world space. Fallback when missing: derive from car center.
       let worldNormal: Vector3
       if (hit.face && hit.face.normal) {
         worldNormal = hit.face.normal
@@ -301,16 +321,6 @@ export function DestructionLab() {
         requestRepairRef.current = false
         if (car) {
           car.repair()
-          // Drop any detached free bodies. Their meshes are now in the
-          // scene; the car owns the asset so we delegate full reload to
-          // a fresh asset on repair? Simpler: leave the detached
-          // meshes in place (they keep simulating until they settle)
-          // and just restore the car's HP / dents / wear / smoke.
-          // A future polish slice can recycle the detached meshes
-          // back onto the car; for now, a repaired car is a fresh-HP
-          // car with its already-detached panels still on the ground.
-          // We DO reset the physics state so a stalled car can drive
-          // again.
           physicsState.speed = 0
           physicsState.angularVelocity = 0
         }
@@ -339,13 +349,8 @@ export function DestructionLab() {
           drivability.accelFactor,
           drivability.maxSpeedFactor,
         )
-        // Apply pose to the car root.
         carGroup.position.set(physicsState.x, 0, physicsState.z)
-        // glTF cars in this project face -Z at heading 0 (matches
-        // race/drag); rotate by heading around Y.
         carGroup.rotation.y = physicsState.heading
-        // Spin the wheels using the asset's pivots: front wheels
-        // steer; all four spin with linear speed.
         if (asset) {
           const wheelCirc = 2 * Math.PI * 0.35
           const spinDelta = (physicsState.speed * dt) / wheelCirc * (2 * Math.PI)
@@ -353,15 +358,12 @@ export function DestructionLab() {
             const pivot = asset.wheelPivots[wn]
             pivot.spin.rotation.x += spinDelta
           }
-          // Front-axle steering: lerp the steer pivot toward the input
-          // steer * a fixed max angle.
           const targetSteer = input.steer * 0.4
           for (const wn of ['wheel_fl', 'wheel_fr'] as const) {
             const p = asset.wheelPivots[wn]
             p.steer.rotation.y += (targetSteer - p.steer.rotation.y) * 0.2
           }
         }
-        // Smoke emits from a point above the hood in world space.
         const spawn = new Vector3(0, 1.0, -1.4)
         spawn.applyEuler(carGroup.rotation)
         spawn.add(carGroup.position)
@@ -370,22 +372,25 @@ export function DestructionLab() {
 
       tickFreeBodies(freeBodies, dt)
 
-      // Chase camera: orbit around the car position with the user's
-      // yaw / pitch / distance. Yaw is car heading + user orbit so the
-      // camera follows the car forward but the user can swing left or
-      // right.
-      const anchor = car
-        ? new Vector3(physicsState.x, 0.9, physicsState.z)
-        : new Vector3(0, 0.9, 0)
-      const yaw = (car ? physicsState.heading : 0) + orbit.yawRad
-      const cx = anchor.x + Math.sin(yaw) * orbit.distance * Math.cos(orbit.pitchRad)
-      const cz = anchor.z + Math.cos(yaw) * orbit.distance * Math.cos(orbit.pitchRad)
-      const cy = anchor.y + Math.sin(orbit.pitchRad) * orbit.distance
-      camera.position.set(cx, cy, cz)
-      camera.lookAt(anchor)
+      // Chase camera rig: identical math to RaceCanvas. Re-read the
+      // current params each frame so a Settings slider lands without a
+      // remount, and reapply the FOV when it changes.
+      const liveRig = cameraRigRef.current ?? DEFAULT_CAMERA_RIG
+      const liveFov = liveRig.fov ?? DEFAULT_CAMERA_RIG.fov ?? 70
+      if (liveFov !== lastAppliedFov) {
+        camera.fov = liveFov
+        camera.updateProjectionMatrix()
+        lastAppliedFov = liveFov
+      }
+      updateCameraRig(
+        rig,
+        physicsState.x,
+        physicsState.z,
+        physicsState.heading,
+        liveRig,
+      )
+      applyCameraRig(camera, rig)
 
-      // Light HUD refresh: about 10 Hz; the deeper publishHud() on
-      // hit + on button is what drives interactive updates.
       if (now - lastHudPushMs > 100) {
         lastHudPushMs = now
         publishHud()
@@ -396,31 +401,26 @@ export function DestructionLab() {
 
     raf = requestAnimationFrame(tick)
 
-    // Pointer handlers. The container owns drag-to-orbit and the
-    // canvas owns click-to-hit; we attach to the canvas so the events
-    // do not propagate to the HUD when the player clicks past it.
     const dom = renderer.domElement
 
     function isTouchEvent(e: PointerEvent): boolean {
       return e.pointerType === 'touch' || e.pointerType === 'pen'
     }
 
+    // Pointer flow: every short tap that does not drift more than a few
+    // px is treated as a hit attempt. The chase camera owns the view
+    // so there is no orbit gesture to disambiguate from a click.
     function onPointerDown(e: PointerEvent) {
-      e.preventDefault()
-      dom.setPointerCapture(e.pointerId)
       activePointer = {
         pointerId: e.pointerId,
         startX: e.clientX,
         startY: e.clientY,
         startTs: performance.now(),
         isTouch: isTouchEvent(e),
-        isDragging: false,
-        lastX: e.clientX,
-        lastY: e.clientY,
       }
     }
 
-    function onPointerMove(e: PointerEvent) {
+    function onPointerUp(e: PointerEvent) {
       if (!activePointer || activePointer.pointerId !== e.pointerId) return
       const dx = e.clientX - activePointer.startX
       const dy = e.clientY - activePointer.startY
@@ -428,60 +428,20 @@ export function DestructionLab() {
       const threshold = activePointer.isTouch
         ? DRAG_THRESHOLD_PX_TOUCH
         : DRAG_THRESHOLD_PX_MOUSE
-      if (!activePointer.isDragging && distance > threshold) {
-        activePointer.isDragging = true
-      }
-      if (activePointer.isDragging) {
-        const stepX = e.clientX - activePointer.lastX
-        const stepY = e.clientY - activePointer.lastY
-        // Drag right -> yaw left (intuitive "push the world right").
-        // Sensitivity: 0.005 rad per px feels right at typical viewport.
-        orbit.yawRad -= stepX * 0.005
-        orbit.pitchRad += stepY * 0.005
-        orbit.pitchRad = Math.max(
-          (PITCH_MIN_DEG * Math.PI) / 180,
-          Math.min((PITCH_MAX_DEG * Math.PI) / 180, orbit.pitchRad),
-        )
-      }
-      activePointer.lastX = e.clientX
-      activePointer.lastY = e.clientY
-    }
-
-    function onPointerUp(e: PointerEvent) {
-      if (!activePointer || activePointer.pointerId !== e.pointerId) return
       const duration = performance.now() - activePointer.startTs
-      const isClick =
-        !activePointer.isDragging && duration <= CLICK_WINDOW_MS
+      const isClick = distance <= threshold && duration <= CLICK_WINDOW_MS
       if (isClick) {
         const rect = dom.getBoundingClientRect()
         const ndcX = ((e.clientX - rect.left) / rect.width) * 2 - 1
         const ndcY = -(((e.clientY - rect.top) / rect.height) * 2 - 1)
         attemptHit(ndcX, ndcY)
       }
-      try {
-        dom.releasePointerCapture(e.pointerId)
-      } catch {
-        // releasePointerCapture throws if the capture was already
-        // implicitly released (e.g. by browser gesture handling); the
-        // exception is harmless.
-      }
       activePointer = null
     }
 
-    function onWheel(e: WheelEvent) {
-      e.preventDefault()
-      const delta = Math.sign(e.deltaY) * 1.2
-      orbit.distance = Math.max(
-        CAMERA_MIN_DIST,
-        Math.min(CAMERA_MAX_DIST, orbit.distance + delta),
-      )
-    }
-
     dom.addEventListener('pointerdown', onPointerDown)
-    dom.addEventListener('pointermove', onPointerMove)
     dom.addEventListener('pointerup', onPointerUp)
     dom.addEventListener('pointercancel', onPointerUp)
-    dom.addEventListener('wheel', onWheel, { passive: false })
 
     function onResize() {
       const w = container.clientWidth
@@ -496,17 +456,11 @@ export function DestructionLab() {
       cancelled = true
       cancelAnimationFrame(raf)
       dom.removeEventListener('pointerdown', onPointerDown)
-      dom.removeEventListener('pointermove', onPointerMove)
       dom.removeEventListener('pointerup', onPointerUp)
       dom.removeEventListener('pointercancel', onPointerUp)
-      dom.removeEventListener('wheel', onWheel)
       window.removeEventListener('resize', onResize)
       if (car) car.dispose()
       if (asset) asset.dispose()
-      // Detached free bodies still hold geometry references; their
-      // meshes were children of the asset's group originally, whose
-      // dispose call already walked them. Clearing the array drops the
-      // last references.
       freeBodies.length = 0
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
@@ -515,9 +469,9 @@ export function DestructionLab() {
       ground.geometry.dispose()
       ;(ground.material as MeshStandardMaterial).dispose()
     }
-    // `keysRef` is a stable ref; effect deliberately runs once. We do
-    // NOT depend on `driveMode` here because driveModeRef captures the
-    // latest value without remounting the scene.
+    // The rig and key bindings live in refs; the effect deliberately
+    // runs once so the WebGL context is not torn down on every settings
+    // tweak.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
@@ -537,6 +491,11 @@ export function DestructionLab() {
     <div style={pageStyle}>
       <div ref={containerRef} style={canvasContainerStyle} />
       {overlay}
+      <TouchControls
+        keys={keysRef}
+        enabled={driveMode === 'player'}
+        mode={settings.touchMode}
+      />
     </div>
   )
 }
@@ -553,3 +512,4 @@ const canvasContainerStyle: React.CSSProperties = {
   position: 'absolute',
   inset: 0,
 }
+

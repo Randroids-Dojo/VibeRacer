@@ -148,7 +148,7 @@ export function DestructionLabHud({
         </button>
         {state.driveMode === 'player' ? (
           <div style={controlsHintStyle}>
-            W / S throttle. A / D steer. Space handbrake.
+            Drag the screen to drive on touch. Or WASD on keyboard, space handbrake.
           </div>
         ) : null}
       </div>
