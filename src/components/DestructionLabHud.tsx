@@ -39,6 +39,10 @@ export interface DestructionHudState {
   }
   totalHits: number
   driveMode: 'ai' | 'player'
+  // True when the AI controller is currently zeroed out (the car
+  // coasts to a stop). Independent of driveMode so the player can
+  // pause the AI without taking the wheel.
+  aiPaused: boolean
 }
 
 interface Props {
@@ -46,6 +50,7 @@ interface Props {
   onRepair: () => void
   onDetonate: () => void
   onToggleDriveMode: () => void
+  onToggleAiPaused: () => void
 }
 
 const PANEL_LABELS: Record<keyof DestructionHudState['panels'], string> = {
@@ -77,6 +82,7 @@ export function DestructionLabHud({
   onRepair,
   onDetonate,
   onToggleDriveMode,
+  onToggleAiPaused,
 }: Props) {
   const click = useClickSfx('confirm')
   const clickBack = useClickSfx('back')
@@ -220,6 +226,19 @@ export function DestructionLabHud({
               Detonate
             </button>
           </div>
+          {state.driveMode === 'ai' ? (
+            <button
+              type="button"
+              onClick={() => {
+                click()
+                onToggleAiPaused()
+              }}
+              style={toggleBtnStyle}
+              aria-pressed={state.aiPaused}
+            >
+              {state.aiPaused ? 'Resume AI' : 'Pause AI'}
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={() => {

@@ -141,6 +141,14 @@ export function DestructionLab() {
   const [driveMode, setDriveMode] = useState<'ai' | 'player'>('ai')
   const driveModeRef = useRef(driveMode)
   driveModeRef.current = driveMode
+  // AI pause state. Independent of driveMode so the player can pause
+  // the AI without taking the wheel. We auto-flip it true whenever
+  // the player takes the wheel; returning to AI leaves it paused
+  // until the user explicitly resumes, so handing control back is
+  // never a sudden surprise of the car taking off.
+  const [aiPaused, setAiPaused] = useState(false)
+  const aiPausedRef = useRef(aiPaused)
+  aiPausedRef.current = aiPaused
   const { settings } = useControlSettings()
   const keysRef = useKeyboard(settings.keyBindings)
   const [hud, setHud] = useState<DestructionHudState | null>(null)
@@ -194,7 +202,19 @@ export function DestructionLab() {
     requestDetonateRef.current = true
   }, [])
   const toggleDriveMode = useCallback(() => {
-    setDriveMode((m) => (m === 'ai' ? 'player' : 'ai'))
+    setDriveMode((m) => {
+      if (m === 'ai') {
+        // Taking the wheel always pauses the AI. The car coasts to a
+        // stop under rolling friction and the player picks it up from
+        // wherever it ended up.
+        setAiPaused(true)
+        return 'player'
+      }
+      return 'ai'
+    })
+  }, [])
+  const toggleAiPaused = useCallback(() => {
+    setAiPaused((p) => !p)
   }, [])
 
   useEffect(() => {
@@ -370,6 +390,7 @@ export function DestructionLab() {
         },
         totalHits: car.getTotalHits(),
         driveMode: driveModeRef.current,
+        aiPaused: aiPausedRef.current,
       })
     }
     let lastHudPushMs = 0
@@ -434,10 +455,16 @@ export function DestructionLab() {
 
       if (car) {
         const drivability = car.getDrivability()
-        const input =
-          driveModeRef.current === 'ai'
-            ? aiStep(physicsState, drivability)
-            : playerInputStep(keysRef.current, drivability)
+        let input
+        if (driveModeRef.current === 'ai') {
+          // Paused AI: zero input. The car coasts to a stop via
+          // stepPhysics's built-in rolling friction.
+          input = aiPausedRef.current
+            ? { throttle: 0, steer: 0, handbrake: false }
+            : aiStep(physicsState, drivability)
+        } else {
+          input = playerInputStep(keysRef.current, drivability)
+        }
         physicsState = stepPhysics(
           physicsState,
           input,
@@ -783,9 +810,10 @@ export function DestructionLab() {
         onRepair={requestRepair}
         onDetonate={requestDetonate}
         onToggleDriveMode={toggleDriveMode}
+        onToggleAiPaused={toggleAiPaused}
       />
     )
-  }, [hud, requestRepair, requestDetonate, toggleDriveMode])
+  }, [hud, requestRepair, requestDetonate, toggleDriveMode, toggleAiPaused])
 
   return (
     <div style={pageStyle}>
