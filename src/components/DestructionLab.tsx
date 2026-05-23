@@ -192,7 +192,12 @@ export function DestructionLab() {
     carGroup.name = 'destruction.car.root'
     scene.add(carGroup)
 
-    const physicsState: PhysicsState = {
+    // Physics state. stepPhysics returns a fresh state object every
+    // call (it does not mutate in place); we reassign the let binding
+    // each frame so the next tick sees the updated position. Tracking
+    // this as `let` matches how RaceCanvas threads its game state
+    // through the rAF loop.
+    let physicsState: PhysicsState = {
       x: 18,
       z: 0,
       heading: Math.PI / 2,
@@ -326,8 +331,11 @@ export function DestructionLab() {
         requestRepairRef.current = false
         if (car) {
           car.repair()
-          physicsState.speed = 0
-          physicsState.angularVelocity = 0
+          physicsState = {
+            ...physicsState,
+            speed: 0,
+            angularVelocity: 0,
+          }
         }
         publishHud()
       }
@@ -345,7 +353,7 @@ export function DestructionLab() {
           driveModeRef.current === 'ai'
             ? aiStep(physicsState, drivability)
             : playerInputStep(keysRef.current, drivability)
-        stepPhysics(
+        physicsState = stepPhysics(
           physicsState,
           input,
           dt,
