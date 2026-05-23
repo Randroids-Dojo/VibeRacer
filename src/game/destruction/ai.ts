@@ -20,15 +20,14 @@ export interface CircleTarget {
   tangentialSpeed: number
 }
 
-// Radius tuned so the angular velocity of the car around the center
-// (tangentialSpeed / radius) stays small enough that the chase
-// camera's positionLerp keeps up on any aspect ratio. A tighter
-// circle made the camera trail by enough heading degrees that the
-// car drifted off the side of a portrait-mobile viewport.
+// Radius tuned so the car stays comfortably inside the Dust Bowl
+// arena (radius 60) without grazing the perimeter wall, while still
+// having a gentle enough angular velocity that the chase camera
+// tracks cleanly on any aspect ratio.
 export const DEFAULT_CIRCLE: CircleTarget = {
   centerX: 0,
   centerZ: 0,
-  radius: 60,
+  radius: 40,
   tangentialSpeed: 9,
 }
 

@@ -9,12 +9,10 @@ import {
 } from 'react'
 import {
   AmbientLight,
-  CircleGeometry,
   Color,
   DirectionalLight,
   Group,
   Mesh,
-  MeshStandardMaterial,
   PerspectiveCamera,
   Raycaster,
   Scene,
@@ -31,6 +29,14 @@ import {
   type CameraRigParams,
   type CameraRigState,
 } from '@/game/sceneBuilder'
+import { buildArenaMesh, type DerbyArenaMesh } from '@/game/derbyArena'
+import {
+  buildDerbyScenery,
+  SKIRT_OUTER_RADIUS,
+  type DerbyScenery,
+} from '@/game/derbyScenery'
+import { buildDerbyStadium, type DerbyStadium } from '@/game/derbyStadium'
+import { DERBY_ARENAS } from '@/lib/derbyArenas'
 import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 import { useControlSettings } from '@/hooks/useControlSettings'
 import {
@@ -181,17 +187,18 @@ export function DestructionLab() {
     sun.position.set(40, 80, 30)
     scene.add(sun)
 
-    const ground = new Mesh(
-      new CircleGeometry(80, 64),
-      new MeshStandardMaterial({
-        color: 0xc8b48c,
-        roughness: 0.96,
-        metalness: 0.0,
-      }),
-    )
-    ground.rotation.x = -Math.PI / 2
-    ground.position.y = 0
-    scene.add(ground)
+    // Reuse Derby's Dust Bowl arena geometry: dirt disk + perimeter
+    // wall, plus the decorative skirt (rocks, dirt piles, dead trees,
+    // tires, drums) and the stadium ring beyond it (stepped concrete
+    // bowl, instanced crowd, light poles). This is asset reuse only:
+    // none of Derby's gameplay code is wired in.
+    const arenaConfig = DERBY_ARENAS['dust-bowl']
+    const arenaMesh: DerbyArenaMesh = buildArenaMesh(arenaConfig)
+    scene.add(arenaMesh.group)
+    const scenery: DerbyScenery = buildDerbyScenery(arenaConfig)
+    scene.add(scenery.group)
+    const stadium: DerbyStadium = buildDerbyStadium(arenaConfig, SKIRT_OUTER_RADIUS)
+    scene.add(stadium.group)
 
     const initialRig = cameraRigRef.current ?? DEFAULT_CAMERA_RIG
     const camera = new PerspectiveCamera(
@@ -227,7 +234,7 @@ export function DestructionLab() {
     // Spawn on the AI circle so the controller does not have to chase
     // a far-off target on frame one.
     let physicsState: PhysicsState = {
-      x: 60,
+      x: 40,
       z: 0,
       heading: Math.PI / 2,
       speed: 0,
@@ -504,12 +511,13 @@ export function DestructionLab() {
       if (car) car.dispose()
       if (asset) asset.dispose()
       freeBodies.length = 0
+      arenaMesh.dispose()
+      scenery.dispose()
+      stadium.dispose()
       renderer.dispose()
       if (renderer.domElement.parentElement === container) {
         container.removeChild(renderer.domElement)
       }
-      ground.geometry.dispose()
-      ;(ground.material as MeshStandardMaterial).dispose()
     }
     // The rig and key bindings live in refs; the effect deliberately
     // runs once so the WebGL context is not torn down on every settings
