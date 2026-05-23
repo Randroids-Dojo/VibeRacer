@@ -1,6 +1,7 @@
 // Pure zoom math for the Destruction Lab's overhead camera. The
-// camera sits at (centerX, height, centerZ) looking straight down at
-// the arena center; "zoom" means changing the height, not the FOV.
+// camera sits at (centerX + panX, height, centerZ + panZ) looking
+// straight down at (centerX + panX, 0, centerZ + panZ); "zoom"
+// means changing the height, "pan" means sliding (panX, panZ).
 // All side effects (event listeners, ref writes) live in the lab
 // component; this module just exposes the math + bounds so the
 // integration is unit-testable.
@@ -12,6 +13,11 @@
 export const OVERHEAD_DEFAULT_HEIGHT = 120
 export const OVERHEAD_MIN_HEIGHT = 35
 export const OVERHEAD_MAX_HEIGHT = 280
+
+// Max pan radius from the arena center. Beyond this the arena
+// loses context and the user can pan into empty world. 100 m
+// covers the arena (60) + a generous look at the scenery skirt.
+export const OVERHEAD_PAN_MAX = 100
 
 // One wheel notch (typical browser deltaY ~ 100) zooms by this
 // ratio. 1.15 = 15% per notch, smooth without feeling sluggish.
@@ -63,4 +69,60 @@ export function heightAfterPinch(
     return clampOverheadHeight(initialHeight)
   }
   return clampOverheadHeight(initialHeight * (initialDistance / currentDistance))
+}
+
+// Clamp a pan offset (x, z) to a disk of the given radius around
+// the origin so the camera cannot drift arbitrarily far from the
+// arena. Non-finite components fall back to 0.
+export function clampPanOffset(
+  x: number,
+  z: number,
+  maxRadius: number = OVERHEAD_PAN_MAX,
+): { x: number; z: number } {
+  const sx = Number.isFinite(x) ? x : 0
+  const sz = Number.isFinite(z) ? z : 0
+  const r = Math.hypot(sx, sz)
+  if (r <= maxRadius || maxRadius <= 0) {
+    return { x: sx, z: sz }
+  }
+  const k = maxRadius / r
+  return { x: sx * k, z: sz * k }
+}
+
+// Convert a pointer drag in screen pixels into the camera pan
+// delta that makes the world point under the finger follow the
+// finger ("drag-the-world" convention). Sign math:
+//
+// Overhead camera up = (0, 0, -1), forward = (0, -1, 0), right =
+// (1, 0, 0). Screen +X = camera right = world +X. Screen +Y
+// (typical pixel-coord convention is downward) = camera down =
+// world +Z. So a pixel delta (dxPx, dyPx) corresponds to a world
+// delta of the point under the finger of (+dxPx', +dyPx') (where
+// the primes are scaled by the view's world extent at the ground).
+// To make that world point follow the finger, the CAMERA moves
+// the opposite direction: (-dxPx', -dyPx').
+export function pixelDragToPanDelta(
+  dxPx: number,
+  dyPx: number,
+  viewportWidthPx: number,
+  viewportHeightPx: number,
+  cameraHeight: number,
+  fovDeg: number,
+): { dx: number; dz: number } {
+  if (
+    !Number.isFinite(dxPx) ||
+    !Number.isFinite(dyPx) ||
+    viewportWidthPx <= 0 ||
+    viewportHeightPx <= 0 ||
+    cameraHeight <= 0 ||
+    fovDeg <= 0
+  ) {
+    return { dx: 0, dz: 0 }
+  }
+  const visibleV = 2 * cameraHeight * Math.tan((fovDeg * Math.PI) / 360)
+  const visibleH = visibleV * (viewportWidthPx / viewportHeightPx)
+  return {
+    dx: -(dxPx / viewportWidthPx) * visibleH,
+    dz: -(dyPx / viewportHeightPx) * visibleV,
+  }
 }

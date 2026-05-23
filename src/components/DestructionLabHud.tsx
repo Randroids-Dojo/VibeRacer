@@ -237,7 +237,7 @@ export function DestructionLabHud({
             </div>
           ) : (
             <div style={controlsHintStyle}>
-              Pinch or scroll to zoom the overhead camera. Tap the car to damage it.
+              Pinch or scroll to zoom. Two-finger drag or right-click drag to pan. Tap the car to damage it.
             </div>
           )}
         </div>

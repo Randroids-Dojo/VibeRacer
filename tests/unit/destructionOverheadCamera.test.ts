@@ -3,10 +3,13 @@ import {
   OVERHEAD_DEFAULT_HEIGHT,
   OVERHEAD_MAX_HEIGHT,
   OVERHEAD_MIN_HEIGHT,
+  OVERHEAD_PAN_MAX,
   WHEEL_STEP_RATIO,
   clampOverheadHeight,
+  clampPanOffset,
   heightAfterPinch,
   heightAfterWheel,
+  pixelDragToPanDelta,
 } from '@/game/destruction/overheadCamera'
 
 describe('clampOverheadHeight', () => {
@@ -87,5 +90,70 @@ describe('heightAfterPinch', () => {
     expect(heightAfterPinch(120, 50, 0)).toBe(120)
     expect(heightAfterPinch(120, -10, 50)).toBe(120)
     expect(heightAfterPinch(120, 50, Number.NaN)).toBe(120)
+  })
+})
+
+describe('clampPanOffset', () => {
+  it('passes a vector inside the radius through unchanged', () => {
+    const out = clampPanOffset(20, -30)
+    expect(out.x).toBeCloseTo(20, 4)
+    expect(out.z).toBeCloseTo(-30, 4)
+  })
+  it('rescales a vector outside the radius to land on the boundary', () => {
+    const farX = OVERHEAD_PAN_MAX * 3
+    const farZ = OVERHEAD_PAN_MAX * 4
+    const out = clampPanOffset(farX, farZ)
+    const r = Math.hypot(out.x, out.z)
+    expect(r).toBeCloseTo(OVERHEAD_PAN_MAX, 3)
+    // Direction preserved.
+    expect(Math.atan2(out.z, out.x)).toBeCloseTo(Math.atan2(farZ, farX), 4)
+  })
+  it('treats a custom max radius', () => {
+    const out = clampPanOffset(80, 0, 50)
+    expect(out.x).toBeCloseTo(50, 4)
+    expect(out.z).toBeCloseTo(0, 4)
+  })
+  it('zeroes non-finite components', () => {
+    const out = clampPanOffset(Number.NaN, 10)
+    expect(out.x).toBe(0)
+    expect(out.z).toBeCloseTo(10, 4)
+  })
+})
+
+describe('pixelDragToPanDelta', () => {
+  // Hand-wired numbers so the sign conventions stay readable. The
+  // camera at H=100 with fov 60 sees a vertical extent of
+  // 2 * 100 * tan(30deg) = 115.47 m at the ground.
+  const W = 1000
+  const H = 1000
+  const camH = 100
+  const fov = 60
+
+  it('returns zeros for degenerate input', () => {
+    expect(pixelDragToPanDelta(10, 10, 0, 100, 100, 60)).toEqual({ dx: 0, dz: 0 })
+    expect(pixelDragToPanDelta(10, 10, 100, 0, 100, 60)).toEqual({ dx: 0, dz: 0 })
+    expect(pixelDragToPanDelta(Number.NaN, 0, 100, 100, 100, 60)).toEqual({ dx: 0, dz: 0 })
+  })
+
+  it('drag right gives a negative camera dx (pan camera left)', () => {
+    // 100 pixels right on a 1000 px wide square viewport = 10% of
+    // horizontal extent. visibleV = 115.47 at the parameters above
+    // and aspect 1, so visibleH = 115.47. 10% = 11.547. Camera
+    // moves the opposite direction, so dx = -11.547.
+    const out = pixelDragToPanDelta(100, 0, W, H, camH, fov)
+    expect(out.dx).toBeCloseTo(-11.547, 2)
+    expect(out.dz).toBeCloseTo(0, 4)
+  })
+
+  it('drag down (positive pixel dy) gives a negative camera dz', () => {
+    const out = pixelDragToPanDelta(0, 100, W, H, camH, fov)
+    expect(out.dx).toBeCloseTo(0, 4)
+    expect(out.dz).toBeCloseTo(-11.547, 2)
+  })
+
+  it('scales with camera height (zoomed out moves faster per pixel)', () => {
+    const close = pixelDragToPanDelta(100, 0, W, H, 50, fov)
+    const far = pixelDragToPanDelta(100, 0, W, H, 200, fov)
+    expect(Math.abs(far.dx)).toBeGreaterThan(Math.abs(close.dx) * 3)
   })
 })

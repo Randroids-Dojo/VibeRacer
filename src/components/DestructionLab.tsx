@@ -32,8 +32,10 @@ import {
 import {
   OVERHEAD_DEFAULT_HEIGHT,
   clampOverheadHeight,
+  clampPanOffset,
   heightAfterPinch,
   heightAfterWheel,
+  pixelDragToPanDelta,
 } from '@/game/destruction/overheadCamera'
 import { buildArenaMesh, type DerbyArenaMesh } from '@/game/derbyArena'
 import {
@@ -107,6 +109,18 @@ interface PointerSession {
 interface PinchSession {
   initialDistance: number
   initialHeight: number
+  // Centroid of the two pointers on the previous move event. The
+  // two-finger pan applies the centroid delta to the camera each
+  // move (rather than the gesture-start centroid, which would make
+  // pan compound badly when fingers move asymmetrically).
+  lastCentroidX: number
+  lastCentroidY: number
+}
+
+interface RightDragSession {
+  pointerId: number
+  lastX: number
+  lastY: number
 }
 
 // `mulberry32` seeded RNG. Local copy so the destruction lab does not
@@ -138,6 +152,10 @@ export function DestructionLab() {
   // handlers and the rAF loop can read/write without triggering a
   // React re-render every notch.
   const overheadHeightRef = useRef(OVERHEAD_DEFAULT_HEIGHT)
+  // Overhead-camera pan offset relative to the arena center.
+  // Updated by right-click drag (desktop) and two-finger drag
+  // (touch). Persists across mode toggles like the height does.
+  const overheadPanRef = useRef<{ x: number; z: number }>({ x: 0, z: 0 })
 
   // The camera rig is derived from the player's saved Settings each
   // render so a tweak in SettingsPane lands on the next frame, exactly
@@ -284,13 +302,15 @@ export function DestructionLab() {
     const raycaster = new Raycaster()
     const tmpNdc = new Vector2()
     // Multi-pointer tracker so two simultaneous touches can drive
-    // the pinch zoom in overhead mode. The Map keeps the live
-    // pointer positions; `pointerSessions` keeps per-pointer
-    // click-vs-drag metadata; `pinchSession` is non-null while
-    // exactly two pointers are down.
+    // the pinch zoom + two-finger pan in overhead mode. The Map
+    // keeps the live pointer positions; `pointerSessions` keeps
+    // per-pointer click-vs-drag metadata; `pinchSession` is
+    // non-null while exactly two pointers are down; `rightDrag` is
+    // non-null while the right mouse button is held.
     const pointerSessions = new Map<number, PointerSession>()
     const pointerPositions = new Map<number, { x: number; y: number }>()
     let pinchSession: PinchSession | null = null
+    let rightDrag: RightDragSession | null = null
     let lastCameraMode: 'ai' | 'player' | null = null
     const rng = makeRng(0x1234abcd)
 
@@ -473,12 +493,17 @@ export function DestructionLab() {
         const h = clampOverheadHeight(overheadHeightRef.current)
         overheadHeightRef.current = h
         // Derby arenas are always centered at the world origin; the
-        // config carries no centerX/centerZ. Hardcoding (0, 0) here
-        // keeps the camera at the canonical center; if a future
-        // arena offsets the disk this is the single place to wire
-        // in the new center.
-        camera.position.set(0, h, 0)
-        camera.lookAt(0, 0, 0)
+        // config carries no centerX/centerZ. The pan offset slides
+        // the camera + look target together so the view stays
+        // straight-down on whichever ground point the user dragged
+        // to under the finger.
+        const pan = clampPanOffset(
+          overheadPanRef.current.x,
+          overheadPanRef.current.z,
+        )
+        overheadPanRef.current = pan
+        camera.position.set(pan.x, h, pan.z)
+        camera.lookAt(pan.x, 0, pan.z)
       } else {
         // Restore the default up vector before handing back to the
         // chase rig; applyCameraRig writes position+quaternion but
@@ -531,6 +556,18 @@ export function DestructionLab() {
       return Math.hypot(a.x - b.x, a.y - b.y)
     }
 
+    function pointerCentroid(): { x: number; y: number } {
+      const sum = { x: 0, y: 0 }
+      let count = 0
+      for (const p of pointerPositions.values()) {
+        sum.x += p.x
+        sum.y += p.y
+        count++
+      }
+      if (count === 0) return { x: 0, y: 0 }
+      return { x: sum.x / count, y: sum.y / count }
+    }
+
     function endPinchIfActive() {
       pinchSession = null
       // A pinch participates in BOTH pointers' sessions; mark them
@@ -540,7 +577,41 @@ export function DestructionLab() {
       }
     }
 
+    // Convert a screen-pixel drag delta into a world-space camera
+    // pan, write the clamped result back to overheadPanRef. Shared
+    // between right-click drag and two-finger drag.
+    function applyPanDrag(dxPx: number, dyPx: number): void {
+      if (driveModeRef.current !== 'ai') return
+      const w = container.clientWidth
+      const h = container.clientHeight
+      const fovDeg = camera.fov
+      const delta = pixelDragToPanDelta(
+        dxPx,
+        dyPx,
+        w,
+        h,
+        clampOverheadHeight(overheadHeightRef.current),
+        fovDeg,
+      )
+      overheadPanRef.current = clampPanOffset(
+        overheadPanRef.current.x + delta.dx,
+        overheadPanRef.current.z + delta.dz,
+      )
+    }
+
     function onPointerDown(e: PointerEvent) {
+      // Right mouse button: pan the overhead camera. Tracked
+      // separately from the click-vs-pinch path so a right-drag
+      // never collides with the damage tap logic.
+      if (e.button === 2) {
+        e.preventDefault()
+        rightDrag = {
+          pointerId: e.pointerId,
+          lastX: e.clientX,
+          lastY: e.clientY,
+        }
+        return
+      }
       pointerSessions.set(e.pointerId, {
         pointerId: e.pointerId,
         startX: e.clientX,
@@ -550,24 +621,39 @@ export function DestructionLab() {
         wasPinching: false,
       })
       pointerPositions.set(e.pointerId, { x: e.clientX, y: e.clientY })
-      // Second pointer arrives: start a pinch session. Only meaningful
-      // in overhead mode; in chase mode the second pointer is ignored
-      // for zoom but still flags the first pointer as non-click.
+      // Second pointer arrives: start a pinch session that also
+      // tracks centroid for the two-finger pan. Only the height
+      // changes in chase mode are ignored (pan still no-ops there
+      // via applyPanDrag's mode check) but every active session's
+      // wasPinching flag still flips so no tap registers on
+      // release.
       if (pointerPositions.size === 2) {
         for (const session of pointerSessions.values()) {
           session.wasPinching = true
         }
+        const centroid = pointerCentroid()
         pinchSession = {
           initialDistance: pointerDistance(),
           initialHeight: overheadHeightRef.current,
+          lastCentroidX: centroid.x,
+          lastCentroidY: centroid.y,
         }
       } else if (pointerPositions.size > 2) {
-        // More than two pointers: pinch is ambiguous, drop it.
+        // More than two pointers: pinch + pan are ambiguous, drop.
         pinchSession = null
       }
     }
 
     function onPointerMove(e: PointerEvent) {
+      // Right-click drag pan (desktop).
+      if (rightDrag && e.pointerId === rightDrag.pointerId) {
+        const dx = e.clientX - rightDrag.lastX
+        const dy = e.clientY - rightDrag.lastY
+        rightDrag.lastX = e.clientX
+        rightDrag.lastY = e.clientY
+        applyPanDrag(dx, dy)
+        return
+      }
       if (!pointerPositions.has(e.pointerId)) return
       pointerPositions.set(e.pointerId, { x: e.clientX, y: e.clientY })
       if (
@@ -575,16 +661,30 @@ export function DestructionLab() {
         pointerPositions.size === 2 &&
         driveModeRef.current === 'ai'
       ) {
-        const current = pointerDistance()
+        const currentDistance = pointerDistance()
         overheadHeightRef.current = heightAfterPinch(
           pinchSession.initialHeight,
           pinchSession.initialDistance,
-          current,
+          currentDistance,
         )
+        const centroid = pointerCentroid()
+        applyPanDrag(
+          centroid.x - pinchSession.lastCentroidX,
+          centroid.y - pinchSession.lastCentroidY,
+        )
+        pinchSession.lastCentroidX = centroid.x
+        pinchSession.lastCentroidY = centroid.y
       }
     }
 
     function onPointerUpOrCancel(e: PointerEvent) {
+      // Right-click drag end.
+      if (rightDrag && e.pointerId === rightDrag.pointerId) {
+        rightDrag = null
+        if (e.button === 2 || e.type === 'pointercancel') {
+          return
+        }
+      }
       const session = pointerSessions.get(e.pointerId)
       pointerSessions.delete(e.pointerId)
       pointerPositions.delete(e.pointerId)
@@ -614,6 +714,12 @@ export function DestructionLab() {
       }
     }
 
+    function onContextMenu(e: MouseEvent) {
+      // Right-click is bound to pan; suppress the browser context
+      // menu so it does not pop up over the canvas mid-drag.
+      e.preventDefault()
+    }
+
     function onWheel(e: WheelEvent) {
       // Only the overhead view consumes wheel events; in chase mode
       // the wheel is ignored so future Settings-driven zoom does not
@@ -631,6 +737,7 @@ export function DestructionLab() {
     dom.addEventListener('pointerup', onPointerUpOrCancel)
     dom.addEventListener('pointercancel', onPointerUpOrCancel)
     dom.addEventListener('wheel', onWheel, { passive: false })
+    dom.addEventListener('contextmenu', onContextMenu)
 
     function onResize() {
       const w = container.clientWidth
@@ -649,6 +756,7 @@ export function DestructionLab() {
       dom.removeEventListener('pointerup', onPointerUpOrCancel)
       dom.removeEventListener('pointercancel', onPointerUpOrCancel)
       dom.removeEventListener('wheel', onWheel)
+      dom.removeEventListener('contextmenu', onContextMenu)
       window.removeEventListener('resize', onResize)
       if (car) car.dispose()
       if (asset) asset.dispose()
