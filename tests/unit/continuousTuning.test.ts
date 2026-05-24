@@ -141,12 +141,12 @@ describe('suggestContinuousTuningTweaks', () => {
     expect(out.some((s) => s.id === 'dullLowSpeedSteer')).toBe(false)
   })
 
-  it('flags high-speed off-track entries with sharper high-speed steering and a lower cap', () => {
+  it('flags modest-steer high-speed off-track entries with sharper high-speed steering and a lower cap', () => {
     const input = baseInput()
     const fast = input.params.maxSpeed * 0.85
     input.offTrackEvents = [
-      makeOffTrackEvent({ speed: fast }),
-      makeOffTrackEvent({ speed: fast }),
+      makeOffTrackEvent({ speed: fast, steer: 0.3 }),
+      makeOffTrackEvent({ speed: fast, steer: -0.4 }),
     ]
     const out = suggestContinuousTuningTweaks(input)
     const ids = out.map((s) => s.id)
@@ -154,6 +154,66 @@ describe('suggestContinuousTuningTweaks', () => {
     // Both the lower-cap and stronger-brakes options should also be in the
     // pool (top 3); ordering depends on score.
     expect(ids).toContain('lowerTopSpeed')
+  })
+
+  it('flags full-lock high-speed off-track entries with calmer high-speed steering', () => {
+    const input = baseInput()
+    const fast = input.params.maxSpeed * 0.85
+    input.offTrackEvents = [
+      makeOffTrackEvent({ speed: fast, steer: 0.95 }),
+      makeOffTrackEvent({ speed: fast, steer: -0.9 }),
+    ]
+    const out = suggestContinuousTuningTweaks(input)
+    const ids = out.map((s) => s.id)
+    expect(ids).toContain('dullHighSpeedSteer')
+    const dull = out.find((s) => s.id === 'dullHighSpeedSteer')!
+    expect(dull.delta.steerRateHigh).toBeLessThan(0)
+    expect(ids).not.toContain('sharperHighSpeedSteer')
+  })
+
+  it('detects swervy / oscillating high-speed driving from the position trace, no off-track required', () => {
+    const input = baseInput()
+    // High-speed sawtooth: 0.8 u forward per sample, lateral flips sign
+    // every sample. Consecutive velocity vectors are (0.8, +0.3) then
+    // (0.8, -0.3), so every sample produces a sign flip well above the
+    // 0.025 normalised-cross deadband.
+    const positions: Array<[number, number]> = []
+    const speeds: number[] = []
+    for (let i = 0; i < 200; i += 1) {
+      const sideways = i % 2 === 0 ? 0.15 : -0.15
+      positions.push([i * 0.8, sideways])
+      speeds.push(input.params.maxSpeed * 0.85)
+    }
+    input.telemetry = {
+      sampleMs: 33,
+      positions,
+      speeds,
+      lapTimeMs: speeds.length * 33,
+      offTrackEvents: [],
+    }
+    input.offTrackEvents = []
+    const out = suggestContinuousTuningTweaks(input)
+    expect(out.some((s) => s.id === 'dullHighSpeedSteer')).toBe(true)
+  })
+
+  it('does not flag a clean high-speed straight as swervy', () => {
+    const input = baseInput()
+    const positions: Array<[number, number]> = []
+    const speeds: number[] = []
+    for (let i = 0; i < 200; i += 1) {
+      positions.push([i * 0.8, 0])
+      speeds.push(input.params.maxSpeed * 0.92)
+    }
+    input.telemetry = {
+      sampleMs: 33,
+      positions,
+      speeds,
+      lapTimeMs: speeds.length * 33,
+      offTrackEvents: [],
+    }
+    input.offTrackEvents = []
+    const out = suggestContinuousTuningTweaks(input)
+    expect(out.some((s) => s.id === 'dullHighSpeedSteer')).toBe(false)
   })
 
   it('proposes faster pickup when the player never came close to the top end', () => {

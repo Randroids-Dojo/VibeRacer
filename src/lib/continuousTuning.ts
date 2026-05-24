@@ -238,7 +238,7 @@ function lowSpeedPathWiggle(
   // Need enough low-speed data to trust the signal: at least roughly 1
   // second of low-speed driving at REPLAY_SAMPLE_MS = 33ms cadence.
   if (lowSpeedSamples < 30) return []
-  if (signFlips < 4) return []
+  if (signFlips < 3) return []
   const flipsPerSecond =
     signFlips / (lowSpeedSamples * (telemetry.sampleMs / 1000))
   const score = 1 + Math.min(3, flipsPerSecond * 1.5)
@@ -282,35 +282,121 @@ function highSpeedOffTrack(
     (e) => Math.abs(e.speed) >= maxSpeed * 0.7,
   )
   if (highEvents.length < 1) return []
-  const score = 1 + highEvents.length * 0.7
-  return [
-    {
+  // Same split as the low-speed family. A full-lock entry at speed is the
+  // classic over-correction; a modest-steer entry is "I needed more turn".
+  const wildLockEvents = highEvents.filter((e) => Math.abs(e.steer) >= 0.7)
+  const modestSteerEvents = highEvents.filter((e) => Math.abs(e.steer) < 0.6)
+  const out: ContinuousSuggestion[] = []
+  if (modestSteerEvents.length >= wildLockEvents.length) {
+    const score = 1 + modestSteerEvents.length * 0.7
+    out.push({
       id: 'sharperHighSpeedSteer',
       title: 'Sharper steering at top speed',
       reason:
-        highEvents.length === 1
-          ? 'You went off-track at near-top speed. A snappier high-speed steer rate gives you more turn-in.'
-          : `You went off-track ${highEvents.length}x at near-top speed. A snappier high-speed steer rate gives you more turn-in.`,
+        modestSteerEvents.length === 1
+          ? 'You went off-track at near-top speed without full lock. A snappier high-speed steer rate gives you more turn-in.'
+          : `You went off-track ${modestSteerEvents.length}x at near-top speed without full lock. A snappier high-speed steer rate gives you more turn-in.`,
       delta: {
         steerRateHigh: pctOfRange('steerRateHigh', DEFAULT_STEP_FRACTION),
       },
       score,
-    },
-    {
-      id: 'lowerTopSpeed',
-      title: 'Lower the top speed',
+    })
+  }
+  if (wildLockEvents.length > 0) {
+    const score = 1 + wildLockEvents.length * 0.8
+    out.push({
+      id: 'dullHighSpeedSteer',
+      title: 'Calmer steering at top speed',
       reason:
-        'If you keep getting punished for arriving at corners too hot, a slightly lower cap trades straight-line speed for control.',
-      delta: { maxSpeed: -pctOfRange('maxSpeed', DEFAULT_STEP_FRACTION) },
-      score: score * 0.75,
-    },
+        wildLockEvents.length === 1
+          ? 'You went off-track at near-top speed with the wheel at full lock. A softer high-speed steer rate keeps the car planted on straights.'
+          : `You went off-track ${wildLockEvents.length}x at near-top speed with the wheel at full lock. A softer high-speed steer rate keeps the car planted on straights.`,
+      delta: {
+        steerRateHigh: -pctOfRange('steerRateHigh', DEFAULT_STEP_FRACTION),
+      },
+      score,
+    })
+  }
+  // The cap + brakes alternatives are always useful when arriving too hot.
+  const totalScore = 1 + highEvents.length * 0.7
+  out.push({
+    id: 'lowerTopSpeed',
+    title: 'Lower the top speed',
+    reason:
+      'If you keep getting punished for arriving at corners too hot, a slightly lower cap trades straight-line speed for control.',
+    delta: { maxSpeed: -pctOfRange('maxSpeed', DEFAULT_STEP_FRACTION) },
+    score: totalScore * 0.75,
+  })
+  out.push({
+    id: 'strongerBrakes',
+    title: 'Stronger brakes',
+    reason:
+      'More stopping power lets you carry top-end speed longer before the braking zone.',
+    delta: { brake: pctOfRange('brake', DEFAULT_STEP_FRACTION) },
+    score: totalScore * 0.6,
+  })
+  return out
+}
+
+// Detects oscillating / correcting driving on straights and at high speed.
+// Same direction-reversal counter as the low-speed wiggle detector but
+// looks at samples above the high-speed threshold and uses a tighter
+// per-sample deadband so a 1.5-degree correction still counts. This is the
+// signal that fires when the player is darting left-right to hold a
+// straight line.
+function highSpeedPathWiggle(
+  input: ContinuousSuggestionInput,
+): ContinuousSuggestion[] {
+  const telemetry = input.telemetry
+  if (!telemetry || telemetry.positions.length < 4) return []
+  const maxSpeed = safeMaxSpeed(input.params)
+  const highThreshold = maxSpeed * 0.5
+  const positions = telemetry.positions
+  const speeds = telemetry.speeds
+  let signFlips = 0
+  let highSpeedSamples = 0
+  let lastSign = 0
+  for (let i = 1; i < positions.length - 1; i += 1) {
+    const speed = speeds[i]
+    if (!Number.isFinite(speed)) continue
+    if (speed < highThreshold) {
+      lastSign = 0
+      continue
+    }
+    const p0 = positions[i - 1]
+    const p1 = positions[i]
+    const p2 = positions[i + 1]
+    const v1x = p1[0] - p0[0]
+    const v1z = p1[1] - p0[1]
+    const v2x = p2[0] - p1[0]
+    const v2z = p2[1] - p1[1]
+    const len1 = Math.hypot(v1x, v1z)
+    const len2 = Math.hypot(v2x, v2z)
+    if (len1 < 1e-6 || len2 < 1e-6) continue
+    highSpeedSamples += 1
+    const cross = (v1x * v2z - v1z * v2x) / (len1 * len2)
+    // 0.025 normalised cross = ~1.4 degree per-sample turn. Tighter than
+    // the low-speed detector because mid-corner heading changes at high
+    // speed are physically smaller per 33 ms.
+    const sign = cross > 0.025 ? 1 : cross < -0.025 ? -1 : 0
+    if (sign === 0) continue
+    if (lastSign !== 0 && sign !== lastSign) signFlips += 1
+    lastSign = sign
+  }
+  if (highSpeedSamples < 30) return []
+  if (signFlips < 3) return []
+  const flipsPerSecond =
+    signFlips / (highSpeedSamples * (telemetry.sampleMs / 1000))
+  const score = 1 + Math.min(3, flipsPerSecond * 1.5)
+  return [
     {
-      id: 'strongerBrakes',
-      title: 'Stronger brakes',
-      reason:
-        'More stopping power lets you carry top-end speed longer before the braking zone.',
-      delta: { brake: pctOfRange('brake', DEFAULT_STEP_FRACTION) },
-      score: score * 0.6,
+      id: 'dullHighSpeedSteer',
+      title: 'Calmer steering at top speed',
+      reason: `Your line at speed reversed direction ${signFlips}x. A softer high-speed steer rate makes straights and fast sweepers easier to hold.`,
+      delta: {
+        steerRateHigh: -pctOfRange('steerRateHigh', DEFAULT_STEP_FRACTION),
+      },
+      score,
     },
   ]
 }
@@ -467,6 +553,7 @@ const HEURISTICS = [
   lowSpeedOffTrack,
   lowSpeedPathWiggle,
   highSpeedOffTrack,
+  highSpeedPathWiggle,
   neverReachedTopSpeed,
   alwaysAtTopSpeed,
   longOffTrackExcursions,
@@ -496,6 +583,7 @@ export function suggestContinuousTuningTweaks(
   resolveOppositePair(byId, 'turnFasterLowSpeed', 'raiseMinSteerSpeed')
   resolveOppositePair(byId, 'tighterLowSpeedSteer', 'dullLowSpeedSteer')
   resolveOppositePair(byId, 'lowerMinSteerSpeed', 'raiseMinSteerSpeed')
+  resolveOppositePair(byId, 'sharperHighSpeedSteer', 'dullHighSpeedSteer')
   // Drop suggestions whose delta would be a clamped no-op against the
   // current params. Avoids showing a "lower top speed" pick when the player
   // already sits at the minimum bound.
