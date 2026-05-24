@@ -55,6 +55,7 @@ import {
   type CameraRigParams,
 } from '@/game/sceneBuilder'
 import type { LapCompleteEvent } from '@/game/tick'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 
 const TOTAL_LAPS = 2
 const INTRO_DURATION_MS = 2000
@@ -732,18 +733,12 @@ function mulberry32(seed: number): () => number {
 }
 
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   minHeight: '100dvh',
-  overflow: 'hidden',
   padding: 0,
   background: '#080612',
   color: '#fff',
   fontFamily: 'system-ui, sans-serif',
-  touchAction: 'none',
-  WebkitUserSelect: 'none',
-  userSelect: 'none',
-  WebkitTouchCallout: 'none',
 }
 const stageStyle: React.CSSProperties = {
   position: 'relative',

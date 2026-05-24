@@ -12,7 +12,10 @@ import type { CSSProperties } from 'react'
 //                                   pointer listeners.
 //   - `userSelect: 'none'` (+vendor variants) prevents the long-press
 //                                   text-selection box that appears when
-//                                   a finger sits on a label.
+//                                   a finger sits on a label. Redundant
+//                                   with the app-wide default in
+//                                   globals.css, kept here as defense in
+//                                   depth for game surfaces.
 //   - `WebkitTouchCallout: 'none'`  blocks the iOS long-press callout
 //                                   ("Copy / Look Up") so a held throttle
 //                                   does not summon the system menu.

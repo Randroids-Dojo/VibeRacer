@@ -1,28 +1,26 @@
-/* Default text selection on. iOS Safari's user-agent stylesheet disables
-   -webkit-user-select on interactive elements (a, button), which made
-   menu rows and stat tiles unselectable even though no app code asked for
-   that. Re-enabling it here lets players copy slug names, lap times, and
-   other text from the title screen and other menu surfaces.
+/* VibeRacer is a game. Disable text selection and iOS long-press callouts
+   app-wide so a held throttle, a long-press on a menu row, or a finger
+   resting on a stat tile never summons the iOS Copy / Look Up / Share
+   sheet. Form inputs and contenteditable surfaces opt back in below so
+   players can still type initials, feedback, and other free-text fields.
 
-   Interactive elements are set to `inherit` rather than `text` so the
-   in-game root (Game.tsx) keeps its scoped `user-select: none`: descendants
-   still inherit `none` from that container, while descendants of <body>
-   inherit the default `text`. */
+   This is the single source of truth. Menu shells, overlays, and game
+   surfaces all inherit from here. Do not re-enable user-select inside
+   a component without a concrete reason. */
 
+html,
 body {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+input,
+textarea,
+select,
+[contenteditable='true'],
+[contenteditable=''] {
   -webkit-user-select: text;
   user-select: text;
   -webkit-touch-callout: default;
-}
-
-a,
-button,
-[role='button'],
-input[type='button'],
-input[type='submit'],
-label,
-li,
-summary {
-  -webkit-user-select: inherit;
-  user-select: inherit;
 }
