@@ -37,6 +37,7 @@ import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
 import { PauseMenu } from '@/components/PauseMenu'
+import { SettingsPane } from '@/components/SettingsPane'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
 import { buildTrackPath } from '@/game/trackPath'
 import {
@@ -104,7 +105,7 @@ function TourRacePageInner() {
     [championship, tourId],
   )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
-  const { settings } = useControlSettings()
+  const { settings, setSettings, resetSettings } = useControlSettings()
   const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
 
@@ -228,6 +229,10 @@ function TourRacePageInner() {
   const [hudLap, setHudLap] = useState(0)
   const [speedKmh, setSpeedKmh] = useState(0)
   const [paused, setPaused] = useState(false)
+  // Which sub-view the pause overlay is showing. Mirrors Game.tsx's
+  // pauseView state machine, scoped to the subset of views the tour
+  // pause menu currently exposes (menu + settings).
+  const [pauseView, setPauseView] = useState<'menu' | 'settings'>('menu')
   const [showIntro, setShowIntro] = useState(true)
 
   // Reset the run from scratch. Used by both the route-change effect
@@ -398,7 +403,17 @@ function TourRacePageInner() {
           break
         case 'Escape':
           setShowIntro(false)
-          setPaused((v) => !v)
+          // If already paused (any sub-view), Esc fully resumes and resets
+          // the view back to the menu so the next pause opens clean. If
+          // not paused, Esc pauses. Mirrors Game.tsx's idempotent
+          // pause/resume so the MenuNav Esc handler firing in parallel
+          // never double-toggles us.
+          if (pausedRef.current) {
+            setPauseView('menu')
+            setPaused(false)
+          } else {
+            setPaused(true)
+          }
           break
       }
     }
@@ -467,13 +482,19 @@ function TourRacePageInner() {
   }, [])
 
   const handleResume = useCallback(() => {
+    setPauseView('menu')
     setPaused(false)
   }, [])
   const handleRestart = useCallback(() => {
     resetRace(false)
   }, [resetRace])
   const handleQuit = useCallback(() => {
-    router.push('/tour')
+    router.push('/tour/garage')
+  }, [router])
+  const handleOpenSettings = useCallback(() => setPauseView('settings'), [])
+  const handleCloseSettings = useCallback(() => setPauseView('menu'), [])
+  const handleTuningLab = useCallback(() => {
+    router.push('/tune')
   }, [router])
 
   // Poll the live speed ref at 4 Hz so the bottom-left readout stays
@@ -615,12 +636,25 @@ function TourRacePageInner() {
           </button>
         ) : null}
         {paused && hudPhase !== 'finished' ? (
-          <PauseMenu
-            onResume={handleResume}
-            onRestart={handleRestart}
-            onExit={handleQuit}
-            pieces={pieces}
-          />
+          pauseView === 'settings' ? (
+            <SettingsPane
+              settings={settings}
+              onChange={setSettings}
+              onClose={handleCloseSettings}
+              onReset={resetSettings}
+              inRace
+            />
+          ) : (
+            <PauseMenu
+              onResume={handleResume}
+              onRestart={handleRestart}
+              onSettings={handleOpenSettings}
+              onTuningLab={handleTuningLab}
+              onExit={handleQuit}
+              exitLabel="Exit to garage"
+              pieces={pieces}
+            />
+          )
         ) : null}
       </div>
     </main>

@@ -42,6 +42,10 @@ interface PauseMenuProps {
   // stays renderable when the host has no piece info handy (legacy callers).
   pieces?: Piece[] | null
   onExit: () => void
+  // Label for the exit row. Defaults to "Exit to title" for Free Race;
+  // World Tour overrides to "Exit to garage" since its home is the tour
+  // garage, not the title screen.
+  exitLabel?: string
 }
 
 // In-game pause menu. Hosted inside a MenuStageOverlay so it shares the
@@ -60,6 +64,7 @@ export function PauseMenu({
   trackMoodLabel,
   pieces,
   onExit,
+  exitLabel = 'Exit to title',
 }: PauseMenuProps) {
   const hasPieces = pieces && pieces.length > 0
   return (
@@ -101,7 +106,7 @@ export function PauseMenu({
         <MenuShellAction onClick={onSettings}>Settings</MenuShellAction>
       ) : null}
       <MenuShellAction click="back" onClick={onExit} style={exitBtnStyle}>
-        Exit to title
+        {exitLabel}
       </MenuShellAction>
       {trackMoodLabel ? (
         <div
