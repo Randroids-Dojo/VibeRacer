@@ -164,6 +164,12 @@ export function TuningSession({
   const autoSaveTimerRef = useRef<number | null>(null)
   const pausedRef = useRef(false)
   const resumeShiftRef = useRef(0)
+  // Wall-clock at the moment the in-drive sliders panel opened. The
+  // canvas's rAF loop bails early while pausedRef is true but does not
+  // shift its lap clock, so on resume we feed the elapsed pause delta
+  // into resumeShiftRef. Mirrors the Game.tsx pause/resume pattern.
+  const driveSlidersPauseStartRef = useRef<number | null>(null)
+  const [driveSlidersOpen, setDriveSlidersOpen] = useState(false)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
   // Per-lap telemetry buffers. The off-track event ref accumulates as the
@@ -418,6 +424,31 @@ export function TuningSession({
     [recordTuningChange],
   )
 
+  function openDriveSliders() {
+    if (driveSlidersOpen) return
+    // Only meaningful during the drive phase; freeze panels manage their
+    // own paused state.
+    if (phaseRef.current !== 'drive') return
+    driveSlidersPauseStartRef.current = performance.now()
+    pausedRef.current = true
+    setDriveSlidersOpen(true)
+  }
+
+  function closeDriveSliders() {
+    if (!driveSlidersOpen) return
+    if (driveSlidersPauseStartRef.current !== null) {
+      resumeShiftRef.current +=
+        performance.now() - driveSlidersPauseStartRef.current
+      driveSlidersPauseStartRef.current = null
+    }
+    // Only flip pausedRef back to false if we're still in the drive
+    // phase. If a lap completed while the player was tweaking (it can't,
+    // because the loop is paused), or the player navigated away through
+    // another control path, we don't want to silently resume.
+    if (phaseRef.current === 'drive') pausedRef.current = false
+    setDriveSlidersOpen(false)
+  }
+
   function gotoSave() {
     if (!pendingRecommendation) return
     setSaveName('')
@@ -633,7 +664,7 @@ export function TuningSession({
           <DriveHud hud={hud} />
           <TouchControls
             keys={keys}
-            enabled={phase === 'drive'}
+            enabled={phase === 'drive' && !driveSlidersOpen}
             mode={settings.touchMode}
           />
           {phase === 'drive' ? (
@@ -646,12 +677,45 @@ export function TuningSession({
                 Restart
               </button>
               <button
+                onClick={openDriveSliders}
+                style={driveActionBtn}
+                aria-label="Open tuning sliders"
+              >
+                Tuning
+              </button>
+              <button
                 onClick={abortDrive}
                 style={driveActionBtn}
                 aria-label="End session"
               >
                 End session
               </button>
+            </div>
+          ) : null}
+          {driveSlidersOpen ? (
+            <div
+              style={continuousOverlay}
+              role="dialog"
+              aria-label="Tuning sliders"
+            >
+              <div style={continuousCard}>
+                <div style={continuousHeader}>
+                  <span style={continuousLap}>TUNING</span>
+                  <span style={continuousLapTime}>paused</span>
+                </div>
+                <h2 style={cardTitle}>All tuning sliders</h2>
+                <p style={cardCopy}>
+                  Sliders apply to the live car. The lap clock is paused while
+                  this panel is open. Close to resume driving.
+                </p>
+                <TuningEditor
+                  params={params}
+                  onChange={handleManualParamsChange}
+                  onClose={closeDriveSliders}
+                  closeLabel="Resume"
+                  hint="Sliders apply to the live car."
+                />
+              </div>
             </div>
           ) : null}
           {phase === 'countdown' ? <Countdown onDone={onCountdownDone} /> : null}
