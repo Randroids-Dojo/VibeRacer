@@ -661,37 +661,39 @@ export function TuningSession({
             disableMusicIntensity
             style={canvasStyle}
           />
-          <DriveHud hud={hud} />
+          <div style={hudWrap}>
+            <DriveHud hud={hud} />
+            {phase === 'drive' ? (
+              <div style={driveActions}>
+                <button
+                  onClick={restartCurrentRun}
+                  style={driveActionBtn}
+                  aria-label="Restart run"
+                >
+                  Restart
+                </button>
+                <button
+                  onClick={openDriveSliders}
+                  style={driveActionBtn}
+                  aria-label="Open tuning sliders"
+                >
+                  Tuning
+                </button>
+                <button
+                  onClick={abortDrive}
+                  style={driveActionBtn}
+                  aria-label="End session"
+                >
+                  End session
+                </button>
+              </div>
+            ) : null}
+          </div>
           <TouchControls
             keys={keys}
             enabled={phase === 'drive' && !driveSlidersOpen}
             mode={settings.touchMode}
           />
-          {phase === 'drive' ? (
-            <div style={driveActions}>
-              <button
-                onClick={restartCurrentRun}
-                style={driveActionBtn}
-                aria-label="Restart run"
-              >
-                Restart
-              </button>
-              <button
-                onClick={openDriveSliders}
-                style={driveActionBtn}
-                aria-label="Open tuning sliders"
-              >
-                Tuning
-              </button>
-              <button
-                onClick={abortDrive}
-                style={driveActionBtn}
-                aria-label="End session"
-              >
-                End session
-              </button>
-            </div>
-          ) : null}
           {driveSlidersOpen ? (
             <div
               style={continuousOverlay}
@@ -1175,10 +1177,17 @@ const canvasStyle: CSSProperties = {
   width: '100%',
   height: '100%',
 }
-const driveHud: CSSProperties = {
+const hudWrap: CSSProperties = {
   position: 'fixed',
-  top: 12,
-  right: 12,
+  inset: 0,
+  pointerEvents: 'none',
+  zIndex: 10,
+}
+const driveHud: CSSProperties = {
+  position: 'absolute',
+  top: 'calc(12px + env(safe-area-inset-top, 0px))',
+  right: 'calc(12px + env(safe-area-inset-right, 0px))',
+  maxWidth: 'calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
   display: 'flex',
   flexDirection: 'column',
   gap: 6,
@@ -1186,9 +1195,10 @@ const driveHud: CSSProperties = {
   color: 'white',
   padding: '10px 14px',
   borderRadius: 10,
-  zIndex: 10,
   fontFamily: 'system-ui, sans-serif',
   fontSize: 14,
+  pointerEvents: 'auto',
+  boxSizing: 'border-box',
 }
 const driveHudRow: CSSProperties = {
   display: 'flex',
@@ -1226,12 +1236,15 @@ const wrongWayBadge: CSSProperties = {
   border: '1px solid rgba(255, 240, 180, 0.85)',
 }
 const driveActions: CSSProperties = {
-  position: 'fixed',
-  left: 16,
-  bottom: 20,
+  position: 'absolute',
+  left: 'calc(16px + env(safe-area-inset-left, 0px))',
+  right: 'calc(16px + env(safe-area-inset-right, 0px))',
+  bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
   display: 'flex',
+  flexWrap: 'wrap',
   gap: 8,
   zIndex: 20,
+  pointerEvents: 'auto',
 }
 const driveActionBtn: CSSProperties = {
   background: 'rgba(0,0,0,0.55)',
@@ -1242,6 +1255,9 @@ const driveActionBtn: CSSProperties = {
   fontSize: 13,
   cursor: 'pointer',
   fontFamily: 'inherit',
+  minHeight: 44,
+  touchAction: 'manipulation',
+  WebkitTapHighlightColor: 'transparent',
 }
 const formScroll: CSSProperties = {
   width: '100%',
@@ -1389,9 +1405,14 @@ const continuousOverlay: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  padding: 16,
+  paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
+  paddingRight: 'calc(16px + env(safe-area-inset-right, 0px))',
+  paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
+  paddingLeft: 'calc(16px + env(safe-area-inset-left, 0px))',
   zIndex: 30,
   fontFamily: 'system-ui, sans-serif',
+  WebkitOverflowScrolling: 'touch',
+  overflowY: 'auto',
 }
 const continuousCard: CSSProperties = {
   display: 'flex',
@@ -1404,9 +1425,10 @@ const continuousCard: CSSProperties = {
   color: 'white',
   width: '100%',
   maxWidth: 540,
-  maxHeight: '90vh',
+  maxHeight: '100%',
   overflowY: 'auto',
   boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+  boxSizing: 'border-box',
 }
 const continuousHeader: CSSProperties = {
   display: 'flex',
