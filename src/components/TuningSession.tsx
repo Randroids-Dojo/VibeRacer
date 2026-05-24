@@ -26,6 +26,11 @@ import {
   type SavedTuning,
   type TrackTag,
 } from '@/lib/tuningLab'
+import {
+  applyContinuousSuggestion,
+  suggestContinuousTuningTweaks,
+  type ContinuousSuggestion,
+} from '@/lib/continuousTuning'
 import { useTuningRecorder } from '@/hooks/useTuningRecorder'
 import { TUNING_HISTORY_DEBOUNCE_MS } from '@/lib/tuningHistory'
 import { TUNING_PARAM_META } from '@/lib/tuningSettings'
@@ -63,6 +68,7 @@ type Phase =
   | 'intro'
   | 'countdown'
   | 'drive'
+  | 'continuous'
   | 'feedback'
   | 'recommend'
   | 'save'
@@ -107,6 +113,16 @@ export function TuningSession({
     nextParams: CarParams
     perParamDelta: ParamDeltas
   } | null>(null)
+  // Continuous-tuning suggestions for the current lap freeze. Computed from
+  // the pending round's telemetry the moment the lap completes; cleared the
+  // moment the player picks one or skips.
+  const [continuousSuggestions, setContinuousSuggestions] = useState<
+    ContinuousSuggestion[]
+  >([])
+  // Running count of laps completed in continuous mode so the freeze panel
+  // can show "After lap N" without relying on RaceCanvas's HUD state (which
+  // resets between laps).
+  const [continuousLapCount, setContinuousLapCount] = useState(0)
   const [controlType, setControlType] = useState<ControlType>(
     initialControlType,
   )
@@ -232,16 +248,28 @@ export function TuningSession({
   const handleLapComplete = useCallback((event: LapCompleteEvent) => {
     if (phaseRef.current !== 'drive') return
     // Snapshot whatever was sampled this lap, clear the refs for the next
-    // attempt, and hand the bundle to the feedback form via pendingRound.
-    setPendingRound({
+    // attempt, and freeze the rAF loop while the continuous-tuning panel
+    // shows the player up to a few A/B suggestions to choose from. The
+    // classic Likert feedback survey still exists but only fires when the
+    // player ends the session.
+    const pending = {
       lapTimeMs: event.lapTimeMs,
       offTrackEvents: offTrackEventsRef.current.slice(),
       telemetry: lastTelemetryRef.current,
-    })
+    }
+    setPendingRound(pending)
     offTrackEventsRef.current = []
     lastTelemetryRef.current = null
     pausedRef.current = true
-    setPhase('feedback')
+    const suggestions = suggestContinuousTuningTweaks({
+      params: paramsRef.current,
+      lapTimeMs: pending.lapTimeMs,
+      offTrackEvents: pending.offTrackEvents,
+      telemetry: pending.telemetry,
+    })
+    setContinuousSuggestions(suggestions)
+    setContinuousLapCount((n) => n + 1)
+    setPhase('continuous')
   }, [])
 
   const handleOffTrackEvent = useCallback((event: OffTrackEvent) => {
@@ -345,6 +373,35 @@ export function TuningSession({
     })
     setPendingRecommendation(null)
     startCountdown()
+  }
+
+  function acceptContinuousSuggestion(suggestion: ContinuousSuggestion) {
+    const nextParams = applyContinuousSuggestion(params, suggestion.delta)
+    setParams(nextParams)
+    recordTuningChange({
+      next: nextParams,
+      source: 'recommended',
+      label: suggestion.title,
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
+    setContinuousSuggestions([])
+    startCountdown()
+  }
+
+  function skipContinuousSuggestion() {
+    setContinuousSuggestions([])
+    startCountdown()
+  }
+
+  function endContinuousSessionToFeedback() {
+    // Continuous mode keeps a live snapshot of the lap that just completed
+    // (pendingRound) and the cumulative params from any accepted picks. The
+    // classic survey reads both, so the End-session pick lands the player
+    // straight in the Likert form for the most recent lap.
+    setContinuousSuggestions([])
+    pausedRef.current = true
+    setPhase('feedback')
   }
 
   function gotoSave() {
@@ -504,7 +561,11 @@ export function TuningSession({
     setPhase('countdown')
   }
 
-  const showCanvas = phase === 'countdown' || phase === 'drive'
+  // Keep the canvas mounted under the continuous-tuning freeze panel so the
+  // background scene reads as a paused race instead of a hard cut to a menu.
+  // pausedRef stops the rAF loop while the overlay is up.
+  const showCanvas =
+    phase === 'countdown' || phase === 'drive' || phase === 'continuous'
 
   return (
     <div style={shell}>
@@ -573,13 +634,24 @@ export function TuningSession({
               <button
                 onClick={abortDrive}
                 style={driveActionBtn}
-                aria-label="Stop run"
+                aria-label="End session"
               >
-                Stop run
+                End session
               </button>
             </div>
           ) : null}
           {phase === 'countdown' ? <Countdown onDone={onCountdownDone} /> : null}
+          {phase === 'continuous' ? (
+            <ContinuousSuggestView
+              lapNumber={continuousLapCount}
+              lapTimeMs={pendingRound?.lapTimeMs ?? null}
+              offTrackCount={pendingRound?.offTrackEvents?.length ?? 0}
+              suggestions={continuousSuggestions}
+              onAccept={acceptContinuousSuggestion}
+              onSkip={skipContinuousSuggestion}
+              onEndSession={endContinuousSessionToFeedback}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -653,9 +725,10 @@ function IntroView({
       <h2 style={cardTitle}>New tuning session</h2>
       <p style={cardCopy}>
         Drive a short curated loop with straights, turns, an S-curve, and a
-        hairpin. After the lap, you will rate seven aspects of car feel and the
-        lab will suggest new parameters. Repeat until everything feels right,
-        then save the tuning.
+        hairpin. After every lap the lab freezes and shows a few small tuning
+        tweaks drawn from how you actually drove the lap. Pick one, skip, and
+        keep driving. End the session when you are done to rate the lap and
+        save the setup.
       </p>
 
       <div style={cardLabel}>Control</div>
@@ -794,6 +867,99 @@ function RecommendView({
         <button onClick={onDiscard} style={dangerBtn}>
           Discard session
         </button>
+      </div>
+    </div>
+  )
+}
+
+function ContinuousSuggestView({
+  lapNumber,
+  lapTimeMs,
+  offTrackCount,
+  suggestions,
+  onAccept,
+  onSkip,
+  onEndSession,
+}: {
+  lapNumber: number
+  lapTimeMs: number | null
+  offTrackCount: number
+  suggestions: ContinuousSuggestion[]
+  onAccept: (s: ContinuousSuggestion) => void
+  onSkip: () => void
+  onEndSession: () => void
+}) {
+  const lapStr =
+    lapTimeMs !== null ? `${(lapTimeMs / 1000).toFixed(2)}s` : 'lap pending'
+  return (
+    <div style={continuousOverlay} role="dialog" aria-label="Tuning suggestions">
+      <div style={continuousCard}>
+        <div style={continuousHeader}>
+          <span style={continuousLap}>LAP {lapNumber}</span>
+          <span style={continuousLapTime}>{lapStr}</span>
+          {offTrackCount > 0 ? (
+            <span style={continuousOffBadge}>
+              {offTrackCount}x off-track
+            </span>
+          ) : (
+            <span style={continuousCleanBadge}>clean lap</span>
+          )}
+        </div>
+        <h2 style={cardTitle}>
+          {suggestions.length === 0
+            ? 'Nothing to tweak'
+            : 'Pick a tuning tweak'}
+        </h2>
+        <p style={cardCopy}>
+          {suggestions.length === 0
+            ? 'That lap looked clean. No recommendations this round. Drive another or end the session.'
+            : 'Based on how you drove that lap, choose one nudge to apply, or skip to drive the same setup again.'}
+        </p>
+
+        {suggestions.length > 0 ? (
+          <div style={suggestionList}>
+            {suggestions.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => onAccept(s)}
+                style={suggestionRow}
+                aria-label={`Apply: ${s.title}`}
+              >
+                <div style={suggestionRowHead}>
+                  <span style={suggestionLetter}>
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span style={suggestionTitle}>{s.title}</span>
+                </div>
+                <div style={suggestionReason}>{s.reason}</div>
+                <div style={suggestionDeltaRow}>
+                  {Object.keys(s.delta).map((k) => {
+                    const key = k as keyof CarParams
+                    const meta = TUNING_PARAM_META.find((m) => m.key === key)
+                    if (!meta) return null
+                    const d = s.delta[key] ?? 0
+                    const up = d > 0
+                    return (
+                      <span key={k} style={suggestionDeltaChip}>
+                        {meta.label} <Arrow up={up} />{' '}
+                        {(up ? '+' : '') + d.toFixed(2)} {meta.unit}
+                      </span>
+                    )
+                  })}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <div style={ctaCol}>
+          <button onClick={onSkip} style={primaryBtn}>
+            No change, drive again
+          </button>
+          <button onClick={onEndSession} style={secondaryBtn}>
+            End session and review
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -1107,4 +1273,133 @@ const textField: CSSProperties = {
   padding: '10px 12px',
   fontFamily: 'inherit',
   fontSize: 14,
+}
+const continuousOverlay: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  padding: 16,
+  zIndex: 30,
+  fontFamily: 'system-ui, sans-serif',
+}
+const continuousCard: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  padding: 18,
+  background: '#1d1d1d',
+  border: '1px solid #2a2a2a',
+  borderRadius: 12,
+  color: 'white',
+  width: '100%',
+  maxWidth: 540,
+  maxHeight: '90vh',
+  overflowY: 'auto',
+  boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+}
+const continuousHeader: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  fontFamily: 'monospace',
+  fontSize: 12,
+}
+const continuousLap: CSSProperties = {
+  background: '#ff6b35',
+  color: 'white',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontWeight: 700,
+  letterSpacing: 1,
+}
+const continuousLapTime: CSSProperties = {
+  color: 'white',
+  fontWeight: 700,
+  fontSize: 14,
+}
+const continuousOffBadge: CSSProperties = {
+  marginLeft: 'auto',
+  background: '#552d2d',
+  color: '#ff9a9a',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontSize: 11,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+}
+const continuousCleanBadge: CSSProperties = {
+  marginLeft: 'auto',
+  background: '#1f3f29',
+  color: '#5fe08a',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontSize: 11,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+}
+const suggestionList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+const suggestionRow: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: 12,
+  background: '#0e0e0e',
+  border: '1px solid #3a3a3a',
+  borderLeft: '3px solid #ff6b35',
+  borderRadius: 8,
+  textAlign: 'left',
+  color: 'white',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const suggestionRowHead: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+}
+const suggestionLetter: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 24,
+  height: 24,
+  borderRadius: 6,
+  background: '#ff6b35',
+  color: 'white',
+  fontWeight: 800,
+  fontSize: 13,
+  letterSpacing: 0,
+}
+const suggestionTitle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+}
+const suggestionReason: CSSProperties = {
+  fontSize: 12,
+  opacity: 0.8,
+  lineHeight: 1.4,
+}
+const suggestionDeltaRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  fontFamily: 'monospace',
+  fontSize: 11,
+}
+const suggestionDeltaChip: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '3px 8px',
+  background: '#1d1d1d',
+  border: '1px solid #3a3a3a',
+  borderRadius: 999,
+  color: '#cfcfcf',
 }

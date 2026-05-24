@@ -307,7 +307,7 @@ export function TuningLab() {
   return (
     <MenuPageShell
       title="Tuning Lab"
-      blurb="Drive a short test loop, rate the feel, and have the lab suggest new params. Save what works."
+      blurb="Drive a short test loop. After every lap the lab freezes and offers a few small tuning tweaks based on how you drove. Pick one, skip, repeat. End the session to rate the lap and save the setup."
       closeHref="/"
       width="narrow"
     >
