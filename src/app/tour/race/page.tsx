@@ -36,12 +36,8 @@ import {
 import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
-import {
-  MenuButton,
-  MenuOverlay,
-  MenuPanel,
-  MenuTitle,
-} from '@/components/MenuUI'
+import { PauseMenu } from '@/components/PauseMenu'
+import { SettingsPane } from '@/components/SettingsPane'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
 import { buildTrackPath } from '@/game/trackPath'
 import {
@@ -55,6 +51,7 @@ import {
   type CameraRigParams,
 } from '@/game/sceneBuilder'
 import type { LapCompleteEvent } from '@/game/tick'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 
 const TOTAL_LAPS = 2
 const INTRO_DURATION_MS = 2000
@@ -108,7 +105,7 @@ function TourRacePageInner() {
     [championship, tourId],
   )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
-  const { settings } = useControlSettings()
+  const { settings, setSettings, resetSettings } = useControlSettings()
   const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
 
@@ -232,6 +229,10 @@ function TourRacePageInner() {
   const [hudLap, setHudLap] = useState(0)
   const [speedKmh, setSpeedKmh] = useState(0)
   const [paused, setPaused] = useState(false)
+  // Which sub-view the pause overlay is showing. Mirrors Game.tsx's
+  // pauseView state machine, scoped to the subset of views the tour
+  // pause menu currently exposes (menu + settings).
+  const [pauseView, setPauseView] = useState<'menu' | 'settings'>('menu')
   const [showIntro, setShowIntro] = useState(true)
 
   // Reset the run from scratch. Used by both the route-change effect
@@ -402,7 +403,17 @@ function TourRacePageInner() {
           break
         case 'Escape':
           setShowIntro(false)
-          setPaused((v) => !v)
+          // If already paused (any sub-view), Esc fully resumes and resets
+          // the view back to the menu so the next pause opens clean. If
+          // not paused, Esc pauses. Mirrors Game.tsx's idempotent
+          // pause/resume so the MenuNav Esc handler firing in parallel
+          // never double-toggles us.
+          if (pausedRef.current) {
+            setPauseView('menu')
+            setPaused(false)
+          } else {
+            setPaused(true)
+          }
           break
       }
     }
@@ -471,13 +482,19 @@ function TourRacePageInner() {
   }, [])
 
   const handleResume = useCallback(() => {
+    setPauseView('menu')
     setPaused(false)
   }, [])
   const handleRestart = useCallback(() => {
     resetRace(false)
   }, [resetRace])
   const handleQuit = useCallback(() => {
-    router.push('/tour')
+    router.push('/tour/garage')
+  }, [router])
+  const handleOpenSettings = useCallback(() => setPauseView('settings'), [])
+  const handleCloseSettings = useCallback(() => setPauseView('menu'), [])
+  const handleTuningLab = useCallback(() => {
+    router.push('/tune')
   }, [router])
 
   // Poll the live speed ref at 4 Hz so the bottom-left readout stays
@@ -619,22 +636,25 @@ function TourRacePageInner() {
           </button>
         ) : null}
         {paused && hudPhase !== 'finished' ? (
-          <MenuOverlay zIndex={100} onBack={handleResume}>
-            <MenuPanel>
-              <MenuTitle>PAUSED</MenuTitle>
-              <div style={menuButtonStackStyle}>
-                <MenuButton variant="primary" onClick={handleResume}>
-                  Resume
-                </MenuButton>
-                <MenuButton onClick={handleRestart}>
-                  Restart race
-                </MenuButton>
-                <MenuButton onClick={handleQuit}>
-                  Quit to tours
-                </MenuButton>
-              </div>
-            </MenuPanel>
-          </MenuOverlay>
+          pauseView === 'settings' ? (
+            <SettingsPane
+              settings={settings}
+              onChange={setSettings}
+              onClose={handleCloseSettings}
+              onReset={resetSettings}
+              inRace
+            />
+          ) : (
+            <PauseMenu
+              onResume={handleResume}
+              onRestart={handleRestart}
+              onSettings={handleOpenSettings}
+              onTuningLab={handleTuningLab}
+              onExit={handleQuit}
+              exitLabel="Exit to garage"
+              pieces={pieces}
+            />
+          )
         ) : null}
       </div>
     </main>
@@ -732,18 +752,12 @@ function mulberry32(seed: number): () => number {
 }
 
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   minHeight: '100dvh',
-  overflow: 'hidden',
   padding: 0,
   background: '#080612',
   color: '#fff',
   fontFamily: 'system-ui, sans-serif',
-  touchAction: 'none',
-  WebkitUserSelect: 'none',
-  userSelect: 'none',
-  WebkitTouchCallout: 'none',
 }
 const stageStyle: React.CSSProperties = {
   position: 'relative',
@@ -845,13 +859,6 @@ const introTitleStyle: React.CSSProperties = {
 const introMetaStyle: React.CSSProperties = {
   fontSize: 'clamp(13px, 4vw, 16px)',
   opacity: 0.9,
-}
-const menuButtonStackStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  marginTop: 18,
-  width: '100%',
 }
 const pauseButtonStyle: React.CSSProperties = {
   position: 'fixed',

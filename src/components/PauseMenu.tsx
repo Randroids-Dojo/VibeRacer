@@ -15,17 +15,21 @@ interface PauseMenuProps {
   // Restart only the current lap. Preserves session PB, lap count, and lap
   // history; abandons the in-flight checkpoint progress and resets the lap
   // timer. Renders only when the player has a lap in progress (no point
-  // restarting an empty lap on the first frame).
-  onRestartLap: () => void
-  onEditTrack: () => void
-  onRace: () => void
-  onSettings: () => void
+  // restarting an empty lap on the first frame). Omit when the host mode
+  // does not support mid-lap reset (e.g. World Tour races).
+  onRestartLap?: () => void
+  // Free Race only. Omit in modes whose track is fixed (World Tour).
+  onEditTrack?: () => void
+  // Opens the Race sub-pane (leaderboards, lap history, etc.). Omit in
+  // modes that do not host those panes (World Tour).
+  onRace?: () => void
+  onSettings?: () => void
   // Direct shortcut to the Tuning Lab at /tune. The host owns the
   // leave-race confirm prompt so this stays presentational.
-  onTuningLab: () => void
+  onTuningLab?: () => void
   // Re-open the pre-race setup picker. Restarts the current race from the
   // countdown so the freshly-picked setup is in effect for a clean lap.
-  onChangeSetup: () => void
+  onChangeSetup?: () => void
   // Short label describing the active track-author mood (e.g. "Sunset, Foggy")
   // when the player is racing under a baked-in author mood. Renders as a
   // small caption above the Esc hint so the player understands why the scene
@@ -38,6 +42,10 @@ interface PauseMenuProps {
   // stays renderable when the host has no piece info handy (legacy callers).
   pieces?: Piece[] | null
   onExit: () => void
+  // Label for the exit row. Defaults to "Exit to title" for Free Race;
+  // World Tour overrides to "Exit to garage" since its home is the tour
+  // garage, not the title screen.
+  exitLabel?: string
 }
 
 // In-game pause menu. Hosted inside a MenuStageOverlay so it shares the
@@ -56,6 +64,7 @@ export function PauseMenu({
   trackMoodLabel,
   pieces,
   onExit,
+  exitLabel = 'Exit to title',
 }: PauseMenuProps) {
   const hasPieces = pieces && pieces.length > 0
   return (
@@ -71,23 +80,33 @@ export function PauseMenu({
         </div>
       ) : null}
       <MenuStartButton onClick={onResume}>Resume</MenuStartButton>
-      <MenuShellAction click="confirm" onClick={onRestartLap}>
-        Restart Lap
-      </MenuShellAction>
+      {onRestartLap ? (
+        <MenuShellAction click="confirm" onClick={onRestartLap}>
+          Restart Lap
+        </MenuShellAction>
+      ) : null}
       <MenuShellAction click="confirm" onClick={onRestart}>
         Restart
       </MenuShellAction>
-      <MenuShellAction onClick={onRace}>Race</MenuShellAction>
-      <MenuShellAction onClick={onEditTrack}>Edit Track</MenuShellAction>
-      <MenuShellAction click="confirm" onClick={onChangeSetup}>
-        Change car setup
-      </MenuShellAction>
-      <MenuShellAction click="confirm" onClick={onTuningLab}>
-        Tuning Lab
-      </MenuShellAction>
-      <MenuShellAction onClick={onSettings}>Settings</MenuShellAction>
+      {onRace ? <MenuShellAction onClick={onRace}>Race</MenuShellAction> : null}
+      {onEditTrack ? (
+        <MenuShellAction onClick={onEditTrack}>Edit Track</MenuShellAction>
+      ) : null}
+      {onChangeSetup ? (
+        <MenuShellAction click="confirm" onClick={onChangeSetup}>
+          Change car setup
+        </MenuShellAction>
+      ) : null}
+      {onTuningLab ? (
+        <MenuShellAction click="confirm" onClick={onTuningLab}>
+          Tuning Lab
+        </MenuShellAction>
+      ) : null}
+      {onSettings ? (
+        <MenuShellAction onClick={onSettings}>Settings</MenuShellAction>
+      ) : null}
       <MenuShellAction click="back" onClick={onExit} style={exitBtnStyle}>
-        Exit to title
+        {exitLabel}
       </MenuShellAction>
       {trackMoodLabel ? (
         <div
