@@ -36,12 +36,7 @@ import {
 import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
-import {
-  MenuButton,
-  MenuOverlay,
-  MenuPanel,
-  MenuTitle,
-} from '@/components/MenuUI'
+import { PauseMenu } from '@/components/PauseMenu'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
 import { buildTrackPath } from '@/game/trackPath'
 import {
@@ -620,22 +615,12 @@ function TourRacePageInner() {
           </button>
         ) : null}
         {paused && hudPhase !== 'finished' ? (
-          <MenuOverlay zIndex={100} onBack={handleResume}>
-            <MenuPanel>
-              <MenuTitle>PAUSED</MenuTitle>
-              <div style={menuButtonStackStyle}>
-                <MenuButton variant="primary" onClick={handleResume}>
-                  Resume
-                </MenuButton>
-                <MenuButton onClick={handleRestart}>
-                  Restart race
-                </MenuButton>
-                <MenuButton onClick={handleQuit}>
-                  Quit to tours
-                </MenuButton>
-              </div>
-            </MenuPanel>
-          </MenuOverlay>
+          <PauseMenu
+            onResume={handleResume}
+            onRestart={handleRestart}
+            onExit={handleQuit}
+            pieces={pieces}
+          />
         ) : null}
       </div>
     </main>
@@ -840,13 +825,6 @@ const introTitleStyle: React.CSSProperties = {
 const introMetaStyle: React.CSSProperties = {
   fontSize: 'clamp(13px, 4vw, 16px)',
   opacity: 0.9,
-}
-const menuButtonStackStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  marginTop: 18,
-  width: '100%',
 }
 const pauseButtonStyle: React.CSSProperties = {
   position: 'fixed',
