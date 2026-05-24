@@ -63,17 +63,82 @@ describe('suggestContinuousTuningTweaks', () => {
     expect(out).toEqual([])
   })
 
-  it('flags low-speed off-track entries with a sharper low-speed steer rate', () => {
+  it('flags low-speed off-track entries with a sharper low-speed steer rate when steer was modest', () => {
     const input = baseInput()
     input.offTrackEvents = [
-      makeOffTrackEvent({ speed: 3 }),
-      makeOffTrackEvent({ speed: 4 }),
+      makeOffTrackEvent({ speed: 3, steer: 0.3 }),
+      makeOffTrackEvent({ speed: 4, steer: -0.4 }),
     ]
     const out = suggestContinuousTuningTweaks(input)
     const titles = out.map((s) => s.id)
     expect(titles).toContain('turnFasterLowSpeed')
     const top = out.find((s) => s.id === 'turnFasterLowSpeed')!
     expect(top.delta.steerRateLow).toBeGreaterThan(0)
+  })
+
+  it('flags low-speed off-track entries with a softer low-speed steer rate when the wheel was at full lock', () => {
+    const input = baseInput()
+    input.offTrackEvents = [
+      makeOffTrackEvent({ speed: 3, steer: 0.95 }),
+      makeOffTrackEvent({ speed: 4, steer: -0.9 }),
+      makeOffTrackEvent({ speed: 4, steer: 0.85 }),
+    ]
+    const out = suggestContinuousTuningTweaks(input)
+    const ids = out.map((s) => s.id)
+    expect(ids).toContain('dullLowSpeedSteer')
+    const top = out.find((s) => s.id === 'dullLowSpeedSteer')!
+    expect(top.delta.steerRateLow).toBeLessThan(0)
+    // The opposite-pair suppression should keep "turn faster" out when the
+    // softer pick scores higher.
+    expect(ids).not.toContain('turnFasterLowSpeed')
+  })
+
+  it('detects swervy / oscillating low-speed driving from the position trace', () => {
+    const input = baseInput()
+    // Build a synthetic low-speed path that snakes side to side at 33 ms
+    // cadence. Each sample steps forward 0.3 units and to alternating
+    // sides so the cross-product sign flips on every other sample.
+    const positions: Array<[number, number]> = []
+    const speeds: number[] = []
+    for (let i = 0; i < 200; i += 1) {
+      const sideways = i % 2 === 0 ? 0.25 : -0.25
+      positions.push([i * 0.3, sideways])
+      speeds.push(2)
+    }
+    input.telemetry = {
+      sampleMs: 33,
+      positions,
+      speeds,
+      lapTimeMs: speeds.length * 33,
+      offTrackEvents: [],
+    }
+    input.offTrackEvents = []
+    const out = suggestContinuousTuningTweaks(input)
+    expect(out.some((s) => s.id === 'dullLowSpeedSteer')).toBe(true)
+  })
+
+  it('does not flag a clean low-speed corner as swervy', () => {
+    const input = baseInput()
+    // Quarter circle at low speed: steady left turn, no direction
+    // reversals.
+    const positions: Array<[number, number]> = []
+    const speeds: number[] = []
+    const radius = 8
+    for (let i = 0; i < 200; i += 1) {
+      const t = (i / 200) * (Math.PI / 2)
+      positions.push([radius * Math.sin(t), radius * (1 - Math.cos(t))])
+      speeds.push(3)
+    }
+    input.telemetry = {
+      sampleMs: 33,
+      positions,
+      speeds,
+      lapTimeMs: speeds.length * 33,
+      offTrackEvents: [],
+    }
+    input.offTrackEvents = []
+    const out = suggestContinuousTuningTweaks(input)
+    expect(out.some((s) => s.id === 'dullLowSpeedSteer')).toBe(false)
   })
 
   it('flags high-speed off-track entries with sharper high-speed steering and a lower cap', () => {
