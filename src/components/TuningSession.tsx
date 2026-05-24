@@ -50,6 +50,7 @@ import { Countdown } from './Countdown'
 import { TouchControls } from './TouchControls'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { TuningFeedbackForm } from './TuningFeedbackForm'
+import { TuningEditor } from './TuningEditor'
 import type { CarParams } from '@/game/physics'
 import type { LapCompleteEvent } from '@/game/tick'
 import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
@@ -404,6 +405,19 @@ export function TuningSession({
     setPhase('feedback')
   }
 
+  const handleManualParamsChange = useCallback(
+    (next: CarParams) => {
+      setParams(next)
+      recordTuningChange({
+        next,
+        source: 'slider',
+        label: 'Manual slider tweak',
+        slug: TUNING_LAB_SYNTHETIC_SLUG,
+      })
+    },
+    [recordTuningChange],
+  )
+
   function gotoSave() {
     if (!pendingRecommendation) return
     setSaveName('')
@@ -647,6 +661,8 @@ export function TuningSession({
               lapTimeMs={pendingRound?.lapTimeMs ?? null}
               offTrackCount={pendingRound?.offTrackEvents?.length ?? 0}
               suggestions={continuousSuggestions}
+              params={params}
+              onParamsChange={handleManualParamsChange}
               onAccept={acceptContinuousSuggestion}
               onSkip={skipContinuousSuggestion}
               onEndSession={endContinuousSessionToFeedback}
@@ -877,6 +893,8 @@ function ContinuousSuggestView({
   lapTimeMs,
   offTrackCount,
   suggestions,
+  params,
+  onParamsChange,
   onAccept,
   onSkip,
   onEndSession,
@@ -885,10 +903,13 @@ function ContinuousSuggestView({
   lapTimeMs: number | null
   offTrackCount: number
   suggestions: ContinuousSuggestion[]
+  params: CarParams
+  onParamsChange: (next: CarParams) => void
   onAccept: (s: ContinuousSuggestion) => void
   onSkip: () => void
   onEndSession: () => void
 }) {
+  const [slidersOpen, setSlidersOpen] = useState(false)
   const lapStr =
     lapTimeMs !== null ? `${(lapTimeMs / 1000).toFixed(2)}s` : 'lap pending'
   return (
@@ -949,6 +970,29 @@ function ContinuousSuggestView({
                 </div>
               </button>
             ))}
+          </div>
+        ) : null}
+
+        <button
+          onClick={() => setSlidersOpen((v) => !v)}
+          style={slidersToggle}
+          aria-expanded={slidersOpen}
+          aria-controls="continuous-sliders-region"
+        >
+          <span style={slidersChevron} aria-hidden>
+            {slidersOpen ? 'v' : '>'}
+          </span>
+          {slidersOpen ? 'Hide all tuning sliders' : 'Show all tuning sliders'}
+        </button>
+        {slidersOpen ? (
+          <div id="continuous-sliders-region" style={slidersRegion}>
+            <TuningEditor
+              params={params}
+              onChange={onParamsChange}
+              onClose={() => setSlidersOpen(false)}
+              closeLabel="Done"
+              hint="Sliders apply to the live car. Drive the next lap to feel them."
+            />
           </div>
         ) : null}
 
@@ -1402,4 +1446,35 @@ const suggestionDeltaChip: CSSProperties = {
   border: '1px solid #3a3a3a',
   borderRadius: 999,
   color: '#cfcfcf',
+}
+const slidersToggle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 12px',
+  background: '#0e0e0e',
+  border: '1px solid #3a3a3a',
+  borderRadius: 8,
+  color: '#cfcfcf',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+const slidersChevron: CSSProperties = {
+  display: 'inline-block',
+  width: 14,
+  textAlign: 'center',
+  fontFamily: 'monospace',
+  color: '#ff8a3c',
+}
+const slidersRegion: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  padding: 8,
+  background: '#0a0a0a',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
 }
