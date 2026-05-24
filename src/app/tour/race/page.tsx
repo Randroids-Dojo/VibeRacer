@@ -217,17 +217,10 @@ function TourRacePageInner() {
   const aiStateRef = useRef<
     { progress: number; speedMps: number; lateralM: number; color: number }[]
   >([])
-  // Live speed channel RaceCanvas writes every frame. The footer reads
-  // it via a 4 Hz rAF loop so the bottom-left readout matches the main
-  // game's km/h convention without re-rendering React 60 times per
-  // second.
-  const speedRef = useRef<number>(0)
-
   const [hudPhase, setHudPhase] = useState<'intro' | 'racing' | 'finished'>(
     'intro',
   )
   const [hudLap, setHudLap] = useState(0)
-  const [speedKmh, setSpeedKmh] = useState(0)
   const [paused, setPaused] = useState(false)
   // Which sub-view the pause overlay is showing. Mirrors Game.tsx's
   // pauseView state machine, scoped to the subset of views the tour
@@ -497,15 +490,6 @@ function TourRacePageInner() {
     router.push('/tune')
   }, [router])
 
-  // Poll the live speed ref at 4 Hz so the bottom-left readout stays
-  // in sync without re-rendering on every frame.
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setSpeedKmh(Math.round(Math.abs(speedRef.current) * 3.6))
-    }, 250)
-    return () => window.clearInterval(id)
-  }, [])
-
   if (!tour) {
     return (
       <main style={pageStyle}>
@@ -540,15 +524,6 @@ function TourRacePageInner() {
               {Math.min(hudLap + 1, TOTAL_LAPS)}/{TOTAL_LAPS}
             </p>
           </div>
-          <div style={hudStyle}>
-            {hudPhase === 'intro' ? (
-              <span>READY</span>
-            ) : hudPhase === 'racing' ? (
-              <span>{paused ? 'PAUSED' : 'GO'}</span>
-            ) : (
-              <span>Finishing...</span>
-            )}
-          </div>
         </header>
 
         <div
@@ -579,7 +554,6 @@ function TourRacePageInner() {
             opponentsRef={opponentsRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
-            speedOutRef={speedRef}
             disableMusicIntensity
             style={raceCanvasInnerStyle}
           />
@@ -611,14 +585,6 @@ function TourRacePageInner() {
           </button>
         ) : null}
 
-        <footer style={footerStyle}>
-          <span>
-            Drive with keyboard, touch, or mapped controls
-            <br />
-            <small>{speedKmh} km/h</small>
-          </span>
-          <Link href="/tour" style={backLinkStyle}>Quit race</Link>
-        </footer>
         <TouchControls
           keys={keys}
           enabled={!showIntro && !paused && hudPhase !== 'finished'}
@@ -789,16 +755,6 @@ const tagStyle: React.CSSProperties = {
   opacity: 0.85,
   textShadow: '0 2px 10px rgba(0,0,0,0.7)',
 }
-const hudStyle: React.CSSProperties = {
-  minWidth: 74,
-  padding: '8px 10px',
-  borderRadius: 8,
-  background: 'rgba(0,0,0,0.5)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  fontSize: 14,
-  fontWeight: 700,
-  textAlign: 'center',
-}
 const canvasStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -811,20 +767,6 @@ const raceCanvasInnerStyle: React.CSSProperties = {
   display: 'block',
   width: '100%',
   height: '100%',
-}
-const footerStyle: React.CSSProperties = {
-  position: 'fixed',
-  left: 12,
-  right: 12,
-  bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
-  fontSize: 12,
-  opacity: 0.85,
-  zIndex: 10,
-  pointerEvents: 'none',
 }
 const backLinkStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.65)',
