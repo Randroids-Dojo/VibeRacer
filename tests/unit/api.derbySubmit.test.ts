@@ -1,8 +1,20 @@
 import { describe, it, expect, beforeAll, beforeEach, vi } from 'vitest'
 import { NextRequest } from 'next/server'
 import { FakeKv } from './_fakeKv'
+import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
+import { DERBY_ARENAS } from '@/lib/derbyArenas'
 
 const fake = new FakeKv()
+
+// Pick a roundTimeMs that comfortably clears both the vehicle's anti-cheat
+// floor and the arena's duration ceiling. Derived from the catalog so a
+// retune of theoreticalMinWinMs (or roundDurationMs) does not re-break
+// the valid-win assertions here.
+const VALID_ROUND_MS = Math.round(
+  (DERBY_VEHICLES.car.theoreticalMinWinMs +
+    DERBY_ARENAS['dust-bowl'].roundDurationMs) /
+    2,
+)
 
 beforeAll(() => {
   process.env.RACE_SIGNING_SECRET = 'test-secret-for-vitest-only'
@@ -125,7 +137,7 @@ describe('POST /api/derby/submit', () => {
       buildSubmitReq({
         token: t.token,
         outcome: 'loss',
-        roundTimeMs: 90_000,
+        roundTimeMs: VALID_ROUND_MS,
         finalHealths: [0, 100, 100, 100],
         kills: 0,
         scorePoints: 0,
@@ -148,7 +160,7 @@ describe('POST /api/derby/submit', () => {
       buildSubmitReq({
         token: t.token,
         outcome: 'win',
-        roundTimeMs: 90_000,
+        roundTimeMs: VALID_ROUND_MS,
         finalHealths: [10, 0, 0, 0],
         kills: 3,
         scorePoints: 1900,
@@ -169,7 +181,7 @@ describe('POST /api/derby/submit', () => {
     const payload = {
       token: t.token,
       outcome: 'win' as const,
-      roundTimeMs: 90_000,
+      roundTimeMs: VALID_ROUND_MS,
       finalHealths: [10, 0, 0, 0],
       kills: 3,
       scorePoints: 1900,

@@ -39,6 +39,7 @@ import { TouchControls } from '@/components/TouchControls'
 import { PauseMenu } from '@/components/PauseMenu'
 import { SettingsPane } from '@/components/SettingsPane'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
+import { Countdown } from '@/components/Countdown'
 import { buildTrackPath } from '@/game/trackPath'
 import {
   buildRail,
@@ -217,9 +218,9 @@ function TourRacePageInner() {
   const aiStateRef = useRef<
     { progress: number; speedMps: number; lateralM: number; color: number }[]
   >([])
-  const [hudPhase, setHudPhase] = useState<'intro' | 'racing' | 'finished'>(
-    'intro',
-  )
+  const [hudPhase, setHudPhase] = useState<
+    'intro' | 'countdown' | 'racing' | 'finished'
+  >('intro')
   const [hudLap, setHudLap] = useState(0)
   const [paused, setPaused] = useState(false)
   // Which sub-view the pause overlay is showing. Mirrors Game.tsx's
@@ -315,8 +316,9 @@ function TourRacePageInner() {
       const ai = aiStateRef.current
       if (!opponents || opponents.length !== ai.length) return
       // Hold opponents on the grid until the player has dropped the
-      // intro card. Same gate the player's race-start pulse uses.
-      const racing = !showIntro && !paused && hudPhase !== 'finished'
+      // intro card AND the Red/Yellow/Green start-light countdown has
+      // finished. Same gate the player's race-start pulse uses.
+      const racing = !showIntro && !paused && hudPhase === 'racing'
       for (let i = 0; i < ai.length; i++) {
         const car = ai[i]!
         if (racing) {
@@ -357,11 +359,12 @@ function TourRacePageInner() {
     if (showIntro) return
     if (hudPhase !== 'intro') return
     // RaceCanvas's reset block explicitly nulls pendingRaceStartRef
-    // while it's consuming a pendingReset pulse, so if we arm the
-    // race-start pulse in the same React tick we just requested a
-    // reset, the reset can wipe it before the next frame and the
-    // player never gets driving control back. Poll until the reset
-    // ref is clear, then fire the start pulse on the same frame.
+    // while it's consuming a pendingReset pulse, so if we transitioned
+    // into the countdown in the same React tick we just requested a
+    // reset, a stray pulse could be wiped before the next frame. Poll
+    // until the reset ref is clear, then show the Red/Yellow/Green
+    // countdown. The countdown's onDone arms pendingRaceStartRef and
+    // flips hudPhase to 'racing'.
     let cancelled = false
     const armWhenResetDone = () => {
       if (cancelled) return
@@ -369,14 +372,18 @@ function TourRacePageInner() {
         window.requestAnimationFrame(armWhenResetDone)
         return
       }
-      pendingRaceStartRef.current = performance.now()
-      setHudPhase('racing')
+      setHudPhase('countdown')
     }
     window.requestAnimationFrame(armWhenResetDone)
     return () => {
       cancelled = true
     }
   }, [showIntro, hudPhase])
+
+  const handleCountdownDone = useCallback(() => {
+    pendingRaceStartRef.current = performance.now()
+    setHudPhase('racing')
+  }, [])
 
   // Route-level controls that are not part of the shared driving key map.
   useEffect(() => {
@@ -583,6 +590,10 @@ function TourRacePageInner() {
               Top {tour.requiredStanding} of {tour.fieldSize} to clear
             </div>
           </button>
+        ) : null}
+
+        {hudPhase === 'countdown' && !paused ? (
+          <Countdown onDone={handleCountdownDone} />
         ) : null}
 
         <TouchControls
