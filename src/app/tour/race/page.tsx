@@ -36,12 +36,8 @@ import {
 import { resolveCarParams } from '@/game/worldTourUpgrades'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { TouchControls } from '@/components/TouchControls'
-import {
-  MenuButton,
-  MenuOverlay,
-  MenuPanel,
-  MenuTitle,
-} from '@/components/MenuUI'
+import { PauseMenu } from '@/components/PauseMenu'
+import { SettingsPane } from '@/components/SettingsPane'
 import { RaceCanvas, type OpponentPose } from '@/components/RaceCanvas'
 import { Countdown } from '@/components/Countdown'
 import { buildTrackPath } from '@/game/trackPath'
@@ -56,6 +52,7 @@ import {
   type CameraRigParams,
 } from '@/game/sceneBuilder'
 import type { LapCompleteEvent } from '@/game/tick'
+import { MOBILE_GAME_SURFACE_STYLES } from '@/lib/mobileGameSurface'
 
 const TOTAL_LAPS = 2
 const INTRO_DURATION_MS = 2000
@@ -109,7 +106,7 @@ function TourRacePageInner() {
     [championship, tourId],
   )
   const raceIndex = clampRaceIndex(rawRaceIndex, tour?.trackIds.length ?? 1)
-  const { settings } = useControlSettings()
+  const { settings, setSettings, resetSettings } = useControlSettings()
   const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
 
@@ -221,18 +218,15 @@ function TourRacePageInner() {
   const aiStateRef = useRef<
     { progress: number; speedMps: number; lateralM: number; color: number }[]
   >([])
-  // Live speed channel RaceCanvas writes every frame. The footer reads
-  // it via a 4 Hz rAF loop so the bottom-left readout matches the main
-  // game's km/h convention without re-rendering React 60 times per
-  // second.
-  const speedRef = useRef<number>(0)
-
   const [hudPhase, setHudPhase] = useState<
     'intro' | 'countdown' | 'racing' | 'finished'
   >('intro')
   const [hudLap, setHudLap] = useState(0)
-  const [speedKmh, setSpeedKmh] = useState(0)
   const [paused, setPaused] = useState(false)
+  // Which sub-view the pause overlay is showing. Mirrors Game.tsx's
+  // pauseView state machine, scoped to the subset of views the tour
+  // pause menu currently exposes (menu + settings).
+  const [pauseView, setPauseView] = useState<'menu' | 'settings'>('menu')
   const [showIntro, setShowIntro] = useState(true)
 
   // Reset the run from scratch. Used by both the route-change effect
@@ -409,7 +403,17 @@ function TourRacePageInner() {
           break
         case 'Escape':
           setShowIntro(false)
-          setPaused((v) => !v)
+          // If already paused (any sub-view), Esc fully resumes and resets
+          // the view back to the menu so the next pause opens clean. If
+          // not paused, Esc pauses. Mirrors Game.tsx's idempotent
+          // pause/resume so the MenuNav Esc handler firing in parallel
+          // never double-toggles us.
+          if (pausedRef.current) {
+            setPauseView('menu')
+            setPaused(false)
+          } else {
+            setPaused(true)
+          }
           break
       }
     }
@@ -478,23 +482,20 @@ function TourRacePageInner() {
   }, [])
 
   const handleResume = useCallback(() => {
+    setPauseView('menu')
     setPaused(false)
   }, [])
   const handleRestart = useCallback(() => {
     resetRace(false)
   }, [resetRace])
   const handleQuit = useCallback(() => {
-    router.push('/tour')
+    router.push('/tour/garage')
   }, [router])
-
-  // Poll the live speed ref at 4 Hz so the bottom-left readout stays
-  // in sync without re-rendering on every frame.
-  useEffect(() => {
-    const id = window.setInterval(() => {
-      setSpeedKmh(Math.round(Math.abs(speedRef.current) * 3.6))
-    }, 250)
-    return () => window.clearInterval(id)
-  }, [])
+  const handleOpenSettings = useCallback(() => setPauseView('settings'), [])
+  const handleCloseSettings = useCallback(() => setPauseView('menu'), [])
+  const handleTuningLab = useCallback(() => {
+    router.push('/tune')
+  }, [router])
 
   if (!tour) {
     return (
@@ -530,17 +531,6 @@ function TourRacePageInner() {
               {Math.min(hudLap + 1, TOTAL_LAPS)}/{TOTAL_LAPS}
             </p>
           </div>
-          <div style={hudStyle}>
-            {hudPhase === 'intro' ? (
-              <span>READY</span>
-            ) : hudPhase === 'countdown' ? (
-              <span>SET</span>
-            ) : hudPhase === 'racing' ? (
-              <span>{paused ? 'PAUSED' : 'GO'}</span>
-            ) : (
-              <span>Finishing...</span>
-            )}
-          </div>
         </header>
 
         <div
@@ -571,7 +561,6 @@ function TourRacePageInner() {
             opponentsRef={opponentsRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
-            speedOutRef={speedRef}
             disableMusicIntensity
             style={raceCanvasInnerStyle}
           />
@@ -607,14 +596,6 @@ function TourRacePageInner() {
           <Countdown onDone={handleCountdownDone} />
         ) : null}
 
-        <footer style={footerStyle}>
-          <span>
-            Drive with keyboard, touch, or mapped controls
-            <br />
-            <small>{speedKmh} km/h</small>
-          </span>
-          <Link href="/tour" style={backLinkStyle}>Quit race</Link>
-        </footer>
         <TouchControls
           keys={keys}
           enabled={!showIntro && !paused && hudPhase !== 'finished'}
@@ -632,22 +613,25 @@ function TourRacePageInner() {
           </button>
         ) : null}
         {paused && hudPhase !== 'finished' ? (
-          <MenuOverlay zIndex={100} onBack={handleResume}>
-            <MenuPanel>
-              <MenuTitle>PAUSED</MenuTitle>
-              <div style={menuButtonStackStyle}>
-                <MenuButton variant="primary" onClick={handleResume}>
-                  Resume
-                </MenuButton>
-                <MenuButton onClick={handleRestart}>
-                  Restart race
-                </MenuButton>
-                <MenuButton onClick={handleQuit}>
-                  Quit to tours
-                </MenuButton>
-              </div>
-            </MenuPanel>
-          </MenuOverlay>
+          pauseView === 'settings' ? (
+            <SettingsPane
+              settings={settings}
+              onChange={setSettings}
+              onClose={handleCloseSettings}
+              onReset={resetSettings}
+              inRace
+            />
+          ) : (
+            <PauseMenu
+              onResume={handleResume}
+              onRestart={handleRestart}
+              onSettings={handleOpenSettings}
+              onTuningLab={handleTuningLab}
+              onExit={handleQuit}
+              exitLabel="Exit to garage"
+              pieces={pieces}
+            />
+          )
         ) : null}
       </div>
     </main>
@@ -745,18 +729,12 @@ function mulberry32(seed: number): () => number {
 }
 
 const pageStyle: React.CSSProperties = {
-  position: 'fixed',
-  inset: 0,
+  ...MOBILE_GAME_SURFACE_STYLES,
   minHeight: '100dvh',
-  overflow: 'hidden',
   padding: 0,
   background: '#080612',
   color: '#fff',
   fontFamily: 'system-ui, sans-serif',
-  touchAction: 'none',
-  WebkitUserSelect: 'none',
-  userSelect: 'none',
-  WebkitTouchCallout: 'none',
 }
 const stageStyle: React.CSSProperties = {
   position: 'relative',
@@ -788,16 +766,6 @@ const tagStyle: React.CSSProperties = {
   opacity: 0.85,
   textShadow: '0 2px 10px rgba(0,0,0,0.7)',
 }
-const hudStyle: React.CSSProperties = {
-  minWidth: 74,
-  padding: '8px 10px',
-  borderRadius: 8,
-  background: 'rgba(0,0,0,0.5)',
-  border: '1px solid rgba(255,255,255,0.18)',
-  fontSize: 14,
-  fontWeight: 700,
-  textAlign: 'center',
-}
 const canvasStyle: React.CSSProperties = {
   position: 'fixed',
   inset: 0,
@@ -810,20 +778,6 @@ const raceCanvasInnerStyle: React.CSSProperties = {
   display: 'block',
   width: '100%',
   height: '100%',
-}
-const footerStyle: React.CSSProperties = {
-  position: 'fixed',
-  left: 12,
-  right: 12,
-  bottom: 'calc(12px + env(safe-area-inset-bottom, 0px))',
-  display: 'flex',
-  justifyContent: 'space-between',
-  alignItems: 'center',
-  gap: 12,
-  fontSize: 12,
-  opacity: 0.85,
-  zIndex: 10,
-  pointerEvents: 'none',
 }
 const backLinkStyle: React.CSSProperties = {
   color: 'rgba(255,255,255,0.65)',
@@ -858,13 +812,6 @@ const introTitleStyle: React.CSSProperties = {
 const introMetaStyle: React.CSSProperties = {
   fontSize: 'clamp(13px, 4vw, 16px)',
   opacity: 0.9,
-}
-const menuButtonStackStyle: React.CSSProperties = {
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 12,
-  marginTop: 18,
-  width: '100%',
 }
 const pauseButtonStyle: React.CSSProperties = {
   position: 'fixed',
