@@ -482,21 +482,23 @@ async function safeClipboardWrite(text: string) {
   document.body.removeChild(ta)
 }
 
-// Session view skips MenuPageShell because TuningSession provides its
-// own chrome (track HUD, sliders, recorder). Keep the dark stage so the
-// recorder reads correctly during the test loop.
+// Session view is a transparent passthrough: every TuningSession phase
+// paints its own full-screen surface (driveLayer / canvas during drive,
+// MenuPageShell on the intro screen, a dimmed overlay on the freeze
+// panel + sliders, and a sky-blue panel page on feedback / recommend /
+// save). Removing the dark gradient that used to live here lets the
+// sky-blue menu family take over without leaking the old dev-console
+// gradient around the edges.
 const sessionShellStyle: CSSProperties = {
   position: 'relative',
   minHeight: '100vh',
   width: '100%',
   display: 'flex',
   flexDirection: 'column',
-  alignItems: 'center',
-  padding: 16,
-  gap: 16,
+  alignItems: 'stretch',
   fontFamily: 'system-ui, sans-serif',
   color: 'white',
-  background: 'linear-gradient(180deg, #1f2330 0%, #0c1018 100%)',
+  background: menuTheme.pageBg,
 }
 const cardTitle: CSSProperties = {
   margin: 0,

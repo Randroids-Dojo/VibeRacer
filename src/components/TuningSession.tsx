@@ -47,6 +47,9 @@ import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
+import { MenuPageShell } from './MenuPageShell'
+import { MenuPickRow, MenuShellAction, MenuStartButton } from './MenuUI'
+import { menuTheme } from './menuTheme'
 import { TouchControls } from './TouchControls'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { TuningFeedbackForm } from './TuningFeedbackForm'
@@ -803,59 +806,63 @@ function IntroView({
   onStart: () => void
   onCancel: () => void
 }) {
+  // Render via the shared menu shell so the intro reads as part of the
+  // same family as Free Race / Derby / Tour / Settings / PreRaceSetup
+  // (sky-blue page, dark-translucent header strip + body panel, cream
+  // pick rows, red-pink CTAs). See AGENTS.md RULE 3.5.
   return (
-    <div style={card}>
-      <h2 style={cardTitle}>New tuning session</h2>
-      <p style={cardCopy}>
-        Drive a short curated loop with straights, turns, an S-curve, and a
-        hairpin. After every lap the lab freezes and shows a few small tuning
-        tweaks drawn from how you actually drove the lap. Pick one, skip, and
-        keep driving. End the session when you are done to rate the lap and
-        save the setup.
-      </p>
-
-      <div style={cardLabel}>Control</div>
-      <div style={chipRow}>
+    <MenuPageShell
+      title="New tuning session"
+      blurb="Drive a short curated loop with straights, turns, an S-curve, and a hairpin. After every lap the lab freezes and shows a few small tuning tweaks drawn from how you actually drove the lap. Pick one, skip, and keep driving. End the session when you are done to rate the lap and save the setup."
+      closeHref="/tune"
+      width="narrow"
+    >
+      <div style={introSectionHeader}>Control</div>
+      <div role="radiogroup" aria-label="Control" style={introPickList}>
         {CONTROL_OPTIONS.map((c) => (
-          <button
+          <MenuPickRow
             key={c}
-            onClick={() => onChangeControl(c)}
-            style={{
-              ...chip,
-              background: controlType === c ? '#ff6b35' : '#1d1d1d',
-            }}
-          >
-            {CONTROL_TYPE_LABELS[c]}
-          </button>
+            label={CONTROL_TYPE_LABELS[c]}
+            selected={controlType === c}
+            onPick={() => onChangeControl(c)}
+          />
         ))}
       </div>
 
-      <div style={cardLabel}>Track type tags (up to 4)</div>
-      <div style={chipRow}>
+      <div style={introSectionHeader}>Track type tags (up to 4)</div>
+      <div style={introPickList}>
         {TAG_OPTIONS.map((t) => {
           const active = trackTags.includes(t)
           return (
-            <button
+            <MenuPickRow
               key={t}
-              onClick={() => onToggleTag(t)}
-              style={{ ...chip, background: active ? '#ff6b35' : '#1d1d1d' }}
-            >
-              {TRACK_TAG_LABELS[t]}
-            </button>
+              label={TRACK_TAG_LABELS[t]}
+              selected={active}
+              onPick={() => onToggleTag(t)}
+            />
           )
         })}
       </div>
 
-      <div style={ctaRow}>
-        <button onClick={onCancel} style={secondaryBtn}>
-          Back
-        </button>
-        <button onClick={onStart} style={primaryBtn}>
-          Start drive
-        </button>
-      </div>
-    </div>
+      <MenuStartButton onClick={onStart}>Start drive</MenuStartButton>
+      <MenuShellAction onClick={onCancel}>Back</MenuShellAction>
+    </MenuPageShell>
   )
+}
+
+const introSectionHeader: CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.75,
+  fontWeight: 600,
+  color: 'white',
+}
+const introPickList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
 }
 
 function DriveHud({ hud }: { hud: RaceCanvasHud }) {
@@ -1230,9 +1237,9 @@ const DRIVE_HUD_CSS = `
 }
 .viberacer-tuning-actions {
   position: absolute;
-  left: max(20px, calc(16px + env(safe-area-inset-left, 0px)));
-  right: max(20px, calc(16px + env(safe-area-inset-right, 0px)));
-  bottom: max(32px, calc(20px + env(safe-area-inset-bottom, 0px)));
+  left: max(24px, calc(16px + env(safe-area-inset-left, 0px)));
+  right: max(24px, calc(16px + env(safe-area-inset-right, 0px)));
+  bottom: max(48px, calc(28px + env(safe-area-inset-bottom, 0px)));
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1268,9 +1275,9 @@ const DRIVE_HUD_CSS = `
     font-size: 12px;
   }
   .viberacer-tuning-actions {
-    left: max(28px, calc(20px + env(safe-area-inset-left, 0px)));
-    right: max(28px, calc(20px + env(safe-area-inset-right, 0px)));
-    bottom: max(48px, calc(28px + env(safe-area-inset-bottom, 0px)));
+    left: max(32px, calc(24px + env(safe-area-inset-left, 0px)));
+    right: max(32px, calc(24px + env(safe-area-inset-right, 0px)));
+    bottom: max(72px, calc(40px + env(safe-area-inset-bottom, 0px)));
     gap: 10px;
   }
   .viberacer-tuning-action-btn {
@@ -1460,14 +1467,19 @@ const continuousOverlay: CSSProperties = {
   display: 'flex',
   alignItems: 'center',
   justifyContent: 'center',
-  paddingTop: 'calc(16px + env(safe-area-inset-top, 0px))',
-  paddingRight: 'calc(16px + env(safe-area-inset-right, 0px))',
-  paddingBottom: 'calc(16px + env(safe-area-inset-bottom, 0px))',
-  paddingLeft: 'calc(16px + env(safe-area-inset-left, 0px))',
+  // Symmetrical, generous padding on every side so the card centers
+  // with equal margins on phone and desktop. `max()` floors the inset
+  // even when the device reports zero safe-area envs (Android Chrome
+  // without a notch).
+  paddingTop: 'max(32px, calc(24px + env(safe-area-inset-top, 0px)))',
+  paddingRight: 'max(32px, calc(16px + env(safe-area-inset-right, 0px)))',
+  paddingBottom: 'max(32px, calc(24px + env(safe-area-inset-bottom, 0px)))',
+  paddingLeft: 'max(32px, calc(16px + env(safe-area-inset-left, 0px)))',
   zIndex: 30,
   fontFamily: 'system-ui, sans-serif',
   WebkitOverflowScrolling: 'touch',
   overflowY: 'auto',
+  boxSizing: 'border-box',
 }
 const continuousCard: CSSProperties = {
   display: 'flex',
