@@ -10,6 +10,7 @@ import {
 import { findTour, tourDrivers, type Tour } from '@/lib/worldTourChampionship'
 import {
   createRaceSession,
+  sortFinishingOrderByMs,
   stepRaceSession,
   type RaceSessionState,
 } from '@/game/worldTourRaceSession'
@@ -231,6 +232,12 @@ function TourRacePageInner() {
     null,
   )
   const playerSpeedRef = useRef<number>(0)
+  // Write channel into RaceCanvas: a per-frame world-frame displacement
+  // applied to the player car so a contact kick from the multi-car
+  // session actually pushes the player. Without this the player car
+  // ghosts through every AI: the session bounces the AI sideways but
+  // the player pose gets re-mirrored from RaceCanvas every frame.
+  const pendingPlayerKickRef = useRef<{ dx: number; dz: number } | null>(null)
   const [hudPhase, setHudPhase] = useState<
     'intro' | 'countdown' | 'racing' | 'finished'
   >('intro')
@@ -385,20 +392,52 @@ function TourRacePageInner() {
         }
       }
       if (racing) {
+        // Capture car0's position before the step so we can recover
+        // any contact kick the session's per-pair scan applies. The
+        // integrator part of the step is fake (neutral input, fake
+        // physics for car 0 because the 3D canvas owns the real
+        // player) and we overwrite it below; the kick part is what
+        // we actually want to feed back to the player.
+        const prePose = pose
+          ? { x: pose.x, z: pose.z, heading: pose.heading }
+          : null
         const next = stepRaceSession(
           session,
           { playerInput: neutralInput, dt, track: aiTrack, aiStats },
           { totalLaps: session.totalLaps, lapDistanceMeters: rail.totalLength },
         )
-        // Re-mirror the player's pose. `stepRaceSession` advanced car 0
-        // through the integrator with the neutral input we passed; the
-        // 3D canvas is the source of truth for the player so we
-        // overwrite the integrated pose back to the live one. We also
-        // keep the player's `distanceTraveled` at the integrated value
-        // even though it is unused (we mark the player finished
-        // externally via `submitResult`).
-        if (next.cars[0] && pose) {
-          next.cars[0].physics = {
+        // Diff car0's post-step position against the player's live
+        // pose. The session integrated car0 forward by neutral input
+        // (which decelerates a stationary speed=0 car by zero) plus
+        // applied a lateral kick on overlap. After subtracting the
+        // expected integration (with the live player speed, not the
+        // session's fake decay) the remainder is the kick. Pass it
+        // through to RaceCanvas so the player car physically gets
+        // pushed by the AI.
+        const nextCar0 = next.cars[0]
+        if (nextCar0 && prePose) {
+          const speed = playerSpeedRef.current
+          const fwdX = Math.cos(prePose.heading)
+          const fwdZ = -Math.sin(prePose.heading)
+          const expectedDx = speed * fwdX * dt
+          const expectedDz = speed * fwdZ * dt
+          const kickDx = nextCar0.physics.x - prePose.x - expectedDx
+          const kickDz = nextCar0.physics.z - prePose.z - expectedDz
+          const KICK_EPSILON = 1e-3
+          if (Math.abs(kickDx) > KICK_EPSILON || Math.abs(kickDz) > KICK_EPSILON) {
+            const pending = pendingPlayerKickRef.current
+            pendingPlayerKickRef.current = pending
+              ? { dx: pending.dx + kickDx, dz: pending.dz + kickDz }
+              : { dx: kickDx, dz: kickDz }
+          }
+        }
+        // Re-mirror the player's pose. The 3D canvas is the source of
+        // truth for the player so we overwrite car 0's integrated pose
+        // back to the live one. The kick we extracted above is fed
+        // back to the canvas via `pendingPlayerKickRef` so the player
+        // car actually moves on the next 3D frame.
+        if (nextCar0 && pose) {
+          nextCar0.physics = {
             x: pose.x,
             z: pose.z,
             heading: pose.heading,
@@ -550,6 +589,13 @@ function TourRacePageInner() {
         )
         steps++
       }
+      // Rebuild finishingOrder by finishedAtMs ascending. The player
+      // is pushed into finishingOrder externally at the top of this
+      // callback (before the AI wrap-up loop), so a slow player would
+      // sit at index 0 and `buildStandings` would read them as the
+      // winner. The helper sorts by actual finish time so the results
+      // page reflects who really got there first.
+      session = sortFinishingOrderByMs(session)
       sessionRef.current = session
       const raceResult = buildRaceResult({
         finalState: session,
@@ -677,6 +723,7 @@ function TourRacePageInner() {
             opponentsRef={opponentsRef}
             carPoseOutRef={playerPoseRef}
             speedOutRef={playerSpeedRef}
+            pendingPlayerKickRef={pendingPlayerKickRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
             disableMusicIntensity

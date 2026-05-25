@@ -3,6 +3,7 @@ import {
   COUNTDOWN_SECONDS_DEFAULT,
   createRaceSession,
   finishingStandings,
+  sortFinishingOrderByMs,
   stepRaceSession,
   type RaceSessionConfig,
   type RaceSessionState,
@@ -320,6 +321,61 @@ describe('stepRaceSession (racing)', () => {
     s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
     expect(s.phase).toBe('finished')
     expect(s.tick).toBe(before + 1)
+  })
+})
+
+describe('sortFinishingOrderByMs', () => {
+  it('rebuilds finishingOrder by ascending finishedAtMs (regression: player pushed first wins by slow time)', () => {
+    const session = freshSession()
+    // Externally seeded scenario the tour route can produce: the
+    // player (slot 0) is pushed into finishingOrder first because the
+    // 3D canvas owns their finish-line cross, then the AI sim runs
+    // to completion. Player's finishedAtMs is much later than the
+    // AI cars' but they sit at index 0 of finishingOrder.
+    const state: RaceSessionState = {
+      ...session,
+      cars: session.cars.map((c, i) => ({
+        ...c,
+        physics: { ...c.physics },
+        status: 'finished',
+        finishedAtMs: [80_000, 55_000, 60_000, 65_000][i] ?? 0,
+      })),
+      finishingOrder: [0, 1, 2, 3],
+    }
+    const out = sortFinishingOrderByMs(state)
+    expect(out.finishingOrder).toEqual([1, 2, 3, 0])
+  })
+
+  it('pins still-racing cars to the back of the order', () => {
+    const session = freshSession()
+    const state: RaceSessionState = {
+      ...session,
+      cars: session.cars.map((c, i) => ({
+        ...c,
+        physics: { ...c.physics },
+        status: i === 0 ? 'racing' : 'finished',
+        finishedAtMs: i === 0 ? null : [null, 50_000, 60_000, 70_000][i]!,
+      })),
+      finishingOrder: [],
+    }
+    const out = sortFinishingOrderByMs(state)
+    expect(out.finishingOrder).toEqual([1, 2, 3, 0])
+  })
+
+  it('breaks ties on car index so the order is deterministic', () => {
+    const session = freshSession()
+    const state: RaceSessionState = {
+      ...session,
+      cars: session.cars.map((c) => ({
+        ...c,
+        physics: { ...c.physics },
+        status: 'finished',
+        finishedAtMs: 50_000,
+      })),
+      finishingOrder: [],
+    }
+    const out = sortFinishingOrderByMs(state)
+    expect(out.finishingOrder).toEqual([0, 1, 2, 3])
   })
 })
 

@@ -440,6 +440,38 @@ export function finishingStandings(
   return order
 }
 
+/**
+ * Return a fresh state with `finishingOrder` rebuilt from per-car
+ * `finishedAtMs` ascending. The session reducer appends to
+ * `finishingOrder` in the order cars cross the line during the
+ * racing phase, which is correct for cars whose entire race is
+ * inside the reducer. When the tour route marks the player finished
+ * externally (because the 3D canvas owns the player's physics and
+ * crosses the finish line outside the reducer), the player's
+ * `finishedAtMs` may be later than several AI cars' but the player
+ * sits at index 0 of `finishingOrder`. `buildStandings` reads
+ * `finishingOrder[0]` as the winner. Calling this helper after the
+ * tour route's wrap-up loop fixes that ordering so the results page
+ * reflects actual finish times.
+ *
+ * Cars without a recorded `finishedAtMs` (status still `racing`
+ * because the session hit FINAL_STEP_CAP) sort to the back with
+ * `Infinity`; a stable secondary sort by car index keeps the order
+ * deterministic across runs.
+ */
+export function sortFinishingOrderByMs(
+  state: Readonly<RaceSessionState>,
+): RaceSessionState {
+  const sorted = state.cars
+    .map((c) => ({
+      idx: c.index,
+      ms: c.finishedAtMs ?? Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => a.ms - b.ms || a.idx - b.idx)
+    .map(({ idx }) => idx)
+  return { ...state, finishingOrder: sorted }
+}
+
 function cloneCar(c: RaceCar): RaceCar {
   return {
     index: c.index,
