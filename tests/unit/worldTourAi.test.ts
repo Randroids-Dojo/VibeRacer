@@ -153,7 +153,7 @@ describe('tickAi (launch hold)', () => {
   it('starts following the racing line once past LAUNCH_LANE_HOLD_M', () => {
     const state: AiState = {
       ...INITIAL_AI_STATE,
-      progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
+      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
     }
     const result = tickAi(
       state,
@@ -172,7 +172,7 @@ describe('tickAi (launch hold)', () => {
 describe('tickAi (throttle)', () => {
   it('asks for full throttle on a straight when below the target speed', () => {
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000 },
+      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
       carAt({ speed: 5 }),
       STATS,
       FLAT_STRAIGHT,
@@ -183,7 +183,7 @@ describe('tickAi (throttle)', () => {
 
   it('asks for a brake (negative throttle) when above the target speed', () => {
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000 },
+      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
       carAt({ speed: 200 }),
       STATS,
       FLAT_STRAIGHT,
@@ -197,7 +197,7 @@ describe('tickAi (throttle)', () => {
     // the AI's forward direction.
     const NORTH = Math.PI / 2
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000 },
+      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
       carAt({ heading: NORTH, speed: 30 }),
       STATS,
       FLAT_STRAIGHT,
@@ -216,7 +216,7 @@ describe('tickAi (throttle)', () => {
   it('ignores a peer in an adjacent lane and keeps top speed on a straight', () => {
     const NORTH = Math.PI / 2
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000 },
+      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
       carAt({ heading: NORTH, speed: 30 }),
       STATS,
       FLAT_STRAIGHT,
@@ -305,6 +305,7 @@ describe('tickAi (track-local frame)', () => {
     const state: AiState = {
       ...INITIAL_AI_STATE,
       progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
+      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
     }
     // Car at +x is offset right of the north centerline. Forward at
     // heading PI/2 is (cos PI/2, -sin PI/2) = (0, -1) (pure north),
@@ -330,6 +331,7 @@ describe('tickAi (track-local frame)', () => {
     const state: AiState = {
       ...INITIAL_AI_STATE,
       progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
+      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
     }
     // Car centered on the rail but pointed at 0.5 radians off CCW
     // from the centerline heading. The heading-tracking term must
@@ -350,6 +352,7 @@ describe('tickAi (track-local frame)', () => {
     const state: AiState = {
       ...INITIAL_AI_STATE,
       progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
+      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
     }
     const result = tickAi(
       state,

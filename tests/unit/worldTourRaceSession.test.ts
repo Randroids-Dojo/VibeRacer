@@ -439,4 +439,51 @@ describe('stepRaceSession driven by the real AI track view', () => {
     // them DNF'd or last because they never advanced any distance.
     expect(order.indexOf(0)).toBeGreaterThan(0)
   })
+
+  it('a stationary player does not cause AI cars to rear-end into mass DNF (regression: race-start pileup)', async () => {
+    // A previous iteration of the start-line fix floored
+    // followDistanceCap at MIN_AI_SPEED so the AI accelerated to
+    // 8 m/s even when the leader was at speed 0. The trailing AI
+    // then rear-ended the stationary player at full throttle, each
+    // overlap tick added 0.02 damage, and within a second every AI
+    // had DNF'd. The launch-hold gate now disables the follow cap
+    // during the first 200 m of raced distance and the contact
+    // damage is framerate-scaled; the test asserts the AI field
+    // survives a stationary-player race start.
+    const { buildRail } = await import('@/game/worldTourRail')
+    const { buildTrackPath } = await import('@/game/trackPath')
+    const { getTrackTemplate } = await import('@/game/trackTemplates')
+    const { buildAiTrackView } = await import('@/game/worldTourTrackView')
+
+    const template = getTrackTemplate('top-gear-opener')!
+    const rail = buildRail(buildTrackPath(template.pieces))
+    const aiTrack = buildAiTrackView(rail)
+
+    let s = createRaceSession({
+      slotCount: 4,
+      laneCount: 2,
+      aiDrivers: ROSTER,
+      seed: 13,
+      totalLaps: 1,
+      lapDistanceMeters: rail.totalLength,
+      playerCarId: 'starter',
+      countdownSeconds: 0,
+    })
+    const step = {
+      playerInput: { throttle: 0, steer: 0, handbrake: false },
+      dt: 1 / 60,
+      track: aiTrack,
+      aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+    }
+    const config = { totalLaps: 1, lapDistanceMeters: rail.totalLength }
+    // Sim 5 seconds of race time. By then every AI car must have
+    // cleared the start straight without DNFing from contact damage.
+    for (let i = 0; i < 60 * 5; i++) {
+      s = stepRaceSession(s, step, config)
+    }
+    const aiDnfCount = s.cars
+      .slice(1)
+      .filter((c) => c.status === 'dnf').length
+    expect(aiDnfCount).toBe(0)
+  })
 })

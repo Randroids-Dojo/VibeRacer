@@ -114,10 +114,19 @@ export const AI_TUNING = Object.freeze({
  * slot and threads it back through `tickAi` every frame.
  */
 export interface AiState {
-  // Total forward distance traveled, in meters. Used by the launch lane
-  // hold blend and by future telemetry overlays. The race-session
-  // reducer increments this each tick from the per-car physics step.
+  // Arc length along the rail in meters. Used by the centerline /
+  // curve lookup so the AI knows where it is on the track. The
+  // tour route can initialise this to a negative-wrapped value
+  // (`totalLength - startBack`) to stagger AI cars behind the start
+  // line on the closing chord; it does NOT track "how far the car
+  // has raced," which is what `racedDistance` is for.
   progress: number
+  // Distance the AI has actually driven since race-go in meters.
+  // Starts at 0 in every fresh session and accumulates `speed * dt`
+  // each tick regardless of where `progress` is on the rail. Drives
+  // the launch-hold blend and the follow-distance gate so a car
+  // initialised near the rail seam does not skip its launch window.
+  racedDistance: number
   // Per-AI deterministic PRNG channel for mistakes / brilliant moments.
   // The clean_line archetype does not currently draw from it but the
   // field is present so future archetypes do not need a state-shape
@@ -134,6 +143,7 @@ export interface AiState {
 
 export const INITIAL_AI_STATE: Readonly<AiState> = Object.freeze({
   progress: 0,
+  racedDistance: 0,
   seed: 1,
   targetSpeed: 0,
   laneTarget: 0,
@@ -221,15 +231,16 @@ function clamp(n: number, lo: number, hi: number): number {
 }
 
 /**
- * Launch lane hold scalar. Returns 0 at the start of the lap (full lane
- * hold) and 1 past `LAUNCH_LANE_HOLD_M` (full racing line). A linear
- * blend is enough; the race-session reducer applies this directly to
- * the racing-line offset before computing the steer.
+ * Launch lane hold scalar. Returns 0 at race-go (full lane hold) and
+ * 1 once the car has driven `LAUNCH_LANE_HOLD_M` meters since the
+ * green flag. Reads `racedDistance` from the AI state so a car that
+ * was initialised at an arbitrary rail position (the tour route
+ * staggers AI on the closing chord) still gets a real launch window.
  */
-export function launchBlend(progress: number): number {
-  if (progress <= 0) return 0
-  if (progress >= AI_TUNING.LAUNCH_LANE_HOLD_M) return 1
-  return progress / AI_TUNING.LAUNCH_LANE_HOLD_M
+export function launchBlend(racedDistance: number): number {
+  if (racedDistance <= 0) return 0
+  if (racedDistance >= AI_TUNING.LAUNCH_LANE_HOLD_M) return 1
+  return racedDistance / AI_TUNING.LAUNCH_LANE_HOLD_M
 }
 
 /**
@@ -272,13 +283,7 @@ export function followDistanceCap(
     }
   }
   if (closest === null) return null
-  // Floor the cap at MIN_AI_SPEED so a stationary leader does not
-  // deadlock the trailing AI at speed 0 at race start. Once the
-  // leader is moving the cap tracks `leader.speed - buffer` as
-  // expected; bump damage in the session reducer handles a rare
-  // pileup into a fully stopped car.
-  const raw = closest.speed - AI_TUNING.FOLLOW_SPEED_BUFFER_M_PER_S
-  return Math.max(AI_TUNING.MIN_AI_SPEED, raw)
+  return Math.max(0, closest.speed - AI_TUNING.FOLLOW_SPEED_BUFFER_M_PER_S)
 }
 
 /**
@@ -332,9 +337,16 @@ export function tickAi(
   const racing = context.racing !== false
   const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
   const dt = Math.max(0, context.dt)
-  // Integrate progress from the car's speed. This is approximate for a
-  // curved track but is sufficient for the launch-hold blend.
-  const nextProgress = Math.max(0, state.progress + car.speed * dt)
+  // Integrate progress from the car's speed. `progress` is the arc
+  // length along the rail; it can be wrapped by `centerlineAt`. The
+  // race-session reducer can initialise it anywhere on the loop, so
+  // we also track a separate `racedDistance` channel that always
+  // starts at 0 and accumulates `speed * dt` since race-go. The
+  // launch-hold blend reads `racedDistance` so a car that spawned
+  // mid-rail still gets the launch ease-in.
+  const forwardDelta = Math.max(0, car.speed) * dt
+  const nextProgress = state.progress + car.speed * dt
+  const nextRacedDistance = state.racedDistance + forwardDelta
 
   if (!racing) {
     return {
@@ -342,13 +354,14 @@ export function tickAi(
       nextAiState: {
         ...state,
         progress: nextProgress,
+        racedDistance: nextRacedDistance,
         targetSpeed: 0,
         laneTarget: car.x,
       },
     }
   }
 
-  const blend = launchBlend(state.progress)
+  const blend = launchBlend(state.racedDistance)
   const curve = track.curveAt(state.progress)
   const laneBias = racingLineOffset(curve, blend)
 
@@ -407,10 +420,16 @@ export function tickAi(
   }
 
   // Target speed: curve-aware, then capped by any close same-lane
-  // leader inside the follow window.
+  // leader inside the follow window. Skip the follow-distance cap
+  // during the launch window so the field can spread off the grid
+  // instead of every car cap-following a stationary leader at speed 0
+  // (which deadlocks the entire field) or accelerating into a slow
+  // launch and accruing contact damage.
   let target = targetSpeedAt(track, stats, state.progress)
-  const cap = followDistanceCap(car, context.others)
-  if (cap !== null && cap < target) target = cap
+  if (blend >= 1) {
+    const cap = followDistanceCap(car, context.others)
+    if (cap !== null && cap < target) target = cap
+  }
 
   // Throttle / brake controller. Positive throttle accelerates; the
   // PhysicsInput shape uses a signed `throttle` with negative for
@@ -448,6 +467,7 @@ export function tickAi(
     nextAiState: {
       ...state,
       progress: nextProgress,
+      racedDistance: nextRacedDistance,
       targetSpeed: target,
       laneTarget,
     },

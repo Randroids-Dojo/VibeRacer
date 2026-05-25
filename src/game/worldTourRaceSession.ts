@@ -65,6 +65,16 @@ export const NO_PROGRESS_MIN_DELTA_METERS = 1
 // `BUMP_KICK_BASE_MPS` constant.
 export const BUMP_KICK_BASE_MPS = 4
 
+// Contact-damage accrual rate per second of continuous overlap.
+// Multiplied by `dt` and `damageAbsorb` per tick. A brief bump
+// (a few frames of overlap) costs essentially nothing; a sustained
+// pileup eventually DNFs both cars. Tuned to roughly 0.2 damage per
+// second of contact for a stock chassis (damageAbsorb = 1) so a 5
+// second pileup ends both cars while a 0.5 second bump costs 0.1
+// damage. The legacy flat rate was 1.2 damage per second of
+// contact, which DNF'd both cars inside one second.
+export const BUMP_DAMAGE_PER_SEC = 0.2
+
 // Lateral and longitudinal radii used to detect overlap between two
 // cars. Tuned for the existing low-poly car footprint.
 export const CAR_HALF_LENGTH_M = 2
@@ -391,13 +401,16 @@ export function stepRaceSession(
       if (!overlap) continue
       // Lateral kick: push the cars apart along the x axis. A small
       // damage accrual per contact lets a long pile-up actually DNF a
-      // car instead of silently rubbing forever.
+      // car instead of silently rubbing forever. Damage scales with
+      // `dt` so the rate is framerate-independent and is tuned (see
+      // BUMP_DAMAGE_PER_SEC) so a brief bump is harmless and a
+      // sustained ram eventually wrecks both cars.
       const dx = b.physics.x - a.physics.x
       const dir = dx >= 0 ? 1 : -1
       a.physics = { ...a.physics, x: a.physics.x - dir * BUMP_KICK_BASE_MPS * dt }
       b.physics = { ...b.physics, x: b.physics.x + dir * BUMP_KICK_BASE_MPS * dt }
-      a.damage = Math.min(1, a.damage + 0.02 * a.damageAbsorb)
-      b.damage = Math.min(1, b.damage + 0.02 * b.damageAbsorb)
+      a.damage = Math.min(1, a.damage + BUMP_DAMAGE_PER_SEC * dt * a.damageAbsorb)
+      b.damage = Math.min(1, b.damage + BUMP_DAMAGE_PER_SEC * dt * b.damageAbsorb)
     }
   }
 
