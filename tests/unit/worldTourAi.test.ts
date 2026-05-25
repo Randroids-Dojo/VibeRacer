@@ -399,3 +399,73 @@ describe('tickAi (pure pursuit on a curved-rail stub)', () => {
     expect(Math.abs(a.input.steer)).toBeCloseTo(Math.abs(b.input.steer), 3)
   })
 })
+
+describe('tickAi (off-track recovery)', () => {
+  // Same east-bound straight as the curved-rail tests.
+  function eastStraight(): AiTrackView {
+    return {
+      totalLength: 100000,
+      projectToRail: (x) => x,
+      sampleAt: (arcLength, lateral) => ({
+        x: arcLength,
+        z: lateral,
+        heading: 0,
+      }),
+      curveAt: () => 0,
+      roadHalfWidth: 4,
+    }
+  }
+
+  it('switches to recovery mode (target = MIN_AI_SPEED, carrot at projection) when far off-rail', () => {
+    // Half-width is 4 m; recovery kicks in past 1.5 * 4 = 6 m. Put
+    // the car 10 m off the rail in the +z direction (= right of the
+    // east-bound rail) at racing speed.
+    const view = eastStraight()
+    const result = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 50, z: 10, heading: 0, speed: 22 },
+      STATS,
+      view,
+      { others: [], dt: 0 },
+    )
+    // Target speed must be the recovery floor, not topSpeed.
+    expect(result.nextAiState.targetSpeed).toBe(AI_TUNING.MIN_AI_SPEED)
+    // The car is going way over the recovery target, so the throttle
+    // must be braking.
+    expect(result.input.throttle).toBeLessThan(0)
+    // And the carrot world position should be at the projection (the
+    // closest centerline point), not look-ahead meters down the rail.
+    // The projection of (50, 10) onto the east straight gives
+    // (50, 0); the carrot is exactly that.
+    expect(result.nextAiState.carrotX).toBeCloseTo(50, 5)
+    expect(result.nextAiState.carrotZ).toBeCloseTo(0, 5)
+  })
+
+  it('does NOT trigger recovery when on the racing surface (within ~1 road width)', () => {
+    // 3 m off-center is within the road; recovery must NOT fire.
+    const view = eastStraight()
+    const result = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 50, z: 3, heading: 0, speed: 22 },
+      STATS,
+      view,
+      { others: [], dt: 0 },
+    )
+    expect(result.nextAiState.targetSpeed).toBe(STATS.topSpeed)
+  })
+
+  it('recovery exits once the car gets back near the rail (single-frame snapshot)', () => {
+    const view = eastStraight()
+    // Same speed, but now only 4 m off-center (= 1 road half-width,
+    // just at the boundary). Recovery threshold is 6 m, so the car
+    // is back inside.
+    const result = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 50, z: 4, heading: 0, speed: 22 },
+      STATS,
+      view,
+      { others: [], dt: 0 },
+    )
+    expect(result.nextAiState.targetSpeed).toBe(STATS.topSpeed)
+  })
+})

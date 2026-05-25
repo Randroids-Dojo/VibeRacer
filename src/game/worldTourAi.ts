@@ -125,6 +125,16 @@ export const AI_TUNING = Object.freeze({
    * the follow window.
    */
   FOLLOW_SPEED_BUFFER_M_PER_S: 1,
+  /**
+   * Lateral distance from the rail (as a multiple of the road half-
+   * width) above which the AI switches into recovery mode: aim at
+   * the closest centerline point instead of the look-ahead carrot,
+   * and brake to MIN_AI_SPEED. A ratio of 1.5 means a car drifts
+   * about 1.5 road-widths off before recovery kicks in (6 m at the
+   * default track width of 8 m), past where the racing line could
+   * plausibly recover.
+   */
+  RECOVERY_OFF_TRACK_RATIO: 1.5,
 })
 
 /**
@@ -388,11 +398,29 @@ export function tickAi(
   // clamped to [MIN_LOOK_AHEAD_M, MAX_LOOK_AHEAD_M] so a stopped car
   // still has a target and a top-speed car does not look past a
   // corner entry.
-  const lookAhead = clamp(
-    car.speed * AI_TUNING.LOOK_AHEAD_SECONDS,
-    AI_TUNING.MIN_LOOK_AHEAD_M,
-    AI_TUNING.MAX_LOOK_AHEAD_M,
+  //
+  // Recovery branch: when the car is significantly off-rail
+  // (lateral distance > RECOVERY_OFF_TRACK_M), pure pursuit's
+  // look-ahead carrot can sit sideways relative to the car's heading
+  // and produce a tight steering circle instead of returning the
+  // car to the racing surface. Switch to "aim at the closest rail
+  // point" (look-ahead = 0) and brake to MIN_AI_SPEED until the car
+  // is recovered. On-track behavior is unchanged.
+  const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
+  const projectedPose = track.sampleAt(arcLength, 0)
+  const lateralFromRail = Math.hypot(
+    car.x - projectedPose.x,
+    car.z - projectedPose.z,
   )
+  const recoveryThreshold = halfWidth * AI_TUNING.RECOVERY_OFF_TRACK_RATIO
+  const recovering = lateralFromRail > recoveryThreshold
+  const lookAhead = recovering
+    ? 0
+    : clamp(
+        car.speed * AI_TUNING.LOOK_AHEAD_SECONDS,
+        AI_TUNING.MIN_LOOK_AHEAD_M,
+        AI_TUNING.MAX_LOOK_AHEAD_M,
+      )
   const carrotArc = arcLength + lookAhead
 
   // Step 3: lateral racing-line bias at the carrot. Read the curve
@@ -400,10 +428,14 @@ export function tickAi(
   // pre-positions for the corner it is approaching. The launch-hold
   // blend keeps the bias at 0 for the first 200 m of raced distance
   // so the field spreads off the grid before chasing the racing line.
+  // During recovery the bias collapses to 0 (aim at centerline, not
+  // racing line) so the car returns to the road by the shortest path.
   const blend = launchBlend(state.racedDistance)
   const upcomingCurve = track.curveAt(carrotArc)
-  const lateral = racingLineOffset(upcomingCurve, blend)
-  const carrot = track.sampleAt(carrotArc, lateral)
+  const lateral = recovering ? 0 : racingLineOffset(upcomingCurve, blend)
+  const carrot = recovering
+    ? projectedPose
+    : track.sampleAt(carrotArc, lateral)
 
   // Step 4: steer to face the carrot. The single saturated term
   // replaces the prior lateral-error + heading-error controllers; the
@@ -418,11 +450,16 @@ export function tickAi(
   if (headingError < -Math.PI) headingError += 2 * Math.PI
   const steer = clamp(headingError / AI_TUNING.STEER_HALF_ANGLE, -1, 1)
 
-  // Step 5: target speed from the upcoming curvature, capped by any
-  // close same-lane leader (after launch hold; during launch every car
-  // is at speed 0 and the cap would deadlock the field).
-  let target = targetSpeedAt(track, stats, carrotArc)
-  if (blend >= 1) {
+  // Step 5: target speed. Recovering off-track? Brake to MIN_AI_SPEED
+  // so the car can turn sharply enough to reach the rail without
+  // doubling back on itself. Otherwise use the upcoming curvature,
+  // capped by any close same-lane leader (after launch hold; during
+  // launch every car is at speed 0 and the cap would deadlock the
+  // field).
+  let target = recovering
+    ? AI_TUNING.MIN_AI_SPEED
+    : targetSpeedAt(track, stats, carrotArc)
+  if (!recovering && blend >= 1) {
     const cap = followDistanceCap(car, context.others)
     if (cap !== null && cap < target) target = cap
   }

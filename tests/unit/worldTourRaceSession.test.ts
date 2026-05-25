@@ -656,105 +656,113 @@ describe('stepRaceSession driven by the real AI track view', () => {
     expect(aiDnfCount).toBe(0)
   })
 
-  it('AI completes TWO full laps without diving off track after the lap-1 seam crossing (regression: pure-pursuit rebuild)', async () => {
-    // The original failure was: AI cars completed lap 1 fine, then
-    // immediately turned left into the trees the moment progress
-    // wrapped across the rail seam at the end of lap 1. The fix is
-    // the pure-pursuit controller (no heading-error term to snap on
-    // a seam heading discontinuity) plus the chord-heading correction
-    // in `sampleRailAt`. This test races a 4-car field for TWO laps
-    // (the single-lap test missed the bug because the seam crossing
-    // only happens at the lap 1 finish) and asserts every AI either
-    // finishes both laps or is recovering normally; none may DNF.
-    const { buildRail, sampleRailAt, projectToRail } = await import(
-      '@/game/worldTourRail'
-    )
-    const { buildTrackPath } = await import('@/game/trackPath')
-    const { getTrackTemplate } = await import('@/game/trackTemplates')
-    const { buildAiTrackView } = await import('@/game/worldTourTrackView')
-    const { DEFAULT_TRACK_WIDTH } = await import('@/game/trackWidth')
+  // Parametrized over the two templates Velvet Coast race 1 and 2
+  // land on (race 0: top-gear-opener; race 1: sweep-loop). The
+  // controller has known weaknesses on tighter inner-radius layouts
+  // (s-curve-loop, reference-gp) tracked as a followup.
+  it.each([['top-gear-opener'], ['sweep-loop']])(
+    'AI completes TWO full laps on %s without piling up off track (regression: pure-pursuit rebuild + recovery branch)',
+    async (templateId) => {
+      // Two-lap race so the lap-1 seam crossing fires. Run the
+      // regression across multiple track templates because earlier
+      // bugs only manifested on one shape (the original "AI drives
+      // off into trees" was reported on top-gear-opener; the
+      // "off-track loop" recovery bug showed up on sweep-loop). Every
+      // AI must finish both laps without DNFing.
+      const { buildRail, projectToRail, sampleRailAt } = await import(
+        '@/game/worldTourRail'
+      )
+      const { buildTrackPath } = await import('@/game/trackPath')
+      const { getTrackTemplate } = await import('@/game/trackTemplates')
+      const { buildAiTrackView } = await import('@/game/worldTourTrackView')
+      const { DEFAULT_TRACK_WIDTH } = await import('@/game/trackWidth')
 
-    const template = getTrackTemplate('top-gear-opener')!
-    const rail = buildRail(buildTrackPath(template.pieces))
-    const aiTrack = buildAiTrackView(rail)
+      const template = getTrackTemplate(templateId)!
+      const rail = buildRail(buildTrackPath(template.pieces))
+      const aiTrack = buildAiTrackView(rail)
 
-    let s = createRaceSession({
-      slotCount: 4,
-      laneCount: 2,
-      aiDrivers: ROSTER,
-      seed: 3,
-      totalLaps: 2,
-      lapDistanceMeters: rail.totalLength,
-      playerCarId: 'starter',
-      countdownSeconds: 0,
-    })
-    // Same per-route AI placement we run in production (resetRace).
-    for (let i = 1; i < s.cars.length; i++) {
-      const car = s.cars[i]!
-      const lane = (i - 1) % 2 === 0 ? -2 : 2
-      const startBack = 6 * (Math.floor((i - 1) / 2) + 1)
-      const pose = sampleRailAt(rail, -startBack, lane)
-      car.physics = {
-        x: pose.x,
-        z: pose.z,
-        heading: pose.heading,
-        speed: 0,
-      }
-      if (car.aiState) {
-        const wrapped =
-          ((-startBack) % rail.totalLength + rail.totalLength) % rail.totalLength
-        car.aiState = { ...car.aiState, lastArcHint: wrapped }
-      }
-    }
-    const step = {
-      playerInput: { throttle: 0, steer: 0, handbrake: false },
-      dt: 1 / 60,
-      track: aiTrack,
-      aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
-    }
-    const config = { totalLaps: 2, lapDistanceMeters: rail.totalLength }
-    // Up to 3 minutes of sim time for 2 laps at AI speed.
-    const maxTicks = 60 * 180
-    const maxLateral: number[] = [0, 0, 0]
-    let aiAllDone = false
-    for (let t = 0; t < maxTicks; t++) {
-      s = stepRaceSession(s, step, config)
+      let s = createRaceSession({
+        slotCount: 4,
+        laneCount: 2,
+        aiDrivers: ROSTER,
+        seed: 3,
+        totalLaps: 2,
+        lapDistanceMeters: rail.totalLength,
+        playerCarId: 'starter',
+        countdownSeconds: 0,
+      })
       for (let i = 1; i < s.cars.length; i++) {
         const car = s.cars[i]!
-        if (car.status !== 'racing') continue
-        const proj = projectToRail(rail, car.physics.x, car.physics.z)
-        const pose = sampleRailAt(rail, proj, 0)
-        const lat = Math.hypot(
-          car.physics.x - pose.x,
-          car.physics.z - pose.z,
-        )
-        if (lat > maxLateral[i - 1]!) maxLateral[i - 1] = lat
+        const lane = (i - 1) % 2 === 0 ? -2 : 2
+        const startBack = 6 * (Math.floor((i - 1) / 2) + 1)
+        const pose = sampleRailAt(rail, -startBack, lane)
+        car.physics = {
+          x: pose.x,
+          z: pose.z,
+          heading: pose.heading,
+          speed: 0,
+        }
+        if (car.aiState) {
+          const wrapped =
+            ((-startBack) % rail.totalLength + rail.totalLength) % rail.totalLength
+          car.aiState = { ...car.aiState, lastArcHint: wrapped }
+        }
       }
-      const allDone = s.cars
-        .slice(1)
-        .every((c) => c.status === 'finished' || c.status === 'dnf')
-      if (allDone) {
-        aiAllDone = true
-        break
+      const step = {
+        playerInput: { throttle: 0, steer: 0, handbrake: false },
+        dt: 1 / 60,
+        track: aiTrack,
+        aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
       }
-    }
-    expect(aiAllDone, 'AI field did not finish two laps within 3 min').toBe(
-      true,
-    )
-    // Every AI must have FINISHED both laps; a DNF means they got
-    // stuck off-track or rear-ended into damage and that's the bug.
-    for (let i = 1; i < s.cars.length; i++) {
-      expect(s.cars[i]!.status, `AI car ${i} did not finish`).toBe('finished')
-    }
-    // And no AI should have driven > 2 track-widths off the rail.
-    const limit = DEFAULT_TRACK_WIDTH * 2
-    for (let i = 0; i < maxLateral.length; i++) {
+      const config = { totalLaps: 2, lapDistanceMeters: rail.totalLength }
+      const maxTicks = 60 * 180
+      const maxLateral: number[] = [0, 0, 0]
+      let aiAllDone = false
+      for (let t = 0; t < maxTicks; t++) {
+        s = stepRaceSession(s, step, config)
+        for (let i = 1; i < s.cars.length; i++) {
+          const car = s.cars[i]!
+          if (car.status === 'dnf') continue
+          if (car.status !== 'racing') continue
+          const proj = projectToRail(rail, car.physics.x, car.physics.z)
+          const pose = sampleRailAt(rail, proj, 0)
+          const lat = Math.hypot(
+            car.physics.x - pose.x,
+            car.physics.z - pose.z,
+          )
+          if (lat > maxLateral[i - 1]!) maxLateral[i - 1] = lat
+        }
+        const allDone = s.cars
+          .slice(1)
+          .every((c) => c.status === 'finished' || c.status === 'dnf')
+        if (allDone) {
+          aiAllDone = true
+          break
+        }
+      }
       expect(
-        maxLateral[i]!,
-        `AI car ${i + 1} drifted ${maxLateral[i]!.toFixed(1)} m off the rail across two laps`,
-      ).toBeLessThan(limit)
-    }
-  })
+        aiAllDone,
+        `${templateId}: AI field did not finish two laps within 3 min`,
+      ).toBe(true)
+      for (let i = 1; i < s.cars.length; i++) {
+        expect(
+          s.cars[i]!.status,
+          `${templateId}: AI car ${i} did not finish (status=${s.cars[i]!.status})`,
+        ).toBe('finished')
+      }
+      const limit = DEFAULT_TRACK_WIDTH * 2
+      for (let i = 0; i < maxLateral.length; i++) {
+        expect(
+          maxLateral[i]!,
+          `${templateId}: AI car ${i + 1} drifted ${maxLateral[i]!.toFixed(1)} m off the rail across two laps`,
+        ).toBeLessThan(limit)
+      }
+    },
+  )
+
+  it.todo(
+    'AI completes TWO full laps on the tighter-radius templates (s-curve-loop, reference-gp) without DNF',
+  )
 
   it('finished AI cars coast forward after crossing the line (regression: stacked pile-up at the finish)', async () => {
     // Reported: every AI piled up on top of the first finisher at end
