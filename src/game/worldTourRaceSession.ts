@@ -208,9 +208,14 @@ export function createRaceSession(
   return {
     tick: 0,
     phase: 'countdown',
+    // Explicit 0 means "skip the session's countdown" (the page renders
+    // its own start lights and only ticks the session once the visible
+    // countdown clears). undefined means "use the default 3-second
+    // session countdown" (test sessions that drive the reducer
+    // directly).
     countdownRemainingSec:
-      input.countdownSeconds !== undefined && input.countdownSeconds > 0
-        ? input.countdownSeconds
+      input.countdownSeconds !== undefined
+        ? Math.max(0, input.countdownSeconds)
         : COUNTDOWN_SECONDS_DEFAULT,
     elapsedMs: 0,
     cars,
@@ -451,20 +456,17 @@ function integrateCarPosition(
   onTrack: boolean,
 ): PhysicsState {
   // `stepPhysics` only updates `speed`. The race-session reducer is
-  // responsible for advancing position and heading. The math here is
-  // the canonical kinematic update the Time Attack loop uses; pinned
-  // to the same convention so a tour car drives identically to a Time
-  // Attack car at the same inputs.
+  // responsible for advancing position and heading. The math here
+  // mirrors `physics.ts` and the rail-sampling helpers so a tour car
+  // shares one heading convention with the main game and the rail:
+  // heading 0 means facing +X (east); forward is `(cos h, -sin h)`.
   const next = stepPhysics(prev, input, dt, onTrack, params)
-  // Heading advances from the steer input. The angular response model
-  // follows the convention in `physics.ts`: positive steer turns left
-  // (heading increases counterclockwise).
+  // Heading advances from the steer input. Positive steer turns left
+  // (heading increases counterclockwise), matching `playerInput.ts`.
   const headingDelta = input.steer * params.steerRateLow * dt
   const heading = prev.heading + headingDelta
-  // Position update: speed times forward axis. VibeRacer's world axis
-  // convention places forward along negative z when heading is zero.
-  const fwdX = -Math.sin(heading)
-  const fwdZ = -Math.cos(heading)
+  const fwdX = Math.cos(heading)
+  const fwdZ = -Math.sin(heading)
   const x = prev.x + next.speed * fwdX * dt
   const z = prev.z + next.speed * fwdZ * dt
   return { x, z, heading, speed: next.speed }

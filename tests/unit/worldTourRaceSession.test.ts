@@ -342,3 +342,101 @@ describe('finishingStandings', () => {
     expect(finishingStandings(state)).toEqual([0, 3, 1, 2])
   })
 })
+
+describe('stepRaceSession driven by the real AI track view', () => {
+  // Replaces the legacy "synthesized-final-state" path that randomized
+  // AI finish times. With a real rail-backed track view in hand the
+  // session must produce a deterministic finishing order from the
+  // same (seed, dt) inputs.
+  it('produces a deterministic finishingStandings across two identical sims', async () => {
+    const { buildRail } = await import('@/game/worldTourRail')
+    const { buildTrackPath } = await import('@/game/trackPath')
+    const { getTrackTemplate } = await import('@/game/trackTemplates')
+    const { buildAiTrackView } = await import('@/game/worldTourTrackView')
+
+    const template = getTrackTemplate('top-gear-opener')!
+    const rail = buildRail(buildTrackPath(template.pieces))
+    const aiTrack = buildAiTrackView(rail)
+    const FINAL_DT = 1 / 60
+
+    function runOnce(): number[] {
+      let s = createRaceSession({
+        slotCount: 4,
+        laneCount: 2,
+        aiDrivers: ROSTER,
+        seed: 42,
+        totalLaps: 1,
+        lapDistanceMeters: rail.totalLength,
+        playerCarId: 'starter',
+        countdownSeconds: 0,
+      })
+      const step = {
+        playerInput: { throttle: 0, steer: 0, handbrake: false },
+        dt: FINAL_DT,
+        track: aiTrack,
+        aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+      }
+      const config = {
+        totalLaps: 1,
+        lapDistanceMeters: rail.totalLength,
+      }
+      let safety = 0
+      while (s.phase !== 'finished' && safety < 60 * 60 * 5) {
+        s = stepRaceSession(s, step, config)
+        safety++
+      }
+      return finishingStandings(s)
+    }
+
+    const a = runOnce()
+    const b = runOnce()
+    expect(a).toEqual(b)
+    expect(a).toHaveLength(4)
+  })
+
+  it('a stationary player does NOT mysteriously finish first (regression: the legacy random-offset bug)', async () => {
+    // Replays the user-reported scenario: a player who never throttles
+    // the car should not be awarded 1st place. With the real AI sim
+    // running against the rail, the AI cars must lap the rail and
+    // finish ahead while the player (slot 0) sits at speed 0.
+    const { buildRail } = await import('@/game/worldTourRail')
+    const { buildTrackPath } = await import('@/game/trackPath')
+    const { getTrackTemplate } = await import('@/game/trackTemplates')
+    const { buildAiTrackView } = await import('@/game/worldTourTrackView')
+
+    const template = getTrackTemplate('top-gear-opener')!
+    const rail = buildRail(buildTrackPath(template.pieces))
+    const aiTrack = buildAiTrackView(rail)
+    const FINAL_DT = 1 / 60
+
+    let s = createRaceSession({
+      slotCount: 4,
+      laneCount: 2,
+      aiDrivers: ROSTER,
+      seed: 7,
+      totalLaps: 1,
+      lapDistanceMeters: rail.totalLength,
+      playerCarId: 'starter',
+      countdownSeconds: 0,
+    })
+    const step = {
+      // The player slot 0 sits with throttle 0 for the entire race.
+      playerInput: { throttle: 0, steer: 0, handbrake: false },
+      dt: FINAL_DT,
+      track: aiTrack,
+      aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+    }
+    const config = { totalLaps: 1, lapDistanceMeters: rail.totalLength }
+    let safety = 0
+    while (s.phase !== 'finished' && safety < 60 * 60 * 5) {
+      s = stepRaceSession(s, step, config)
+      safety++
+    }
+    const order = finishingStandings(s)
+    // Slot 0 (the player) must be in the back half of the field. With
+    // the synthesizeFinalState stub the player was 1st with a random
+    // +1.5s bias regardless of throttle input; the real session has
+    // them DNF'd or last because they never advanced any distance.
+    expect(order.indexOf(0)).toBeGreaterThan(0)
+  })
+})

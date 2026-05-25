@@ -10,9 +10,11 @@ import {
 import { findTour, tourDrivers, type Tour } from '@/lib/worldTourChampionship'
 import {
   createRaceSession,
+  stepRaceSession,
   type RaceSessionState,
 } from '@/game/worldTourRaceSession'
-import { type CarParams } from '@/game/physics'
+import { type CarParams, type PhysicsInput } from '@/game/physics'
+import { buildAiTrackView } from '@/game/worldTourTrackView'
 import { buildRaceResult } from '@/game/worldTourRaceResult'
 import { applyRaceResult } from '@/game/worldTourProgress'
 import { useKeyboard } from '@/hooks/useKeyboard'
@@ -211,13 +213,24 @@ function TourRacePageInner() {
   const submittedRef = useRef(false)
   const lapTimesMsRef = useRef<number[]>([])
 
-  // Opponent AI state. One entry per AI rival; persists across the
-  // intro card and pause toggles so progress on the rail does not
-  // reset every render.
+  // Opponent AI state. The session reducer is the single source of
+  // truth for AI position, speed, lap count, and finishing order; the
+  // rAF loop below mirrors the session's AI poses into `opponentsRef`
+  // so the existing renderer pipeline draws them, and the player's
+  // own pose (owned by RaceCanvas) is mirrored back into car 0 of
+  // the session so the AI's follow-distance scan reads the real player
+  // position. Persists across the intro card and pause toggles so the
+  // session does not reset every render.
   const opponentsRef = useRef<OpponentPose[] | null>(null)
-  const aiStateRef = useRef<
-    { progress: number; speedMps: number; lateralM: number; color: number }[]
-  >([])
+  const sessionRef = useRef<RaceSessionState | null>(null)
+  const aiColorsRef = useRef<number[]>([])
+  // Live player-pose channel filled by RaceCanvas every frame. We
+  // mirror this into the session's car 0 before each step so the AI
+  // sees the real player position.
+  const playerPoseRef = useRef<{ x: number; z: number; heading: number } | null>(
+    null,
+  )
+  const playerSpeedRef = useRef<number>(0)
   const [hudPhase, setHudPhase] = useState<
     'intro' | 'countdown' | 'racing' | 'finished'
   >('intro')
@@ -249,48 +262,81 @@ function TourRacePageInner() {
       // anyway when `pieces` changes.
       pendingResetRef.current = true
 
-      if (!tour) {
-        aiStateRef.current = []
+      if (!tour || !rail) {
+        sessionRef.current = null
+        aiColorsRef.current = []
         opponentsRef.current = null
         return
       }
-      // Seed the AI field: one car per non-player grid slot, with a
-      // stable lane offset and a per-car target speed derived from the
-      // tour+race seed so an identical run reproduces an identical
-      // field shape. Player slot (index 0) is intentionally absent --
-      // the player drives the real car via RaceCanvas.
+      // Seed the multi-car session. The session reducer owns the AI
+      // physics, lap accounting, and finishing order so the results
+      // page reflects what actually happened on the track instead of
+      // a random offset. Player car is index 0; AI cars fill 1..N.
       const seed = hashSeed(tour.id, raceIndex)
-      const rng = mulberry32(seed)
-      const palette = OPPONENT_PALETTE
-      const aiCount = Math.max(0, tour.fieldSize - 1)
-      const state: typeof aiStateRef.current = []
-      for (let i = 0; i < aiCount; i++) {
-        // Alternate lanes so the field reads as a real grid, not a
-        // conga line. Lane half-width is set so a 2-lane oval fits two
-        // cars side-by-side inside the track ribbon (TRACK_WIDTH = 8).
-        const lane = i % 2 === 0 ? -OPPONENT_LANE_OFFSET : OPPONENT_LANE_OFFSET
-        // Stagger starts a few meters back so the field reads as a
-        // grid lined up behind the start line at race-go.
-        const startBack = OPPONENT_GRID_SPACING_M * (Math.floor(i / 2) + 1)
-        // Per-car target speed in [16, 23] m/s. Below maxSpeed (26)
-        // so the player can pass them with a clean lap.
-        const speedMps = 16 + rng() * 7
-        state.push({
-          progress: -startBack,
-          speedMps,
-          lateralM: lane,
-          color: palette[i % palette.length]!,
-        })
+      const drivers = tourDrivers(STANDARD_CHAMPIONSHIP, tour) ?? []
+      const career =
+        typeof window !== 'undefined' ? readCareer() : defaultCareer()
+      const activeCar = getActiveCar(career)
+      const session = createRaceSession({
+        slotCount: tour.fieldSize,
+        laneCount: tour.fieldSize <= 4 ? 2 : 3,
+        aiDrivers: drivers.map((d) => ({ id: d.id })),
+        seed,
+        totalLaps: TOTAL_LAPS,
+        // Lap rollover in the simplified session reducer uses
+        // `distanceTraveled / lapDistanceMeters`, so pin this to the
+        // actual rail length so the AI laps at the same cadence as the
+        // player crossing the 3D finish line.
+        lapDistanceMeters: rail.totalLength,
+        playerCarId: career.activeCarId,
+        playerInitialDamage: activeCar.damage,
+        playerUpgrades: activeCar.upgrades,
+        // Skip the session's own countdown; the page renders a separate
+        // `<Countdown>` overlay and the rAF loop only starts stepping
+        // the session once `hudPhase === 'racing'`.
+        countdownSeconds: 0,
+      })
+      // Place each AI car along the rail behind the start line so the
+      // field reads as a proper grid lined up in world coordinates,
+      // not at the grid-local origin the session's `spawnGrid` returns.
+      // Player slot 0 stays at the spawn point; RaceCanvas owns its
+      // 3D position from there.
+      for (let i = 1; i < session.cars.length; i++) {
+        const car = session.cars[i]!
+        // Lane offset: alternate left / right of the centerline so a
+        // 2-lane field stays inside the track ribbon. Same offset
+        // pattern the legacy rail-only loop used.
+        const lane = (i - 1) % 2 === 0 ? -OPPONENT_LANE_OFFSET : OPPONENT_LANE_OFFSET
+        const startBack = OPPONENT_GRID_SPACING_M * (Math.floor((i - 1) / 2) + 1)
+        const pose = sampleRailAt(rail, -startBack, lane)
+        car.physics = {
+          x: pose.x,
+          z: pose.z,
+          heading: pose.heading,
+          speed: 0,
+        }
+        // Seed the AI's `progress` channel so the launch-hold blend and
+        // the curve-aware target speed start from the same arc-length
+        // the car is physically standing at.
+        if (car.aiState) {
+          const wrapped = ((-startBack) % rail.totalLength + rail.totalLength) % rail.totalLength
+          car.aiState = { ...car.aiState, progress: wrapped }
+        }
       }
-      aiStateRef.current = state
-      opponentsRef.current = state.map(() => ({
+      sessionRef.current = session
+      aiColorsRef.current = []
+      const aiCount = session.cars.length - 1
+      for (let i = 0; i < aiCount; i++) {
+        aiColorsRef.current.push(OPPONENT_PALETTE[i % OPPONENT_PALETTE.length]!)
+      }
+      opponentsRef.current = Array.from({ length: aiCount }, () => ({
         x: 0,
         z: 0,
         heading: 0,
         color: 0xffffff,
       }))
     },
-    [tour, raceIndex],
+    [tour, raceIndex, rail],
   )
 
   // Reset run state on route param changes. Replays the intro card so
@@ -299,13 +345,20 @@ function TourRacePageInner() {
     resetRace(true)
   }, [resetRace])
 
-  // AI loop: advance each opponent along the rail by `speed * dt` so
-  // they read as racing the track in front of / alongside the player.
-  // The loop runs at rAF cadence and short-circuits while paused or
-  // before the player has dismissed the intro so opponents do not
-  // race away during the static "READY" screen.
+  // Race-session loop: advance the full multi-car session every rAF
+  // tick. The session owns AI physics, lap counting, contact damage,
+  // and finishing order; this loop mirrors the player's live pose
+  // (owned by RaceCanvas) into car 0 before each step so the AI's
+  // follow-distance scan reads the real player position, then mirrors
+  // each AI car's pose back into `opponentsRef` so the existing
+  // renderer pipeline draws them. Short-circuits during the intro,
+  // pause, and countdown so opponents do not race away on the static
+  // "READY" screen.
   useEffect(() => {
     if (!rail) return
+    const aiTrack = buildAiTrackView(rail)
+    const aiStats = { topSpeed: paramsRef.current.maxSpeed }
+    const neutralInput: PhysicsInput = { throttle: 0, steer: 0, handbrake: false }
     let last = performance.now()
     let raf = 0
     const loop = (now: number) => {
@@ -313,27 +366,58 @@ function TourRacePageInner() {
       const dt = Math.min(0.05, (now - last) / 1000)
       last = now
       const opponents = opponentsRef.current
-      const ai = aiStateRef.current
-      if (!opponents || opponents.length !== ai.length) return
-      // Hold opponents on the grid until the player has dropped the
-      // intro card AND the Red/Yellow/Green start-light countdown has
-      // finished. Same gate the player's race-start pulse uses.
+      const session = sessionRef.current
+      if (!opponents || !session) return
       const racing = !showIntro && !paused && hudPhase === 'racing'
-      for (let i = 0; i < ai.length; i++) {
-        const car = ai[i]!
-        if (racing) {
-          car.progress += car.speedMps * dt
+      // Mirror the player's live pose (from RaceCanvas) into car 0 so
+      // the AI's follow-distance and contact scans see the real
+      // player. We do this every frame regardless of whether the
+      // session is racing so the grid view also reflects the spawn
+      // position the canvas placed the player at.
+      const pose = playerPoseRef.current
+      const car0 = session.cars[0]
+      if (car0 && pose) {
+        car0.physics = {
+          x: pose.x,
+          z: pose.z,
+          heading: pose.heading,
+          speed: playerSpeedRef.current,
         }
-        const pose = sampleRailAt(rail, car.progress, car.lateralM)
+      }
+      if (racing) {
+        const next = stepRaceSession(
+          session,
+          { playerInput: neutralInput, dt, track: aiTrack, aiStats },
+          { totalLaps: session.totalLaps, lapDistanceMeters: rail.totalLength },
+        )
+        // Re-mirror the player's pose. `stepRaceSession` advanced car 0
+        // through the integrator with the neutral input we passed; the
+        // 3D canvas is the source of truth for the player so we
+        // overwrite the integrated pose back to the live one. We also
+        // keep the player's `distanceTraveled` at the integrated value
+        // even though it is unused (we mark the player finished
+        // externally via `submitResult`).
+        if (next.cars[0] && pose) {
+          next.cars[0].physics = {
+            x: pose.x,
+            z: pose.z,
+            heading: pose.heading,
+            speed: playerSpeedRef.current,
+          }
+        }
+        sessionRef.current = next
+      }
+      // Mirror AI poses into the renderer channel.
+      const liveSession = sessionRef.current
+      if (!liveSession) return
+      const aiCount = Math.min(opponents.length, liveSession.cars.length - 1)
+      for (let i = 0; i < aiCount; i++) {
+        const car = liveSession.cars[i + 1]!
         const slot = opponents[i]!
-        slot.x = pose.x
-        slot.z = pose.z
-        // SampledPoint headings already match the main game's
-        // state.heading convention (0 = +X east, PI/2 = -Z north),
-        // which is exactly what bundle.car.rotation.y wants. No
-        // conversion needed.
-        slot.heading = pose.heading
-        slot.color = car.color
+        slot.x = car.physics.x
+        slot.z = car.physics.z
+        slot.heading = car.physics.heading
+        slot.color = aiColorsRef.current[i] ?? 0xffffff
       }
     }
     raf = window.requestAnimationFrame(loop)
@@ -427,16 +511,48 @@ function TourRacePageInner() {
     (totalRaceMs: number) => {
       if (submittedRef.current) return
       if (!tour) return
+      const liveSession = sessionRef.current
+      if (!liveSession || !rail) return
       submittedRef.current = true
       const career = readCareer()
-      const finalState = synthesizeFinalState({
-        tour,
-        raceIndex,
-        playerCarId: career.activeCarId,
-        playerTotalMs: totalRaceMs,
-      })
+      const aiTrack = buildAiTrackView(rail)
+      const aiStats = { topSpeed: paramsRef.current.maxSpeed }
+      const neutralInput: PhysicsInput = { throttle: 0, steer: 0, handbrake: false }
+      // Mark the player (car 0) finished at the real lap-aggregate time
+      // the 3D canvas measured. The session reducer skips finished
+      // cars, so this is a one-shot mutation before the deterministic
+      // wrap-up loop.
+      const player = liveSession.cars[0]
+      if (player && player.status === 'racing') {
+        player.status = 'finished'
+        player.finishedAtMs = totalRaceMs
+        player.lap = liveSession.totalLaps
+        if (!liveSession.finishingOrder.includes(0)) {
+          liveSession.finishingOrder.push(0)
+        }
+        if (liveSession.cars.every((c) => c.status !== 'racing')) {
+          liveSession.phase = 'finished'
+        }
+      }
+      // Advance the remaining AI cars to completion under a fixed dt so
+      // the result is deterministic per (tour, raceIndex, player time).
+      // Pure-physics steps are cheap; a few thousand iterations cover
+      // even a slow back-marker without burning measurable wall time.
+      const FINAL_DT = 1 / 60
+      const FINAL_STEP_CAP = 60 * 60 * 5 // 5 minutes of sim wall-clock
+      let session: RaceSessionState = liveSession
+      let steps = 0
+      while (session.phase !== 'finished' && steps < FINAL_STEP_CAP) {
+        session = stepRaceSession(
+          session,
+          { playerInput: neutralInput, dt: FINAL_DT, track: aiTrack, aiStats },
+          { totalLaps: session.totalLaps, lapDistanceMeters: rail.totalLength },
+        )
+        steps++
+      }
+      sessionRef.current = session
       const raceResult = buildRaceResult({
-        finalState,
+        finalState: session,
         career,
         championship: STANDARD_CHAMPIONSHIP,
         tourId: tour.id,
@@ -459,7 +575,7 @@ function TourRacePageInner() {
       }
       router.push('/tour/results')
     },
-    [router, tour, raceIndex],
+    [router, tour, raceIndex, rail],
   )
 
   const handleLapComplete = useCallback(
@@ -559,6 +675,8 @@ function TourRacePageInner() {
             showSkidMarksRef={showSkidMarksRef}
             showTireSmokeRef={showTireSmokeRef}
             opponentsRef={opponentsRef}
+            carPoseOutRef={playerPoseRef}
+            speedOutRef={playerSpeedRef}
             onLapComplete={handleLapComplete}
             onHudUpdate={handleHud}
             disableMusicIntensity
@@ -652,61 +770,6 @@ function clampRaceIndex(raw: string | null, trackCount: number): number {
   return Math.min(max, Math.max(0, Math.floor(parsed)))
 }
 
-// Build a synthetic RaceSessionState in the 'finished' phase so the
-// existing race-result builder can compute placement, points, and purse
-// without a parallel multi-car simulation. The 3D player race is the
-// source of truth for the player's lap time; AI cars get deterministic
-// seeded offsets so finishing order is stable per tour+race.
-function synthesizeFinalState(args: {
-  tour: Tour
-  raceIndex: number
-  playerCarId: string
-  playerTotalMs: number
-}): RaceSessionState {
-  const drivers = tourDrivers(STANDARD_CHAMPIONSHIP, args.tour) ?? []
-  const seed = hashSeed(args.tour.id, args.raceIndex)
-  const state = createRaceSession({
-    slotCount: args.tour.fieldSize,
-    laneCount: args.tour.fieldSize <= 4 ? 2 : 3,
-    aiDrivers: drivers.map((d) => ({ id: d.id })),
-    seed,
-    totalLaps: TOTAL_LAPS,
-    lapDistanceMeters: 300,
-    playerCarId: args.playerCarId,
-  })
-  // Mutate the freshly-seeded state into a finished race. The player's
-  // time comes from their actual 3D laps; AI cars get deterministic
-  // offsets around the player so placement varies per tour without
-  // running a parallel sim. Negative deltas put an AI ahead of the
-  // player; positive deltas put them behind.
-  const rng = mulberry32(seed)
-  state.phase = 'finished'
-  state.elapsedMs = args.playerTotalMs
-  state.finishingOrder = []
-  for (let i = 0; i < state.cars.length; i++) {
-    const car = state.cars[i]!
-    car.status = 'finished'
-    if (car.isPlayer) {
-      car.finishedAtMs = args.playerTotalMs
-    } else {
-      // Per-car offset in [-10s, +15s] around the player; the slight
-      // upward bias means a clean run usually beats half the field.
-      const delta = (rng() - 0.4) * 25_000
-      car.finishedAtMs = Math.max(1000, args.playerTotalMs + delta)
-    }
-    car.lap = TOTAL_LAPS
-  }
-  state.finishingOrder = state.cars
-    .map((c) => c.index)
-    .slice()
-    .sort((a, b) => {
-      const aMs = state.cars[a]!.finishedAtMs ?? Number.POSITIVE_INFINITY
-      const bMs = state.cars[b]!.finishedAtMs ?? Number.POSITIVE_INFINITY
-      return aMs - bMs
-    })
-  return state
-}
-
 function hashSeed(tourId: string, raceIndex: number): number {
   let h = 0x811c9dc5
   const s = `${tourId}:${raceIndex}`
@@ -715,17 +778,6 @@ function hashSeed(tourId: string, raceIndex: number): number {
     h = Math.imul(h, 0x01000193)
   }
   return h >>> 0
-}
-
-function mulberry32(seed: number): () => number {
-  let t = seed >>> 0
-  return () => {
-    t = (t + 0x6d2b79f5) >>> 0
-    let r = t
-    r = Math.imul(r ^ (r >>> 15), r | 1)
-    r ^= r + Math.imul(r ^ (r >>> 7), r | 61)
-    return ((r ^ (r >>> 14)) >>> 0) / 4294967296
-  }
 }
 
 const pageStyle: React.CSSProperties = {

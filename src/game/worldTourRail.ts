@@ -108,23 +108,42 @@ export function sampleRailAt(
   }
   let d = distance % rail.totalLength
   if (d < 0) d += rail.totalLength
-  // Linear search is fine for a few-hundred-sample rail; the AI loop
-  // calls this O(opponents) times per frame, which is bounded at the
-  // tour field size.
-  let lo = 0
-  let hi = n - 1
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1
-    if (rail.cumulative[mid]! <= d) lo = mid
-    else hi = mid
+  const lastIdx = n - 1
+  const lastCumulative = rail.cumulative[lastIdx]!
+  let x0: number
+  let z0: number
+  let h: number
+  if (d >= lastCumulative) {
+    // Closing segment: interpolate between the last recorded sample
+    // and the first one so a loop's seam is continuous instead of
+    // collapsing to the last sample. `totalLength` already accounts
+    // for the closing chord length.
+    const a = rail.samples[lastIdx]!
+    const b = rail.samples[0]!
+    const segLen = rail.totalLength - lastCumulative
+    const t = segLen > 1e-6 ? (d - lastCumulative) / segLen : 0
+    x0 = a.x + (b.x - a.x) * t
+    z0 = a.z + (b.z - a.z) * t
+    h = lerpAngle(a.heading, b.heading, t)
+  } else {
+    // Linear search is fine for a few-hundred-sample rail; the AI loop
+    // calls this O(opponents) times per frame, which is bounded at the
+    // tour field size.
+    let lo = 0
+    let hi = lastIdx
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1
+      if (rail.cumulative[mid]! <= d) lo = mid
+      else hi = mid
+    }
+    const a = rail.samples[lo]!
+    const b = rail.samples[hi]!
+    const segLen = rail.cumulative[hi]! - rail.cumulative[lo]!
+    const t = segLen > 1e-6 ? (d - rail.cumulative[lo]!) / segLen : 0
+    x0 = a.x + (b.x - a.x) * t
+    z0 = a.z + (b.z - a.z) * t
+    h = lerpAngle(a.heading, b.heading, t)
   }
-  const a = rail.samples[lo]!
-  const b = rail.samples[hi]!
-  const segLen = rail.cumulative[hi]! - rail.cumulative[lo]!
-  const t = segLen > 0 ? (d - rail.cumulative[lo]!) / segLen : 0
-  const x0 = a.x + (b.x - a.x) * t
-  const z0 = a.z + (b.z - a.z) * t
-  const h = lerpAngle(a.heading, b.heading, t)
   // Right-of-travel perpendicular in this codebase's convention:
   // the road extrusion in sceneBuilder.polylineGeometry adds
   // (sin h, cos h) * halfWidth for the right edge, so the same vector

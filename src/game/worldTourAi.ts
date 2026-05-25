@@ -12,9 +12,10 @@
  *
  * The track is consumed through a narrow `AiTrackView` interface so this
  * module can be exercised in unit tests without compiling a real
- * VibeRacer track. The race-session reducer wires a real
- * `AiTrackView` over the project's `trackPath` helpers when the 3D
- * renderer port lands; the MVP race uses a flat-straight stub.
+ * VibeRacer track. The tour route builds a real curvature-aware
+ * `AiTrackView` from the rendered track's `WorldTourRail` via
+ * `buildAiTrackView` (`src/game/worldTourTrackView.ts`); tests still
+ * construct flat-straight views directly.
  *
  * Constants are tuned for VibeRacer's `stepPhysics` units (meters and
  * meters per second). Steer convention follows `playerInput.ts`:
@@ -77,6 +78,15 @@ export const AI_TUNING = Object.freeze({
    * for the clean_line archetype.
    */
   STEER_GAIN: 1.5,
+  /**
+   * Heading-error gain (1/rad). Multiplied by the AI's current heading
+   * delta to the centerline heading to produce a steer contribution
+   * that keeps the car aligned with the road frame on a curving rail.
+   * Only used when the track view exposes `centerlineAt`. Tuned so a
+   * 0.3 rad (17 degree) misalignment saturates the heading term so
+   * the lateral term still has authority near the apex.
+   */
+  HEADING_GAIN: 3,
   /**
    * Longitudinal range (m) where a same-lane leader triggers the
    * follow-distance throttle cap. Inside this window the trailing AI
@@ -157,15 +167,20 @@ export interface AiCarStats {
 }
 
 /**
- * Narrow track-frame view. The AI reads only:
- * - the centerline x at the AI's progress (so the lane error can be
- *   computed in world coordinates without a full track compile);
+ * Narrow track-frame view. The AI reads:
+ * - the centerline x at the AI's progress (used by the legacy
+ *   straight-track P controller and by tests that only exercise the
+ *   curve / brake math);
  * - the authored curve at the AI's progress, in [-1, 1] where positive
  *   means the road bends to the right (matching VibeRacer's piece-set
- *   convention).
- *
- * The 3D renderer port builds this from the existing `trackPath` and
- * `orderedPieces` helpers. Tests construct it directly.
+ *   convention);
+ * - optionally the full centerline pose at the AI's progress. When
+ *   present the AI computes lateral error in the track frame (so the
+ *   controller stays correct as the rail rotates through east / west
+ *   bearings) and adds a heading-tracking term to the steer signal.
+ *   `buildAiTrackView` (`src/game/worldTourTrackView.ts`) provides this
+ *   over a real rail; unit tests can leave it undefined and fall back
+ *   to the world-x P controller for a straight track.
  */
 export interface AiTrackView {
   // Centerline world x (m) at the AI's progress. The AI steers toward
@@ -176,6 +191,11 @@ export interface AiTrackView {
   // Optional road half-width override (m). Defaults to
   // ROAD_HALF_WIDTH_DEFAULT.
   roadHalfWidth?: number
+  // Optional full centerline pose. When provided, the AI tick uses
+  // track-local lateral error and heading tracking instead of the
+  // world-x P controller. heading follows the rail-sample convention
+  // (0 = +X east, increasing CCW).
+  centerlineAt?(progress: number): { x: number; z: number; heading: number }
 }
 
 export interface AiTickContext {
@@ -230,17 +250,20 @@ export function followDistanceCap(
     // Project the leader into the AI's forward axis. The clean_line
     // archetype only needs a rough "is this peer ahead of me along the
     // current heading" test; the dot product with the forward axis
-    // gives a stable answer even on a curved track.
+    // gives a stable answer even on a curved track. Heading convention
+    // matches `physics.ts` and the rail-sampling helpers: 0 means
+    // facing +X (east); forward is `(cos h, -sin h)`.
     const dx = o.x - ai.x
     const dz = o.z - ai.z
-    const fwdX = -Math.sin(ai.heading)
-    const fwdZ = -Math.cos(ai.heading)
+    const fwdX = Math.cos(ai.heading)
+    const fwdZ = -Math.sin(ai.heading)
     const forward = dx * fwdX + dz * fwdZ
     if (forward <= 0) continue
     if (forward > AI_TUNING.FOLLOW_DISTANCE_METERS) continue
-    // Lateral offset: the component perpendicular to forward.
-    const sideX = -fwdZ
-    const sideZ = fwdX
+    // Lateral offset: the component perpendicular to forward (right of
+    // travel = (sin h, cos h) per the rail extrusion convention).
+    const sideX = Math.sin(ai.heading)
+    const sideZ = Math.cos(ai.heading)
     const side = Math.abs(dx * sideX + dz * sideZ)
     if (side > AI_TUNING.FOLLOW_LANE_THRESHOLD_METERS) continue
     if (forward < closestDz) {
@@ -249,7 +272,13 @@ export function followDistanceCap(
     }
   }
   if (closest === null) return null
-  return Math.max(0, closest.speed - AI_TUNING.FOLLOW_SPEED_BUFFER_M_PER_S)
+  // Floor the cap at MIN_AI_SPEED so a stationary leader does not
+  // deadlock the trailing AI at speed 0 at race start. Once the
+  // leader is moving the cap tracks `leader.speed - buffer` as
+  // expected; bump damage in the session reducer handles a rare
+  // pileup into a fully stopped car.
+  const raw = closest.speed - AI_TUNING.FOLLOW_SPEED_BUFFER_M_PER_S
+  return Math.max(AI_TUNING.MIN_AI_SPEED, raw)
 }
 
 /**
@@ -321,23 +350,61 @@ export function tickAi(
 
   const blend = launchBlend(state.progress)
   const curve = track.curveAt(state.progress)
-  const centerX = track.centerXAt(state.progress)
-  // Lateral target: the centerline plus the racing-line bias. During
-  // the launch hold the bias collapses to zero, so the AI continues to
-  // hold its spawn lane.
   const laneBias = racingLineOffset(curve, blend)
-  // The lane target is the centerline plus the racing-line bias plus
-  // the spawn-lane hold during the launch window: outside the window we
-  // pull all the way to the racing line; inside we keep the car at its
-  // current x. We blend the two so the transition is smooth.
-  const racingLineTargetX = centerX + laneBias
-  const heldLaneTargetX = car.x
-  const targetX = racingLineTargetX * blend + heldLaneTargetX * (1 - blend)
-  const lateralError = targetX - car.x
-  // Positive steer turns left (matches `playerInput.ts`). World x grows
-  // to the right, so a positive `lateralError` (target to the right of
-  // the AI) needs a NEGATIVE steer.
-  let steer = clamp(-lateralError / AI_TUNING.STEER_GAIN, -1, 1)
+
+  // Steering controller. Two modes share the lane-target math:
+  //
+  // - Track-local (`centerlineAt` available, real rail): compute the
+  //   lateral error in the track's right-of-travel frame so the
+  //   controller stays correct as the rail rotates through east /
+  //   west bearings. Add a heading-tracking term so the AI follows
+  //   the rail through long sweeps without over-shooting.
+  // - World-x (legacy, used by tests with a flat-straight view): the
+  //   centerline is parameterized only by x, so lateral error is the
+  //   raw (target x - car x) like the original VibeGear2 port.
+  let steer: number
+  let centerX: number
+  let laneTarget: number
+  const pose = track.centerlineAt?.(state.progress)
+  if (pose) {
+    // Right-of-travel perpendicular matches the rail extrusion
+    // convention used by `sampleRailAt`: (sin h, cos h) points to the
+    // right of the direction of travel.
+    const sideX = Math.sin(pose.heading)
+    const sideZ = Math.cos(pose.heading)
+    const offX = car.x - pose.x
+    const offZ = car.z - pose.z
+    const lateralFromCenter = offX * sideX + offZ * sideZ
+    // Racing-line target offset relative to the centerline. During the
+    // launch window we collapse the bias to 0 and let the car hold the
+    // lateral position it spawned at (the launch-hold mechanic from
+    // VibeGear2). Outside the launch we pull onto the racing line.
+    const heldLateral = lateralFromCenter
+    const racingLineTargetLateral = laneBias
+    const targetLateral =
+      racingLineTargetLateral * blend + heldLateral * (1 - blend)
+    const lateralError = targetLateral - lateralFromCenter
+    // Heading error: positive means we need to rotate CCW (which is a
+    // positive steer in this codebase's convention).
+    let headingError = pose.heading - car.heading
+    if (headingError > Math.PI) headingError -= 2 * Math.PI
+    if (headingError < -Math.PI) headingError += 2 * Math.PI
+    const lateralTerm = -lateralError / AI_TUNING.STEER_GAIN
+    const headingTerm = AI_TUNING.HEADING_GAIN * headingError
+    steer = clamp(lateralTerm + headingTerm, -1, 1)
+    centerX = pose.x
+    laneTarget = pose.x + targetLateral * sideX + 0 * sideZ
+  } else {
+    // Legacy world-x P controller. Used by tests with a flat-straight
+    // track view; the real tour route always supplies `centerlineAt`.
+    centerX = track.centerXAt(state.progress)
+    const racingLineTargetX = centerX + laneBias
+    const heldLaneTargetX = car.x
+    const targetX = racingLineTargetX * blend + heldLaneTargetX * (1 - blend)
+    const lateralError = targetX - car.x
+    steer = clamp(-lateralError / AI_TUNING.STEER_GAIN, -1, 1)
+    laneTarget = targetX
+  }
 
   // Target speed: curve-aware, then capped by any close same-lane
   // leader inside the follow window.
@@ -362,8 +429,17 @@ export function tickAi(
   // Defensive: if the AI is fully outside the road, pull harder back
   // toward center to avoid an off-track DNF spiral. This is a minimal
   // safety net the clean_line archetype keeps even though the P
-  // controller naturally recovers in most cases.
-  if (Math.abs(car.x - centerX) > halfWidth) {
+  // controller naturally recovers in most cases. Uses the same
+  // track-local frame as the main controller when available so the
+  // recovery push is in the right direction on a rotated rail.
+  if (pose) {
+    const sideX = Math.sin(pose.heading)
+    const sideZ = Math.cos(pose.heading)
+    const offCenter = (car.x - pose.x) * sideX + (car.z - pose.z) * sideZ
+    if (Math.abs(offCenter) > halfWidth) {
+      steer = clamp(-offCenter / AI_TUNING.STEER_GAIN, -1, 1)
+    }
+  } else if (Math.abs(car.x - centerX) > halfWidth) {
     steer = clamp(-(car.x - centerX) / AI_TUNING.STEER_GAIN, -1, 1)
   }
 
@@ -373,7 +449,7 @@ export function tickAi(
       ...state,
       progress: nextProgress,
       targetSpeed: target,
-      laneTarget: targetX,
+      laneTarget,
     },
   }
 }
