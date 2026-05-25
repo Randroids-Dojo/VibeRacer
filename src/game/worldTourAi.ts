@@ -127,14 +127,26 @@ export const AI_TUNING = Object.freeze({
   FOLLOW_SPEED_BUFFER_M_PER_S: 1,
   /**
    * Lateral distance from the rail (as a multiple of the road half-
-   * width) above which the AI switches into recovery mode: aim at
-   * the closest centerline point instead of the look-ahead carrot,
-   * and brake to MIN_AI_SPEED. A ratio of 1.5 means a car drifts
-   * about 1.5 road-widths off before recovery kicks in (6 m at the
-   * default track width of 8 m), past where the racing line could
-   * plausibly recover.
+   * width) above which the AI brakes to MIN_AI_SPEED so the chassis
+   * has the steer authority to make the wider recovery arc back to
+   * the rail. A ratio of 1.5 means recovery kicks in once the car
+   * drifts about 1.5 road-widths off (6 m at the default track
+   * width of 8 m), past where the racing line could plausibly
+   * recover at full speed.
    */
   RECOVERY_OFF_TRACK_RATIO: 1.5,
+  /**
+   * Extra look-ahead meters added per meter of lateral distance from
+   * the rail. Pure pursuit's turn radius is roughly
+   * `lookAhead^2 / (2 * crossTrackError)`; without this boost the
+   * radius collapses when the car is off-line and the AI traces a
+   * tight circle instead of returning. A boost of 0.5 is enough at
+   * the recovery brake speed (8 m/s, steerRate 2.2 rad/s, min radius
+   * 3.6 m) to keep the requested turn radius above what the chassis
+   * can deliver; larger boosts wash out the next corner on tight
+   * loops because the carrot ends up past the corner entry.
+   */
+  LATERAL_LOOK_AHEAD_BOOST: 0.5,
 })
 
 /**
@@ -393,19 +405,26 @@ export function tickAi(
     }
   }
 
-  // Step 2: pick a carrot point ahead on the rail. Look-ahead scales
-  // with speed (faster = look further ahead = smoother lines) and is
-  // clamped to [MIN_LOOK_AHEAD_M, MAX_LOOK_AHEAD_M] so a stopped car
-  // still has a target and a top-speed car does not look past a
-  // corner entry.
+  // Step 2: pick a carrot point ahead on the rail. Look-ahead has
+  // two contributions:
   //
-  // Recovery branch: when the car is significantly off-rail
-  // (lateral distance > RECOVERY_OFF_TRACK_M), pure pursuit's
-  // look-ahead carrot can sit sideways relative to the car's heading
-  // and produce a tight steering circle instead of returning the
-  // car to the racing surface. Switch to "aim at the closest rail
-  // point" (look-ahead = 0) and brake to MIN_AI_SPEED until the car
-  // is recovered. On-track behavior is unchanged.
+  //   - A speed-scaled base term: faster car -> looks further ahead
+  //     -> smoother lines. Clamped to a sane range so a stopped car
+  //     still has a target and a top-speed car does not look past a
+  //     corner entry.
+  //   - A lateral-error boost: when the car is off-line, scale
+  //     look-ahead UP by the lateral distance from the rail. Pure
+  //     pursuit's geometric turn radius is roughly
+  //     `lookAhead^2 / (2 * crossTrackError)`. With a fixed
+  //     look-ahead and a large cross-track error, the steering
+  //     radius collapses and the AI carves a tight circle off-line
+  //     instead of returning to the rail. Boosting look-ahead with
+  //     the lateral distance keeps the turn radius reasonable and
+  //     the recovery path drivable.
+  //
+  // We DO still brake to MIN_AI_SPEED when significantly off-line so
+  // the chassis has the steer authority to actually make the wider
+  // arc; that part of the recovery branch is kept.
   const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
   const projectedPose = track.sampleAt(arcLength, 0)
   const lateralFromRail = Math.hypot(
@@ -414,13 +433,13 @@ export function tickAi(
   )
   const recoveryThreshold = halfWidth * AI_TUNING.RECOVERY_OFF_TRACK_RATIO
   const recovering = lateralFromRail > recoveryThreshold
-  const lookAhead = recovering
-    ? 0
-    : clamp(
-        car.speed * AI_TUNING.LOOK_AHEAD_SECONDS,
-        AI_TUNING.MIN_LOOK_AHEAD_M,
-        AI_TUNING.MAX_LOOK_AHEAD_M,
-      )
+  const baseLookAhead = clamp(
+    car.speed * AI_TUNING.LOOK_AHEAD_SECONDS,
+    AI_TUNING.MIN_LOOK_AHEAD_M,
+    AI_TUNING.MAX_LOOK_AHEAD_M,
+  )
+  const lookAhead =
+    baseLookAhead + lateralFromRail * AI_TUNING.LATERAL_LOOK_AHEAD_BOOST
   const carrotArc = arcLength + lookAhead
 
   // Step 3: lateral racing-line bias at the carrot. Read the curve
@@ -428,14 +447,13 @@ export function tickAi(
   // pre-positions for the corner it is approaching. The launch-hold
   // blend keeps the bias at 0 for the first 200 m of raced distance
   // so the field spreads off the grid before chasing the racing line.
-  // During recovery the bias collapses to 0 (aim at centerline, not
-  // racing line) so the car returns to the road by the shortest path.
+  // While recovering the bias also collapses to 0 (aim at centerline,
+  // not racing line) so the car comes back to the road, not the
+  // racing line.
   const blend = launchBlend(state.racedDistance)
   const upcomingCurve = track.curveAt(carrotArc)
   const lateral = recovering ? 0 : racingLineOffset(upcomingCurve, blend)
-  const carrot = recovering
-    ? projectedPose
-    : track.sampleAt(carrotArc, lateral)
+  const carrot = track.sampleAt(carrotArc, lateral)
 
   // Step 4: steer to face the carrot. The single saturated term
   // replaces the prior lateral-error + heading-error controllers; the

@@ -416,10 +416,10 @@ describe('tickAi (off-track recovery)', () => {
     }
   }
 
-  it('switches to recovery mode (target = MIN_AI_SPEED, carrot at projection) when far off-rail', () => {
-    // Half-width is 4 m; recovery kicks in past 1.5 * 4 = 6 m. Put
-    // the car 10 m off the rail in the +z direction (= right of the
-    // east-bound rail) at racing speed.
+  it('brakes to MIN_AI_SPEED and widens look-ahead when far off-rail (recovery branch)', () => {
+    // Half-width is 4 m; recovery braking kicks in past 1.5 * 4 = 6 m.
+    // Put the car 10 m off the rail in the +z direction (= right of
+    // the east-bound rail) at racing speed.
     const view = eastStraight()
     const result = tickAi(
       { ...INITIAL_AI_STATE, racedDistance: 1000 },
@@ -430,14 +430,19 @@ describe('tickAi (off-track recovery)', () => {
     )
     // Target speed must be the recovery floor, not topSpeed.
     expect(result.nextAiState.targetSpeed).toBe(AI_TUNING.MIN_AI_SPEED)
-    // The car is going way over the recovery target, so the throttle
+    // Car is going way over the recovery target, so the throttle
     // must be braking.
     expect(result.input.throttle).toBeLessThan(0)
-    // And the carrot world position should be at the projection (the
-    // closest centerline point), not look-ahead meters down the rail.
-    // The projection of (50, 10) onto the east straight gives
-    // (50, 0); the carrot is exactly that.
-    expect(result.nextAiState.carrotX).toBeCloseTo(50, 5)
+    // Carrot is at `arcLength + lookAhead` along the rail, with
+    // lookAhead boosted by lateral distance. arcLength = 50 (the
+    // car's x), baseLookAhead from speed 22 = clamp(22 * 0.7, 4, 20)
+    // = ~15.4, boost = 10 * 2 = 20, total ~35.4. Carrot at x ~85.
+    // The key property is that the carrot is FORWARD of the car
+    // (carrotX > carX), producing a wide convergent arc rather than
+    // a tight sideways turn.
+    expect(result.nextAiState.carrotX).toBeGreaterThan(50)
+    // Carrot stays on the centerline (z = 0) because recovery
+    // collapses the racing-line bias.
     expect(result.nextAiState.carrotZ).toBeCloseTo(0, 5)
   })
 
