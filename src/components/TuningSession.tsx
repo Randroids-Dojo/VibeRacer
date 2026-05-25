@@ -1189,12 +1189,19 @@ const hudWrap: CSSProperties = {
 // (env(safe-area-inset-*) bottoms + @media (any-pointer: coarse) bumps).
 // Pulled out of inline `CSSProperties` into a single injected stylesheet
 // because media queries can't ride along on the inline style attribute.
+//
+// `max(<floor>, calc(<base> + env(safe-area-inset-*)))` is the canonical
+// trick to guarantee a minimum visual gap from the screen edge even when
+// the device reports a zero safe-area inset (e.g. Android Chrome on a
+// non-notched phone where the URL bar / gesture indicator are not exposed
+// via env). On notched devices the env value grows past the floor and
+// max() picks up the larger of the two.
 const DRIVE_HUD_CSS = `
 .viberacer-tuning-hud {
   position: absolute;
-  top: calc(12px + env(safe-area-inset-top, 0px));
-  right: calc(12px + env(safe-area-inset-right, 0px));
-  max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  top: max(20px, calc(12px + env(safe-area-inset-top, 0px)));
+  right: max(20px, calc(12px + env(safe-area-inset-right, 0px)));
+  max-width: calc(100vw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -1223,9 +1230,9 @@ const DRIVE_HUD_CSS = `
 }
 .viberacer-tuning-actions {
   position: absolute;
-  left: calc(16px + env(safe-area-inset-left, 0px));
-  right: calc(16px + env(safe-area-inset-right, 0px));
-  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  left: max(20px, calc(16px + env(safe-area-inset-left, 0px)));
+  right: max(20px, calc(16px + env(safe-area-inset-right, 0px)));
+  bottom: max(32px, calc(20px + env(safe-area-inset-bottom, 0px)));
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
@@ -1251,8 +1258,8 @@ const DRIVE_HUD_CSS = `
 }
 @media (any-pointer: coarse) {
   .viberacer-tuning-hud {
-    top: calc(16px + env(safe-area-inset-top, 0px));
-    right: calc(16px + env(safe-area-inset-right, 0px));
+    top: max(28px, calc(20px + env(safe-area-inset-top, 0px)));
+    right: max(28px, calc(20px + env(safe-area-inset-right, 0px)));
     padding: 12px 16px;
     font-size: 15px;
     border-radius: 12px;
@@ -1261,9 +1268,9 @@ const DRIVE_HUD_CSS = `
     font-size: 12px;
   }
   .viberacer-tuning-actions {
-    left: calc(20px + env(safe-area-inset-left, 0px));
-    right: calc(20px + env(safe-area-inset-right, 0px));
-    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    left: max(28px, calc(20px + env(safe-area-inset-left, 0px)));
+    right: max(28px, calc(20px + env(safe-area-inset-right, 0px)));
+    bottom: max(48px, calc(28px + env(safe-area-inset-bottom, 0px)));
     gap: 10px;
   }
   .viberacer-tuning-action-btn {
