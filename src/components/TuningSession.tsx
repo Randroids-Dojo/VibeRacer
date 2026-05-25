@@ -26,6 +26,11 @@ import {
   type SavedTuning,
   type TrackTag,
 } from '@/lib/tuningLab'
+import {
+  applyContinuousSuggestion,
+  suggestContinuousTuningTweaks,
+  type ContinuousSuggestion,
+} from '@/lib/continuousTuning'
 import { useTuningRecorder } from '@/hooks/useTuningRecorder'
 import { TUNING_HISTORY_DEBOUNCE_MS } from '@/lib/tuningHistory'
 import { TUNING_PARAM_META } from '@/lib/tuningSettings'
@@ -42,9 +47,13 @@ import { shouldHeadlightsBeOn } from '@/lib/headlights'
 import type { BrakeLightMode } from '@/lib/brakeLights'
 import type { CameraRigParams } from '@/game/sceneBuilder'
 import { Countdown } from './Countdown'
+import { MenuPageShell } from './MenuPageShell'
+import { MenuPickRow, MenuShellAction, MenuStartButton } from './MenuUI'
+import { menuTheme } from './menuTheme'
 import { TouchControls } from './TouchControls'
 import { RaceCanvas, type RaceCanvasHud } from './RaceCanvas'
 import { TuningFeedbackForm } from './TuningFeedbackForm'
+import { TuningEditor } from './TuningEditor'
 import type { CarParams } from '@/game/physics'
 import type { LapCompleteEvent } from '@/game/tick'
 import type { LapTelemetry, OffTrackEvent } from '@/game/offTrackEvents'
@@ -63,6 +72,7 @@ type Phase =
   | 'intro'
   | 'countdown'
   | 'drive'
+  | 'continuous'
   | 'feedback'
   | 'recommend'
   | 'save'
@@ -107,6 +117,16 @@ export function TuningSession({
     nextParams: CarParams
     perParamDelta: ParamDeltas
   } | null>(null)
+  // Continuous-tuning suggestions for the current lap freeze. Computed from
+  // the pending round's telemetry the moment the lap completes; cleared the
+  // moment the player picks one or skips.
+  const [continuousSuggestions, setContinuousSuggestions] = useState<
+    ContinuousSuggestion[]
+  >([])
+  // Running count of laps completed in continuous mode so the freeze panel
+  // can show "After lap N" without relying on RaceCanvas's HUD state (which
+  // resets between laps).
+  const [continuousLapCount, setContinuousLapCount] = useState(0)
   const [controlType, setControlType] = useState<ControlType>(
     initialControlType,
   )
@@ -147,6 +167,12 @@ export function TuningSession({
   const autoSaveTimerRef = useRef<number | null>(null)
   const pausedRef = useRef(false)
   const resumeShiftRef = useRef(0)
+  // Wall-clock at the moment the in-drive sliders panel opened. The
+  // canvas's rAF loop bails early while pausedRef is true but does not
+  // shift its lap clock, so on resume we feed the elapsed pause delta
+  // into resumeShiftRef. Mirrors the Game.tsx pause/resume pattern.
+  const driveSlidersPauseStartRef = useRef<number | null>(null)
+  const [driveSlidersOpen, setDriveSlidersOpen] = useState(false)
   const pendingResetRef = useRef(false)
   const pendingRaceStartRef = useRef<number | null>(null)
   // Per-lap telemetry buffers. The off-track event ref accumulates as the
@@ -232,16 +258,28 @@ export function TuningSession({
   const handleLapComplete = useCallback((event: LapCompleteEvent) => {
     if (phaseRef.current !== 'drive') return
     // Snapshot whatever was sampled this lap, clear the refs for the next
-    // attempt, and hand the bundle to the feedback form via pendingRound.
-    setPendingRound({
+    // attempt, and freeze the rAF loop while the continuous-tuning panel
+    // shows the player up to a few A/B suggestions to choose from. The
+    // classic Likert feedback survey still exists but only fires when the
+    // player ends the session.
+    const pending = {
       lapTimeMs: event.lapTimeMs,
       offTrackEvents: offTrackEventsRef.current.slice(),
       telemetry: lastTelemetryRef.current,
-    })
+    }
+    setPendingRound(pending)
     offTrackEventsRef.current = []
     lastTelemetryRef.current = null
     pausedRef.current = true
-    setPhase('feedback')
+    const suggestions = suggestContinuousTuningTweaks({
+      params: paramsRef.current,
+      lapTimeMs: pending.lapTimeMs,
+      offTrackEvents: pending.offTrackEvents,
+      telemetry: pending.telemetry,
+    })
+    setContinuousSuggestions(suggestions)
+    setContinuousLapCount((n) => n + 1)
+    setPhase('continuous')
   }, [])
 
   const handleOffTrackEvent = useCallback((event: OffTrackEvent) => {
@@ -345,6 +383,73 @@ export function TuningSession({
     })
     setPendingRecommendation(null)
     startCountdown()
+  }
+
+  function acceptContinuousSuggestion(suggestion: ContinuousSuggestion) {
+    const nextParams = applyContinuousSuggestion(params, suggestion.delta)
+    setParams(nextParams)
+    recordTuningChange({
+      next: nextParams,
+      source: 'recommended',
+      label: suggestion.title,
+      slug: TUNING_LAB_SYNTHETIC_SLUG,
+      immediate: true,
+    })
+    setContinuousSuggestions([])
+    startCountdown()
+  }
+
+  function skipContinuousSuggestion() {
+    setContinuousSuggestions([])
+    startCountdown()
+  }
+
+  function endContinuousSessionToFeedback() {
+    // Continuous mode keeps a live snapshot of the lap that just completed
+    // (pendingRound) and the cumulative params from any accepted picks. The
+    // classic survey reads both, so the End-session pick lands the player
+    // straight in the Likert form for the most recent lap.
+    setContinuousSuggestions([])
+    pausedRef.current = true
+    setPhase('feedback')
+  }
+
+  const handleManualParamsChange = useCallback(
+    (next: CarParams) => {
+      setParams(next)
+      recordTuningChange({
+        next,
+        source: 'slider',
+        label: 'Manual slider tweak',
+        slug: TUNING_LAB_SYNTHETIC_SLUG,
+      })
+    },
+    [recordTuningChange],
+  )
+
+  function openDriveSliders() {
+    if (driveSlidersOpen) return
+    // Only meaningful during the drive phase; freeze panels manage their
+    // own paused state.
+    if (phaseRef.current !== 'drive') return
+    driveSlidersPauseStartRef.current = performance.now()
+    pausedRef.current = true
+    setDriveSlidersOpen(true)
+  }
+
+  function closeDriveSliders() {
+    if (!driveSlidersOpen) return
+    if (driveSlidersPauseStartRef.current !== null) {
+      resumeShiftRef.current +=
+        performance.now() - driveSlidersPauseStartRef.current
+      driveSlidersPauseStartRef.current = null
+    }
+    // Only flip pausedRef back to false if we're still in the drive
+    // phase. If a lap completed while the player was tweaking (it can't,
+    // because the loop is paused), or the player navigated away through
+    // another control path, we don't want to silently resume.
+    if (phaseRef.current === 'drive') pausedRef.current = false
+    setDriveSlidersOpen(false)
   }
 
   function gotoSave() {
@@ -504,7 +609,11 @@ export function TuningSession({
     setPhase('countdown')
   }
 
-  const showCanvas = phase === 'countdown' || phase === 'drive'
+  // Keep the canvas mounted under the continuous-tuning freeze panel so the
+  // background scene reads as a paused race instead of a hard cut to a menu.
+  // pausedRef stops the rAF loop while the overlay is up.
+  const showCanvas =
+    phase === 'countdown' || phase === 'drive' || phase === 'continuous'
 
   return (
     <div style={shell}>
@@ -555,31 +664,80 @@ export function TuningSession({
             disableMusicIntensity
             style={canvasStyle}
           />
-          <DriveHud hud={hud} />
+          <div style={hudWrap}>
+            <style>{DRIVE_HUD_CSS}</style>
+            <DriveHud hud={hud} />
+            {phase === 'drive' ? (
+              <div className="viberacer-tuning-actions">
+                <button
+                  onClick={restartCurrentRun}
+                  className="viberacer-tuning-action-btn"
+                  aria-label="Restart run"
+                >
+                  Restart
+                </button>
+                <button
+                  onClick={openDriveSliders}
+                  className="viberacer-tuning-action-btn"
+                  aria-label="Open tuning sliders"
+                >
+                  Tuning
+                </button>
+                <button
+                  onClick={abortDrive}
+                  className="viberacer-tuning-action-btn"
+                  aria-label="End session"
+                >
+                  End session
+                </button>
+              </div>
+            ) : null}
+          </div>
           <TouchControls
             keys={keys}
-            enabled={phase === 'drive'}
+            enabled={phase === 'drive' && !driveSlidersOpen}
             mode={settings.touchMode}
           />
-          {phase === 'drive' ? (
-            <div style={driveActions}>
-              <button
-                onClick={restartCurrentRun}
-                style={driveActionBtn}
-                aria-label="Restart run"
-              >
-                Restart
-              </button>
-              <button
-                onClick={abortDrive}
-                style={driveActionBtn}
-                aria-label="Stop run"
-              >
-                Stop run
-              </button>
+          {driveSlidersOpen ? (
+            <div
+              style={continuousOverlay}
+              role="dialog"
+              aria-label="Tuning sliders"
+            >
+              <div style={continuousCard}>
+                <div style={continuousHeader}>
+                  <span style={continuousLap}>TUNING</span>
+                  <span style={continuousLapTime}>paused</span>
+                </div>
+                <h2 style={cardTitle}>All tuning sliders</h2>
+                <p style={cardCopy}>
+                  Sliders apply to the live car. The lap clock is paused while
+                  this panel is open. Close to resume driving.
+                </p>
+                <TuningEditor
+                  params={params}
+                  onChange={handleManualParamsChange}
+                  onClose={closeDriveSliders}
+                  closeLabel="Resume"
+                  hint="Sliders apply to the live car."
+                />
+              </div>
             </div>
           ) : null}
           {phase === 'countdown' ? <Countdown onDone={onCountdownDone} /> : null}
+          {phase === 'continuous' ? (
+            <ContinuousSuggestView
+              lapNumber={continuousLapCount}
+              lapTimeMs={pendingRound?.lapTimeMs ?? null}
+              offTrackCount={pendingRound?.offTrackEvents?.length ?? 0}
+              suggestions={continuousSuggestions}
+              params={params}
+              onParamsChange={handleManualParamsChange}
+              onAccept={acceptContinuousSuggestion}
+              onSkip={skipContinuousSuggestion}
+              onEndSession={endContinuousSessionToFeedback}
+            />
+          ) : null}
         </div>
       ) : null}
 
@@ -648,77 +806,82 @@ function IntroView({
   onStart: () => void
   onCancel: () => void
 }) {
+  // Render via the shared menu shell so the intro reads as part of the
+  // same family as Free Race / Derby / Tour / Settings / PreRaceSetup
+  // (sky-blue page, dark-translucent header strip + body panel, cream
+  // pick rows, red-pink CTAs). See AGENTS.md RULE 3.5.
   return (
-    <div style={card}>
-      <h2 style={cardTitle}>New tuning session</h2>
-      <p style={cardCopy}>
-        Drive a short curated loop with straights, turns, an S-curve, and a
-        hairpin. After the lap, you will rate seven aspects of car feel and the
-        lab will suggest new parameters. Repeat until everything feels right,
-        then save the tuning.
-      </p>
-
-      <div style={cardLabel}>Control</div>
-      <div style={chipRow}>
+    <MenuPageShell
+      title="New tuning session"
+      blurb="Drive a short curated loop with straights, turns, an S-curve, and a hairpin. After every lap the lab freezes and shows a few small tuning tweaks drawn from how you actually drove the lap. Pick one, skip, and keep driving. End the session when you are done to rate the lap and save the setup."
+      closeHref="/tune"
+      width="narrow"
+    >
+      <div style={introSectionHeader}>Control</div>
+      <div role="radiogroup" aria-label="Control" style={introPickList}>
         {CONTROL_OPTIONS.map((c) => (
-          <button
+          <MenuPickRow
             key={c}
-            onClick={() => onChangeControl(c)}
-            style={{
-              ...chip,
-              background: controlType === c ? '#ff6b35' : '#1d1d1d',
-            }}
-          >
-            {CONTROL_TYPE_LABELS[c]}
-          </button>
+            label={CONTROL_TYPE_LABELS[c]}
+            selected={controlType === c}
+            onPick={() => onChangeControl(c)}
+          />
         ))}
       </div>
 
-      <div style={cardLabel}>Track type tags (up to 4)</div>
-      <div style={chipRow}>
+      <div style={introSectionHeader}>Track type tags (up to 4)</div>
+      <div style={introPickList}>
         {TAG_OPTIONS.map((t) => {
           const active = trackTags.includes(t)
           return (
-            <button
+            <MenuPickRow
               key={t}
-              onClick={() => onToggleTag(t)}
-              style={{ ...chip, background: active ? '#ff6b35' : '#1d1d1d' }}
-            >
-              {TRACK_TAG_LABELS[t]}
-            </button>
+              label={TRACK_TAG_LABELS[t]}
+              selected={active}
+              onPick={() => onToggleTag(t)}
+            />
           )
         })}
       </div>
 
-      <div style={ctaRow}>
-        <button onClick={onCancel} style={secondaryBtn}>
-          Back
-        </button>
-        <button onClick={onStart} style={primaryBtn}>
-          Start drive
-        </button>
-      </div>
-    </div>
+      <MenuStartButton onClick={onStart}>Start drive</MenuStartButton>
+      <MenuShellAction onClick={onCancel}>Back</MenuShellAction>
+    </MenuPageShell>
   )
+}
+
+const introSectionHeader: CSSProperties = {
+  marginTop: 6,
+  fontSize: 12,
+  letterSpacing: 1.5,
+  textTransform: 'uppercase',
+  opacity: 0.75,
+  fontWeight: 600,
+  color: 'white',
+}
+const introPickList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
 }
 
 function DriveHud({ hud }: { hud: RaceCanvasHud }) {
   const sec = (hud.currentMs / 1000).toFixed(2)
   const last = hud.lastLapMs !== null ? (hud.lastLapMs / 1000).toFixed(2) : null
   return (
-    <div style={driveHud}>
-      <div style={driveHudRow}>
-        <span style={driveHudKey}>TIME</span>
-        <span style={driveHudVal}>{sec}s</span>
+    <div className="viberacer-tuning-hud">
+      <div className="viberacer-tuning-hud-row">
+        <span className="viberacer-tuning-hud-key">TIME</span>
+        <span className="viberacer-tuning-hud-val">{sec}s</span>
       </div>
-      <div style={driveHudRow}>
-        <span style={driveHudKey}>LAP</span>
-        <span style={driveHudVal}>{hud.lapCount}</span>
+      <div className="viberacer-tuning-hud-row">
+        <span className="viberacer-tuning-hud-key">LAP</span>
+        <span className="viberacer-tuning-hud-val">{hud.lapCount}</span>
       </div>
       {last ? (
-        <div style={driveHudRow}>
-          <span style={driveHudKey}>LAST</span>
-          <span style={driveHudVal}>{last}s</span>
+        <div className="viberacer-tuning-hud-row">
+          <span className="viberacer-tuning-hud-key">LAST</span>
+          <span className="viberacer-tuning-hud-val">{last}s</span>
         </div>
       ) : null}
       {hud.wrongWay ? (
@@ -794,6 +957,127 @@ function RecommendView({
         <button onClick={onDiscard} style={dangerBtn}>
           Discard session
         </button>
+      </div>
+    </div>
+  )
+}
+
+function ContinuousSuggestView({
+  lapNumber,
+  lapTimeMs,
+  offTrackCount,
+  suggestions,
+  params,
+  onParamsChange,
+  onAccept,
+  onSkip,
+  onEndSession,
+}: {
+  lapNumber: number
+  lapTimeMs: number | null
+  offTrackCount: number
+  suggestions: ContinuousSuggestion[]
+  params: CarParams
+  onParamsChange: (next: CarParams) => void
+  onAccept: (s: ContinuousSuggestion) => void
+  onSkip: () => void
+  onEndSession: () => void
+}) {
+  const [slidersOpen, setSlidersOpen] = useState(false)
+  const lapStr =
+    lapTimeMs !== null ? `${(lapTimeMs / 1000).toFixed(2)}s` : 'lap pending'
+  return (
+    <div style={continuousOverlay} role="dialog" aria-label="Tuning suggestions">
+      <div style={continuousCard}>
+        <div style={continuousHeader}>
+          <span style={continuousLap}>LAP {lapNumber}</span>
+          <span style={continuousLapTime}>{lapStr}</span>
+          {offTrackCount > 0 ? (
+            <span style={continuousOffBadge}>
+              {offTrackCount}x off-track
+            </span>
+          ) : (
+            <span style={continuousCleanBadge}>clean lap</span>
+          )}
+        </div>
+        <h2 style={cardTitle}>
+          {suggestions.length === 0
+            ? 'Nothing to tweak'
+            : 'Pick a tuning tweak'}
+        </h2>
+        <p style={cardCopy}>
+          {suggestions.length === 0
+            ? 'That lap looked clean. No recommendations this round. Drive another or end the session.'
+            : 'Based on how you drove that lap, choose one nudge to apply, or skip to drive the same setup again.'}
+        </p>
+
+        {suggestions.length > 0 ? (
+          <div style={suggestionList}>
+            {suggestions.map((s, i) => (
+              <button
+                key={s.id}
+                onClick={() => onAccept(s)}
+                style={suggestionRow}
+                aria-label={`Apply: ${s.title}`}
+              >
+                <div style={suggestionRowHead}>
+                  <span style={suggestionLetter}>
+                    {String.fromCharCode(65 + i)}
+                  </span>
+                  <span style={suggestionTitle}>{s.title}</span>
+                </div>
+                <div style={suggestionReason}>{s.reason}</div>
+                <div style={suggestionDeltaRow}>
+                  {Object.keys(s.delta).map((k) => {
+                    const key = k as keyof CarParams
+                    const meta = TUNING_PARAM_META.find((m) => m.key === key)
+                    if (!meta) return null
+                    const d = s.delta[key] ?? 0
+                    const up = d > 0
+                    return (
+                      <span key={k} style={suggestionDeltaChip}>
+                        {meta.label} <Arrow up={up} />{' '}
+                        {(up ? '+' : '') + d.toFixed(2)} {meta.unit}
+                      </span>
+                    )
+                  })}
+                </div>
+              </button>
+            ))}
+          </div>
+        ) : null}
+
+        <button
+          onClick={() => setSlidersOpen((v) => !v)}
+          style={slidersToggle}
+          aria-expanded={slidersOpen}
+          aria-controls="continuous-sliders-region"
+        >
+          <span style={slidersChevron} aria-hidden>
+            {slidersOpen ? 'v' : '>'}
+          </span>
+          {slidersOpen ? 'Hide all tuning sliders' : 'Show all tuning sliders'}
+        </button>
+        {slidersOpen ? (
+          <div id="continuous-sliders-region" style={slidersRegion}>
+            <TuningEditor
+              params={params}
+              onChange={onParamsChange}
+              onClose={() => setSlidersOpen(false)}
+              closeLabel="Done"
+              hint="Sliders apply to the live car. Drive the next lap to feel them."
+            />
+          </div>
+        ) : null}
+
+        <div style={ctaCol}>
+          <button onClick={onSkip} style={primaryBtn}>
+            No change, drive again
+          </button>
+          <button onClick={onEndSession} style={secondaryBtn}>
+            End session and review
+          </button>
+        </div>
       </div>
     </div>
   )
@@ -901,35 +1185,121 @@ const canvasStyle: CSSProperties = {
   width: '100%',
   height: '100%',
 }
-const driveHud: CSSProperties = {
+const hudWrap: CSSProperties = {
   position: 'fixed',
-  top: 12,
-  right: 12,
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 6,
-  background: 'rgba(0,0,0,0.55)',
-  color: 'white',
-  padding: '10px 14px',
-  borderRadius: 10,
+  inset: 0,
+  pointerEvents: 'none',
   zIndex: 10,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 14,
 }
-const driveHudRow: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  fontFamily: 'monospace',
+// Mobile-first HUD chrome. Matches the idiomatic pattern used by
+// HUD.tsx (position:fixed inset:0 wrap) and Game.tsx's PAUSE_BUTTON_CSS
+// (env(safe-area-inset-*) bottoms + @media (any-pointer: coarse) bumps).
+// Pulled out of inline `CSSProperties` into a single injected stylesheet
+// because media queries can't ride along on the inline style attribute.
+//
+// `max(<floor>, calc(<base> + env(safe-area-inset-*)))` is the canonical
+// trick to guarantee a minimum visual gap from the screen edge even when
+// the device reports a zero safe-area inset (e.g. Android Chrome on a
+// non-notched phone where the URL bar / gesture indicator are not exposed
+// via env). On notched devices the env value grows past the floor and
+// max() picks up the larger of the two.
+const DRIVE_HUD_CSS = `
+.viberacer-tuning-hud {
+  position: absolute;
+  top: max(20px, calc(12px + env(safe-area-inset-top, 0px)));
+  right: max(20px, calc(12px + env(safe-area-inset-right, 0px)));
+  max-width: calc(100vw - 40px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  pointer-events: auto;
+  box-sizing: border-box;
 }
-const driveHudKey: CSSProperties = {
-  opacity: 0.6,
-  letterSpacing: 1,
-  fontSize: 11,
+.viberacer-tuning-hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: monospace;
 }
-const driveHudVal: CSSProperties = {
-  fontWeight: 700,
+.viberacer-tuning-hud-key {
+  opacity: 0.6;
+  letter-spacing: 1px;
+  font-size: 11px;
 }
+.viberacer-tuning-hud-val {
+  font-weight: 700;
+}
+.viberacer-tuning-actions {
+  position: absolute;
+  left: max(24px, calc(16px + env(safe-area-inset-left, 0px)));
+  right: max(24px, calc(16px + env(safe-area-inset-right, 0px)));
+  bottom: max(48px, calc(28px + env(safe-area-inset-bottom, 0px)));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 20;
+  pointer-events: auto;
+}
+.viberacer-tuning-action-btn {
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.viberacer-tuning-action-btn:focus-visible {
+  outline: 2px solid #5fe08a;
+  outline-offset: 2px;
+}
+@media (any-pointer: coarse) {
+  .viberacer-tuning-hud {
+    top: max(28px, calc(20px + env(safe-area-inset-top, 0px)));
+    right: max(28px, calc(20px + env(safe-area-inset-right, 0px)));
+    padding: 12px 16px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+  .viberacer-tuning-hud-key {
+    font-size: 12px;
+  }
+  .viberacer-tuning-actions {
+    left: max(32px, calc(24px + env(safe-area-inset-left, 0px)));
+    right: max(32px, calc(24px + env(safe-area-inset-right, 0px)));
+    bottom: max(72px, calc(40px + env(safe-area-inset-bottom, 0px)));
+    gap: 10px;
+  }
+  .viberacer-tuning-action-btn {
+    padding: 12px 18px;
+    font-size: 14px;
+    min-height: 48px;
+    border-width: 2px;
+    background: rgba(0, 0, 0, 0.7);
+  }
+}
+@media (max-width: 380px) {
+  .viberacer-tuning-actions {
+    justify-content: stretch;
+  }
+  .viberacer-tuning-action-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+`
 const offTrackBadge: CSSProperties = {
   background: '#ff8a3c',
   color: '#1a1a1a',
@@ -950,24 +1320,6 @@ const wrongWayBadge: CSSProperties = {
   textAlign: 'center',
   letterSpacing: 1,
   border: '1px solid rgba(255, 240, 180, 0.85)',
-}
-const driveActions: CSSProperties = {
-  position: 'fixed',
-  left: 16,
-  bottom: 20,
-  display: 'flex',
-  gap: 8,
-  zIndex: 20,
-}
-const driveActionBtn: CSSProperties = {
-  background: 'rgba(0,0,0,0.55)',
-  color: 'white',
-  border: 'none',
-  borderRadius: 999,
-  padding: '10px 16px',
-  fontSize: 13,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
 }
 const formScroll: CSSProperties = {
   width: '100%',
@@ -1107,4 +1459,175 @@ const textField: CSSProperties = {
   padding: '10px 12px',
   fontFamily: 'inherit',
   fontSize: 14,
+}
+const continuousOverlay: CSSProperties = {
+  position: 'fixed',
+  inset: 0,
+  background: 'rgba(0,0,0,0.55)',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  // Symmetrical, generous padding on every side so the card centers
+  // with equal margins on phone and desktop. `max()` floors the inset
+  // even when the device reports zero safe-area envs (Android Chrome
+  // without a notch).
+  paddingTop: 'max(32px, calc(24px + env(safe-area-inset-top, 0px)))',
+  paddingRight: 'max(32px, calc(16px + env(safe-area-inset-right, 0px)))',
+  paddingBottom: 'max(32px, calc(24px + env(safe-area-inset-bottom, 0px)))',
+  paddingLeft: 'max(32px, calc(16px + env(safe-area-inset-left, 0px)))',
+  zIndex: 30,
+  fontFamily: 'system-ui, sans-serif',
+  WebkitOverflowScrolling: 'touch',
+  overflowY: 'auto',
+  boxSizing: 'border-box',
+}
+const continuousCard: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 12,
+  padding: 18,
+  background: '#1d1d1d',
+  border: '1px solid #2a2a2a',
+  borderRadius: 12,
+  color: 'white',
+  width: '100%',
+  maxWidth: 540,
+  maxHeight: '100%',
+  overflowY: 'auto',
+  boxShadow: '0 10px 40px rgba(0,0,0,0.55)',
+  boxSizing: 'border-box',
+}
+const continuousHeader: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  fontFamily: 'monospace',
+  fontSize: 12,
+}
+const continuousLap: CSSProperties = {
+  background: '#ff6b35',
+  color: 'white',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontWeight: 700,
+  letterSpacing: 1,
+}
+const continuousLapTime: CSSProperties = {
+  color: 'white',
+  fontWeight: 700,
+  fontSize: 14,
+}
+const continuousOffBadge: CSSProperties = {
+  marginLeft: 'auto',
+  background: '#552d2d',
+  color: '#ff9a9a',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontSize: 11,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+}
+const continuousCleanBadge: CSSProperties = {
+  marginLeft: 'auto',
+  background: '#1f3f29',
+  color: '#5fe08a',
+  padding: '4px 8px',
+  borderRadius: 6,
+  fontSize: 11,
+  letterSpacing: 0.5,
+  textTransform: 'uppercase',
+}
+const suggestionList: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+}
+const suggestionRow: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 6,
+  padding: 12,
+  background: '#0e0e0e',
+  border: '1px solid #3a3a3a',
+  borderLeft: '3px solid #ff6b35',
+  borderRadius: 8,
+  textAlign: 'left',
+  color: 'white',
+  cursor: 'pointer',
+  fontFamily: 'inherit',
+}
+const suggestionRowHead: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+}
+const suggestionLetter: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  width: 24,
+  height: 24,
+  borderRadius: 6,
+  background: '#ff6b35',
+  color: 'white',
+  fontWeight: 800,
+  fontSize: 13,
+  letterSpacing: 0,
+}
+const suggestionTitle: CSSProperties = {
+  fontSize: 15,
+  fontWeight: 700,
+}
+const suggestionReason: CSSProperties = {
+  fontSize: 12,
+  opacity: 0.8,
+  lineHeight: 1.4,
+}
+const suggestionDeltaRow: CSSProperties = {
+  display: 'flex',
+  flexWrap: 'wrap',
+  gap: 6,
+  fontFamily: 'monospace',
+  fontSize: 11,
+}
+const suggestionDeltaChip: CSSProperties = {
+  display: 'inline-flex',
+  alignItems: 'center',
+  gap: 4,
+  padding: '3px 8px',
+  background: '#1d1d1d',
+  border: '1px solid #3a3a3a',
+  borderRadius: 999,
+  color: '#cfcfcf',
+}
+const slidersToggle: CSSProperties = {
+  display: 'flex',
+  alignItems: 'center',
+  gap: 8,
+  padding: '10px 12px',
+  background: '#0e0e0e',
+  border: '1px solid #3a3a3a',
+  borderRadius: 8,
+  color: '#cfcfcf',
+  fontFamily: 'inherit',
+  fontSize: 13,
+  fontWeight: 600,
+  cursor: 'pointer',
+  textAlign: 'left',
+}
+const slidersChevron: CSSProperties = {
+  display: 'inline-block',
+  width: 14,
+  textAlign: 'center',
+  fontFamily: 'monospace',
+  color: '#ff8a3c',
+}
+const slidersRegion: CSSProperties = {
+  display: 'flex',
+  flexDirection: 'column',
+  gap: 8,
+  padding: 8,
+  background: '#0a0a0a',
+  border: '1px solid #2a2a2a',
+  borderRadius: 8,
 }

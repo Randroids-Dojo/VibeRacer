@@ -13,6 +13,8 @@ Backlog spillover discovered during implementation. Keep items PR-sized when pos
 ## Low Priority
 
 - Gamepad rumble: collision-magnitude impulses. Blocked until gameplay has a real collision event source. Current barriers, cones, trees, and decorations are visual-only, and the physics integrator only emits off-track drag state. Once the vehicle can hit a wall or obstacle, emit an impact magnitude so the rumble path can scale a one-shot cue to contact strength. Derby's car-car contact stream in `derbyTick.ts` is now the natural event source; the rumble wiring still needs to plumb hit events out to `useGamepad`.
+- Continuous Tuning Lab Playwright smoke. The phase machine for the continuous-tuning loop is covered by the heuristics unit suite, but a browser smoke that drives two laps and asserts the freeze panel appears between them (and that picking a suggestion lands in the tuning-history list) would catch regressions in the canvas-pause / suggestion-render path. Deferred to keep the initial slice focused on the heuristics + UI wiring.
+- Continuous tuning: per-session memory of accepted picks. The heuristics module has a clean place to read prior-lap selections (the `applyContinuousSuggestion` chain already records each accept in tuning history). Soft-suppressing a suggestion id for one or two laps after it lands would stop the same nudge from dominating the top-3 list when the player has already moved that param.
 
 ## Destruction Lab followups
 
