@@ -49,7 +49,7 @@ import {
   sampleRailAt,
   type WorldTourRail,
 } from '@/game/worldTourRail'
-import { getTrackTemplate } from '@/game/trackTemplates'
+import { trackTemplateFor } from '@/game/worldTourTrackManifest'
 import {
   DEFAULT_CAMERA_RIG,
   type CameraRigParams,
@@ -85,10 +85,6 @@ const OPPONENT_PALETTE: ReadonlyArray<number> = [
   0xfab005, // amber
 ]
 
-// MVP: all tour races run on the same 3D track template. Per-track
-// templates are a follow-up; the championship data still threads through
-// the right `trackId`, this layer just resolves them to one shape today.
-const DEFAULT_TOUR_TEMPLATE_ID = 'top-gear-opener'
 
 export default function TourRacePage() {
   return (
@@ -113,13 +109,16 @@ function TourRacePageInner() {
   const { settings: audioSettings } = useAudioSettings()
   const keys = useKeyboard(settings.keyBindings)
 
-  // 3D track pieces. The template is resolved at mount; a tour with a
-  // missing template falls back to an empty pieces array so the canvas
-  // refuses to mount instead of rendering a broken loop.
+  // 3D track pieces. Each `trackId` in the championship resolves to
+  // its own authored template via the world-tour track manifest. A
+  // tour with a missing template falls back to an empty pieces array
+  // so the canvas refuses to mount instead of rendering a broken loop.
+  const trackId = tour?.trackIds[raceIndex] ?? null
   const pieces = useMemo(() => {
-    const template = getTrackTemplate(DEFAULT_TOUR_TEMPLATE_ID)
+    if (!trackId) return []
+    const template = trackTemplateFor(trackId)
     return template?.pieces ?? []
-  }, [])
+  }, [trackId])
 
   // Rail used by the opponent AI loop. Flattens the track centerline
   // into a closed polyline so each AI car can advance a single scalar
