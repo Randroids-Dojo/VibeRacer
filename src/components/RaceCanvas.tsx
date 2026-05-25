@@ -190,6 +190,13 @@ export interface RaceCanvasProps {
   // `pendingResetRef` (full session restart, replays the countdown) so a
   // mid-race lap restart does not clobber the running session.
   pendingLapResetRef?: MutableRefObject<boolean>
+  // World-frame displacement to add to the player car on the next frame.
+  // Multi-car modes (World Tour) drive collision detection in a parallel
+  // session reducer and need a way to push the player's car when an AI
+  // bumps them; the rAF loop reads this ref, applies `dx` to `state.x`
+  // and `dz` to `state.z`, then clears the ref. Single-player modes that
+  // do not set this ref are unaffected.
+  pendingPlayerKickRef?: MutableRefObject<{ dx: number; dz: number } | null>
   onLapComplete: (event: LapCompleteEvent) => void
   onHudUpdate: (hud: RaceCanvasHud) => void
   // Active ghost replay to render alongside the player. Reading via a ref so
@@ -393,6 +400,7 @@ export function RaceCanvas({
   resumeShiftRef,
   pendingResetRef,
   pendingLapResetRef,
+  pendingPlayerKickRef,
   pendingRaceStartRef,
   onLapComplete,
   onHudUpdate,
@@ -1004,6 +1012,18 @@ export function RaceCanvas({
         shiftBobY = 0
         raf = requestAnimationFrame(loop)
         return
+      }
+
+      // Apply any pending world-frame kick from a parallel multi-car
+      // session (World Tour collisions). The caller writes a delta
+      // here when an AI car bumps the player; we add it to the
+      // player's state position and clear the ref so the kick fires
+      // exactly once per frame. Single-player modes never set the
+      // ref so the branch is a single null-check.
+      if (pendingPlayerKickRef?.current) {
+        const kick = pendingPlayerKickRef.current
+        state = { ...state, x: state.x + kick.dx, z: state.z + kick.dz }
+        pendingPlayerKickRef.current = null
       }
 
       if (pausedRef.current) {

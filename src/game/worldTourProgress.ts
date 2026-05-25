@@ -91,6 +91,14 @@ export function applyRaceResult(
     placement: input.raceResult.playerPlacement,
     dnf: input.raceResult.playerDnf,
     cashEarned: input.raceResult.cashEarned,
+    entries: input.raceResult.finishingOrder.map((e) => ({
+      driverId: e.driverId,
+      carId: e.carId,
+      placement: e.placement,
+      dnf: e.dnf,
+      points: e.points,
+      isPlayer: e.isPlayer,
+    })),
   })
   career.money = career.money + input.raceResult.cashEarned
   // Post-race damage replaces the prior value (damage does not stack

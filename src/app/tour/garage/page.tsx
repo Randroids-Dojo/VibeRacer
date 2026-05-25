@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { useEffect, useMemo, useState } from 'react'
 import { getStandardChampionship } from '@/data/worldTourChampionship'
+import { findTour } from '@/lib/worldTourChampionship'
 import {
   applyFullRepair,
   difficultyTierForCareer,
@@ -28,11 +29,13 @@ import {
   withActiveCarState,
   type WorldTourCareer,
 } from '@/game/worldTourCareer'
+import { currentChampionshipStandings } from '@/game/worldTourRaceResult'
 import {
   WORLD_TOUR_CAREER_EVENT,
   readCareer,
   writeCareer,
 } from '@/lib/worldTourCareerStorage'
+import { ChampionshipStandingsPanel } from '@/components/ChampionshipStandingsPanel'
 
 export default function TourGaragePage() {
   const router = useRouter()
@@ -57,6 +60,11 @@ export default function TourGaragePage() {
   const damagePercent = Math.round(activeCar.damage * 100)
   const canRepair = activeCar.damage > 0 && career.money >= cost
   const next = nextRaceFor(championship, career)
+  const activeTourId = career.activeTour?.tourId ?? null
+  const activeTour = activeTourId ? findTour(championship, activeTourId) : null
+  const standings = activeTour
+    ? currentChampionshipStandings({ career, tour: activeTour, championship })
+    : null
 
   function doRepair() {
     setFeedback(null)
@@ -165,6 +173,18 @@ export default function TourGaragePage() {
             Fix the car. Roll into the next race when you are ready.
           </p>
         </header>
+
+        {activeTour && standings ? (
+          <ChampionshipStandingsPanel
+            tour={activeTour}
+            rows={standings.rows}
+            playerStanding={standings.playerStanding}
+            racesCompleted={standings.racesCompleted}
+            totalRaces={activeTour.trackIds.length}
+            requiredStanding={activeTour.requiredStanding}
+            variant="results"
+          />
+        ) : null}
 
         <section style={panelStyle}>
           <h2 style={subheaderStyle}>Status</h2>

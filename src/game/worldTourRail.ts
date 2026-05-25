@@ -108,23 +108,62 @@ export function sampleRailAt(
   }
   let d = distance % rail.totalLength
   if (d < 0) d += rail.totalLength
-  // Linear search is fine for a few-hundred-sample rail; the AI loop
-  // calls this O(opponents) times per frame, which is bounded at the
-  // tour field size.
-  let lo = 0
-  let hi = n - 1
-  while (lo + 1 < hi) {
-    const mid = (lo + hi) >> 1
-    if (rail.cumulative[mid]! <= d) lo = mid
-    else hi = mid
+  const lastIdx = n - 1
+  const lastCumulative = rail.cumulative[lastIdx]!
+  let x0: number
+  let z0: number
+  let h: number
+  if (d >= lastCumulative) {
+    // Closing segment: interpolate between the last recorded sample
+    // and the first one so a loop's seam is continuous instead of
+    // collapsing to the last sample. `totalLength` already accounts
+    // for the closing chord length.
+    //
+    // Heading along the closing chord is the chord's own direction,
+    // NOT `lerpAngle(samples[N-1].heading, samples[0].heading, t)`.
+    // A car driving across the seam follows the chord; if the loop
+    // closes by joining two arbitrary pieces (last sweep -> first
+    // straight) those endpoint headings can be 90 degrees apart and
+    // the interpolated value does not match the actual trajectory.
+    // This is exactly the discontinuity that snapped the AI's
+    // heading-error controller and parked it off-track at the end of
+    // lap 1. `pieceSamples` already gives every authored straight
+    // its chord-derived heading via the same `atan2` form; the
+    // implicit closing chord deserves the same treatment.
+    const a = rail.samples[lastIdx]!
+    const b = rail.samples[0]!
+    const segLen = rail.totalLength - lastCumulative
+    const t = segLen > 1e-6 ? (d - lastCumulative) / segLen : 0
+    x0 = a.x + (b.x - a.x) * t
+    z0 = a.z + (b.z - a.z) * t
+    const chordDx = b.x - a.x
+    const chordDz = b.z - a.z
+    // `pieceSamples` formula: heading = atan2(-dz, dx). Mirror it here
+    // so the closing chord obeys the same heading convention as every
+    // other straight piece on the rail.
+    h =
+      chordDx === 0 && chordDz === 0
+        ? a.heading
+        : Math.atan2(-chordDz, chordDx)
+  } else {
+    // Linear search is fine for a few-hundred-sample rail; the AI loop
+    // calls this O(opponents) times per frame, which is bounded at the
+    // tour field size.
+    let lo = 0
+    let hi = lastIdx
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1
+      if (rail.cumulative[mid]! <= d) lo = mid
+      else hi = mid
+    }
+    const a = rail.samples[lo]!
+    const b = rail.samples[hi]!
+    const segLen = rail.cumulative[hi]! - rail.cumulative[lo]!
+    const t = segLen > 1e-6 ? (d - rail.cumulative[lo]!) / segLen : 0
+    x0 = a.x + (b.x - a.x) * t
+    z0 = a.z + (b.z - a.z) * t
+    h = lerpAngle(a.heading, b.heading, t)
   }
-  const a = rail.samples[lo]!
-  const b = rail.samples[hi]!
-  const segLen = rail.cumulative[hi]! - rail.cumulative[lo]!
-  const t = segLen > 0 ? (d - rail.cumulative[lo]!) / segLen : 0
-  const x0 = a.x + (b.x - a.x) * t
-  const z0 = a.z + (b.z - a.z) * t
-  const h = lerpAngle(a.heading, b.heading, t)
   // Right-of-travel perpendicular in this codebase's convention:
   // the road extrusion in sceneBuilder.polylineGeometry adds
   // (sin h, cos h) * halfWidth for the right edge, so the same vector
@@ -139,4 +178,93 @@ function lerpAngle(a: number, b: number, t: number): number {
   if (d > Math.PI) d -= 2 * Math.PI
   if (d < -Math.PI) d += 2 * Math.PI
   return a + d * t
+}
+
+/**
+ * Find the arc-length distance along the rail closest to a world
+ * position `(x, z)`. Used by the AI tick to re-sync its `progress`
+ * channel against the car's actual position so it does not drift
+ * ahead of the rail over time (which causes the controller to chase
+ * a phantom centerline 50 m further down the track).
+ *
+ * Returns 0 on a degenerate rail. When `hint` is supplied the search
+ * starts from the rail sample closest to `hint` and walks outward
+ * for `HINT_WINDOW_SAMPLES` samples on either side; without a hint
+ * the search is linear over the full rail.
+ */
+const HINT_WINDOW_SAMPLES = 24
+
+export function projectToRail(
+  rail: WorldTourRail,
+  x: number,
+  z: number,
+  hint?: number,
+): number {
+  const n = rail.samples.length
+  if (rail.totalLength <= 0 || n < 2) return 0
+  let bestIdx = 0
+  let bestDist = Infinity
+  if (typeof hint === 'number' && Number.isFinite(hint)) {
+    let h = hint % rail.totalLength
+    if (h < 0) h += rail.totalLength
+    // Binary search for the sample whose cumulative arc length is
+    // closest to `h`; the projection then walks a small window
+    // around that index (wrapping around the seam) instead of
+    // scanning the whole rail.
+    let lo = 0
+    let hi = n - 1
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1
+      if (rail.cumulative[mid]! <= h) lo = mid
+      else hi = mid
+    }
+    // Walk a wrap-aware window of `2 * HINT_WINDOW_SAMPLES + 1`
+    // samples centered on `lo`. A naive `[lo - W, lo + W]` slice
+    // misses the case where the car has just crossed the seam: the
+    // hint sits near `totalLength` and the actual closest sample is
+    // at index 0+. Modulo math handles the wrap.
+    for (let off = -HINT_WINDOW_SAMPLES; off <= HINT_WINDOW_SAMPLES; off++) {
+      let idx = (lo + off) % n
+      if (idx < 0) idx += n
+      const s = rail.samples[idx]!
+      const dx = x - s.x
+      const dz = z - s.z
+      const d2 = dx * dx + dz * dz
+      if (d2 < bestDist) {
+        bestDist = d2
+        bestIdx = idx
+      }
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const s = rail.samples[i]!
+      const dx = x - s.x
+      const dz = z - s.z
+      const d2 = dx * dx + dz * dz
+      if (d2 < bestDist) {
+        bestDist = d2
+        bestIdx = i
+      }
+    }
+  }
+  // Refine the projection between the chosen sample and the neighbor
+  // it forms a segment with. Picking the same-cumulative-arc-length
+  // sample twice across ticks would snap the AI to discrete sample
+  // points; the segment-refine gives sub-sample resolution.
+  const aIdx = bestIdx
+  const bIdx = bestIdx + 1 < n ? bestIdx + 1 : 0
+  const a = rail.samples[aIdx]!
+  const b = rail.samples[bIdx]!
+  const segDx = b.x - a.x
+  const segDz = b.z - a.z
+  const segLen2 = segDx * segDx + segDz * segDz
+  let segT = 0
+  if (segLen2 > 1e-6) {
+    segT = ((x - a.x) * segDx + (z - a.z) * segDz) / segLen2
+    if (segT < 0) segT = 0
+    if (segT > 1) segT = 1
+  }
+  const aArc = rail.cumulative[aIdx]!
+  const bArc = bIdx === 0 ? rail.totalLength : rail.cumulative[bIdx]!
+  return aArc + (bArc - aArc) * segT
 }

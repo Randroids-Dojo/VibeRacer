@@ -65,6 +65,16 @@ export const NO_PROGRESS_MIN_DELTA_METERS = 1
 // `BUMP_KICK_BASE_MPS` constant.
 export const BUMP_KICK_BASE_MPS = 4
 
+// Contact-damage accrual rate per second of continuous overlap.
+// Multiplied by `dt` and `damageAbsorb` per tick. A brief bump
+// (a few frames of overlap) costs essentially nothing; a sustained
+// pileup eventually DNFs both cars. Tuned to roughly 0.2 damage per
+// second of contact for a stock chassis (damageAbsorb = 1) so a 5
+// second pileup ends both cars while a 0.5 second bump costs 0.1
+// damage. The legacy flat rate was 1.2 damage per second of
+// contact, which DNF'd both cars inside one second.
+export const BUMP_DAMAGE_PER_SEC = 0.2
+
 // Lateral and longitudinal radii used to detect overlap between two
 // cars. Tuned for the existing low-poly car footprint.
 export const CAR_HALF_LENGTH_M = 2
@@ -195,7 +205,7 @@ export function createRaceSession(
     aiState:
       idx === 0
         ? null
-        : { ...INITIAL_AI_STATE, seed: slot.seed, progress: 0 },
+        : { ...INITIAL_AI_STATE, seed: slot.seed },
     lap: 0,
     distanceTraveled: 0,
     status: 'racing',
@@ -208,9 +218,14 @@ export function createRaceSession(
   return {
     tick: 0,
     phase: 'countdown',
+    // Explicit 0 means "skip the session's countdown" (the page renders
+    // its own start lights and only ticks the session once the visible
+    // countdown clears). undefined means "use the default 3-second
+    // session countdown" (test sessions that drive the reducer
+    // directly).
     countdownRemainingSec:
-      input.countdownSeconds !== undefined && input.countdownSeconds > 0
-        ? input.countdownSeconds
+      input.countdownSeconds !== undefined
+        ? Math.max(0, input.countdownSeconds)
         : COUNTDOWN_SECONDS_DEFAULT,
     elapsedMs: 0,
     cars,
@@ -298,10 +313,21 @@ export function stepRaceSession(
 
   for (let i = 0; i < next.cars.length; i++) {
     const car = next.cars[i]!
-    if (car.status !== 'racing') continue
+    // DNF'd cars are wrecks; they stay where they are. Finished cars
+    // still get a physics tick with neutral input below so rolling
+    // friction coasts them to a stop instead of freezing them at the
+    // racing line (which would otherwise stack every successive
+    // finisher on top of the first one).
+    if (car.status === 'dnf') continue
     const onTrack = onTrackOf(i, car.physics)
     let input: PhysicsInput
-    if (car.isPlayer) {
+    if (car.status === 'finished') {
+      // Coast-down: no throttle, no steer. Rolling friction in
+      // stepPhysics decelerates the car over a few seconds so it
+      // glides past the finish line and clears the racing surface
+      // for cars still on their final lap.
+      input = { throttle: 0, steer: 0, handbrake: false }
+    } else if (car.isPlayer) {
       input = step.playerInput
     } else if (car.aiState) {
       const others = carViews.filter((_, j) => j !== i)
@@ -326,6 +352,11 @@ export function stepRaceSession(
       overrideParams ?? car.params,
       onTrack,
     )
+
+    // The lap, no-progress, off-track, and finish-line checks only
+    // matter for racing cars; a finished car's coast-down should not
+    // re-mark them or accumulate any timers.
+    if (car.status !== 'racing') continue
 
     // Accumulate forward distance from the speed magnitude. A
     // reversing car still counts as "moving" so it does not trigger
@@ -386,13 +417,16 @@ export function stepRaceSession(
       if (!overlap) continue
       // Lateral kick: push the cars apart along the x axis. A small
       // damage accrual per contact lets a long pile-up actually DNF a
-      // car instead of silently rubbing forever.
+      // car instead of silently rubbing forever. Damage scales with
+      // `dt` so the rate is framerate-independent and is tuned (see
+      // BUMP_DAMAGE_PER_SEC) so a brief bump is harmless and a
+      // sustained ram eventually wrecks both cars.
       const dx = b.physics.x - a.physics.x
       const dir = dx >= 0 ? 1 : -1
       a.physics = { ...a.physics, x: a.physics.x - dir * BUMP_KICK_BASE_MPS * dt }
       b.physics = { ...b.physics, x: b.physics.x + dir * BUMP_KICK_BASE_MPS * dt }
-      a.damage = Math.min(1, a.damage + 0.02 * a.damageAbsorb)
-      b.damage = Math.min(1, b.damage + 0.02 * b.damageAbsorb)
+      a.damage = Math.min(1, a.damage + BUMP_DAMAGE_PER_SEC * dt * a.damageAbsorb)
+      b.damage = Math.min(1, b.damage + BUMP_DAMAGE_PER_SEC * dt * b.damageAbsorb)
     }
   }
 
@@ -420,6 +454,38 @@ export function finishingStandings(
     if (!order.includes(i)) order.push(i)
   }
   return order
+}
+
+/**
+ * Return a fresh state with `finishingOrder` rebuilt from per-car
+ * `finishedAtMs` ascending. The session reducer appends to
+ * `finishingOrder` in the order cars cross the line during the
+ * racing phase, which is correct for cars whose entire race is
+ * inside the reducer. When the tour route marks the player finished
+ * externally (because the 3D canvas owns the player's physics and
+ * crosses the finish line outside the reducer), the player's
+ * `finishedAtMs` may be later than several AI cars' but the player
+ * sits at index 0 of `finishingOrder`. `buildStandings` reads
+ * `finishingOrder[0]` as the winner. Calling this helper after the
+ * tour route's wrap-up loop fixes that ordering so the results page
+ * reflects actual finish times.
+ *
+ * Cars without a recorded `finishedAtMs` (status still `racing`
+ * because the session hit FINAL_STEP_CAP) sort to the back with
+ * `Infinity`; a stable secondary sort by car index keeps the order
+ * deterministic across runs.
+ */
+export function sortFinishingOrderByMs(
+  state: Readonly<RaceSessionState>,
+): RaceSessionState {
+  const sorted = state.cars
+    .map((c) => ({
+      idx: c.index,
+      ms: c.finishedAtMs ?? Number.POSITIVE_INFINITY,
+    }))
+    .sort((a, b) => a.ms - b.ms || a.idx - b.idx)
+    .map(({ idx }) => idx)
+  return { ...state, finishingOrder: sorted }
 }
 
 function cloneCar(c: RaceCar): RaceCar {
@@ -450,24 +516,15 @@ function integrateCarPosition(
   params: CarParams,
   onTrack: boolean,
 ): PhysicsState {
-  // `stepPhysics` only updates `speed`. The race-session reducer is
-  // responsible for advancing position and heading. The math here is
-  // the canonical kinematic update the Time Attack loop uses; pinned
-  // to the same convention so a tour car drives identically to a Time
-  // Attack car at the same inputs.
-  const next = stepPhysics(prev, input, dt, onTrack, params)
-  // Heading advances from the steer input. The angular response model
-  // follows the convention in `physics.ts`: positive steer turns left
-  // (heading increases counterclockwise).
-  const headingDelta = input.steer * params.steerRateLow * dt
-  const heading = prev.heading + headingDelta
-  // Position update: speed times forward axis. VibeRacer's world axis
-  // convention places forward along negative z when heading is zero.
-  const fwdX = -Math.sin(heading)
-  const fwdZ = -Math.cos(heading)
-  const x = prev.x + next.speed * fwdX * dt
-  const z = prev.z + next.speed * fwdZ * dt
-  return { x, z, heading, speed: next.speed }
+  // Delegate the entire car update to `stepPhysics` so a tour car
+  // inherits the smoothed angular-velocity model the main game uses
+  // (heading lags steer input over ~5 ticks of an
+  // `ANGULAR_VELOCITY_RESPONSE`-blended ramp). The earlier hand-rolled
+  // update applied `steer * steerRate * dt` directly to heading every
+  // tick, which gave the AI no rotational inertia and caused it to
+  // saturate the controller and drift off-track when the steer
+  // input swung between hard left and hard right.
+  return stepPhysics(prev, input, dt, onTrack, params)
 }
 
 function clampDamage(v: number | undefined): number {

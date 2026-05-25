@@ -77,7 +77,7 @@ export default function TourSelectionPage() {
   return (
     <MenuPageShell
       title="World Tour"
-      blurb="Eight tours, four races each. Place inside the gate to unlock the next region."
+      blurb="Eight tours, four races each. Place inside the top spots of the championship standings (cumulative points across all four races) to unlock the next region."
       width="wide"
     >
       <section style={summaryStyle}>
@@ -138,8 +138,9 @@ export default function TourSelectionPage() {
                 </div>
                 <div style={menuStyles.pillRow}>
                   <TourPill>
-                    Top {card.tour.requiredStanding} of {card.tour.fieldSize}
+                    Top {card.tour.requiredStanding} in championship
                   </TourPill>
+                  <TourPill>across {card.tour.trackIds.length} races</TourPill>
                   <TourPill>{weatherLabel(card.tour.weather)}</TourPill>
                   <TourPill>{stateLabel(card)}</TourPill>
                 </div>

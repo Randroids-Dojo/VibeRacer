@@ -83,6 +83,31 @@ describe('applyRaceResult (mid-tour)', () => {
     expect(out.career.money).toBe(defaultCareer().money + 500)
   })
 
+  it('persists the full per-car grid into activeTour.results[i].entries', () => {
+    const finishingOrder = [
+      { carIndex: 0, isPlayer: true, driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, cashEarned: 500 },
+      { carIndex: 1, isPlayer: false, driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: 7, cashEarned: 350 },
+      { carIndex: 2, isPlayer: false, driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: 5, cashEarned: 250 },
+      { carIndex: 3, isPlayer: false, driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, cashEarned: 150 },
+    ]
+    const out = applyRaceResult({
+      career: defaultCareer(),
+      raceResult: midTourResult({ finishingOrder }),
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    const entries = out.career.activeTour!.results[0]!.entries
+    expect(entries).toHaveLength(4)
+    expect(entries.map((e) => e.driverId ?? 'player')).toEqual([
+      'player',
+      'driver-1',
+      'driver-2',
+      'driver-3',
+    ])
+    expect(entries.map((e) => e.points)).toEqual([10, 7, 5, 3])
+    expect(entries[0]!.isPlayer).toBe(true)
+    expect(entries[1]!.isPlayer).toBe(false)
+  })
+
   it('appends to existing results on subsequent races', () => {
     const seed = applyRaceResult({
       career: defaultCareer(),
@@ -169,9 +194,42 @@ describe('applyRaceResult (final race, pass)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-2', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-3', placement: 1, dnf: false, cashEarned: 500 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
         ],
       },
     }
@@ -193,9 +251,42 @@ describe('applyRaceResult (final race, pass)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-2', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-3', placement: 1, dnf: false, cashEarned: 500 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'ai-1', carId: 'ai-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
         ],
       },
     }
@@ -216,9 +307,42 @@ describe('applyRaceResult (final race, fail)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-2', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-3', placement: 4, dnf: false, cashEarned: 0 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
         ],
       },
     }
@@ -255,9 +379,42 @@ describe('applyRaceResult (final race, fail)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-2', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-3', placement: 4, dnf: false, cashEarned: 0 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'ai-1', carId: 'ai-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'ai-2', carId: 'ai-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'ai-3', carId: 'ai-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
         ],
       },
     }

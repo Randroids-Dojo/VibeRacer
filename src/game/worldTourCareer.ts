@@ -22,7 +22,7 @@ import {
   type CarUpgrades,
 } from './worldTourUpgrades'
 
-export const CAREER_SCHEMA_VERSION = 1 as const
+export const CAREER_SCHEMA_VERSION = 2 as const
 
 // Starting cash for a fresh career. Tuned to be enough to repair after a
 // bad first race but not enough to buy a tier 1 upgrade outright, so the
@@ -39,17 +39,34 @@ export const CAREER_STARTING_CAR_ID = 'starter'
 export const CAREER_FIRST_TOUR_ID = 'velvet-coast'
 
 /**
+ * One finisher in a recorded tour race. Used to persist the full grid
+ * (player + AI) per race so the championship standings panel and the
+ * final-race unlock gate read real per-race AI points instead of
+ * projecting the final race backward.
+ */
+export interface TourRaceFinisher {
+  driverId: string | null
+  carId: string
+  placement: number
+  dnf: boolean
+  points: number
+  isPlayer: boolean
+}
+
+/**
  * A single race result inside an in-progress tour. `placement` is 1-indexed
  * (1 = winner). `dnf` is true when the player did not finish (wreck, off-
  * track timeout, or no-progress timeout). `cashEarned` is the purse for
  * that race, including any tour-completion bonus when this is the final
- * race of a tour.
+ * race of a tour. `entries` carries the full per-car grid so the
+ * championship standings stay accurate across mid-tour races.
  */
 export interface TourRaceResult {
   trackId: string
   placement: number
   dnf: boolean
   cashEarned: number
+  entries: TourRaceFinisher[]
 }
 
 /**
@@ -178,7 +195,10 @@ export function cloneCareer(career: WorldTourCareer): WorldTourCareer {
         : {
             tourId: career.activeTour.tourId,
             raceIndex: career.activeTour.raceIndex,
-            results: career.activeTour.results.map((r) => ({ ...r })),
+            results: career.activeTour.results.map((r) => ({
+              ...r,
+              entries: r.entries.map((e) => ({ ...e })),
+            })),
           },
   }
 }
@@ -204,17 +224,39 @@ function sanitizeStringArray(raw: unknown): string[] {
   return Array.from(seen)
 }
 
+function sanitizeRaceFinisher(raw: unknown): TourRaceFinisher | null {
+  if (typeof raw !== 'object' || raw === null) return null
+  const r = raw as Record<string, unknown>
+  if (!isNonEmptyString(r.carId)) return null
+  const placement = typeof r.placement === 'number' ? Math.floor(r.placement) : NaN
+  if (!Number.isFinite(placement) || placement < 1) return null
+  const points = isFiniteNonNegativeNumber(r.points) ? Math.floor(r.points) : 0
+  const dnf = r.dnf === true
+  const isPlayer = r.isPlayer === true
+  const driverId = isNonEmptyString(r.driverId) ? r.driverId : null
+  return { driverId, carId: r.carId, placement, dnf, points, isPlayer }
+}
+
 function sanitizeRaceResult(raw: unknown): TourRaceResult | null {
   if (typeof raw !== 'object' || raw === null) return null
   const r = raw as Record<string, unknown>
   if (!isNonEmptyString(r.trackId)) return null
   const placement = typeof r.placement === 'number' ? Math.floor(r.placement) : NaN
   if (!Number.isFinite(placement) || placement < 1) return null
+  // The v2 entries grid is required. A v1 payload (no entries) is
+  // rejected here so the higher level migration drops the active tour
+  // rather than carrying a half-shaped result that breaks aggregate
+  // points.
+  if (!Array.isArray(r.entries)) return null
+  const entries = r.entries
+    .map(sanitizeRaceFinisher)
+    .filter((e): e is TourRaceFinisher => e !== null)
+  if (entries.length === 0) return null
   const dnf = r.dnf === true
   const cashEarned = isFiniteNonNegativeNumber(r.cashEarned)
     ? Math.floor(r.cashEarned)
     : 0
-  return { trackId: r.trackId, placement, dnf, cashEarned }
+  return { trackId: r.trackId, placement, dnf, cashEarned, entries }
 }
 
 function sanitizeActiveTour(raw: unknown): ActiveTour | null {
@@ -237,13 +279,28 @@ function sanitizeActiveTour(raw: unknown): ActiveTour | null {
  * `WorldTourCareer`. Returns a fresh object. A wholly unrecognized payload
  * yields `defaultCareer()`. Add new cases at the END (never re-order) so
  * older saves keep migrating through the same path.
+ *
+ * v1 to v2 migration: stored `TourRaceResult`s gained a required
+ * `entries` field carrying the full per-car grid for the championship
+ * standings panel and the unlock gate. A pre-v2 save's `activeTour`
+ * (or any active-tour result missing `entries`) is dropped so the
+ * player restarts the in-flight tour from race 1. Money, completed
+ * tours, unlocks, owned cars, and per-car damage and upgrades all
+ * survive the migration.
  */
 export function migrateCareer(raw: unknown): WorldTourCareer {
   if (typeof raw !== 'object' || raw === null) return defaultCareer()
   const r = raw as Record<string, unknown>
-  // v1 is the only shape we know today. The version field is loose: a save
-  // missing the field is treated as v1 (it could be a hand-edited payload).
   const seed = defaultCareer()
+  // Treat any version below the current schema (including a missing or
+  // unrecognised field) as pre-v2 for the purpose of dropping the
+  // active tour. A v2 payload round-trips through the same sanitizer
+  // unchanged because its results already carry `entries`.
+  const sourceVersion =
+    typeof r.version === 'number' && Number.isFinite(r.version)
+      ? Math.floor(r.version)
+      : 1
+  const isPreV2 = sourceVersion < CAREER_SCHEMA_VERSION
   const money = isFiniteNonNegativeNumber(r.money) ? Math.floor(r.money) : seed.money
   // Legacy top-level damage and upgrade fields fold into the active
   // car's slot inside `carsById`. A modern save provides `carsById`
@@ -255,7 +312,12 @@ export function migrateCareer(raw: unknown): WorldTourCareer {
   const ownedCarIds = sanitizeStringArray(r.ownedCarIds)
   const completedTourIds = sanitizeStringArray(r.completedTourIds)
   const unlockedTourIds = sanitizeStringArray(r.unlockedTourIds)
-  const activeTour = sanitizeActiveTour(r.activeTour)
+  // Pre-v2 saves carried `TourRaceResult`s without `entries`. Drop the
+  // active-tour cursor in that case rather than fabricating entries
+  // (any fabrication would feed the unlock gate a wrong championship
+  // standing). The player loses an in-flight tour but keeps money and
+  // every completed tour.
+  const activeTour = isPreV2 ? null : sanitizeActiveTour(r.activeTour)
   // The active car must be in the owned list. If neither is valid, fall
   // back to the seed car to avoid an "I own no cars" state that would
   // soft-lock the career.

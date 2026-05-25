@@ -45,7 +45,7 @@ describe('defaultCareer', () => {
 describe('cloneCareer', () => {
   it('deep clones every array and the activeTour object', () => {
     const source: WorldTourCareer = {
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 500,
       ownedCarIds: ['starter', 'red'],
       activeCarId: 'red',
@@ -59,8 +59,26 @@ describe('cloneCareer', () => {
         tourId: 'iron-borough',
         raceIndex: 2,
         results: [
-          { trackId: 't1', placement: 1, dnf: false, cashEarned: 100 },
-          { trackId: 't2', placement: 4, dnf: false, cashEarned: 25 },
+          {
+            trackId: 't1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 100,
+            entries: [
+              { driverId: null, carId: 'red', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'a', carId: 'a', placement: 2, dnf: false, points: 7, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 't2',
+            placement: 4,
+            dnf: false,
+            cashEarned: 25,
+            entries: [
+              { driverId: 'a', carId: 'a', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: null, carId: 'red', placement: 4, dnf: false, points: 3, isPlayer: true },
+            ],
+          },
         ],
       },
     }
@@ -73,13 +91,25 @@ describe('cloneCareer', () => {
     expect(cloned.activeTour).not.toBe(source.activeTour)
     expect(cloned.activeTour!.results).not.toBe(source.activeTour!.results)
     expect(cloned.activeTour!.results[0]).not.toBe(source.activeTour!.results[0])
+    expect(cloned.activeTour!.results[0]!.entries).not.toBe(
+      source.activeTour!.results[0]!.entries,
+    )
+    expect(cloned.activeTour!.results[0]!.entries[0]).not.toBe(
+      source.activeTour!.results[0]!.entries[0],
+    )
     cloned.activeTour!.results.push({
       trackId: 'mut',
       placement: 12,
       dnf: true,
       cashEarned: 0,
+      entries: [
+        { driverId: null, carId: 'red', placement: 12, dnf: true, points: 0, isPlayer: true },
+      ],
     })
     expect(source.activeTour!.results).toHaveLength(2)
+    // Mutating a cloned entry must not leak back into the source.
+    cloned.activeTour!.results[0]!.entries[0]!.points = 999
+    expect(source.activeTour!.results[0]!.entries[0]!.points).toBe(10)
   })
 
   it('preserves a null activeTour as null', () => {
@@ -98,9 +128,9 @@ describe('migrateCareer', () => {
     expect(migrateCareer([])).toEqual(defaultCareer())
   })
 
-  it('round-trips a fully populated valid v1 save', () => {
+  it('round-trips a fully populated valid v2 save', () => {
     const valid: WorldTourCareer = {
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 2500,
       ownedCarIds: ['starter', 'speeder'],
       activeCarId: 'speeder',
@@ -114,16 +144,25 @@ describe('migrateCareer', () => {
         tourId: 'iron-borough',
         raceIndex: 1,
         results: [
-          { trackId: 'ib-1', placement: 3, dnf: false, cashEarned: 200 },
+          {
+            trackId: 'ib-1',
+            placement: 3,
+            dnf: false,
+            cashEarned: 200,
+            entries: [
+              { driverId: null, carId: 'speeder', placement: 3, dnf: false, points: 5, isPlayer: true },
+              { driverId: 'a', carId: 'a', placement: 1, dnf: false, points: 10, isPlayer: false },
+            ],
+          },
         ],
       },
     }
     expect(migrateCareer(valid)).toEqual(valid)
   })
 
-  it('coerces money and placement to integers and drops bad results', () => {
+  it('coerces money and placement to integers and drops bad results on v2', () => {
     const dirty = {
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 1234.9,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
@@ -133,10 +172,19 @@ describe('migrateCareer', () => {
         tourId: 'velvet-coast',
         raceIndex: 1.7,
         results: [
-          { trackId: 'a', placement: 2.4, dnf: false, cashEarned: 100 },
-          { trackId: '', placement: 1, dnf: false, cashEarned: 50 },
-          { placement: 1, dnf: false, cashEarned: 50 },
-          { trackId: 'c', placement: 0, dnf: false, cashEarned: 50 },
+          {
+            trackId: 'a',
+            placement: 2.4,
+            dnf: false,
+            cashEarned: 100,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 2, dnf: false, points: 7, isPlayer: true },
+              { driverId: 'x', carId: 'x', placement: 1, dnf: false, points: 10, isPlayer: false },
+            ],
+          },
+          { trackId: '', placement: 1, dnf: false, cashEarned: 50, entries: [] },
+          { placement: 1, dnf: false, cashEarned: 50, entries: [] },
+          { trackId: 'c', placement: 0, dnf: false, cashEarned: 50, entries: [] },
         ],
       },
     }
@@ -144,13 +192,71 @@ describe('migrateCareer', () => {
     expect(out.money).toBe(1234)
     expect(out.activeTour!.raceIndex).toBe(1)
     expect(out.activeTour!.results).toEqual([
-      { trackId: 'a', placement: 2, dnf: false, cashEarned: 100 },
+      {
+        trackId: 'a',
+        placement: 2,
+        dnf: false,
+        cashEarned: 100,
+        entries: [
+          { driverId: null, carId: 'starter', placement: 2, dnf: false, points: 7, isPlayer: true },
+          { driverId: 'x', carId: 'x', placement: 1, dnf: false, points: 10, isPlayer: false },
+        ],
+      },
     ])
+  })
+
+  it('drops a v1 activeTour entirely while preserving money, owned, completed, and unlocks', () => {
+    const v1 = {
+      version: 1,
+      money: 4321,
+      ownedCarIds: ['starter', 'red'],
+      activeCarId: 'red',
+      carsById: {
+        starter: { damage: 0, upgrades: { engine: 0, tires: 0, brakes: 0, body: 0 } },
+        red: { damage: 0.3, upgrades: { engine: 1, tires: 0, brakes: 0, body: 0 } },
+      },
+      completedTourIds: ['velvet-coast'],
+      unlockedTourIds: ['velvet-coast', 'iron-borough'],
+      activeTour: {
+        tourId: 'iron-borough',
+        raceIndex: 2,
+        results: [
+          { trackId: 'ib-1', placement: 3, dnf: false, cashEarned: 200 },
+          { trackId: 'ib-2', placement: 2, dnf: false, cashEarned: 350 },
+        ],
+      },
+    }
+    const out = migrateCareer(v1)
+    expect(out.version).toBe(CAREER_SCHEMA_VERSION)
+    expect(out.activeTour).toBeNull()
+    expect(out.money).toBe(4321)
+    expect(out.completedTourIds).toEqual(['velvet-coast'])
+    expect(out.unlockedTourIds).toEqual(['velvet-coast', 'iron-borough'])
+    expect(out.ownedCarIds).toEqual(['starter', 'red'])
+    expect(out.activeCarId).toBe('red')
+    expect(out.carsById.red!.damage).toBeCloseTo(0.3)
+    expect(out.carsById.red!.upgrades.engine).toBe(1)
+  })
+
+  it('drops activeTour when the version field is missing (treated as pre-v2)', () => {
+    const out = migrateCareer({
+      money: 100,
+      ownedCarIds: ['starter'],
+      activeCarId: 'starter',
+      unlockedTourIds: ['velvet-coast'],
+      activeTour: {
+        tourId: 'velvet-coast',
+        raceIndex: 1,
+        results: [{ trackId: 'a', placement: 1, dnf: false, cashEarned: 100 }],
+      },
+    })
+    expect(out.activeTour).toBeNull()
+    expect(out.money).toBe(100)
   })
 
   it('forces the active car into the owned list if missing', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 0,
       ownedCarIds: ['red'],
       activeCarId: 'blue',
@@ -164,7 +270,7 @@ describe('migrateCareer', () => {
 
   it('always restores velvet-coast to the unlocked tour list', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 0,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
@@ -177,7 +283,7 @@ describe('migrateCareer', () => {
 
   it('rejects malformed activeTour as null without losing other fields', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 100,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
@@ -190,19 +296,19 @@ describe('migrateCareer', () => {
   })
 
   it('folds legacy top-level damage into the active car slot', () => {
-    const a = migrateCareer({ version: 1, activeCarDamage: 2 })
+    const a = migrateCareer({ version: CAREER_SCHEMA_VERSION, activeCarDamage: 2 })
     expect(a.carsById[a.activeCarId]!.damage).toBe(1)
-    const b = migrateCareer({ version: 1, activeCarDamage: -0.5 })
+    const b = migrateCareer({ version: CAREER_SCHEMA_VERSION, activeCarDamage: -0.5 })
     expect(b.carsById[b.activeCarId]!.damage).toBe(0)
-    const c = migrateCareer({ version: 1 })
+    const c = migrateCareer({ version: CAREER_SCHEMA_VERSION })
     expect(c.carsById[c.activeCarId]!.damage).toBe(0)
-    const d = migrateCareer({ version: 1, activeCarDamage: 'broken' })
+    const d = migrateCareer({ version: CAREER_SCHEMA_VERSION, activeCarDamage: 'broken' })
     expect(d.carsById[d.activeCarId]!.damage).toBe(0)
   })
 
   it('folds legacy top-level upgrades into the active car slot', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       activeCarUpgrades: { engine: 9, tires: -1, brakes: 'broken' },
     })
     const active = out.carsById[out.activeCarId]!
@@ -214,7 +320,7 @@ describe('migrateCareer', () => {
 
   it('prefers carsById over the legacy fields when both are present', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
       activeCarDamage: 0.9,
@@ -234,7 +340,7 @@ describe('migrateCareer', () => {
 
   it('uses legacy fields when the active carsById slot is malformed', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
       activeCarDamage: 0.8,
@@ -251,7 +357,7 @@ describe('migrateCareer', () => {
 
   it('uses legacy fields when the active carsById slot is an array', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       ownedCarIds: ['starter'],
       activeCarId: 'starter',
       activeCarDamage: 0.7,
@@ -268,7 +374,7 @@ describe('migrateCareer', () => {
 
   it('floors fractional upgrade tiers folded from the legacy field', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       activeCarUpgrades: { engine: 2.7, tires: 1.4, brakes: 0, body: 0 },
     })
     const active = out.carsById[out.activeCarId]!
@@ -278,7 +384,7 @@ describe('migrateCareer', () => {
 
   it('seeds stock entries in carsById for every owned car', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       ownedCarIds: ['starter', 'red', 'blue'],
       activeCarId: 'red',
     })
@@ -291,7 +397,7 @@ describe('migrateCareer', () => {
 
   it('dedupes owned, completed, and unlocked id lists', () => {
     const out = migrateCareer({
-      version: 1,
+      version: CAREER_SCHEMA_VERSION,
       money: 0,
       ownedCarIds: ['a', 'a', 'b'],
       activeCarId: 'a',
