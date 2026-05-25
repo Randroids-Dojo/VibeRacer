@@ -22,10 +22,12 @@ import {
   buildGhostNameplate,
   buildOpponentCar,
   buildScene,
+  buildVehicleHealthBar,
   initCameraRig,
   updateCameraRig,
   type CameraRigParams,
   type CameraRigState,
+  type VehicleHealthBar,
 } from '@/game/sceneBuilder'
 import type { Group } from 'three'
 import { type GhostMeta } from '@/game/ghostNameplate'
@@ -157,6 +159,10 @@ export interface OpponentPose {
   // CCW. Written directly to the rendered car's `rotation.y`.
   heading: number
   color: number
+  // Remaining health, 0..1 (1 = full, 0 = wrecked). Drives the small
+  // world-space health bar floating above the opponent car. Optional
+  // so existing callers default to full health.
+  health?: number
 }
 
 export interface RaceCanvasProps {
@@ -376,6 +382,11 @@ export interface RaceCanvasProps {
   // null or undefined disables the opponent rendering path entirely
   // so single-player modes pay zero per-frame cost.
   opponentsRef?: MutableRefObject<OpponentPose[] | null>
+  // Live ref into the player car's remaining health (0..1, 1 = full).
+  // When present, attaches the same small world-space bar opponents
+  // get to the player car group so every vehicle on the grid reads
+  // the same way. Optional so single-player modes pay nothing.
+  playerHealthRef?: MutableRefObject<number>
   disableMusicIntensity?: boolean
   className?: string
   style?: CSSProperties
@@ -441,6 +452,7 @@ export function RaceCanvas({
   onReactionTime,
   captureScreenshotRef,
   opponentsRef,
+  playerHealthRef,
   disableMusicIntensity,
   className,
   style,
@@ -648,25 +660,38 @@ export function RaceCanvas({
       car: Group
       dispose: () => void
       color: number
+      healthBar: VehicleHealthBar
     }[] = []
     function ensureOpponentSlot(idx: number, color: number) {
       while (opponentSlots.length <= idx) {
         const slot = buildOpponentCar(color)
+        const healthBar = buildVehicleHealthBar()
+        slot.car.add(healthBar.group)
         bundle.scene.add(slot.car)
-        opponentSlots.push({ car: slot.car, dispose: slot.dispose, color })
+        opponentSlots.push({
+          car: slot.car,
+          dispose: slot.dispose,
+          color,
+          healthBar,
+        })
       }
       const slot = opponentSlots[idx]!
       if (slot.color !== color) {
         // Repaint by swapping in a fresh opponent car. Cheap because
-        // the GLB is cached; the old slot's material is disposed.
+        // the GLB is cached; the old slot's material is disposed. The
+        // health bar carries over so a repaint does not reset the
+        // damage indicator.
         bundle.scene.remove(slot.car)
+        slot.car.remove(slot.healthBar.group)
         slot.dispose()
         const next = buildOpponentCar(color)
+        next.car.add(slot.healthBar.group)
         bundle.scene.add(next.car)
         opponentSlots[idx] = {
           car: next.car,
           dispose: next.dispose,
           color,
+          healthBar: slot.healthBar,
         }
       }
     }
@@ -683,6 +708,7 @@ export function RaceCanvas({
         slot.car.visible = true
         slot.car.position.set(pose.x, 0, pose.z)
         slot.car.rotation.y = pose.heading
+        slot.healthBar.setHealth(pose.health ?? 1)
       }
       // Hide any meshes the parent shrunk away from so a re-grow does
       // not strand stale geometry on the track.
@@ -691,6 +717,20 @@ export function RaceCanvas({
       }
     }
     syncOpponents()
+
+    // Player-side health bar for multi-car modes. The bar mirrors the
+    // small world-space pip floating above each opponent so every
+    // vehicle on the grid reads the same way. Gated on the optional
+    // `playerHealthRef` so single-player modes pay nothing.
+    const playerHealthBar = playerHealthRef ? buildVehicleHealthBar() : null
+    if (playerHealthBar) {
+      bundle.car.add(playerHealthBar.group)
+    }
+    function syncPlayerHealthBar() {
+      if (!playerHealthBar || !playerHealthRef) return
+      playerHealthBar.setHealth(playerHealthRef.current)
+    }
+    syncPlayerHealthBar()
 
     function resize() {
       const el = canvasRef.current
@@ -913,6 +953,8 @@ export function RaceCanvas({
       // And the per-opponent car positions for multi-car modes. No-op
       // for single-player modes that never set `opponentsRef`.
       syncOpponents()
+      // And the player car's matching world-space health bar.
+      syncPlayerHealthBar()
 
       if (pendingResetRef.current) {
         state = initGameState(path)
@@ -1794,9 +1836,14 @@ export function RaceCanvas({
       bundle.scene.remove(ghostMesh)
       for (const slot of opponentSlots) {
         bundle.scene.remove(slot.car)
+        slot.healthBar.dispose()
         slot.dispose()
       }
       opponentSlots.length = 0
+      if (playerHealthBar) {
+        bundle.car.remove(playerHealthBar.group)
+        playerHealthBar.dispose()
+      }
       bundle.dispose()
       renderer.dispose()
       if (rearRenderer) {

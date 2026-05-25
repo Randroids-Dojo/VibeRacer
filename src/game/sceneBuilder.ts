@@ -158,6 +158,17 @@ import {
   type NameplateSource,
 } from './ghostNameplate'
 import {
+  HEALTH_BAR_BG_HEX,
+  HEALTH_BAR_BORDER_HEX,
+  HEALTH_BAR_SPRITE_HEIGHT,
+  HEALTH_BAR_SPRITE_WIDTH,
+  HEALTH_BAR_TEXTURE_HEIGHT,
+  HEALTH_BAR_TEXTURE_WIDTH,
+  HEALTH_BAR_Y_OFFSET,
+  clampHealthFraction,
+  healthBarFillColor,
+} from './vehicleHealthBar'
+import {
   HEADLIGHT_LAMP_COLOR_HEX,
   HEADLIGHT_LAMP_OFFSET_X,
   HEADLIGHT_LAMP_OFFSET_Y,
@@ -2373,6 +2384,112 @@ export function buildGhostNameplate(): GhostNameplate {
   }
 
   return { group, apply, setOpacity, setVisible, dispose }
+}
+
+// Small world-space health bar that floats above a vehicle. Same
+// CanvasTexture-backed Sprite pattern as the ghost nameplate so the
+// bar auto-billboards toward the camera with no per-frame math. The
+// fill is redrawn only when the rounded health bucket changes (every
+// 1% of damage) so a stable race pays one upload per actual hit, not
+// 60 per second.
+//
+// Caller attaches the returned `group` as a child of the vehicle group
+// so the bar inherits the vehicle's world position; the bar sits
+// `HEALTH_BAR_Y_OFFSET` units above the vehicle origin.
+export interface VehicleHealthBar {
+  group: Group
+  setHealth: (frac: number) => void
+  setVisible: (value: boolean) => void
+  dispose: () => void
+}
+
+export function buildVehicleHealthBar(): VehicleHealthBar {
+  const group = new Group()
+  group.position.set(0, HEALTH_BAR_Y_OFFSET, 0)
+
+  const hasCanvas =
+    typeof document !== 'undefined' &&
+    typeof document.createElement === 'function'
+
+  let canvas: HTMLCanvasElement | null = null
+  let ctx: CanvasRenderingContext2D | null = null
+  let texture: CanvasTexture | null = null
+  let material: SpriteMaterial | null = null
+  let sprite: Sprite | null = null
+  let lastBucket = -1
+
+  function ensureSprite() {
+    if (sprite || !hasCanvas) return
+    canvas = document.createElement('canvas')
+    canvas.width = HEALTH_BAR_TEXTURE_WIDTH
+    canvas.height = HEALTH_BAR_TEXTURE_HEIGHT
+    ctx = canvas.getContext('2d')
+    if (!ctx) {
+      canvas = null
+      return
+    }
+    texture = new CanvasTexture(canvas)
+    material = new SpriteMaterial({
+      map: texture,
+      transparent: true,
+      depthWrite: false,
+    })
+    sprite = new Sprite(material)
+    sprite.scale.set(HEALTH_BAR_SPRITE_WIDTH, HEALTH_BAR_SPRITE_HEIGHT, 1)
+    group.add(sprite)
+  }
+
+  function drawBar(frac: number) {
+    if (!ctx) return
+    const w = HEALTH_BAR_TEXTURE_WIDTH
+    const h = HEALTH_BAR_TEXTURE_HEIGHT
+    ctx.clearRect(0, 0, w, h)
+
+    ctx.fillStyle = HEALTH_BAR_BG_HEX
+    ctx.fillRect(0, 0, w, h)
+
+    const inset = 2
+    const innerW = w - inset * 2
+    const innerH = h - inset * 2
+    const fillW = Math.max(0, Math.round(innerW * frac))
+    if (fillW > 0) {
+      ctx.fillStyle = healthBarFillColor(frac)
+      ctx.fillRect(inset, inset, fillW, innerH)
+    }
+
+    ctx.strokeStyle = HEALTH_BAR_BORDER_HEX
+    ctx.lineWidth = 2
+    ctx.strokeRect(1, 1, w - 2, h - 2)
+  }
+
+  function setHealth(frac: number) {
+    const clamped = clampHealthFraction(frac)
+    // Quantize to 1% buckets so a per-frame poll with an unchanged
+    // fraction is a single int compare instead of a canvas redraw.
+    const bucket = Math.round(clamped * 100)
+    if (bucket === lastBucket && sprite) return
+    ensureSprite()
+    if (!ctx || !texture) return
+    drawBar(clamped)
+    texture.needsUpdate = true
+    lastBucket = bucket
+  }
+
+  function setVisible(value: boolean) {
+    group.visible = value
+  }
+
+  function dispose() {
+    if (texture) texture.dispose()
+    if (material) material.dispose()
+    sprite = null
+    canvas = null
+    ctx = null
+    texture = null
+    material = null
+  }
+
+  return { group, setHealth, setVisible, dispose }
 }
 
 export function buildScene(
