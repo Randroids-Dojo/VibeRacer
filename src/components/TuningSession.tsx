@@ -662,26 +662,27 @@ export function TuningSession({
             style={canvasStyle}
           />
           <div style={hudWrap}>
+            <style>{DRIVE_HUD_CSS}</style>
             <DriveHud hud={hud} />
             {phase === 'drive' ? (
-              <div style={driveActions}>
+              <div className="viberacer-tuning-actions">
                 <button
                   onClick={restartCurrentRun}
-                  style={driveActionBtn}
+                  className="viberacer-tuning-action-btn"
                   aria-label="Restart run"
                 >
                   Restart
                 </button>
                 <button
                   onClick={openDriveSliders}
-                  style={driveActionBtn}
+                  className="viberacer-tuning-action-btn"
                   aria-label="Open tuning sliders"
                 >
                   Tuning
                 </button>
                 <button
                   onClick={abortDrive}
-                  style={driveActionBtn}
+                  className="viberacer-tuning-action-btn"
                   aria-label="End session"
                 >
                   End session
@@ -861,19 +862,19 @@ function DriveHud({ hud }: { hud: RaceCanvasHud }) {
   const sec = (hud.currentMs / 1000).toFixed(2)
   const last = hud.lastLapMs !== null ? (hud.lastLapMs / 1000).toFixed(2) : null
   return (
-    <div style={driveHud}>
-      <div style={driveHudRow}>
-        <span style={driveHudKey}>TIME</span>
-        <span style={driveHudVal}>{sec}s</span>
+    <div className="viberacer-tuning-hud">
+      <div className="viberacer-tuning-hud-row">
+        <span className="viberacer-tuning-hud-key">TIME</span>
+        <span className="viberacer-tuning-hud-val">{sec}s</span>
       </div>
-      <div style={driveHudRow}>
-        <span style={driveHudKey}>LAP</span>
-        <span style={driveHudVal}>{hud.lapCount}</span>
+      <div className="viberacer-tuning-hud-row">
+        <span className="viberacer-tuning-hud-key">LAP</span>
+        <span className="viberacer-tuning-hud-val">{hud.lapCount}</span>
       </div>
       {last ? (
-        <div style={driveHudRow}>
-          <span style={driveHudKey}>LAST</span>
-          <span style={driveHudVal}>{last}s</span>
+        <div className="viberacer-tuning-hud-row">
+          <span className="viberacer-tuning-hud-key">LAST</span>
+          <span className="viberacer-tuning-hud-val">{last}s</span>
         </div>
       ) : null}
       {hud.wrongWay ? (
@@ -1183,37 +1184,108 @@ const hudWrap: CSSProperties = {
   pointerEvents: 'none',
   zIndex: 10,
 }
-const driveHud: CSSProperties = {
-  position: 'absolute',
-  top: 'calc(12px + env(safe-area-inset-top, 0px))',
-  right: 'calc(12px + env(safe-area-inset-right, 0px))',
-  maxWidth: 'calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px))',
-  display: 'flex',
-  flexDirection: 'column',
-  gap: 6,
-  background: 'rgba(0,0,0,0.55)',
-  color: 'white',
-  padding: '10px 14px',
-  borderRadius: 10,
-  fontFamily: 'system-ui, sans-serif',
-  fontSize: 14,
-  pointerEvents: 'auto',
-  boxSizing: 'border-box',
+// Mobile-first HUD chrome. Matches the idiomatic pattern used by
+// HUD.tsx (position:fixed inset:0 wrap) and Game.tsx's PAUSE_BUTTON_CSS
+// (env(safe-area-inset-*) bottoms + @media (any-pointer: coarse) bumps).
+// Pulled out of inline `CSSProperties` into a single injected stylesheet
+// because media queries can't ride along on the inline style attribute.
+const DRIVE_HUD_CSS = `
+.viberacer-tuning-hud {
+  position: absolute;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  right: calc(12px + env(safe-area-inset-right, 0px));
+  max-width: calc(100vw - 24px - env(safe-area-inset-left, 0px) - env(safe-area-inset-right, 0px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: rgba(0, 0, 0, 0.55);
+  color: white;
+  padding: 10px 14px;
+  border-radius: 10px;
+  font-family: system-ui, sans-serif;
+  font-size: 14px;
+  pointer-events: auto;
+  box-sizing: border-box;
 }
-const driveHudRow: CSSProperties = {
-  display: 'flex',
-  justifyContent: 'space-between',
-  gap: 16,
-  fontFamily: 'monospace',
+.viberacer-tuning-hud-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  font-family: monospace;
 }
-const driveHudKey: CSSProperties = {
-  opacity: 0.6,
-  letterSpacing: 1,
-  fontSize: 11,
+.viberacer-tuning-hud-key {
+  opacity: 0.6;
+  letter-spacing: 1px;
+  font-size: 11px;
 }
-const driveHudVal: CSSProperties = {
-  fontWeight: 700,
+.viberacer-tuning-hud-val {
+  font-weight: 700;
 }
+.viberacer-tuning-actions {
+  position: absolute;
+  left: calc(16px + env(safe-area-inset-left, 0px));
+  right: calc(16px + env(safe-area-inset-right, 0px));
+  bottom: calc(20px + env(safe-area-inset-bottom, 0px));
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  z-index: 20;
+  pointer-events: auto;
+}
+.viberacer-tuning-action-btn {
+  background: rgba(0, 0, 0, 0.65);
+  color: white;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 999px;
+  padding: 10px 16px;
+  font-size: 13px;
+  cursor: pointer;
+  font-family: inherit;
+  min-height: 44px;
+  touch-action: manipulation;
+  -webkit-tap-highlight-color: transparent;
+}
+.viberacer-tuning-action-btn:focus-visible {
+  outline: 2px solid #5fe08a;
+  outline-offset: 2px;
+}
+@media (any-pointer: coarse) {
+  .viberacer-tuning-hud {
+    top: calc(16px + env(safe-area-inset-top, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    padding: 12px 16px;
+    font-size: 15px;
+    border-radius: 12px;
+  }
+  .viberacer-tuning-hud-key {
+    font-size: 12px;
+  }
+  .viberacer-tuning-actions {
+    left: calc(20px + env(safe-area-inset-left, 0px));
+    right: calc(20px + env(safe-area-inset-right, 0px));
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    gap: 10px;
+  }
+  .viberacer-tuning-action-btn {
+    padding: 12px 18px;
+    font-size: 14px;
+    min-height: 48px;
+    border-width: 2px;
+    background: rgba(0, 0, 0, 0.7);
+  }
+}
+@media (max-width: 380px) {
+  .viberacer-tuning-actions {
+    justify-content: stretch;
+  }
+  .viberacer-tuning-action-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    padding-left: 12px;
+    padding-right: 12px;
+  }
+}
+`
 const offTrackBadge: CSSProperties = {
   background: '#ff8a3c',
   color: '#1a1a1a',
@@ -1234,30 +1306,6 @@ const wrongWayBadge: CSSProperties = {
   textAlign: 'center',
   letterSpacing: 1,
   border: '1px solid rgba(255, 240, 180, 0.85)',
-}
-const driveActions: CSSProperties = {
-  position: 'absolute',
-  left: 'calc(16px + env(safe-area-inset-left, 0px))',
-  right: 'calc(16px + env(safe-area-inset-right, 0px))',
-  bottom: 'calc(20px + env(safe-area-inset-bottom, 0px))',
-  display: 'flex',
-  flexWrap: 'wrap',
-  gap: 8,
-  zIndex: 20,
-  pointerEvents: 'auto',
-}
-const driveActionBtn: CSSProperties = {
-  background: 'rgba(0,0,0,0.55)',
-  color: 'white',
-  border: 'none',
-  borderRadius: 999,
-  padding: '10px 16px',
-  fontSize: 13,
-  cursor: 'pointer',
-  fontFamily: 'inherit',
-  minHeight: 44,
-  touchAction: 'manipulation',
-  WebkitTapHighlightColor: 'transparent',
 }
 const formScroll: CSSProperties = {
   width: '100%',
