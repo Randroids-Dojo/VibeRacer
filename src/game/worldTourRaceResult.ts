@@ -263,52 +263,171 @@ function buildStandings(state: RaceSessionState): RaceStandingEntry[] {
  * the just-finished final race. Resolves the player's standing inside
  * the field. Used by the pass / fail gate on the final race.
  *
- * Each AI driver's per-race placement is approximated by their final
- * standing in the just-finished race for any race the career did not
- * record (the career save only stores the player's per-race result,
- * not the full grid history). Recording the full per-race grid is a
- * known followup so the aggregate standings reflect mid-tour swings.
+ * Every prior race's `entries` carries the full per-car grid (stored
+ * by `applyRaceResult`), so AI standings reflect actual race-by-race
+ * swings instead of the legacy "project the final race backward"
+ * approximation. The map key for the player is the literal
+ * `'player'`; AI drivers key on `driverId ?? carId`.
  */
 export function aggregatePoints(args: {
   career: WorldTourCareer
   tour: Tour
   finalRaceStandings: RaceStandingEntry[]
 }): { playerStanding: number; pointsByCar: Map<string, number> } {
-  const pointsByCar = new Map<string, number>()
-  const playerKey = 'player'
+  const PLAYER_KEY = 'player'
+  const aiKey = (e: { driverId: string | null; carId: string }): string =>
+    e.driverId ?? e.carId
 
   const prior: TourRaceResult[] =
     args.career.activeTour?.tourId === args.tour.id
       ? args.career.activeTour.results
       : []
 
-  // Player's accumulated points from earlier races plus the just-
-  // finished final race.
-  let playerPoints = 0
+  const pointsByCar = new Map<string, number>()
+
+  // Sum every prior race's per-car points. Player entries fold into
+  // the literal 'player' key so a player whose driverId is null still
+  // accumulates a single row.
   for (const r of prior) {
-    playerPoints += r.dnf ? 0 : placementPoints(r.placement)
-  }
-  const playerFinal = args.finalRaceStandings.find((e) => e.isPlayer)
-  if (playerFinal) playerPoints += playerFinal.points
-  pointsByCar.set(playerKey, playerPoints)
-
-  // AI cars: only the final race is known per-car. Approximate every
-  // prior race as identical to the final standings; recording real
-  // per-race AI standings is a known followup.
-  for (const entry of args.finalRaceStandings) {
-    if (entry.isPlayer) continue
-    const key = entry.driverId ?? entry.carId
-    const seenRaces = prior.length + 1
-    const pts = entry.points * seenRaces
-    pointsByCar.set(key, pts)
+    for (const e of r.entries) {
+      const key = e.isPlayer ? PLAYER_KEY : aiKey(e)
+      pointsByCar.set(key, (pointsByCar.get(key) ?? 0) + e.points)
+    }
   }
 
+  // Add the just-finished race's standings.
+  for (const e of args.finalRaceStandings) {
+    const key = e.isPlayer ? PLAYER_KEY : aiKey(e)
+    pointsByCar.set(key, (pointsByCar.get(key) ?? 0) + e.points)
+  }
+
+  const playerPoints = pointsByCar.get(PLAYER_KEY) ?? 0
   // Resolve the player's standing: count cars with strictly more
   // points and add 1.
   let ahead = 0
   for (const [key, pts] of pointsByCar.entries()) {
-    if (key === playerKey) continue
+    if (key === PLAYER_KEY) continue
     if (pts > playerPoints) ahead++
   }
   return { playerStanding: ahead + 1, pointsByCar }
+}
+
+/**
+ * One row in the championship standings panel. `key` matches the
+ * `pointsByCar` map key used by `aggregatePoints` (the literal
+ * `'player'` for the player; `driverId ?? carId` for every AI). The
+ * `label` is the display name the renderer shows on the row.
+ */
+export interface ChampionshipStandingsRow {
+  key: string
+  label: string
+  points: number
+  isPlayer: boolean
+  isGhost: boolean
+}
+
+/**
+ * Mid-tour championship standings the garage and the results page
+ * render. Iterates `career.activeTour.results` (already populated with
+ * the full per-car grid per race) and returns rows sorted by points
+ * descending. The player's `playerStanding` is 1-indexed and counts
+ * AI rows with strictly more points than the player plus one.
+ *
+ * Returns null when the career has no active tour, when the active
+ * tour does not match `tour.id`, or when the championship lookup
+ * fails. Returns a zero-results shape (the player row alone at
+ * standing 1) when the active tour has not finished any race yet.
+ *
+ * A row is marked `isGhost: true` when it represents a roster driver
+ * who has not yet appeared in any recorded race (every AI in the
+ * tour's roster is surfaced so the panel does not look like the
+ * field shrank between races); ghosts have `points: 0`.
+ */
+export function currentChampionshipStandings(args: {
+  career: WorldTourCareer
+  tour: Tour
+  championship: Championship
+}): {
+  rows: ChampionshipStandingsRow[]
+  playerStanding: number
+  fieldSize: number
+  racesCompleted: number
+} | null {
+  const PLAYER_KEY = 'player'
+  const active = args.career.activeTour
+  if (!active || active.tourId !== args.tour.id) return null
+
+  const pointsByKey = new Map<string, number>()
+  const labelByKey = new Map<string, string>()
+  pointsByKey.set(PLAYER_KEY, 0)
+  labelByKey.set(PLAYER_KEY, 'You')
+
+  // Walk every race the player has completed in this active tour. The
+  // career storage layer has already validated `entries` is non-empty
+  // for every persisted result, so the loop is safe even on a freshly
+  // seeded cursor.
+  for (const r of active.results) {
+    for (const e of r.entries) {
+      const key = e.isPlayer ? PLAYER_KEY : (e.driverId ?? e.carId)
+      pointsByKey.set(key, (pointsByKey.get(key) ?? 0) + e.points)
+      if (!labelByKey.has(key)) {
+        labelByKey.set(key, e.isPlayer ? 'You' : (e.driverId ?? e.carId))
+      }
+    }
+  }
+
+  // Resolve display names for AI drivers from the championship roster
+  // so a row reads as "Maple Quartz" rather than "driver-3". Ghosts
+  // (roster drivers who have not raced yet) get added with 0 points
+  // so the panel always shows the full field size.
+  const driverNameById = new Map(args.championship.drivers.map((d) => [d.id, d.name]))
+  for (const id of args.tour.aiDriverIds) {
+    const name = driverNameById.get(id) ?? id
+    labelByKey.set(id, name)
+    if (!pointsByKey.has(id)) {
+      pointsByKey.set(id, 0)
+    }
+  }
+
+  const playerPoints = pointsByKey.get(PLAYER_KEY) ?? 0
+  let ahead = 0
+  for (const [key, pts] of pointsByKey.entries()) {
+    if (key === PLAYER_KEY) continue
+    if (pts > playerPoints) ahead++
+  }
+
+  const seenAi = new Set<string>()
+  for (const r of active.results) {
+    for (const e of r.entries) {
+      if (e.isPlayer) continue
+      seenAi.add(e.driverId ?? e.carId)
+    }
+  }
+
+  const rows: ChampionshipStandingsRow[] = []
+  for (const [key, points] of pointsByKey.entries()) {
+    rows.push({
+      key,
+      label: labelByKey.get(key) ?? key,
+      points,
+      isPlayer: key === PLAYER_KEY,
+      isGhost: key !== PLAYER_KEY && !seenAi.has(key),
+    })
+  }
+  // Sort by points desc; the player wins ties so the panel never
+  // shows the player below a 0-point ghost on a clean run. Stable
+  // tiebreak on the key keeps the order deterministic across renders.
+  rows.sort((a, b) => {
+    if (b.points !== a.points) return b.points - a.points
+    if (a.isPlayer) return -1
+    if (b.isPlayer) return 1
+    return a.key.localeCompare(b.key)
+  })
+
+  return {
+    rows,
+    playerStanding: ahead + 1,
+    fieldSize: args.tour.fieldSize,
+    racesCompleted: active.results.length,
+  }
 }

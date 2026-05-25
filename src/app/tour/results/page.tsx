@@ -3,10 +3,23 @@
 import Link from 'next/link'
 import { useEffect, useMemo, useState } from 'react'
 import { getStandardChampionship } from '@/data/worldTourChampionship'
-import type { RaceResult } from '@/game/worldTourRaceResult'
+import { findTour } from '@/lib/worldTourChampionship'
+import {
+  currentChampionshipStandings,
+  type RaceResult,
+} from '@/game/worldTourRaceResult'
 import { buildTourCompletionSummary } from '@/game/worldTourProgress'
+import {
+  WORLD_TOUR_CAREER_EVENT,
+  readCareer,
+} from '@/lib/worldTourCareerStorage'
+import {
+  defaultCareer,
+  type WorldTourCareer,
+} from '@/game/worldTourCareer'
 import { WORLD_TOUR_LAST_RESULT_KEY } from '@/lib/worldTourLastResult'
 import { ConfettiOverlay } from '@/components/ConfettiOverlay'
+import { ChampionshipStandingsPanel } from '@/components/ChampionshipStandingsPanel'
 
 function readLastResult(): RaceResult | null {
   if (typeof window === 'undefined') return null
@@ -27,9 +40,18 @@ function readLastResult(): RaceResult | null {
 export default function TourResultsPage() {
   const championship = useMemo(() => getStandardChampionship(), [])
   const [result, setResult] = useState<RaceResult | null>(null)
+  const [career, setCareer] = useState<WorldTourCareer>(() => defaultCareer())
 
   useEffect(() => {
     setResult(readLastResult())
+    setCareer(readCareer())
+    const onChange = (e: Event) => {
+      const detail = (e as CustomEvent<WorldTourCareer>).detail
+      if (detail) setCareer(detail)
+      else setCareer(readCareer())
+    }
+    window.addEventListener(WORLD_TOUR_CAREER_EVENT, onChange)
+    return () => window.removeEventListener(WORLD_TOUR_CAREER_EVENT, onChange)
   }, [])
 
   if (!result) {
@@ -51,6 +73,19 @@ export default function TourResultsPage() {
   // see the next race card before committing. Final-race: send back to
   // the tour selection screen.
   const continueHref = result.nextRace !== null ? '/tour/garage' : '/tour'
+  // Mid-tour championship panel: only renders while the active tour
+  // cursor is still around. After race 4 applyRaceResult clears
+  // activeTour, and the tour summary block below carries the final
+  // standing for the player.
+  const tourForStandings = findTour(championship, result.tourProgress.tourId)
+  const standings =
+    tourForStandings && !result.tourProgress.completed
+      ? currentChampionshipStandings({
+          career,
+          tour: tourForStandings,
+          championship,
+        })
+      : null
 
   return (
     <main style={pageStyle}>
@@ -96,6 +131,18 @@ export default function TourResultsPage() {
             ))}
           </ol>
         </section>
+
+        {tourForStandings && standings ? (
+          <ChampionshipStandingsPanel
+            tour={tourForStandings}
+            rows={standings.rows}
+            playerStanding={standings.playerStanding}
+            racesCompleted={standings.racesCompleted}
+            totalRaces={tourForStandings.trackIds.length}
+            requiredStanding={tourForStandings.requiredStanding}
+            variant="results"
+          />
+        ) : null}
 
         {summary ? (
           <section style={panelStyle}>

@@ -587,7 +587,7 @@ function TourRacePageInner() {
               {' '}| {tour.weather}
             </div>
             <div style={introMetaStyle}>
-              Top {tour.requiredStanding} of {tour.fieldSize} to clear
+              Top {tour.requiredStanding} in championship after {tour.trackIds.length} races
             </div>
           </button>
         ) : null}

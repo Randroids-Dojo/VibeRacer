@@ -7,6 +7,7 @@ import {
 } from '@/lib/worldTourCareerStorage'
 import {
   CAREER_FIRST_TOUR_ID,
+  CAREER_SCHEMA_VERSION,
   CAREER_STARTING_CAR_ID,
   CAREER_STARTING_MONEY,
   defaultCareer,
@@ -177,7 +178,7 @@ describe('world tour career storage', () => {
 
     it('still dispatches when migration cleans up the input', () => {
       const dirty: WorldTourCareer = {
-        version: 1,
+        version: CAREER_SCHEMA_VERSION,
         money: 50.5,
         ownedCarIds: [CAREER_STARTING_CAR_ID],
         activeCarId: CAREER_STARTING_CAR_ID,
@@ -196,6 +197,65 @@ describe('world tour career storage', () => {
       if (!result.ok) return
       expect(result.career.money).toBe(50)
       expect(dispatched).toHaveLength(1)
+    })
+
+    it('drops activeTour from a stored v1 payload while preserving money, completed, unlocks, and owned cars', () => {
+      store[WORLD_TOUR_CAREER_STORAGE_KEY] = JSON.stringify({
+        version: 1,
+        money: 4321,
+        ownedCarIds: [CAREER_STARTING_CAR_ID, 'red'],
+        activeCarId: 'red',
+        carsById: {
+          [CAREER_STARTING_CAR_ID]: { damage: 0, upgrades: { engine: 0, tires: 0, brakes: 0, body: 0 } },
+          red: { damage: 0.3, upgrades: { engine: 1, tires: 0, brakes: 0, body: 0 } },
+        },
+        completedTourIds: ['velvet-coast'],
+        unlockedTourIds: ['velvet-coast', 'iron-borough'],
+        activeTour: {
+          tourId: 'iron-borough',
+          raceIndex: 2,
+          results: [
+            { trackId: 'ib-1', placement: 3, dnf: false, cashEarned: 200 },
+            { trackId: 'ib-2', placement: 2, dnf: false, cashEarned: 350 },
+          ],
+        },
+      })
+      const out = readCareer()
+      expect(out.version).toBe(CAREER_SCHEMA_VERSION)
+      expect(out.activeTour).toBeNull()
+      expect(out.money).toBe(4321)
+      expect(out.completedTourIds).toEqual(['velvet-coast'])
+      expect(out.unlockedTourIds).toEqual(['velvet-coast', 'iron-borough'])
+      expect(out.ownedCarIds).toEqual([CAREER_STARTING_CAR_ID, 'red'])
+      expect(out.carsById.red!.damage).toBeCloseTo(0.3)
+    })
+
+    it('keeps activeTour on a v2 payload that has entries', () => {
+      writeCareer({
+        ...defaultCareer(),
+        activeTour: {
+          tourId: 'velvet-coast',
+          raceIndex: 1,
+          results: [
+            {
+              trackId: 'velvet-coast-1',
+              placement: 2,
+              dnf: false,
+              cashEarned: 350,
+              entries: [
+                { driverId: 'a', carId: 'a', placement: 1, dnf: false, points: 10, isPlayer: false },
+                { driverId: null, carId: CAREER_STARTING_CAR_ID, placement: 2, dnf: false, points: 7, isPlayer: true },
+              ],
+            },
+          ],
+        },
+      })
+      const out = readCareer()
+      expect(out.activeTour).not.toBeNull()
+      expect(out.activeTour!.tourId).toBe('velvet-coast')
+      expect(out.activeTour!.raceIndex).toBe(1)
+      expect(out.activeTour!.results).toHaveLength(1)
+      expect(out.activeTour!.results[0]!.entries).toHaveLength(2)
     })
 
     it('a fresh write produces the documented starting money', () => {

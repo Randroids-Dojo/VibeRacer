@@ -5,10 +5,12 @@ import {
   TOUR_COMPLETION_BONUS,
   aggregatePoints,
   buildRaceResult,
+  currentChampionshipStandings,
   placementPoints,
   placementPurse,
 } from '@/game/worldTourRaceResult'
 import {
+  IRON_BOROUGH_TOUR_ID,
   STANDARD_CHAMPIONSHIP,
   VELVET_COAST_TOUR_ID,
 } from '@/data/worldTourChampionship'
@@ -132,9 +134,42 @@ describe('buildRaceResult (final race of a tour)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-2', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-3', placement: 1, dnf: false, cashEarned: 500 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
         ],
       },
     }
@@ -166,9 +201,42 @@ describe('buildRaceResult (final race of a tour)', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-2', placement: 4, dnf: false, cashEarned: 0 },
-          { trackId: 'velvet-coast-3', placement: 4, dnf: false, cashEarned: 0 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'driver-1', carId: 'driver-1', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'driver-1', carId: 'driver-1', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: true },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 4,
+            dnf: false,
+            cashEarned: 0,
+            entries: [
+              { driverId: 'driver-1', carId: 'driver-1', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: true },
+            ],
+          },
         ],
       },
     }
@@ -274,9 +342,42 @@ describe('aggregatePoints', () => {
         tourId: VELVET_COAST_TOUR_ID,
         raceIndex: 3,
         results: [
-          { trackId: 'velvet-coast-1', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-2', placement: 1, dnf: false, cashEarned: 500 },
-          { trackId: 'velvet-coast-3', placement: 1, dnf: false, cashEarned: 500 },
+          {
+            trackId: 'velvet-coast-1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: PLACEMENT_POINTS[0]!, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: PLACEMENT_POINTS[1]!, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: PLACEMENT_POINTS[2]!, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: PLACEMENT_POINTS[3]!, isPlayer: false },
+            ],
+          },
         ],
       },
     }
@@ -305,5 +406,176 @@ describe('aggregatePoints', () => {
     ]
     const out = aggregatePoints({ career, tour, finalRaceStandings: standings })
     expect(out.playerStanding).toBe(1)
+  })
+
+  it('sums real per-race AI points instead of projecting the final race backward', () => {
+    // driver-1 across four races: 1st, 4th, 2nd, 3rd
+    // expected total = 10 + 3 + 7 + 5 = 25
+    // driver-2 across four races: 2nd, 1st, 3rd, 2nd
+    // expected total = 7 + 10 + 5 + 7 = 29
+    // player across four races: 3rd, 2nd, 1st, 1st
+    // expected total = 5 + 7 + 10 + 10 = 32 (player wins the championship)
+    const career: WorldTourCareer = {
+      ...defaultCareer(),
+      activeTour: {
+        tourId: VELVET_COAST_TOUR_ID,
+        raceIndex: 3,
+        results: [
+          {
+            trackId: 'velvet-coast-1',
+            placement: 3,
+            dnf: false,
+            cashEarned: 250,
+            entries: [
+              { driverId: 'driver-1', carId: 'driver-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 3, dnf: false, points: 5, isPlayer: true },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 2,
+            dnf: false,
+            cashEarned: 350,
+            entries: [
+              { driverId: 'driver-2', carId: 'driver-2', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 2, dnf: false, points: 7, isPlayer: true },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-3',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+        ],
+      },
+    }
+    const tour = STANDARD_CHAMPIONSHIP.tours[0]!
+    // Final race: player 1st, driver-2 2nd, driver-1 3rd, driver-3 4th
+    const standings = [
+      { carIndex: 0, isPlayer: true, driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, cashEarned: 500 },
+      { carIndex: 1, isPlayer: false, driverId: 'driver-2', carId: 'driver-2', placement: 2, dnf: false, points: 7, cashEarned: 350 },
+      { carIndex: 2, isPlayer: false, driverId: 'driver-1', carId: 'driver-1', placement: 3, dnf: false, points: 5, cashEarned: 250 },
+      { carIndex: 3, isPlayer: false, driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, cashEarned: 150 },
+    ]
+    const out = aggregatePoints({ career, tour, finalRaceStandings: standings })
+    expect(out.pointsByCar.get('player')).toBe(32)
+    expect(out.pointsByCar.get('driver-1')).toBe(25)
+    expect(out.pointsByCar.get('driver-2')).toBe(29)
+    expect(out.pointsByCar.get('driver-3')).toBe(14)
+    expect(out.playerStanding).toBe(1)
+  })
+})
+
+describe('currentChampionshipStandings', () => {
+  it('returns null when there is no active tour', () => {
+    const career = defaultCareer()
+    const out = currentChampionshipStandings({
+      career,
+      tour: STANDARD_CHAMPIONSHIP.tours[0]!,
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out).toBeNull()
+  })
+
+  it('returns null when the active tour does not match the requested tour', () => {
+    const career: WorldTourCareer = {
+      ...defaultCareer(),
+      activeTour: { tourId: IRON_BOROUGH_TOUR_ID, raceIndex: 0, results: [] },
+    }
+    const out = currentChampionshipStandings({
+      career,
+      tour: STANDARD_CHAMPIONSHIP.tours[0]!,
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out).toBeNull()
+  })
+
+  it('on a freshly entered tour returns the player ahead of every ghost AI row', () => {
+    const career: WorldTourCareer = {
+      ...defaultCareer(),
+      activeTour: { tourId: VELVET_COAST_TOUR_ID, raceIndex: 0, results: [] },
+    }
+    const out = currentChampionshipStandings({
+      career,
+      tour: STANDARD_CHAMPIONSHIP.tours[0]!,
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out).not.toBeNull()
+    expect(out!.racesCompleted).toBe(0)
+    expect(out!.playerStanding).toBe(1)
+    expect(out!.fieldSize).toBe(STANDARD_CHAMPIONSHIP.tours[0]!.fieldSize)
+    // First row is the player; remaining rows are roster ghosts.
+    expect(out!.rows[0]!.isPlayer).toBe(true)
+    expect(out!.rows[0]!.points).toBe(0)
+    for (let i = 1; i < out!.rows.length; i++) {
+      expect(out!.rows[i]!.isGhost).toBe(true)
+      expect(out!.rows[i]!.points).toBe(0)
+    }
+  })
+
+  it('sorts rows by points desc, labels the player as You, and breaks player-ties in the player favor', () => {
+    // Player at 17, driver-1 at 17 (tied), driver-2 at 10, driver-3 at 5.
+    const career: WorldTourCareer = {
+      ...defaultCareer(),
+      activeTour: {
+        tourId: VELVET_COAST_TOUR_ID,
+        raceIndex: 2,
+        results: [
+          {
+            trackId: 'velvet-coast-1',
+            placement: 1,
+            dnf: false,
+            cashEarned: 500,
+            entries: [
+              { driverId: null, carId: 'starter', placement: 1, dnf: false, points: 10, isPlayer: true },
+              { driverId: 'driver-1', carId: 'driver-1', placement: 2, dnf: false, points: 7, isPlayer: false },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+          {
+            trackId: 'velvet-coast-2',
+            placement: 2,
+            dnf: false,
+            cashEarned: 350,
+            entries: [
+              { driverId: 'driver-1', carId: 'driver-1', placement: 1, dnf: false, points: 10, isPlayer: false },
+              { driverId: null, carId: 'starter', placement: 2, dnf: false, points: 7, isPlayer: true },
+              { driverId: 'driver-2', carId: 'driver-2', placement: 3, dnf: false, points: 5, isPlayer: false },
+              { driverId: 'driver-3', carId: 'driver-3', placement: 4, dnf: false, points: 3, isPlayer: false },
+            ],
+          },
+        ],
+      },
+    }
+    const out = currentChampionshipStandings({
+      career,
+      tour: STANDARD_CHAMPIONSHIP.tours[0]!,
+      championship: STANDARD_CHAMPIONSHIP,
+    })
+    expect(out).not.toBeNull()
+    expect(out!.racesCompleted).toBe(2)
+    expect(out!.playerStanding).toBe(1)
+    expect(out!.rows[0]!.isPlayer).toBe(true)
+    expect(out!.rows[0]!.label).toBe('You')
+    expect(out!.rows[0]!.points).toBe(17)
+    // driver-1 is the closest competitor with the same points; the
+    // player-tiebreak rule pushes the player on top.
+    expect(out!.rows[1]!.isPlayer).toBe(false)
+    expect(out!.rows[1]!.key).toBe('driver-1')
+    expect(out!.rows[1]!.points).toBe(17)
+    expect(out!.rows[2]!.points).toBe(10)
+    expect(out!.rows[3]!.points).toBe(6)
   })
 })
