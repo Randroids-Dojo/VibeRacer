@@ -1,3 +1,13 @@
+## 2026-05-25, Shared Extraction Policy Defaults
+
+- Branch: `docs/shared-extraction-policy`
+- PR: pending
+- Changed: added a default shared-extraction rule in `AGENTS.md` so agents automatically run reuse audits, extract duplicates, and log VibeKit candidates without a repeated user reminder; added a required PR shared-extraction note in `docs/WORKING_AGREEMENT.md`.
+- Verification: dash checks, `git diff --check`, `npm run type-check`.
+- Assumptions: docs-only process update.
+- GDD coverage: no product behavior changed.
+- Followups: none.
+
 # Progress Log
 
 Newest entries first. Every implementation slice adds an entry.

@@ -23,6 +23,9 @@ Every PR must include:
 - Verification commands run.
 - GDD, coverage, followup, or open-question updates.
 - Any known limitations or blocked checks.
+- A shared-extraction note that states one of the following:
+  - shared primitives were reused or extended in this PR, or
+  - extraction was deferred with reason and a followup item.
 
 After opening a PR:
 

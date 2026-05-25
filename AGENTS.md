@@ -196,6 +196,23 @@ existing modes already has, stop and import the existing one. If the
 existing one is missing a feature you need, extend it in place so every
 mode picks up the improvement.
 
+
+## RULE 11.5: Extract shared components by default and stage VibeKit candidates.
+
+When you touch two or more game modes in the same family, assume extraction is required unless the user says otherwise.
+
+Before shipping any mode or menu work:
+
+1. Run a quick reuse audit across existing modes for duplicated UI, hooks, helpers, and style tokens.
+2. If duplicated code is present, extract or extend a shared primitive in-place instead of adding another local copy.
+3. If the primitive is generally reusable outside this repo, place it on the VibeKit candidate list in `docs/FOLLOWUPS.md` with scope notes.
+4. New mode slices must include either:
+   - an extraction commit, or
+   - a short `docs/PROGRESS_LOG.md` note explaining why extraction was not safe in this slice.
+5. Treat local one-off UI in a mode file as a regression when an existing shared primitive can cover the behavior.
+
+This is the default behavior. Agents should not wait for a repeated reminder.
+
 ## RULE 12: stepPhysics returns a new state. It does not mutate.
 
 `stepPhysics(state, input, dt, onTrack, params?, accelFactor?, maxSpeedFactor?, externalLongitudinalAccel?, accelTaperExponent?)` returns a fresh `PhysicsState` object every call. The input state is NOT mutated. Every caller in the codebase reassigns the return value:
