@@ -496,6 +496,109 @@ describe('stepRaceSession driven by the real AI track view', () => {
     expect(order.indexOf(0)).toBeGreaterThan(0)
   })
 
+  it('AI cars stay close to the rail centerline across a full loop (regression: progress drift drove the field off road)', async () => {
+    // The earlier wiring integrated `progress += speed * dt` every
+    // tick without grounding it against the car's actual position;
+    // over a few corners the centerline lookup ended up tens of
+    // meters ahead of where the car physically was and the AI
+    // chased a phantom centerline into the grass. This test races
+    // a 4-car field for one full lap of `top-gear-opener` and
+    // asserts no AI ends up more than half a track-width past the
+    // edge of the road (a generous bound that catches the "drove
+    // off into the trees" bug without false-failing on a wide
+    // racing line).
+    const { buildRail, projectToRail, sampleRailAt } = await import(
+      '@/game/worldTourRail'
+    )
+    const { buildTrackPath } = await import('@/game/trackPath')
+    const { getTrackTemplate } = await import('@/game/trackTemplates')
+    const { buildAiTrackView } = await import('@/game/worldTourTrackView')
+    const { DEFAULT_TRACK_WIDTH } = await import('@/game/trackWidth')
+
+    const template = getTrackTemplate('top-gear-opener')!
+    const rail = buildRail(buildTrackPath(template.pieces))
+    const aiTrack = buildAiTrackView(rail)
+
+    let s = createRaceSession({
+      slotCount: 4,
+      laneCount: 2,
+      aiDrivers: ROSTER,
+      seed: 3,
+      totalLaps: 1,
+      lapDistanceMeters: rail.totalLength,
+      playerCarId: 'starter',
+      countdownSeconds: 0,
+    })
+    // Mirror the tour route's resetRace: place each AI car on the
+    // rail at a small negative progress (lined up behind the start
+    // line) with its world heading matching the rail. Without this
+    // override the AI cars start at the session's grid-local origin,
+    // which is wherever the rail seam happens to land in world coords.
+    for (let i = 1; i < s.cars.length; i++) {
+      const car = s.cars[i]!
+      const lane = (i - 1) % 2 === 0 ? -2 : 2
+      const startBack = 6 * (Math.floor((i - 1) / 2) + 1)
+      const pose = sampleRailAt(rail, -startBack, lane)
+      car.physics = {
+        x: pose.x,
+        z: pose.z,
+        heading: pose.heading,
+        speed: 0,
+      }
+      if (car.aiState) {
+        const wrapped =
+          ((-startBack) % rail.totalLength + rail.totalLength) % rail.totalLength
+        car.aiState = { ...car.aiState, progress: wrapped }
+      }
+    }
+    const step = {
+      playerInput: { throttle: 0, steer: 0, handbrake: false },
+      dt: 1 / 60,
+      track: aiTrack,
+      aiStats: { topSpeed: DEFAULT_CAR_PARAMS.maxSpeed },
+    }
+    const config = { totalLaps: 1, lapDistanceMeters: rail.totalLength }
+    // Run until the AI completes the lap or 90 seconds of sim time.
+    const maxTicks = 60 * 90
+    let aiFinished = false
+    const maxLateralMeters: number[] = [0, 0, 0]
+    for (let t = 0; t < maxTicks; t++) {
+      s = stepRaceSession(s, step, config)
+      // Track each AI car's worst lateral deviation from the rail.
+      for (let i = 1; i < s.cars.length; i++) {
+        const car = s.cars[i]!
+        if (car.status !== 'racing') continue
+        const proj = projectToRail(rail, car.physics.x, car.physics.z)
+        const pose = sampleRailAt(rail, proj, 0)
+        const lateral = Math.hypot(
+          car.physics.x - pose.x,
+          car.physics.z - pose.z,
+        )
+        if (lateral > maxLateralMeters[i - 1]!) {
+          maxLateralMeters[i - 1] = lateral
+        }
+      }
+      const finished = s.cars
+        .slice(1)
+        .every((c) => c.status === 'finished' || c.status === 'dnf')
+      if (finished) {
+        aiFinished = true
+        break
+      }
+    }
+    expect(aiFinished, 'AI field never completed the lap').toBe(true)
+    // No AI car should ever be more than 1.5 road-widths past the
+    // centerline (8 m default track width, so 12 m total). A car
+    // 12 m laterally off the rail is unambiguously in the trees.
+    const limit = DEFAULT_TRACK_WIDTH * 1.5
+    for (let i = 0; i < maxLateralMeters.length; i++) {
+      expect(
+        maxLateralMeters[i]!,
+        `AI car ${i + 1} drifted ${maxLateralMeters[i]!.toFixed(1)} m off the rail`,
+      ).toBeLessThan(limit)
+    }
+  })
+
   it('a stationary player does not cause AI cars to rear-end into mass DNF (regression: race-start pileup)', async () => {
     // A previous iteration of the start-line fix floored
     // followDistanceCap at MIN_AI_SPEED so the AI accelerated to

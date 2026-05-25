@@ -206,6 +206,13 @@ export interface AiTrackView {
   // world-x P controller. heading follows the rail-sample convention
   // (0 = +X east, increasing CCW).
   centerlineAt?(progress: number): { x: number; z: number; heading: number }
+  // Optional projection: given a world position and a hint progress
+  // (the AI's previous progress, used to constrain the search), return
+  // the arc-length distance along the rail closest to that world
+  // position. When provided, the AI re-syncs its progress channel
+  // from physical position every tick so the centerline lookup cannot
+  // drift ahead of the car.
+  projectToRail?(x: number, z: number, hint: number): number
 }
 
 export interface AiTickContext {
@@ -337,22 +344,35 @@ export function tickAi(
   const racing = context.racing !== false
   const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
   const dt = Math.max(0, context.dt)
-  // Integrate progress from the component of the car's velocity that
-  // points along the rail tangent. Bare `speed * dt` advances progress
-  // even when the car is moving sideways or backwards relative to the
-  // road, which makes the centerline lookup race ahead of the car's
-  // true arc-length position; over a few corners the AI ends up
-  // steering toward a centerline 50 m further down the track than
-  // where it physically is. Projecting onto the rail tangent keeps
-  // progress and physical position in lock-step.
-  const railHeading = track.centerlineAt?.(state.progress)?.heading ?? car.heading
+  // Re-sync progress against the car's actual position on the rail
+  // every tick. The bare integration `progress += speed * dt`
+  // accumulates drift over a few corners (driving the chord through
+  // a curve is shorter than the arc; a bump nudges the car sideways
+  // but progress keeps climbing), so the centerline lookup ends up
+  // tens of meters ahead of where the car physically is and the AI
+  // chases a phantom target until it falls off the road. When the
+  // track view exposes `projectToRail`, ground progress to the
+  // closest point on the rail every frame. The hint constrains the
+  // search to a window around the previous progress so a re-sync is
+  // cheap. Tests with a flat-straight view fall back to the
+  // integrated value.
+  const projectedProgress =
+    track.projectToRail?.(car.x, car.z, state.progress) ?? null
+  const baseProgress =
+    projectedProgress !== null ? projectedProgress : state.progress
+  const forwardDelta = Math.max(0, car.speed) * dt
+  // Even with a re-sync the AI still needs to "look ahead" by one
+  // tick of forward motion when picking the centerline target, or
+  // it lags the rail by `speed * dt`. Add the projected forward
+  // contribution on top of the synced base.
+  const railHeading =
+    track.centerlineAt?.(baseProgress)?.heading ?? car.heading
   const tangentX = Math.cos(railHeading)
   const tangentZ = -Math.sin(railHeading)
   const carFwdX = Math.cos(car.heading)
   const carFwdZ = -Math.sin(car.heading)
   const alignment = carFwdX * tangentX + carFwdZ * tangentZ
-  const forwardDelta = Math.max(0, car.speed) * dt
-  const nextProgress = state.progress + car.speed * alignment * dt
+  const nextProgress = baseProgress + car.speed * alignment * dt
   const nextRacedDistance = state.racedDistance + forwardDelta
 
   if (!racing) {
@@ -369,7 +389,10 @@ export function tickAi(
   }
 
   const blend = launchBlend(state.racedDistance)
-  const curve = track.curveAt(state.progress)
+  // Use the re-synced `baseProgress` for every centerline / curve
+  // lookup so the controller is reading the rail at the car's
+  // actual physical position, not its drifted scalar estimate.
+  const curve = track.curveAt(baseProgress)
   const laneBias = racingLineOffset(curve, blend)
 
   // Steering controller. Two modes share the lane-target math:
@@ -385,7 +408,7 @@ export function tickAi(
   let steer: number
   let centerX: number
   let laneTarget: number
-  const pose = track.centerlineAt?.(state.progress)
+  const pose = track.centerlineAt?.(baseProgress)
   if (pose) {
     // Right-of-travel perpendicular matches the rail extrusion
     // convention used by `sampleRailAt`: (sin h, cos h) points to the
@@ -417,7 +440,7 @@ export function tickAi(
   } else {
     // Legacy world-x P controller. Used by tests with a flat-straight
     // track view; the real tour route always supplies `centerlineAt`.
-    centerX = track.centerXAt(state.progress)
+    centerX = track.centerXAt(baseProgress)
     const racingLineTargetX = centerX + laneBias
     const heldLaneTargetX = car.x
     const targetX = racingLineTargetX * blend + heldLaneTargetX * (1 - blend)
@@ -432,7 +455,7 @@ export function tickAi(
   // instead of every car cap-following a stationary leader at speed 0
   // (which deadlocks the entire field) or accelerating into a slow
   // launch and accruing contact damage.
-  let target = targetSpeedAt(track, stats, state.progress)
+  let target = targetSpeedAt(track, stats, baseProgress)
   if (blend >= 1) {
     const cap = followDistanceCap(car, context.others)
     if (cap !== null && cap < target) target = cap

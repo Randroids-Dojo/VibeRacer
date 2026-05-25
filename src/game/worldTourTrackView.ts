@@ -20,7 +20,11 @@
  */
 
 import type { AiTrackView } from './worldTourAi'
-import { sampleRailAt, type WorldTourRail } from './worldTourRail'
+import {
+  projectToRail,
+  sampleRailAt,
+  type WorldTourRail,
+} from './worldTourRail'
 import { DEFAULT_TRACK_WIDTH } from './trackWidth'
 
 // Arc-length window used to estimate curve via heading finite
@@ -91,6 +95,8 @@ export function buildAiTrackView(rail: WorldTourRail): AiTrackView {
       return ratio
     },
     centerlineAt: (progress: number) => sampleRailAt(rail, wrap(progress), 0),
+    projectToRail: (x: number, z: number, hint: number) =>
+      projectToRail(rail, x, z, hint),
     roadHalfWidth: halfWidth,
   }
 }

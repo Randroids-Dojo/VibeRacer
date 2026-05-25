@@ -159,3 +159,92 @@ function lerpAngle(a: number, b: number, t: number): number {
   if (d < -Math.PI) d += 2 * Math.PI
   return a + d * t
 }
+
+/**
+ * Find the arc-length distance along the rail closest to a world
+ * position `(x, z)`. Used by the AI tick to re-sync its `progress`
+ * channel against the car's actual position so it does not drift
+ * ahead of the rail over time (which causes the controller to chase
+ * a phantom centerline 50 m further down the track).
+ *
+ * Returns 0 on a degenerate rail. When `hint` is supplied the search
+ * starts from the rail sample closest to `hint` and walks outward
+ * for `HINT_WINDOW_SAMPLES` samples on either side; without a hint
+ * the search is linear over the full rail.
+ */
+const HINT_WINDOW_SAMPLES = 24
+
+export function projectToRail(
+  rail: WorldTourRail,
+  x: number,
+  z: number,
+  hint?: number,
+): number {
+  const n = rail.samples.length
+  if (rail.totalLength <= 0 || n < 2) return 0
+  let bestIdx = 0
+  let bestDist = Infinity
+  if (typeof hint === 'number' && Number.isFinite(hint)) {
+    let h = hint % rail.totalLength
+    if (h < 0) h += rail.totalLength
+    // Binary search for the sample whose cumulative arc length is
+    // closest to `h`; the projection then walks a small window
+    // around that index (wrapping around the seam) instead of
+    // scanning the whole rail.
+    let lo = 0
+    let hi = n - 1
+    while (lo + 1 < hi) {
+      const mid = (lo + hi) >> 1
+      if (rail.cumulative[mid]! <= h) lo = mid
+      else hi = mid
+    }
+    // Walk a wrap-aware window of `2 * HINT_WINDOW_SAMPLES + 1`
+    // samples centered on `lo`. A naive `[lo - W, lo + W]` slice
+    // misses the case where the car has just crossed the seam: the
+    // hint sits near `totalLength` and the actual closest sample is
+    // at index 0+. Modulo math handles the wrap.
+    for (let off = -HINT_WINDOW_SAMPLES; off <= HINT_WINDOW_SAMPLES; off++) {
+      let idx = (lo + off) % n
+      if (idx < 0) idx += n
+      const s = rail.samples[idx]!
+      const dx = x - s.x
+      const dz = z - s.z
+      const d2 = dx * dx + dz * dz
+      if (d2 < bestDist) {
+        bestDist = d2
+        bestIdx = idx
+      }
+    }
+  } else {
+    for (let i = 0; i < n; i++) {
+      const s = rail.samples[i]!
+      const dx = x - s.x
+      const dz = z - s.z
+      const d2 = dx * dx + dz * dz
+      if (d2 < bestDist) {
+        bestDist = d2
+        bestIdx = i
+      }
+    }
+  }
+  // Refine the projection between the chosen sample and the neighbor
+  // it forms a segment with. Picking the same-cumulative-arc-length
+  // sample twice across ticks would snap the AI to discrete sample
+  // points; the segment-refine gives sub-sample resolution.
+  const aIdx = bestIdx
+  const bIdx = bestIdx + 1 < n ? bestIdx + 1 : 0
+  const a = rail.samples[aIdx]!
+  const b = rail.samples[bIdx]!
+  const segDx = b.x - a.x
+  const segDz = b.z - a.z
+  const segLen2 = segDx * segDx + segDz * segDz
+  let segT = 0
+  if (segLen2 > 1e-6) {
+    segT = ((x - a.x) * segDx + (z - a.z) * segDz) / segLen2
+    if (segT < 0) segT = 0
+    if (segT > 1) segT = 1
+  }
+  const aArc = rail.cumulative[aIdx]!
+  const bArc = bIdx === 0 ? rail.totalLength : rail.cumulative[bIdx]!
+  return aArc + (bArc - aArc) * segT
+}
