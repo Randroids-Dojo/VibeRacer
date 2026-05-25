@@ -68,12 +68,13 @@ export const BUMP_KICK_BASE_MPS = 4
 // Contact-damage accrual rate per second of continuous overlap.
 // Multiplied by `dt` and `damageAbsorb` per tick. A brief bump
 // (a few frames of overlap) costs essentially nothing; a sustained
-// pileup eventually DNFs both cars. Tuned to roughly 0.2 damage per
-// second of contact for a stock chassis (damageAbsorb = 1) so a 5
-// second pileup ends both cars while a 0.5 second bump costs 0.1
-// damage. The legacy flat rate was 1.2 damage per second of
+// pileup eventually DNFs both cars. Tuned to 0.02 damage per second
+// of contact for a stock chassis (damageAbsorb = 1) so racing the
+// field feels survivable, not punishing. A 50 second pileup is what
+// it takes to end both cars; a quick 0.5 second bump costs only
+// 0.01 damage. The legacy flat rate was 1.2 damage per second of
 // contact, which DNF'd both cars inside one second.
-export const BUMP_DAMAGE_PER_SEC = 0.2
+export const BUMP_DAMAGE_PER_SEC = 0.02
 
 // Lateral and longitudinal radii used to detect overlap between two
 // cars. Tuned for the existing low-poly car footprint.

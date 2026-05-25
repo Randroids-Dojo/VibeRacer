@@ -237,6 +237,11 @@ function TourRacePageInner() {
   // ghosts through every AI: the session bounces the AI sideways but
   // the player pose gets re-mirrored from RaceCanvas every frame.
   const pendingPlayerKickRef = useRef<{ dx: number; dz: number } | null>(null)
+  // Live player-health channel for the world-space bar floating above
+  // the player car. The session reducer owns car 0's damage (collisions
+  // are scored against it the same way as AI cars), so the rAF loop
+  // below mirrors `1 - cars[0].damage` into this ref every frame.
+  const playerHealthRef = useRef<number>(1)
   const [hudPhase, setHudPhase] = useState<
     'intro' | 'countdown' | 'racing' | 'finished'
   >('intro')
@@ -267,6 +272,7 @@ function TourRacePageInner() {
       // restart; harmless on a route change because RaceCanvas remounts
       // anyway when `pieces` changes.
       pendingResetRef.current = true
+      playerHealthRef.current = 1
 
       if (!tour || !rail) {
         sessionRef.current = null
@@ -342,6 +348,7 @@ function TourRacePageInner() {
         z: 0,
         heading: 0,
         color: 0xffffff,
+        health: 1,
       }))
     },
     [tour, raceIndex, rail],
@@ -458,6 +465,15 @@ function TourRacePageInner() {
         slot.z = car.physics.z
         slot.heading = car.physics.heading
         slot.color = aiColorsRef.current[i] ?? 0xffffff
+        // `car.damage` is 0..1 with 1 = wrecked, the world-space bar
+        // reads health remaining so a fresh car shows a full green bar.
+        slot.health = 1 - car.damage
+      }
+      // Same mirror for the player's own bar so every vehicle on the
+      // grid reads the same way.
+      const playerCar = liveSession.cars[0]
+      if (playerCar) {
+        playerHealthRef.current = 1 - playerCar.damage
       }
     }
     raf = window.requestAnimationFrame(loop)
@@ -722,6 +738,7 @@ function TourRacePageInner() {
             showSkidMarksRef={showSkidMarksRef}
             showTireSmokeRef={showTireSmokeRef}
             opponentsRef={opponentsRef}
+            playerHealthRef={playerHealthRef}
             carPoseOutRef={playerPoseRef}
             speedOutRef={playerSpeedRef}
             pendingPlayerKickRef={pendingPlayerKickRef}
