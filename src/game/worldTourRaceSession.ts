@@ -500,21 +500,15 @@ function integrateCarPosition(
   params: CarParams,
   onTrack: boolean,
 ): PhysicsState {
-  // `stepPhysics` only updates `speed`. The race-session reducer is
-  // responsible for advancing position and heading. The math here
-  // mirrors `physics.ts` and the rail-sampling helpers so a tour car
-  // shares one heading convention with the main game and the rail:
-  // heading 0 means facing +X (east); forward is `(cos h, -sin h)`.
-  const next = stepPhysics(prev, input, dt, onTrack, params)
-  // Heading advances from the steer input. Positive steer turns left
-  // (heading increases counterclockwise), matching `playerInput.ts`.
-  const headingDelta = input.steer * params.steerRateLow * dt
-  const heading = prev.heading + headingDelta
-  const fwdX = Math.cos(heading)
-  const fwdZ = -Math.sin(heading)
-  const x = prev.x + next.speed * fwdX * dt
-  const z = prev.z + next.speed * fwdZ * dt
-  return { x, z, heading, speed: next.speed }
+  // Delegate the entire car update to `stepPhysics` so a tour car
+  // inherits the smoothed angular-velocity model the main game uses
+  // (heading lags steer input over ~5 ticks of an
+  // `ANGULAR_VELOCITY_RESPONSE`-blended ramp). The earlier hand-rolled
+  // update applied `steer * steerRate * dt` directly to heading every
+  // tick, which gave the AI no rotational inertia and caused it to
+  // saturate the controller and drift off-track when the steer
+  // input swung between hard left and hard right.
+  return stepPhysics(prev, input, dt, onTrack, params)
 }
 
 function clampDamage(v: number | undefined): number {

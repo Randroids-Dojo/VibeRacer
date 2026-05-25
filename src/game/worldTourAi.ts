@@ -337,15 +337,22 @@ export function tickAi(
   const racing = context.racing !== false
   const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
   const dt = Math.max(0, context.dt)
-  // Integrate progress from the car's speed. `progress` is the arc
-  // length along the rail; it can be wrapped by `centerlineAt`. The
-  // race-session reducer can initialise it anywhere on the loop, so
-  // we also track a separate `racedDistance` channel that always
-  // starts at 0 and accumulates `speed * dt` since race-go. The
-  // launch-hold blend reads `racedDistance` so a car that spawned
-  // mid-rail still gets the launch ease-in.
+  // Integrate progress from the component of the car's velocity that
+  // points along the rail tangent. Bare `speed * dt` advances progress
+  // even when the car is moving sideways or backwards relative to the
+  // road, which makes the centerline lookup race ahead of the car's
+  // true arc-length position; over a few corners the AI ends up
+  // steering toward a centerline 50 m further down the track than
+  // where it physically is. Projecting onto the rail tangent keeps
+  // progress and physical position in lock-step.
+  const railHeading = track.centerlineAt?.(state.progress)?.heading ?? car.heading
+  const tangentX = Math.cos(railHeading)
+  const tangentZ = -Math.sin(railHeading)
+  const carFwdX = Math.cos(car.heading)
+  const carFwdZ = -Math.sin(car.heading)
+  const alignment = carFwdX * tangentX + carFwdZ * tangentZ
   const forwardDelta = Math.max(0, car.speed) * dt
-  const nextProgress = state.progress + car.speed * dt
+  const nextProgress = state.progress + car.speed * alignment * dt
   const nextRacedDistance = state.racedDistance + forwardDelta
 
   if (!racing) {
