@@ -18,10 +18,10 @@ export const HEALTH_BAR_TEXTURE_WIDTH = 128
 export const HEALTH_BAR_TEXTURE_HEIGHT = 32
 
 // World-space sprite size. Narrower than the ghost nameplate so it
-// reads as a quick status pip rather than a label. 2x0.5 sits cleanly
+// reads as a quick status pip rather than a label. 1x0.25 sits cleanly
 // above the car body without covering the silhouette.
-export const HEALTH_BAR_SPRITE_WIDTH = 2
-export const HEALTH_BAR_SPRITE_HEIGHT = 0.5
+export const HEALTH_BAR_SPRITE_WIDTH = 1
+export const HEALTH_BAR_SPRITE_HEIGHT = 0.25
 
 // Y-offset above the vehicle group origin. The car body sits with its
 // roof near y = 1.5, so 2.2 floats the bar above the roof but well
