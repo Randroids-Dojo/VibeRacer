@@ -322,12 +322,14 @@ function TourRacePageInner() {
           heading: pose.heading,
           speed: 0,
         }
-        // Seed the AI's `progress` channel so the launch-hold blend and
-        // the curve-aware target speed start from the same arc-length
-        // the car is physically standing at.
+        // Seed the AI's `lastArcHint` so the projection on the first
+        // racing tick searches a window around the car's actual rail
+        // position instead of the rail's start. Without the hint the
+        // search window straddles the seam and may snap progress to
+        // the wrong side on the first frame.
         if (car.aiState) {
           const wrapped = ((-startBack) % rail.totalLength + rail.totalLength) % rail.totalLength
-          car.aiState = { ...car.aiState, progress: wrapped }
+          car.aiState = { ...car.aiState, lastArcHint: wrapped }
         }
       }
       sessionRef.current = session

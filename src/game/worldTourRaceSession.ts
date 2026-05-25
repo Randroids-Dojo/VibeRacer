@@ -205,7 +205,7 @@ export function createRaceSession(
     aiState:
       idx === 0
         ? null
-        : { ...INITIAL_AI_STATE, seed: slot.seed, progress: 0 },
+        : { ...INITIAL_AI_STATE, seed: slot.seed },
     lap: 0,
     distanceTraveled: 0,
     status: 'racing',

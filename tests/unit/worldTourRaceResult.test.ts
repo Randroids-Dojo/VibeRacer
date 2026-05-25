@@ -292,7 +292,16 @@ describe('buildRaceResult (errors)', () => {
 describe('full race -> result pipeline', () => {
   it('produces a deterministic result under identical inputs', async () => {
     const session = await import('@/game/worldTourRaceSession')
-    const flat = { centerXAt: () => 0, curveAt: () => 0 }
+    const flat = {
+      totalLength: 100000,
+      projectToRail: (_x: number, z: number) => -z,
+      sampleAt: (arcLength: number, lateral: number) => ({
+        x: lateral,
+        z: -arcLength,
+        heading: Math.PI / 2,
+      }),
+      curveAt: () => 0,
+    }
     function run() {
       let s = session.createRaceSession({
         slotCount: 4,

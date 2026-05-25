@@ -1,22 +1,20 @@
 /**
- * AiTrackView built from the existing world-tour rail. The AI tick reads
- * three things from the track:
+ * AiTrackView built from the existing world-tour rail. The
+ * pure-pursuit controller reads three things from the track:
  *
- *   `centerXAt(progress)`  - the centerline world x at this arc-length.
- *   `curveAt(progress)`    - signed curve in [-1, 1] for braking decisions.
- *   `roadHalfWidth`        - lateral budget for the racing line.
+ *   `projectToRail(x, z, hint)`  - closest arc length on the rail
+ *   `sampleAt(arc, lateral)`     - world pose at arc length, with a
+ *                                  lateral offset to the right of travel
+ *   `curveAt(arc)`               - signed curve in [-1, 1] for braking
  *
- * The session already has a `WorldTourRail` (a closed polyline with
- * per-sample heading and cumulative arc length). `centerXAt` is just a
- * rail sample on the centerline; `curveAt` is a finite difference of
- * heading over a short arc window normalized against the tightest
- * authored corner so a 90-degree corner over a few meters reads as a
- * unit-magnitude curve. Positive curve means the road bends to the
- * right, matching `worldTourAi.ts` convention.
+ * `projectToRail` keeps a wrap-aware search window around the hint
+ * and refines to sub-sample resolution against the closest segment.
+ * `sampleAt` wraps `arc` into `[0, totalLength)` and delegates to
+ * `sampleRailAt`. `curveAt` is a finite difference of the rail's
+ * heading over a short arc window, normalized so the tightest
+ * authored sweeps map to a unit curve.
  *
- * Pure. No three.js imports, no IO. Used by the tour route to feed the
- * AI tick with the actual rendered track instead of the legacy flat
- * straight stub.
+ * Pure. No three.js imports, no IO.
  */
 
 import type { AiTrackView } from './worldTourAi'
@@ -42,19 +40,21 @@ const CURVE_REFERENCE_ARC_M = 14
 
 /**
  * Build an `AiTrackView` over a closed rail. Returns a stable object
- * (no per-call allocations beyond closure capture) that wraps progress
- * around `rail.totalLength` so callers can advance a single scalar
- * without worrying about lap rollover.
+ * (no per-call allocations beyond closure capture) that wraps arc
+ * lengths around `rail.totalLength` so callers can advance a single
+ * scalar without worrying about lap rollover.
  *
- * If the rail is degenerate (zero length or fewer than two samples)
- * the view falls back to a flat straight at x = 0 so the AI does not
- * crash; the renderer guards against that case before mounting.
+ * A degenerate rail (zero length or fewer than two samples) yields a
+ * flat-straight view at x = 0 so the AI does not crash; the renderer
+ * guards against that case before mounting.
  */
 export function buildAiTrackView(rail: WorldTourRail): AiTrackView {
   const halfWidth = DEFAULT_TRACK_WIDTH / 2
   if (rail.totalLength <= 0 || rail.samples.length < 2) {
     return {
-      centerXAt: () => 0,
+      totalLength: 0,
+      projectToRail: () => 0,
+      sampleAt: () => ({ x: 0, z: 0, heading: 0 }),
       curveAt: () => 0,
       roadHalfWidth: halfWidth,
     }
@@ -77,9 +77,13 @@ export function buildAiTrackView(rail: WorldTourRail): AiTrackView {
   }
 
   return {
-    centerXAt: (progress: number) => sampleRailAt(rail, wrap(progress), 0).x,
-    curveAt: (progress: number) => {
-      const here = wrap(progress)
+    totalLength: rail.totalLength,
+    projectToRail: (x: number, z: number, hint: number) =>
+      projectToRail(rail, x, z, hint),
+    sampleAt: (arcLength: number, lateral: number) =>
+      sampleRailAt(rail, wrap(arcLength), lateral),
+    curveAt: (arcLength: number) => {
+      const here = wrap(arcLength)
       const behind = sampleRailAt(rail, here - CURVE_SAMPLE_HALF_WINDOW_M, 0)
       const ahead = sampleRailAt(rail, here + CURVE_SAMPLE_HALF_WINDOW_M, 0)
       const delta = shortestHeadingDelta(behind.heading, ahead.heading)
@@ -89,14 +93,12 @@ export function buildAiTrackView(rail: WorldTourRail): AiTrackView {
       // negative. `worldTourAi.ts` expects positive curve to mean
       // "bends right," so we flip the sign here.
       const referenceArc = CURVE_REFERENCE_ARC_M
-      const ratio = -delta / (Math.PI / 2) * (referenceArc / (2 * CURVE_SAMPLE_HALF_WINDOW_M))
+      const ratio =
+        -delta / (Math.PI / 2) * (referenceArc / (2 * CURVE_SAMPLE_HALF_WINDOW_M))
       if (ratio > 1) return 1
       if (ratio < -1) return -1
       return ratio
     },
-    centerlineAt: (progress: number) => sampleRailAt(rail, wrap(progress), 0),
-    projectToRail: (x: number, z: number, hint: number) =>
-      projectToRail(rail, x, z, hint),
     roadHalfWidth: halfWidth,
   }
 }

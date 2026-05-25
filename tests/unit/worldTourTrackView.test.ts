@@ -24,7 +24,8 @@ describe('buildAiTrackView', () => {
       cumulative: [],
       totalLength: 0,
     })
-    expect(view.centerXAt(0)).toBe(0)
+    expect(view.totalLength).toBe(0)
+    expect(view.sampleAt(0, 0)).toEqual({ x: 0, z: 0, heading: 0 })
     expect(view.curveAt(0)).toBe(0)
     expect(view.roadHalfWidth).toBe(DEFAULT_TRACK_WIDTH / 2)
   })
@@ -55,35 +56,72 @@ describe('buildAiTrackView', () => {
     expect(maxAbs).toBeGreaterThan(0.4)
   })
 
-  it('wraps progress across the seam without discontinuity', () => {
+  it('sampleAt wraps across the seam without a position jump', () => {
     const rail = railFor('top-gear-opener')
     const view = buildAiTrackView(rail)
-    const beforeSeam = view.centerXAt(rail.totalLength - 0.01)
-    const afterSeam = view.centerXAt(0.01)
+    const beforeSeam = view.sampleAt(rail.totalLength - 0.01, 0)
+    const afterSeam = view.sampleAt(0.01, 0)
     // Half a centimeter on either side of the loop seam should land on
-    // nearly the same world x as the start line.
-    expect(Math.abs(beforeSeam - afterSeam)).toBeLessThan(0.5)
+    // nearly the same world position (the closing chord is short and
+    // the rail's first sample is the start line).
+    const drift = Math.hypot(
+      beforeSeam.x - afterSeam.x,
+      beforeSeam.z - afterSeam.z,
+    )
+    expect(drift).toBeLessThan(0.5)
   })
 
-  it('exposes a centerlineAt pose that matches centerXAt and curls through the loop', () => {
+  it('sampleAt heading on a non-degenerate closing chord is the chord direction (regression: lerpAngle seam)', () => {
+    // The seam fix in `worldTourRail.ts` makes the heading along the
+    // closing chord equal to atan2 of the chord itself rather than a
+    // shortest-arc interpolation of the two endpoint headings. The
+    // top-gear-opener loop closes perfectly (last sample == first
+    // sample, zero-length chord), so we synthesise a rail where the
+    // closing chord is non-trivial and the endpoint headings differ.
+    // A car driving the chord follows the chord direction, not the
+    // interpolation; the test asserts the heading along the chord
+    // is exactly the chord's atan2.
+    const samples = [
+      { x: 0, z: 0, heading: Math.PI / 2 }, // facing north
+      { x: 0, z: -10, heading: Math.PI / 2 }, // still facing north
+      { x: 10, z: -10, heading: 0 }, // facing east, 10 m east of sample[1]
+    ]
+    const cumulative = [0, 10, 20]
+    // Closing chord goes from (10, -10) back to (0, 0): chord direction
+    // is south-west by atan2(-(0 - -10), 0 - 10) = atan2(-10, -10).
+    const closingLen = Math.hypot(10, 10)
+    const totalLength = 20 + closingLen
+    const synthRail = { samples, cumulative, totalLength }
+    const view = buildAiTrackView(synthRail)
+    const chordHeading = Math.atan2(-(0 - -10), 0 - 10) // -3PI/4 = south-west
+    const at25 = view.sampleAt(20 + closingLen * 0.25, 0)
+    const at75 = view.sampleAt(20 + closingLen * 0.75, 0)
+    expect(at25.heading).toBeCloseTo(chordHeading, 5)
+    expect(at75.heading).toBeCloseTo(chordHeading, 5)
+  })
+
+  it('sampleAt accepts a positive lateral offset (right of travel)', () => {
     const rail = railFor('top-gear-opener')
     const view = buildAiTrackView(rail)
-    const start = view.centerlineAt?.(0)
-    expect(start).toBeTruthy()
-    expect(start!.x).toBeCloseTo(view.centerXAt(0), 6)
-    // The full loop heading must rotate through approximately +/- 2 PI
-    // because the track is closed.
-    let totalTurn = 0
-    let prev = view.centerlineAt!(0).heading
-    const step = Math.max(0.5, rail.totalLength / 200)
-    for (let d = step; d <= rail.totalLength; d += step) {
-      const here = view.centerlineAt!(d).heading
-      let delta = here - prev
-      if (delta > Math.PI) delta -= 2 * Math.PI
-      if (delta < -Math.PI) delta += 2 * Math.PI
-      totalTurn += delta
-      prev = here
+    const onCenter = view.sampleAt(50, 0)
+    const offRight = view.sampleAt(50, 2)
+    // Same arc length but 2 m to the right of travel: the world
+    // position must shift by exactly 2 m on the perpendicular
+    // (sin h, cos h) per the rail extrusion convention.
+    const drift = Math.hypot(offRight.x - onCenter.x, offRight.z - onCenter.z)
+    expect(drift).toBeCloseTo(2, 5)
+  })
+
+  it('projectToRail and sampleAt round-trip a position on the rail', () => {
+    const rail = railFor('top-gear-opener')
+    const view = buildAiTrackView(rail)
+    // Pick a few arc lengths spread around the loop; sample, project,
+    // and confirm the projection returns roughly the same arc length.
+    const testArcs = [10, rail.totalLength * 0.25, rail.totalLength * 0.5, rail.totalLength * 0.75]
+    for (const arc of testArcs) {
+      const pose = view.sampleAt(arc, 0)
+      const projected = view.projectToRail!(pose.x, pose.z, arc)
+      expect(Math.abs(projected - arc)).toBeLessThan(2)
     }
-    expect(Math.abs(totalTurn)).toBeGreaterThan(Math.PI)
   })
 })

@@ -1,25 +1,31 @@
 /**
- * World Tour AI driver tick. Ported from VibeGear2's `ai.ts` and
- * adapted for VibeRacer's `PhysicsInput` shape and 3D track frame.
- * One archetype today (`clean_line`); per-archetype variation is a
- * known followup.
+ * World Tour AI driver tick. Pure-pursuit controller: every tick the
+ * AI projects its world position onto the rail to find its true arc
+ * length, picks a "carrot" point `lookAhead` meters further along the
+ * rail (with a small lateral bias for the racing line), then emits a
+ * steer signal proportional to the heading error between the car's
+ * current heading and the direction to the carrot. The carrot is
+ * always forward in arc length, so even a car bumped wide off the
+ * rail has a target it can naturally converge on. Throttle is a
+ * separate loop that picks a target speed from the upcoming
+ * curvature, capped by a same-lane follow distance.
  *
- * The function is pure: never mutates inputs, returns a fresh state and a
- * fresh `PhysicsInput`. The deterministic mistake/brilliant decorators
- * draw from the per-AI `seed` channel so the same `(seed, inputs)` pair
- * always reproduces the same output, satisfying the World Tour plan's
- * "deterministic replay across the full race" rule.
+ * This replaces an earlier two-term controller (lateral-error P +
+ * heading-error P, both clamp-saturated) that locked into full steer
+ * whenever the track frame had a heading discontinuity at the rail
+ * seam. Pure pursuit has a single saturated term and the carrot is
+ * continuous across seam crossings, so the seam is no longer a
+ * special case.
  *
- * The track is consumed through a narrow `AiTrackView` interface so this
- * module can be exercised in unit tests without compiling a real
- * VibeRacer track. The tour route builds a real curvature-aware
- * `AiTrackView` from the rendered track's `WorldTourRail` via
- * `buildAiTrackView` (`src/game/worldTourTrackView.ts`); tests still
- * construct flat-straight views directly.
+ * The function is pure: never mutates inputs, returns a fresh state
+ * and a fresh `PhysicsInput`. The deterministic seed channel is
+ * preserved for future archetype variation.
  *
  * Constants are tuned for VibeRacer's `stepPhysics` units (meters and
  * meters per second). Steer convention follows `playerInput.ts`:
- * positive steer turns left.
+ * positive steer turns left (heading increases counterclockwise).
+ * Heading convention matches `physics.ts` and the rail-sampling
+ * helpers: 0 means facing +X (east); forward is `(cos h, -sin h)`.
  */
 
 import type { PhysicsInput } from './physics'
@@ -30,9 +36,8 @@ import type { PhysicsInput } from './physics'
 const ROAD_HALF_WIDTH_DEFAULT = 4
 
 /**
- * Tunable constants for the clean_line archetype. Names mirror the
- * VibeGear2 constants so a future reader can compare the two
- * implementations without re-deriving the semantics.
+ * Tunable constants for the clean_line archetype. Per-archetype
+ * variation is a known followup; for now every AI driver uses these.
  */
 export const AI_TUNING = Object.freeze({
   /**
@@ -54,11 +59,13 @@ export const AI_TUNING = Object.freeze({
    */
   MIN_AI_SPEED: 8,
   /**
-   * Distance (m) over which the AI blends from "hold spawn lane" to
-   * "pursue racing line." Without this hold, every AI immediately steers
+   * Distance (m) the car has actually driven since race-go over which
+   * the racing-line bias blends from 0 (hold spawn lane) to 1 (full
+   * racing line). Without this hold every AI immediately steers
    * toward the centerline-anchored racing line and the field collides
-   * into a pile-up before the first lap develops. Linear blend from 0 m
-   * (full lane hold) to LAUNCH_LANE_HOLD_M (full racing line).
+   * into a pile-up before the first lap develops. The launch hold
+   * reads the AI's `racedDistance` channel so a car initialised at
+   * any arbitrary rail position still gets a clean launch window.
    */
   LAUNCH_LANE_HOLD_M: 200,
   /**
@@ -73,20 +80,32 @@ export const AI_TUNING = Object.freeze({
    */
   BRAKE_RAMP: 6,
   /**
-   * Lateral error (m) at which the AI applies full steer. Inside this
-   * band the steer input ramps linearly. A P controller is sufficient
-   * for the clean_line archetype.
+   * Pure-pursuit look-ahead time in seconds. The carrot is placed
+   * `speed * LOOK_AHEAD_SECONDS` meters ahead on the rail, clamped to
+   * `[MIN_LOOK_AHEAD_M, MAX_LOOK_AHEAD_M]`. Larger values produce
+   * smoother lines and earlier braking; smaller values turn sharper
+   * but oscillate near tight corners.
    */
-  STEER_GAIN: 1.5,
+  LOOK_AHEAD_SECONDS: 0.7,
   /**
-   * Heading-error gain (1/rad). Multiplied by the AI's current heading
-   * delta to the centerline heading to produce a steer contribution
-   * that keeps the car aligned with the road frame on a curving rail.
-   * Only used when the track view exposes `centerlineAt`. Tuned so a
-   * 0.3 rad (17 degree) misalignment saturates the heading term so
-   * the lateral term still has authority near the apex.
+   * Floor on look-ahead distance (m). Even at zero speed the carrot
+   * sits at least this far ahead so a car at rest still has a
+   * target to face when leaving the grid.
    */
-  HEADING_GAIN: 3,
+  MIN_LOOK_AHEAD_M: 4,
+  /**
+   * Ceiling on look-ahead distance (m). Capping prevents the carrot
+   * from leaping past the next corner entry on a long straight, which
+   * would make the AI under-brake into the corner.
+   */
+  MAX_LOOK_AHEAD_M: 20,
+  /**
+   * Heading error (rad) at which the steer signal saturates to +/-1.
+   * Errors smaller than this scale linearly. About 0.4 rad (23 deg)
+   * keeps the steering responsive without hair-trigger oscillation
+   * on a clean racing line.
+   */
+  STEER_HALF_ANGLE: 0.4,
   /**
    * Longitudinal range (m) where a same-lane leader triggers the
    * follow-distance throttle cap. Inside this window the trailing AI
@@ -109,44 +128,44 @@ export const AI_TUNING = Object.freeze({
 })
 
 /**
- * Per-AI runtime state. Carried across ticks so the seed and the racing-
- * line intent persist. The race-session reducer owns one of these per AI
- * slot and threads it back through `tickAi` every frame.
+ * Per-AI runtime state. The pure-pursuit controller does not need to
+ * remember its rail progress between ticks (it re-derives that from
+ * the car's world position via `projectToRail`), so the state is
+ * intentionally minimal: a deterministic seed channel, the distance
+ * raced since race-go (drives the launch-hold blend), and a few
+ * read-only telemetry fields the renderer can use to draw the
+ * carrot or surface "AI target speed" overlays.
  */
 export interface AiState {
-  // Arc length along the rail in meters. Used by the centerline /
-  // curve lookup so the AI knows where it is on the track. The
-  // tour route can initialise this to a negative-wrapped value
-  // (`totalLength - startBack`) to stagger AI cars behind the start
-  // line on the closing chord; it does NOT track "how far the car
-  // has raced," which is what `racedDistance` is for.
-  progress: number
+  // Per-AI deterministic PRNG channel. Used by future archetypes for
+  // mistakes / brilliant moments; the clean_line archetype does not
+  // currently draw from it, but the field is present so future
+  // archetypes do not require a state-shape bump.
+  seed: number
   // Distance the AI has actually driven since race-go in meters.
   // Starts at 0 in every fresh session and accumulates `speed * dt`
-  // each tick regardless of where `progress` is on the rail. Drives
-  // the launch-hold blend and the follow-distance gate so a car
-  // initialised near the rail seam does not skip its launch window.
+  // each tick regardless of where the car is on the rail. Drives the
+  // launch-hold blend so a car initialised at an arbitrary rail
+  // position still eases onto the racing line over the first
+  // `LAUNCH_LANE_HOLD_M` meters.
   racedDistance: number
-  // Per-AI deterministic PRNG channel for mistakes / brilliant moments.
-  // The clean_line archetype does not currently draw from it but the
-  // field is present so future archetypes do not need a state-shape
-  // bump.
-  seed: number
-  // The most recent computed target speed (m/s). Useful for telemetry
-  // overlays so the renderer can show "AI 2 wants 38 m/s" alongside
-  // its actual speed.
+  // Last projection result, supplied back to `projectToRail` as a hint
+  // on the next tick so the search window narrows to a few samples
+  // instead of scanning the whole rail.
+  lastArcHint: number
+  // Telemetry only.
   targetSpeed: number
-  // The most recent computed lateral target (m, signed). Useful for
-  // visualizing the racing line.
-  laneTarget: number
+  carrotX: number
+  carrotZ: number
 }
 
 export const INITIAL_AI_STATE: Readonly<AiState> = Object.freeze({
-  progress: 0,
-  racedDistance: 0,
   seed: 1,
+  racedDistance: 0,
+  lastArcHint: 0,
   targetSpeed: 0,
-  laneTarget: 0,
+  carrotX: 0,
+  carrotZ: 0,
 })
 
 /**
@@ -177,50 +196,50 @@ export interface AiCarStats {
 }
 
 /**
- * Narrow track-frame view. The AI reads:
- * - the centerline x at the AI's progress (used by the legacy
- *   straight-track P controller and by tests that only exercise the
- *   curve / brake math);
- * - the authored curve at the AI's progress, in [-1, 1] where positive
- *   means the road bends to the right (matching VibeRacer's piece-set
- *   convention);
- * - optionally the full centerline pose at the AI's progress. When
- *   present the AI computes lateral error in the track frame (so the
- *   controller stays correct as the rail rotates through east / west
- *   bearings) and adds a heading-tracking term to the steer signal.
- *   `buildAiTrackView` (`src/game/worldTourTrackView.ts`) provides this
- *   over a real rail; unit tests can leave it undefined and fall back
- *   to the world-x P controller for a straight track.
+ * Narrow track-frame view for the AI. The pure-pursuit controller
+ * reads three things:
+ *
+ *   `projectToRail(x, z, hint)`  - closest arc length on the rail
+ *   `sampleAt(arc, lateral)`     - world pose at arc length, with a
+ *                                  lateral offset to the right of travel
+ *   `curveAt(arc)`               - signed curve in [-1, 1] for braking
+ *
+ * `buildAiTrackView` (`src/game/worldTourTrackView.ts`) implements
+ * this over a real `WorldTourRail`. Tests can stub any subset with a
+ * synthetic flat-straight view; the controller falls back to a stub
+ * where features are missing (e.g., `projectToRail` may be absent on
+ * a flat-straight unit-test view, in which case the controller uses
+ * `lastArcHint` directly).
  */
 export interface AiTrackView {
-  // Centerline world x (m) at the AI's progress. The AI steers toward
-  // this plus a racing-line bias.
-  centerXAt(progress: number): number
-  // Authored curve (-1..1) at the AI's progress. Positive bends right.
-  curveAt(progress: number): number
+  // Total rail length (m). Carrot arc-lengths are taken modulo this
+  // value inside `sampleAt`.
+  totalLength: number
+  // Closest arc length on the rail to a world `(x, z)`. The `hint`
+  // is the previous tick's projection, used to constrain the search
+  // window for cost. Optional: synthetic stubs may omit it.
+  projectToRail?(x: number, z: number, hint: number): number
+  // World pose on the rail at `arcLength`, shifted by `lateral`
+  // meters to the right of travel. Internally wraps `arcLength` to
+  // [0, totalLength).
+  sampleAt(arcLength: number, lateral: number): {
+    x: number
+    z: number
+    heading: number
+  }
+  // Signed curve at `arcLength`, in [-1, 1]. Positive bends right.
+  curveAt(arcLength: number): number
   // Optional road half-width override (m). Defaults to
   // ROAD_HALF_WIDTH_DEFAULT.
   roadHalfWidth?: number
-  // Optional full centerline pose. When provided, the AI tick uses
-  // track-local lateral error and heading tracking instead of the
-  // world-x P controller. heading follows the rail-sample convention
-  // (0 = +X east, increasing CCW).
-  centerlineAt?(progress: number): { x: number; z: number; heading: number }
-  // Optional projection: given a world position and a hint progress
-  // (the AI's previous progress, used to constrain the search), return
-  // the arc-length distance along the rail closest to that world
-  // position. When provided, the AI re-syncs its progress channel
-  // from physical position every tick so the centerline lookup cannot
-  // drift ahead of the car.
-  projectToRail?(x: number, z: number, hint: number): number
 }
 
 export interface AiTickContext {
   // Other cars on the field (player plus AI peers). Used for the
   // follow-distance throttle cap.
   others: ReadonlyArray<AiCarView>
-  // Time step in seconds. The clean_line archetype only uses this to
-  // integrate `progress` from the speed.
+  // Time step in seconds. The controller only uses this to integrate
+  // `racedDistance` from the car's speed.
   dt: number
   // Optional "racing" flag. When false (countdown, finished), the AI
   // returns neutral input. Defaults to true so simple test scenarios
@@ -254,9 +273,7 @@ export function launchBlend(racedDistance: number): number {
  * Find the closest "same lane" leader within `FOLLOW_DISTANCE_METERS`
  * ahead of `ai`. Returns the leader's speed (capped by
  * `FOLLOW_SPEED_BUFFER_M_PER_S`) when one is found, or `null` when no
- * peer is inside the window. Lateral distance uses the world-frame x
- * offset; the AI is assumed to run roughly parallel to the world z axis
- * inside the launch hold and along the centerline tangent thereafter.
+ * peer is inside the window.
  */
 export function followDistanceCap(
   ai: AiCarView,
@@ -265,10 +282,7 @@ export function followDistanceCap(
   let closest: AiCarView | null = null
   let closestDz = Infinity
   for (const o of others) {
-    // Project the leader into the AI's forward axis. The clean_line
-    // archetype only needs a rough "is this peer ahead of me along the
-    // current heading" test; the dot product with the forward axis
-    // gives a stable answer even on a curved track. Heading convention
+    // Project the leader into the AI's forward axis. Heading convention
     // matches `physics.ts` and the rail-sampling helpers: 0 means
     // facing +X (east); forward is `(cos h, -sin h)`.
     const dx = o.x - ai.x
@@ -294,15 +308,18 @@ export function followDistanceCap(
 }
 
 /**
- * Target speed at the AI's current progress. Floors at `MIN_AI_SPEED`,
- * scales by curve magnitude, and clamps to chassis `topSpeed`.
+ * Target speed at a given arc length on the rail. Floors at
+ * `MIN_AI_SPEED`, scales by curve magnitude, and clamps to chassis
+ * `topSpeed`. Pure-pursuit uses this on the carrot's arc length so
+ * the AI brakes for the corner it is approaching, not the corner it
+ * is currently in.
  */
 export function targetSpeedAt(
   track: AiTrackView,
   stats: AiCarStats,
-  progress: number,
+  arcLength: number,
 ): number {
-  const curve = track.curveAt(progress)
+  const curve = track.curveAt(arcLength)
   const decel = Math.abs(curve) * AI_TUNING.CLEAN_LINE_CURVE_DECEL
   const target = stats.topSpeed * (1 - decel)
   if (!Number.isFinite(target)) return AI_TUNING.MIN_AI_SPEED
@@ -310,14 +327,11 @@ export function targetSpeedAt(
 }
 
 /**
- * Racing-line lateral target relative to the centerline. Positive moves
- * the AI to the +x side of the centerline. Scaled by the launch-hold
+ * Racing-line lateral target relative to the centerline. Positive
+ * moves the AI to the right of travel. Scaled by the launch-hold
  * blend so the AI does not jump toward the racing line off the grid.
  */
-export function racingLineOffset(
-  curve: number,
-  blend: number,
-): number {
+export function racingLineOffset(curve: number, blend: number): number {
   // VibeRacer convention: positive curve bends right; the racing line
   // bias is on the inside of the corner, which is the side toward which
   // the curve points. We bias the AI toward the inside by the same
@@ -326,13 +340,12 @@ export function racingLineOffset(
 }
 
 /**
- * Single AI tick. Returns the next state and the `PhysicsInput` the
- * race-session reducer should hand to `stepPhysics` for this car.
+ * Single AI tick. Pure pursuit: project onto the rail, pick a carrot
+ * point ahead, steer to face it.
  *
- * When `context.racing` is false the function returns a neutral input
- * (throttle 0, steer 0, no handbrake) but still advances the state's
- * `progress` integration from the car's current speed so the launch
- * hold blend is correct on the first racing tick.
+ * When `context.racing` is false the function returns neutral input
+ * but still accumulates `racedDistance` so the launch-hold blend is
+ * already at zero on the first racing tick.
  */
 export function tickAi(
   state: Readonly<AiState>,
@@ -342,128 +355,81 @@ export function tickAi(
   context: Readonly<AiTickContext>,
 ): AiTickResult {
   const racing = context.racing !== false
-  const halfWidth = track.roadHalfWidth ?? ROAD_HALF_WIDTH_DEFAULT
   const dt = Math.max(0, context.dt)
-  // Re-sync progress against the car's actual position on the rail
-  // every tick. The bare integration `progress += speed * dt`
-  // accumulates drift over a few corners (driving the chord through
-  // a curve is shorter than the arc; a bump nudges the car sideways
-  // but progress keeps climbing), so the centerline lookup ends up
-  // tens of meters ahead of where the car physically is and the AI
-  // chases a phantom target until it falls off the road. When the
-  // track view exposes `projectToRail`, ground progress to the
-  // closest point on the rail every frame. The hint constrains the
-  // search to a window around the previous progress so a re-sync is
-  // cheap. Tests with a flat-straight view fall back to the
-  // integrated value.
-  const projectedProgress =
-    track.projectToRail?.(car.x, car.z, state.progress) ?? null
-  const baseProgress =
-    projectedProgress !== null ? projectedProgress : state.progress
   const forwardDelta = Math.max(0, car.speed) * dt
-  // Even with a re-sync the AI still needs to "look ahead" by one
-  // tick of forward motion when picking the centerline target, or
-  // it lags the rail by `speed * dt`. Add the projected forward
-  // contribution on top of the synced base.
-  const railHeading =
-    track.centerlineAt?.(baseProgress)?.heading ?? car.heading
-  const tangentX = Math.cos(railHeading)
-  const tangentZ = -Math.sin(railHeading)
-  const carFwdX = Math.cos(car.heading)
-  const carFwdZ = -Math.sin(car.heading)
-  const alignment = carFwdX * tangentX + carFwdZ * tangentZ
-  const nextProgress = baseProgress + car.speed * alignment * dt
   const nextRacedDistance = state.racedDistance + forwardDelta
 
+  // Pure pursuit step 1: find the car's true arc length on the rail.
+  // The hint constrains the search window; a missing projection
+  // (unit-test stubs) falls back to the last hint so the controller
+  // still has a usable arc length to work with.
+  const arcLength =
+    track.projectToRail?.(car.x, car.z, state.lastArcHint) ?? state.lastArcHint
+
   if (!racing) {
+    // During countdown / after a finish, freeze steer + throttle but
+    // still update telemetry so the next racing tick starts from a
+    // sane hint.
     return {
       input: { throttle: 0, steer: 0, handbrake: false },
       nextAiState: {
         ...state,
-        progress: nextProgress,
         racedDistance: nextRacedDistance,
+        lastArcHint: arcLength,
         targetSpeed: 0,
-        laneTarget: car.x,
+        carrotX: car.x,
+        carrotZ: car.z,
       },
     }
   }
 
+  // Step 2: pick a carrot point ahead on the rail. Look-ahead scales
+  // with speed (faster = look further ahead = smoother lines) and is
+  // clamped to [MIN_LOOK_AHEAD_M, MAX_LOOK_AHEAD_M] so a stopped car
+  // still has a target and a top-speed car does not look past a
+  // corner entry.
+  const lookAhead = clamp(
+    car.speed * AI_TUNING.LOOK_AHEAD_SECONDS,
+    AI_TUNING.MIN_LOOK_AHEAD_M,
+    AI_TUNING.MAX_LOOK_AHEAD_M,
+  )
+  const carrotArc = arcLength + lookAhead
+
+  // Step 3: lateral racing-line bias at the carrot. Read the curve
+  // AT the carrot (not at the car's current position) so the AI
+  // pre-positions for the corner it is approaching. The launch-hold
+  // blend keeps the bias at 0 for the first 200 m of raced distance
+  // so the field spreads off the grid before chasing the racing line.
   const blend = launchBlend(state.racedDistance)
-  // Use the re-synced `baseProgress` for every centerline / curve
-  // lookup so the controller is reading the rail at the car's
-  // actual physical position, not its drifted scalar estimate.
-  const curve = track.curveAt(baseProgress)
-  const laneBias = racingLineOffset(curve, blend)
+  const upcomingCurve = track.curveAt(carrotArc)
+  const lateral = racingLineOffset(upcomingCurve, blend)
+  const carrot = track.sampleAt(carrotArc, lateral)
 
-  // Steering controller. Two modes share the lane-target math:
-  //
-  // - Track-local (`centerlineAt` available, real rail): compute the
-  //   lateral error in the track's right-of-travel frame so the
-  //   controller stays correct as the rail rotates through east /
-  //   west bearings. Add a heading-tracking term so the AI follows
-  //   the rail through long sweeps without over-shooting.
-  // - World-x (legacy, used by tests with a flat-straight view): the
-  //   centerline is parameterized only by x, so lateral error is the
-  //   raw (target x - car x) like the original VibeGear2 port.
-  let steer: number
-  let centerX: number
-  let laneTarget: number
-  const pose = track.centerlineAt?.(baseProgress)
-  if (pose) {
-    // Right-of-travel perpendicular matches the rail extrusion
-    // convention used by `sampleRailAt`: (sin h, cos h) points to the
-    // right of the direction of travel.
-    const sideX = Math.sin(pose.heading)
-    const sideZ = Math.cos(pose.heading)
-    const offX = car.x - pose.x
-    const offZ = car.z - pose.z
-    const lateralFromCenter = offX * sideX + offZ * sideZ
-    // Racing-line target offset relative to the centerline. During the
-    // launch window we collapse the bias to 0 and let the car hold the
-    // lateral position it spawned at (the launch-hold mechanic from
-    // VibeGear2). Outside the launch we pull onto the racing line.
-    const heldLateral = lateralFromCenter
-    const racingLineTargetLateral = laneBias
-    const targetLateral =
-      racingLineTargetLateral * blend + heldLateral * (1 - blend)
-    const lateralError = targetLateral - lateralFromCenter
-    // Heading error: positive means we need to rotate CCW (which is a
-    // positive steer in this codebase's convention).
-    let headingError = pose.heading - car.heading
-    if (headingError > Math.PI) headingError -= 2 * Math.PI
-    if (headingError < -Math.PI) headingError += 2 * Math.PI
-    const lateralTerm = -lateralError / AI_TUNING.STEER_GAIN
-    const headingTerm = AI_TUNING.HEADING_GAIN * headingError
-    steer = clamp(lateralTerm + headingTerm, -1, 1)
-    centerX = pose.x
-    laneTarget = pose.x + targetLateral * sideX + 0 * sideZ
-  } else {
-    // Legacy world-x P controller. Used by tests with a flat-straight
-    // track view; the real tour route always supplies `centerlineAt`.
-    centerX = track.centerXAt(baseProgress)
-    const racingLineTargetX = centerX + laneBias
-    const heldLaneTargetX = car.x
-    const targetX = racingLineTargetX * blend + heldLaneTargetX * (1 - blend)
-    const lateralError = targetX - car.x
-    steer = clamp(-lateralError / AI_TUNING.STEER_GAIN, -1, 1)
-    laneTarget = targetX
-  }
+  // Step 4: steer to face the carrot. The single saturated term
+  // replaces the prior lateral-error + heading-error controllers; the
+  // pure-pursuit geometry naturally damps as the car approaches the
+  // carrot (heading error shrinks to zero), so no explicit lateral
+  // term is needed.
+  const dx = carrot.x - car.x
+  const dz = carrot.z - car.z
+  const angleToCarrot = Math.atan2(-dz, dx)
+  let headingError = angleToCarrot - car.heading
+  if (headingError > Math.PI) headingError -= 2 * Math.PI
+  if (headingError < -Math.PI) headingError += 2 * Math.PI
+  const steer = clamp(headingError / AI_TUNING.STEER_HALF_ANGLE, -1, 1)
 
-  // Target speed: curve-aware, then capped by any close same-lane
-  // leader inside the follow window. Skip the follow-distance cap
-  // during the launch window so the field can spread off the grid
-  // instead of every car cap-following a stationary leader at speed 0
-  // (which deadlocks the entire field) or accelerating into a slow
-  // launch and accruing contact damage.
-  let target = targetSpeedAt(track, stats, baseProgress)
+  // Step 5: target speed from the upcoming curvature, capped by any
+  // close same-lane leader (after launch hold; during launch every car
+  // is at speed 0 and the cap would deadlock the field).
+  let target = targetSpeedAt(track, stats, carrotArc)
   if (blend >= 1) {
     const cap = followDistanceCap(car, context.others)
     if (cap !== null && cap < target) target = cap
   }
 
-  // Throttle / brake controller. Positive throttle accelerates; the
-  // PhysicsInput shape uses a signed `throttle` with negative for
-  // brake.
+  // Step 6: throttle / brake controller. Same shape as the original
+  // VibeGear2 port: hysteresis band around the target, full throttle
+  // when way below, ramped brake when way above.
   const speedError = car.speed - target
   let throttle: number
   if (Math.abs(speedError) <= AI_TUNING.SPEED_HYSTERESIS) {
@@ -475,31 +441,15 @@ export function tickAi(
   }
   throttle = clamp(throttle, -1, 1)
 
-  // Defensive: if the AI is fully outside the road, pull harder back
-  // toward center to avoid an off-track DNF spiral. This is a minimal
-  // safety net the clean_line archetype keeps even though the P
-  // controller naturally recovers in most cases. Uses the same
-  // track-local frame as the main controller when available so the
-  // recovery push is in the right direction on a rotated rail.
-  if (pose) {
-    const sideX = Math.sin(pose.heading)
-    const sideZ = Math.cos(pose.heading)
-    const offCenter = (car.x - pose.x) * sideX + (car.z - pose.z) * sideZ
-    if (Math.abs(offCenter) > halfWidth) {
-      steer = clamp(-offCenter / AI_TUNING.STEER_GAIN, -1, 1)
-    }
-  } else if (Math.abs(car.x - centerX) > halfWidth) {
-    steer = clamp(-(car.x - centerX) / AI_TUNING.STEER_GAIN, -1, 1)
-  }
-
   return {
     input: { throttle, steer, handbrake: false },
     nextAiState: {
       ...state,
-      progress: nextProgress,
       racedDistance: nextRacedDistance,
+      lastArcHint: arcLength,
       targetSpeed: target,
-      laneTarget,
+      carrotX: carrot.x,
+      carrotZ: carrot.z,
     },
   }
 }

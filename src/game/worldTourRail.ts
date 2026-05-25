@@ -118,13 +118,33 @@ export function sampleRailAt(
     // and the first one so a loop's seam is continuous instead of
     // collapsing to the last sample. `totalLength` already accounts
     // for the closing chord length.
+    //
+    // Heading along the closing chord is the chord's own direction,
+    // NOT `lerpAngle(samples[N-1].heading, samples[0].heading, t)`.
+    // A car driving across the seam follows the chord; if the loop
+    // closes by joining two arbitrary pieces (last sweep -> first
+    // straight) those endpoint headings can be 90 degrees apart and
+    // the interpolated value does not match the actual trajectory.
+    // This is exactly the discontinuity that snapped the AI's
+    // heading-error controller and parked it off-track at the end of
+    // lap 1. `pieceSamples` already gives every authored straight
+    // its chord-derived heading via the same `atan2` form; the
+    // implicit closing chord deserves the same treatment.
     const a = rail.samples[lastIdx]!
     const b = rail.samples[0]!
     const segLen = rail.totalLength - lastCumulative
     const t = segLen > 1e-6 ? (d - lastCumulative) / segLen : 0
     x0 = a.x + (b.x - a.x) * t
     z0 = a.z + (b.z - a.z) * t
-    h = lerpAngle(a.heading, b.heading, t)
+    const chordDx = b.x - a.x
+    const chordDz = b.z - a.z
+    // `pieceSamples` formula: heading = atan2(-dz, dx). Mirror it here
+    // so the closing chord obeys the same heading convention as every
+    // other straight piece on the rail.
+    h =
+      chordDx === 0 && chordDz === 0
+        ? a.heading
+        : Math.atan2(-chordDz, chordDx)
   } else {
     // Linear search is fine for a few-hundred-sample rail; the AI loop
     // calls this O(opponents) times per frame, which is bounded at the

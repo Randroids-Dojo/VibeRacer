@@ -13,14 +13,34 @@ import {
   type AiTrackView,
 } from '@/game/worldTourAi'
 
+// Synthetic flat-straight view. A car at any (x, z) sees a centerline
+// running north (heading PI/2) at world x = 0. `projectToRail` snaps
+// to the car's z coord so `sampleAt(arc, lateral)` reads the right
+// world position for any car along the straight.
 const FLAT_STRAIGHT: AiTrackView = {
-  centerXAt: () => 0,
+  totalLength: 100000,
+  projectToRail: (_x, z) => -z,
+  sampleAt: (arcLength, lateral) => ({
+    x: lateral,
+    z: -arcLength,
+    heading: Math.PI / 2,
+  }),
   curveAt: () => 0,
 }
 
+// Synthetic constant-curve view. `sampleAt` keeps the AI on a straight
+// (the controller decides what to do with the curve, not the geometry),
+// so this lets us exercise `targetSpeedAt` and racing-line bias without
+// having to author a curved rail.
 function rightCurve(strength: number): AiTrackView {
   return {
-    centerXAt: () => 0,
+    totalLength: 100000,
+    projectToRail: (_x, z) => -z,
+    sampleAt: (arcLength, lateral) => ({
+      x: lateral,
+      z: -arcLength,
+      heading: Math.PI / 2,
+    }),
     curveAt: () => strength,
   }
 }
@@ -28,7 +48,7 @@ function rightCurve(strength: number): AiTrackView {
 const STATS: AiCarStats = { topSpeed: 40 }
 
 function carAt(over: Partial<AiCarView> = {}): AiCarView {
-  return { x: 0, z: 0, heading: 0, speed: 0, ...over }
+  return { x: 0, z: 0, heading: Math.PI / 2, speed: 0, ...over }
 }
 
 describe('launchBlend', () => {
@@ -84,9 +104,9 @@ describe('targetSpeedAt', () => {
 })
 
 describe('followDistanceCap', () => {
-  // The rail-aligned heading convention: 0 = +X (east), PI/2 = -Z
-  // (north). All follow-distance scenarios below assume the AI faces
-  // PI/2 (north); the leader sits at a negative z (further north).
+  // 0 = +X (east), PI/2 = -Z (north). All follow-distance scenarios
+  // below assume the AI faces PI/2 (north); the leader sits at a
+  // negative z (further north).
   const NORTH = Math.PI / 2
 
   it('returns null when no peer is in the window', () => {
@@ -94,8 +114,6 @@ describe('followDistanceCap', () => {
   })
 
   it('returns the leader speed minus the buffer for a same-lane close peer', () => {
-    // AI at origin, facing north. Leader at z = -10 is 10 m ahead in
-    // the heading-aligned forward direction.
     const cap = followDistanceCap(carAt({ heading: NORTH }), [
       { x: 0, z: -10, heading: NORTH, speed: 30 },
     ])
@@ -136,35 +154,37 @@ describe('followDistanceCap', () => {
 })
 
 describe('tickAi (launch hold)', () => {
-  it('emits zero steer at progress 0 for an off-center car (lane hold dominates)', () => {
-    const state: AiState = { ...INITIAL_AI_STATE, progress: 0 }
+  it('emits zero steer at race-go for a car already aligned with the rail', () => {
+    // Car on the straight, heading north, no racing-line bias yet
+    // (racedDistance = 0 -> blend = 0). The carrot sits directly ahead
+    // along the heading, so heading error is 0 and steer is 0.
+    const state: AiState = { ...INITIAL_AI_STATE }
     const result = tickAi(
       state,
-      carAt({ x: 2.5 }),
+      carAt({ x: 0, z: 0, heading: Math.PI / 2 }),
       STATS,
       rightCurve(0.5),
       { others: [], dt: 0 },
     )
-    // Inside the launch hold the lane target is the car's current x, so
-    // the lateral error is zero.
-    expect(result.input.steer).toBeCloseTo(0)
+    expect(Math.abs(result.input.steer)).toBeLessThan(0.05)
   })
 
   it('starts following the racing line once past LAUNCH_LANE_HOLD_M', () => {
+    // racedDistance past launch hold -> blend = 1 -> racing-line bias
+    // is full. With a right curve, the carrot offsets to +x and the
+    // car (centered, facing north) must steer right (negative) to
+    // turn toward +x.
     const state: AiState = {
       ...INITIAL_AI_STATE,
       racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
     }
     const result = tickAi(
       state,
-      carAt({ x: 0 }),
+      carAt({ x: 0, z: 0, heading: Math.PI / 2 }),
       STATS,
       rightCurve(0.5),
       { others: [], dt: 0 },
     )
-    // Curve points right (+), so the racing-line target is to the right
-    // (+x). Positive steer means LEFT in the VibeRacer convention, so the
-    // controller must emit a NEGATIVE steer to head toward +x.
     expect(result.input.steer).toBeLessThan(0)
   })
 })
@@ -172,7 +192,7 @@ describe('tickAi (launch hold)', () => {
 describe('tickAi (throttle)', () => {
   it('asks for full throttle on a straight when below the target speed', () => {
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
       carAt({ speed: 5 }),
       STATS,
       FLAT_STRAIGHT,
@@ -183,7 +203,7 @@ describe('tickAi (throttle)', () => {
 
   it('asks for a brake (negative throttle) when above the target speed', () => {
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
       carAt({ speed: 200 }),
       STATS,
       FLAT_STRAIGHT,
@@ -193,11 +213,9 @@ describe('tickAi (throttle)', () => {
   })
 
   it('caps the target speed when a close same-lane leader is ahead', () => {
-    // Heading PI/2 = north; the leader at z = -8 sits 8 m ahead in
-    // the AI's forward direction.
     const NORTH = Math.PI / 2
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
       carAt({ heading: NORTH, speed: 30 }),
       STATS,
       FLAT_STRAIGHT,
@@ -209,14 +227,13 @@ describe('tickAi (throttle)', () => {
     expect(result.nextAiState.targetSpeed).toBeLessThanOrEqual(
       15 - AI_TUNING.FOLLOW_SPEED_BUFFER_M_PER_S + 0.0001,
     )
-    // Trailing too fast: AI brakes.
     expect(result.input.throttle).toBeLessThan(0)
   })
 
   it('ignores a peer in an adjacent lane and keeps top speed on a straight', () => {
     const NORTH = Math.PI / 2
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 1000, racedDistance: 1000 },
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
       carAt({ heading: NORTH, speed: 30 }),
       STATS,
       FLAT_STRAIGHT,
@@ -229,6 +246,25 @@ describe('tickAi (throttle)', () => {
             speed: 15,
           },
         ],
+        dt: 0,
+      },
+    )
+    expect(result.nextAiState.targetSpeed).toBe(STATS.topSpeed)
+  })
+
+  it('skips the follow-distance cap during launch hold so the field can spread', () => {
+    // Same scenario as the cap test but with racedDistance = 0. The
+    // controller must NOT cap on a stationary leader because every
+    // car is at speed 0 on the grid and capping would deadlock the
+    // whole field.
+    const NORTH = Math.PI / 2
+    const result = tickAi(
+      { ...INITIAL_AI_STATE },
+      carAt({ heading: NORTH, speed: 0 }),
+      STATS,
+      FLAT_STRAIGHT,
+      {
+        others: [{ x: 0, z: -8, heading: NORTH, speed: 0 }],
         dt: 0,
       },
     )
@@ -266,80 +302,64 @@ describe('tickAi (determinism)', () => {
     expect(a.nextAiState).toEqual(b.nextAiState)
   })
 
-  it('integrates progress from speed and dt', () => {
+  it('integrates racedDistance from speed and dt', () => {
     const result = tickAi(
-      { ...INITIAL_AI_STATE, progress: 100 },
+      { ...INITIAL_AI_STATE, racedDistance: 100 },
       carAt({ speed: 10 }),
       STATS,
       FLAT_STRAIGHT,
       { others: [], dt: 0.1 },
     )
-    expect(result.nextAiState.progress).toBeCloseTo(101)
+    expect(result.nextAiState.racedDistance).toBeCloseTo(101)
+  })
+
+  it('writes the carrot world position to telemetry every tick', () => {
+    const result = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      carAt({ heading: Math.PI / 2, speed: 20 }),
+      STATS,
+      FLAT_STRAIGHT,
+      { others: [], dt: 0 },
+    )
+    // Look-ahead at 20 m/s = 14 m, clamped to [4, 20]. Carrot is
+    // 14 m ahead on the flat-north rail (centerline x = 0), so
+    // carrotX = 0 and carrotZ < 0.
+    expect(result.nextAiState.carrotX).toBeCloseTo(0, 5)
+    expect(result.nextAiState.carrotZ).toBeLessThan(0)
   })
 })
 
-describe('tickAi (track-local frame)', () => {
-  // Track view that pretends the road is a north-pointing straight at
-  // world x = 0 (centerline heading PI/2 in the rail convention so the
-  // right-of-travel perpendicular maps to +x). When a track view
-  // exposes `centerlineAt`, the AI must use the track frame instead of
-  // the world x axis.
-  function northStraight(centerX: number = 0): {
-    centerXAt: () => number
-    curveAt: () => number
-    centerlineAt: (progress: number) => { x: number; z: number; heading: number }
-  } {
+describe('tickAi (pure pursuit on a curved-rail stub)', () => {
+  // Synthetic view where the centerline goes east (+x) at z = 0 with
+  // heading 0. A car off-line in z must steer to bring its heading
+  // toward 0 (east) so it converges back to the rail.
+  function eastStraight(): AiTrackView {
     return {
-      centerXAt: () => centerX,
-      curveAt: () => 0,
-      centerlineAt: (progress: number) => ({
-        x: centerX,
-        z: -progress,
-        heading: Math.PI / 2,
+      totalLength: 100000,
+      projectToRail: (x) => x,
+      sampleAt: (arcLength, lateral) => ({
+        x: arcLength,
+        // Right of travel for heading 0 = (sin 0, cos 0) = (0, 1).
+        // A positive lateral shifts in +z.
+        z: lateral,
+        heading: 0,
       }),
+      curveAt: () => 0,
     }
   }
 
-  it('steers toward the centerline when the car is off-center on a north straight', () => {
-    const view = northStraight(0)
-    const state: AiState = {
-      ...INITIAL_AI_STATE,
-      progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-    }
-    // Car at +x is offset right of the north centerline. Forward at
-    // heading PI/2 is (cos PI/2, -sin PI/2) = (0, -1) (pure north),
-    // so the car needs to point partly toward -x to converge to the
-    // centerline. From north the closer way to start pointing toward
-    // -x is to rotate CCW (north toward west), which is a positive
-    // steer in VibeRacer's convention.
-    const right = tickAi(state, carAt({ x: 3, z: -200, heading: Math.PI / 2 }), STATS, view, {
-      others: [],
-      dt: 0,
-    })
-    expect(right.input.steer).toBeGreaterThan(0)
-    // Symmetry: a car at -x should steer the other way.
-    const left = tickAi(state, carAt({ x: -3, z: -200, heading: Math.PI / 2 }), STATS, view, {
-      others: [],
-      dt: 0,
-    })
-    expect(left.input.steer).toBeLessThan(0)
-  })
-
-  it('steers to recover a heading drift on a straight', () => {
-    const view = northStraight(0)
-    const state: AiState = {
-      ...INITIAL_AI_STATE,
-      progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-    }
-    // Car centered on the rail but pointed at 0.5 radians off CCW
-    // from the centerline heading. The heading-tracking term must
-    // wind it back: pose.heading < car.heading, so the heading error
-    // is negative, and the controller emits a negative steer.
+  it('steers toward the rail when the car is offset above (north of) the east-bound rail', () => {
+    // Car at z = -3 is 3 m north of the centerline, facing east. The
+    // carrot (at the same arc length the car is at + look-ahead) sits
+    // at z = 0 (on centerline). The angle to the carrot is south of
+    // east (atan2(-3, lookAhead) negative because dz = 3 and we take
+    // atan2(-dz, dx) = atan2(-3, lookAhead) < 0). Heading is 0 so
+    // headingError < 0 and steer is negative (right in VibeRacer's
+    // convention; visually the car curves south-east back to z = 0).
+    const view = eastStraight()
     const result = tickAi(
-      state,
-      carAt({ x: 0, z: -200, heading: Math.PI / 2 + 0.5 }),
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 0, z: -3, heading: 0, speed: 20 },
       STATS,
       view,
       { others: [], dt: 0 },
@@ -347,20 +367,35 @@ describe('tickAi (track-local frame)', () => {
     expect(result.input.steer).toBeLessThan(0)
   })
 
-  it('emits near-zero steer when aligned on the centerline', () => {
-    const view = northStraight(0)
-    const state: AiState = {
-      ...INITIAL_AI_STATE,
-      progress: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-      racedDistance: AI_TUNING.LAUNCH_LANE_HOLD_M + 1,
-    }
+  it('emits near-zero steer when on the rail and aligned', () => {
+    const view = eastStraight()
     const result = tickAi(
-      state,
-      carAt({ x: 0, z: -200, heading: Math.PI / 2 }),
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 50, z: 0, heading: 0, speed: 20 },
       STATS,
       view,
       { others: [], dt: 0 },
     )
     expect(Math.abs(result.input.steer)).toBeLessThan(0.05)
+  })
+
+  it('symmetric: off below the rail steers the other way', () => {
+    const view = eastStraight()
+    const a = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 0, z: -3, heading: 0, speed: 20 },
+      STATS,
+      view,
+      { others: [], dt: 0 },
+    )
+    const b = tickAi(
+      { ...INITIAL_AI_STATE, racedDistance: 1000 },
+      { x: 0, z: 3, heading: 0, speed: 20 },
+      STATS,
+      view,
+      { others: [], dt: 0 },
+    )
+    expect(Math.sign(a.input.steer)).not.toBe(Math.sign(b.input.steer))
+    expect(Math.abs(a.input.steer)).toBeCloseTo(Math.abs(b.input.steer), 3)
   })
 })
