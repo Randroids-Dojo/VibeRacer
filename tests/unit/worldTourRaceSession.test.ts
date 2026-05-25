@@ -756,6 +756,45 @@ describe('stepRaceSession driven by the real AI track view', () => {
     }
   })
 
+  it('finished AI cars coast forward after crossing the line (regression: stacked pile-up at the finish)', async () => {
+    // Reported: every AI piled up on top of the first finisher at end
+    // of lap 2 because finished cars were skipped by the racing-loop
+    // and froze in place at the racing line. The fix gives finished
+    // cars one more tick of physics with neutral input each
+    // stepRaceSession, so rolling friction coasts them past the line
+    // and spreads them out. This test marks one car finished mid-race
+    // at a known speed and asserts it actually moves forward in the
+    // next 30 ticks instead of standing still.
+    const session = freshSession()
+    // Mark slot 1 (an AI car) finished at racing speed; slot 0 (the
+    // player) and the other AIs are still racing. Slot 1 should coast
+    // forward over the next 30 ticks instead of freezing at x = 0.
+    let s: RaceSessionState = {
+      ...session,
+      phase: 'racing',
+      countdownRemainingSec: 0,
+      cars: session.cars.map((c, i) => ({
+        ...c,
+        physics:
+          i === 1
+            ? { x: 0, z: 0, heading: 0, speed: 20 }
+            : { x: 0, z: -10 * i, heading: 0, speed: 0 },
+        status: i === 1 ? 'finished' : 'racing',
+        finishedAtMs: i === 1 ? 30_000 : null,
+      })),
+      finishingOrder: [1],
+    }
+    const startX = s.cars[1]!.physics.x
+    for (let t = 0; t < 30; t++) {
+      s = stepRaceSession(s, FULL_THROTTLE, CONFIG)
+    }
+    const endX = s.cars[1]!.physics.x
+    expect(endX).toBeGreaterThan(startX)
+    // And the finished car must still be 'finished' afterward (the
+    // coast-down loop must not re-mark it racing or DNF it).
+    expect(s.cars[1]!.status).toBe('finished')
+  })
+
   it('AI carrot world position varies smoothly across the rail seam (regression: heading discontinuity)', async () => {
     // Direct test of the chord-heading fix: sample the controller's
     // carrot world position before and after a simulated seam

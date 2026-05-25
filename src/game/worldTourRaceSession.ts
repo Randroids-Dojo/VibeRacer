@@ -313,10 +313,21 @@ export function stepRaceSession(
 
   for (let i = 0; i < next.cars.length; i++) {
     const car = next.cars[i]!
-    if (car.status !== 'racing') continue
+    // DNF'd cars are wrecks; they stay where they are. Finished cars
+    // still get a physics tick with neutral input below so rolling
+    // friction coasts them to a stop instead of freezing them at the
+    // racing line (which would otherwise stack every successive
+    // finisher on top of the first one).
+    if (car.status === 'dnf') continue
     const onTrack = onTrackOf(i, car.physics)
     let input: PhysicsInput
-    if (car.isPlayer) {
+    if (car.status === 'finished') {
+      // Coast-down: no throttle, no steer. Rolling friction in
+      // stepPhysics decelerates the car over a few seconds so it
+      // glides past the finish line and clears the racing surface
+      // for cars still on their final lap.
+      input = { throttle: 0, steer: 0, handbrake: false }
+    } else if (car.isPlayer) {
       input = step.playerInput
     } else if (car.aiState) {
       const others = carViews.filter((_, j) => j !== i)
@@ -341,6 +352,11 @@ export function stepRaceSession(
       overrideParams ?? car.params,
       onTrack,
     )
+
+    // The lap, no-progress, off-track, and finish-line checks only
+    // matter for racing cars; a finished car's coast-down should not
+    // re-mark them or accumulate any timers.
+    if (car.status !== 'racing') continue
 
     // Accumulate forward distance from the speed magnitude. A
     // reversing car still counts as "moving" so it does not trigger
