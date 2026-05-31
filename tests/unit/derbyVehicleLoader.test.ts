@@ -72,4 +72,39 @@ describe('derbyVehicleLoader contract', () => {
     expect(asset.group.name).toBe('derbyVehicle:bigTruck')
     asset.dispose()
   })
+
+  it('builds a cabin interior with seats, wheel, dashboard, and console', () => {
+    const group = buildPlaceholderVehicleGroup(DERBY_VEHICLES.car, 0xff0000)
+    const interior = group.children.find((c) => c.name === 'interior')
+    expect(interior).toBeDefined()
+    const partNames = interior!.children.map((c) => c.name)
+    for (const expected of [
+      'seat_fl_base',
+      'seat_fr_base',
+      'seat_rear_base',
+      'steering_wheel',
+      'dashboard',
+      'console',
+    ]) {
+      expect(partNames).toContain(expected)
+    }
+  })
+
+  it('interior is ignored by the contract and not a required submesh', () => {
+    const group = buildPlaceholderVehicleGroup(DERBY_VEHICLES.car, 0xff0000)
+    // The interior group rides along as an extra child: it must never be
+    // mistaken for a contract submesh (so it is never painted or detached).
+    expect(REQUIRED_SUBMESHES).not.toContain('interior')
+    expect(() => assertVehicleContract(group)).not.toThrow()
+  })
+
+  it('interior keeps its dark trim color (not body paint) and survives dispose', () => {
+    const group = buildPlaceholderVehicleGroup(DERBY_VEHICLES.car, 0xff0000)
+    const interior = group.children.find((c) => c.name === 'interior')!
+    const seat = interior.children.find((c) => c.name === 'seat_fl_base') as Mesh
+    const mat = seat.material as MeshStandardMaterial
+    // Body paint is bright red (0xff0000); the seat must stay dark trim.
+    expect(mat.color.getHex()).not.toBe(0xff0000)
+    expect(() => assertVehicleContract(group).dispose()).not.toThrow()
+  })
 })

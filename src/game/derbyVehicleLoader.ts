@@ -1,9 +1,12 @@
 import {
+  Box3,
   BoxGeometry,
   CylinderGeometry,
   Group,
   Mesh,
   MeshStandardMaterial,
+  TorusGeometry,
+  Vector3,
   type Object3D,
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
@@ -247,6 +250,7 @@ export async function loadDerbyVehicleAsset(
       group.name = `derbyVehicle:${config.type}`
       for (const child of [...root.children]) group.add(child)
       tintBody(group, paintColor)
+      addVehicleInterior(group)
       return assertVehicleContract(group)
     } catch (err) {
       console.error(
@@ -291,6 +295,140 @@ function recolorMaterial(mat: unknown, paintColor: number): MeshStandardMaterial
   const clone = (mat as MeshStandardMaterial).clone()
   clone.color.setHex(paintColor)
   return clone
+}
+
+// ---------------------------------------------------------------------------
+// Cabin interior
+// ---------------------------------------------------------------------------
+//
+// Both the procedural placeholder and the real GLBs are hollow shells: when
+// the damage visualizer detaches a door/hood/trunk the cavity behind it reads
+// as a flat black box because nothing is modelled inside. addVehicleInterior
+// drops low-poly furniture (two front seats, a rear bench, a steering wheel +
+// column, a dashboard, and a centre console) into that cavity so a gutted
+// wreck shows recognisable car internals instead of empty space.
+//
+// The pieces are grouped under a single child Object3D named `interior` whose
+// name matches none of the contract submeshes, so:
+//   - assertVehicleContract ignores them (extra meshes are tolerated),
+//   - tintBody skips them (not in PAINT_NODE_NAMES) so they keep their dark
+//     trim colour instead of taking the body paint,
+//   - the damage visualizer never paints or detaches them (not in
+//     PAINT_TARGET_NAMES / DETACHABLE_PANELS), so they stay put as the body
+//     comes apart.
+// disposeAll walks the whole subtree, so interior geometry/materials are freed
+// with the rest of the asset at round end.
+
+// Dark cabin trim. Slightly different shades so seats, dash, and wheel read as
+// distinct shapes rather than one black mass once a panel pops off.
+const INTERIOR_SEAT_COLOR = 0x2b2b30
+const INTERIOR_TRIM_COLOR = 0x1d1d21
+const INTERIOR_WHEEL_COLOR = 0x141416
+
+// Build the interior furniture sized to the body's bounding box and parent it
+// under the supplied group. Local frame matches the rest of the asset:
+// +Y up, +X right, length along Z with the front at -Z. No-op when the body
+// node is missing (a malformed asset is the contract's problem, not ours).
+function addVehicleInterior(group: Group): void {
+  let body: Object3D | null = null
+  group.traverse((node) => {
+    if (!body && node.name === 'body' && firstMeshOf(node)) body = node
+  })
+  if (!body) return
+
+  const bounds = new Box3().setFromObject(body)
+  const size = bounds.getSize(new Vector3())
+  const center = bounds.getCenter(new Vector3())
+  const sx = size.x
+  const sy = size.y
+  const sz = size.z
+  if (sx <= 0 || sy <= 0 || sz <= 0) return
+
+  const floorY = bounds.min.y + sy * 0.12
+  const cz = center.z
+
+  const seatMat = new MeshStandardMaterial({
+    color: INTERIOR_SEAT_COLOR,
+    roughness: 0.85,
+    metalness: 0.0,
+  })
+  const trimMat = new MeshStandardMaterial({
+    color: INTERIOR_TRIM_COLOR,
+    roughness: 0.8,
+    metalness: 0.0,
+  })
+  const wheelMat = new MeshStandardMaterial({
+    color: INTERIOR_WHEEL_COLOR,
+    roughness: 0.7,
+    metalness: 0.15,
+  })
+
+  const interior = new Group()
+  interior.name = 'interior'
+
+  // A single seat = base cushion + tilted backrest. Reused for both front
+  // seats and the rear bench (with a wider footprint).
+  const addSeat = (name: string, x: number, z: number, widthFrac: number) => {
+    const seatW = sx * widthFrac
+    const baseH = sy * 0.14
+    const baseD = sz * 0.18
+    const base = new Mesh(new BoxGeometry(seatW, baseH, baseD), seatMat)
+    base.name = `${name}_base`
+    base.position.set(x, floorY + baseH / 2, z)
+    interior.add(base)
+
+    const backH = sy * 0.42
+    const backD = sz * 0.07
+    const back = new Mesh(new BoxGeometry(seatW, backH, backD), seatMat)
+    back.name = `${name}_back`
+    back.rotation.x = -0.12 // recline slightly
+    back.position.set(x, floorY + baseH + backH / 2, z + baseD * 0.55)
+    interior.add(back)
+  }
+
+  const seatX = sx * 0.22
+  const frontZ = cz - sz * 0.02
+  addSeat('seat_fl', -seatX, frontZ, 0.26)
+  addSeat('seat_fr', seatX, frontZ, 0.26)
+  // Rear bench: one wide seat behind the fronts.
+  addSeat('seat_rear', 0, cz + sz * 0.22, 0.7)
+
+  // Centre console between the front seats.
+  const consoleH = sy * 0.16
+  const centreConsole = new Mesh(
+    new BoxGeometry(sx * 0.1, consoleH, sz * 0.24),
+    trimMat,
+  )
+  centreConsole.name = 'console'
+  centreConsole.position.set(0, floorY + consoleH / 2, frontZ - sz * 0.02)
+  interior.add(centreConsole)
+
+  // Dashboard spanning the cabin width at the front.
+  const dashH = sy * 0.16
+  const dash = new Mesh(new BoxGeometry(sx * 0.82, dashH, sz * 0.1), trimMat)
+  dash.name = 'dashboard'
+  dash.position.set(0, floorY + sy * 0.42, cz - sz * 0.26)
+  interior.add(dash)
+
+  // Steering wheel (torus, hole-axis along Z so it faces the driver) on a
+  // short column reaching toward the dashboard, in front of the left seat.
+  const wheelR = sx * 0.12
+  const wheel = new Mesh(new TorusGeometry(wheelR, sx * 0.022, 8, 20), wheelMat)
+  wheel.name = 'steering_wheel'
+  wheel.rotation.x = -0.32 // rake the column back
+  wheel.position.set(-seatX, floorY + sy * 0.4, cz - sz * 0.12)
+  interior.add(wheel)
+
+  const column = new Mesh(
+    new CylinderGeometry(sx * 0.015, sx * 0.015, sz * 0.14, 8),
+    wheelMat,
+  )
+  column.name = 'steering_column'
+  column.rotation.x = Math.PI / 2 - 0.32 // lie along Z, matching the wheel rake
+  column.position.set(-seatX, floorY + sy * 0.36, cz - sz * 0.19)
+  interior.add(column)
+
+  group.add(interior)
 }
 
 
@@ -408,6 +546,8 @@ export function buildPlaceholderVehicleGroup(
     wheel.position.set(w.x, 0, w.z)
     group.add(wheel)
   }
+
+  addVehicleInterior(group)
 
   return group
 }
