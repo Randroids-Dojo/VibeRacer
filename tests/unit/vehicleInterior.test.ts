@@ -38,19 +38,21 @@ function makeCarGroup(): Group {
   return group
 }
 
+// Under jsdom the steering-wheel GLB fetch fails, so addVehicleInterior falls
+// back to its procedural wheel — still a group named `steering_wheel`.
 describe('addVehicleInterior', () => {
-  it('removes the cabin_core filler and adds an interior group', () => {
+  it('removes the cabin_core filler and adds an interior group', async () => {
     const group = makeCarGroup()
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
 
     expect(group.children.find((c) => c.name === 'cabin_core')).toBeUndefined()
     const interior = group.children.find((c) => c.name === 'interior')
     expect(interior).toBeDefined()
   })
 
-  it('builds the full furniture set', () => {
+  it('builds the full furniture set', async () => {
     const group = makeCarGroup()
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
     const interior = group.children.find((c) => c.name === 'interior')!
     const names = interior.children.map((c) => c.name)
     for (const expected of [
@@ -58,6 +60,7 @@ describe('addVehicleInterior', () => {
       'seat_fl_base',
       'seat_fl_back',
       'seat_fl_headrest',
+      'seat_fl_back_bolster_l',
       'seat_fr_base',
       'seat_rear_base',
       'console',
@@ -69,31 +72,31 @@ describe('addVehicleInterior', () => {
     }
   })
 
-  it('leaves engine_block and trunk_floor fillers intact', () => {
+  it('leaves engine_block and trunk_floor fillers intact', async () => {
     const group = makeCarGroup()
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
     expect(group.children.find((c) => c.name === 'engine_block')).toBeDefined()
     expect(group.children.find((c) => c.name === 'trunk_floor')).toBeDefined()
   })
 
-  it('fits the furniture inside the cabin_core cavity', () => {
+  it('fits the furniture inside the cabin_core cavity', async () => {
     const group = makeCarGroup()
     const cavity = new Box3().setFromObject(
       group.children.find((c) => c.name === 'cabin_core')!,
     )
-    // pad for the slight recline / headrest overhang
-    cavity.expandByVector(new Vector3(0.05, 0.1, 0.1))
+    // pad for the slight recline / headrest / bolster overhang
+    cavity.expandByVector(new Vector3(0.06, 0.12, 0.12))
 
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
     const interior = group.children.find((c) => c.name === 'interior')!
     const furniture = new Box3().setFromObject(interior)
 
     expect(cavity.containsBox(furniture)).toBe(true)
   })
 
-  it('keeps furniture out of the body paint set (distinct dark trim colours)', () => {
+  it('keeps furniture out of the body paint set (distinct dark trim colours)', async () => {
     const group = makeCarGroup()
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
     const interior = group.children.find((c) => c.name === 'interior')!
     const seat = interior.children.find(
       (c) => c.name === 'seat_fl_base',
@@ -104,12 +107,12 @@ describe('addVehicleInterior', () => {
     )
   })
 
-  it('no-ops on a group with neither cabin_core nor body', () => {
+  it('no-ops on a group with neither cabin_core nor body', async () => {
     const group = new Group()
     const wheel = new Mesh(new BoxGeometry(0.5, 0.5, 0.5), new MeshStandardMaterial())
     wheel.name = 'wheel_fl'
     group.add(wheel)
-    addVehicleInterior(group)
+    await addVehicleInterior(group)
     expect(group.children.find((c) => c.name === 'interior')).toBeUndefined()
   })
 })

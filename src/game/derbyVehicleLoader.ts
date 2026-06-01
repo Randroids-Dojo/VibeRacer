@@ -248,7 +248,7 @@ export async function loadDerbyVehicleAsset(
       group.name = `derbyVehicle:${config.type}`
       for (const child of [...root.children]) group.add(child)
       tintBody(group, paintColor)
-      addVehicleInterior(group)
+      await addVehicleInterior(group)
       return assertVehicleContract(group)
     } catch (err) {
       console.error(
@@ -258,6 +258,7 @@ export async function loadDerbyVehicleAsset(
     }
   }
   const group = buildPlaceholderVehicleGroup(config, paintColor)
+  await addVehicleInterior(group)
   return assertVehicleContract(group)
 }
 
@@ -409,8 +410,6 @@ export function buildPlaceholderVehicleGroup(
     wheel.position.set(w.x, 0, w.z)
     group.add(wheel)
   }
-
-  addVehicleInterior(group)
 
   return group
 }

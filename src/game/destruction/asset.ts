@@ -70,7 +70,7 @@ export async function loadDestructionCar(
   // off. The interior meshes are unnamed-by-panel, so the panel-resolution
   // and wheel-pivot passes below ignore them and the deformer never touches
   // them. Runs before panel resolution since it does not add any panel nodes.
-  addVehicleInterior(group)
+  await addVehicleInterior(group)
 
   // Resolve panel meshes from the GLB's named submeshes. The GLB ships
   // each panel as either a Mesh or a Group of one Mesh (Blender's
