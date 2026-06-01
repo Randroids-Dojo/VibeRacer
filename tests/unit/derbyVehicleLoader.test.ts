@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest'
 import { Group, Mesh, BoxGeometry, MeshStandardMaterial } from 'three'
 import {
   REQUIRED_SUBMESHES,
+  addVehicleInterior,
   assertVehicleContract,
   buildPlaceholderVehicleGroup,
   loadDerbyVehicleAsset,
@@ -96,6 +97,34 @@ describe('derbyVehicleLoader contract', () => {
     // mistaken for a contract submesh (so it is never painted or detached).
     expect(REQUIRED_SUBMESHES).not.toContain('interior')
     expect(() => assertVehicleContract(group)).not.toThrow()
+  })
+
+  it('removes the solid cabin_core filler and fits furniture to its cavity', () => {
+    // Mimic the shipping GLBs: a body plus a solid cabin_core block that
+    // otherwise occludes the furniture.
+    const group = new Group()
+    const body = new Mesh(
+      new BoxGeometry(2, 1, 4),
+      new MeshStandardMaterial(),
+    )
+    body.name = 'body'
+    body.position.y = 0.5
+    group.add(body)
+    const cabinCore = new Mesh(
+      new BoxGeometry(1.8, 1.6, 1.5),
+      new MeshStandardMaterial(),
+    )
+    cabinCore.name = 'cabin_core'
+    cabinCore.position.set(0, 1.4, 0.5)
+    group.add(cabinCore)
+
+    addVehicleInterior(group)
+
+    // cabin_core is gone, an interior group with furniture took its place.
+    expect(group.children.find((c) => c.name === 'cabin_core')).toBeUndefined()
+    const interior = group.children.find((c) => c.name === 'interior')
+    expect(interior).toBeDefined()
+    expect(interior!.children.map((c) => c.name)).toContain('steering_wheel')
   })
 
   it('interior keeps its dark trim color (not body paint) and survives dispose', () => {
