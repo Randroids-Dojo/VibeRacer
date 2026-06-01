@@ -2,11 +2,11 @@ import { describe, expect, it } from 'vitest'
 import { Group, Mesh, BoxGeometry, MeshStandardMaterial } from 'three'
 import {
   REQUIRED_SUBMESHES,
-  addVehicleInterior,
   assertVehicleContract,
   buildPlaceholderVehicleGroup,
   loadDerbyVehicleAsset,
 } from '@/game/derbyVehicleLoader'
+import { addVehicleInterior } from '@/game/vehicleInterior'
 import { DERBY_VEHICLES } from '@/lib/derbyVehicles'
 
 describe('derbyVehicleLoader contract', () => {
