@@ -59,19 +59,27 @@ function firstMeshOf(node: Object3D): Mesh | null {
   return found
 }
 
-// Remove a node from the asset and free its geometry/material. Used to drop
-// the solid `cabin_core` filler once real furniture takes its place; once it
-// leaves the group it is no longer reached by the loader's dispose walk, so we
-// dispose here.
-function removeAndDispose(node: Object3D): void {
+// Remove a node from the asset and free its geometry. Used to drop the solid
+// `cabin_core` filler once real furniture takes its place; once it leaves the
+// group it is no longer reached by the loader's dispose walk. We dispose only
+// its geometry — its material is the shared `derbyInterior` instance that the
+// body's window faces (and the hood/boot fillers) also use, so disposing it
+// here would yank the material out from under those surviving meshes.
+function removeAndDisposeGeometry(node: Object3D): void {
   node.parent?.remove(node)
   node.traverse((child) => {
-    if (child instanceof Mesh) {
-      child.geometry.dispose()
-      const m = child.material
-      if (Array.isArray(m)) for (const item of m) item.dispose()
-      else m.dispose()
-    }
+    if (child instanceof Mesh) child.geometry.dispose()
+  })
+}
+
+// Point every Mesh under `node` at `mat`. Used to repaint the near-black
+// hood/boot fillers with the cabin trim so they stop reading as a black box.
+// The fillers' original material is the shared `derbyInterior` instance the
+// body's window faces also use, so we swap the reference rather than mutate
+// the shared material in place.
+function recolorNode(node: Object3D, mat: MeshStandardMaterial): void {
+  node.traverse((child) => {
+    if (child instanceof Mesh) child.material = mat
   })
 }
 
@@ -87,11 +95,18 @@ function removeAndDispose(node: Object3D): void {
 export function addVehicleInterior(group: Group): void {
   let cabinCore: Object3D | null = null
   let body: Object3D | null = null
+  // The engine_block (under the hood) and trunk_floor (in the boot) are
+  // near-black `derbyInterior` fillers. Left as-is they read as the "black
+  // box" the cabin used to be, so we recolour them to a visible dark trim.
+  const fillers: Object3D[] = []
   group.traverse((node) => {
     if (!cabinCore && node.name === 'cabin_core' && firstMeshOf(node)) {
       cabinCore = node
     }
     if (!body && node.name === 'body' && firstMeshOf(node)) body = node
+    if (node.name === 'engine_block' || node.name === 'trunk_floor') {
+      fillers.push(node)
+    }
   })
 
   // Cavity bounds: prefer the cabin_core block, else a central slice of body.
@@ -116,9 +131,11 @@ export function addVehicleInterior(group: Group): void {
   const sy = size.y
   const sz = size.z
   if (sx <= 0 || sy <= 0 || sz <= 0) return
-  const cz = center.z
-  const frontZ = cavity.min.z // front of cabin (asset front is -Z)
-  const floorY = cavity.min.y + sy * 0.04
+  const minZ = cavity.min.z // front of cabin (asset front is -Z)
+  const floorY = cavity.min.y + sy * 0.02
+  // Z stations from front (-Z) to rear (+Z): dashboard, wheel, front seats,
+  // rear bench. Fractions of the cabin length so the layout scales per car.
+  const zAt = (frac: number) => minZ + sz * frac
 
   const seatMat = new MeshStandardMaterial({
     color: INTERIOR_SEAT_COLOR,
@@ -150,23 +167,23 @@ export function addVehicleInterior(group: Group): void {
   const floorH = sy * 0.06
   const floor = new Mesh(new BoxGeometry(sx * 0.96, floorH, sz * 0.96), trimMat)
   floor.name = 'interior_floor'
-  floor.position.set(center.x, cavity.min.y + floorH / 2, cz)
+  floor.position.set(center.x, cavity.min.y + floorH / 2, center.z)
   interior.add(floor)
 
   // A single seat = base cushion + reclined backrest (+ optional headrest).
   // Reused for both front seats and the rear bench (with a wider footprint).
-  const baseH = sy * 0.24
-  const baseD = sz * 0.28
-  const backH = sy * 0.5
-  const backD = sz * 0.09
+  // Sized generously so it fills the cabin and reads as furniture, not a chip.
   const addSeat = (
     name: string,
     x: number,
     z: number,
-    widthFrac: number,
+    seatW: number,
     headrest = true,
   ) => {
-    const seatW = sx * widthFrac
+    const baseH = sy * 0.18
+    const baseD = sz * 0.32
+    const backH = sy * 0.62
+    const backD = sz * 0.14
     const base = new Mesh(new BoxGeometry(seatW, baseH, baseD), seatMat)
     base.name = `${name}_base`
     base.position.set(x, floorY + baseH / 2, z)
@@ -174,68 +191,108 @@ export function addVehicleInterior(group: Group): void {
 
     const back = new Mesh(new BoxGeometry(seatW, backH, backD), seatMat)
     back.name = `${name}_back`
-    back.rotation.x = -0.14 // recline slightly
+    back.rotation.x = -0.16 // recline slightly
     const backTopY = floorY + baseH + backH
-    back.position.set(x, floorY + baseH + backH / 2, z + baseD * 0.5)
+    back.position.set(x, floorY + baseH + backH / 2, z + baseD * 0.45)
     interior.add(back)
 
     // Headrest: a small block above the backrest so the seat keeps a
     // recognisable silhouette instead of reading as a plain slab.
     if (headrest) {
       const rest = new Mesh(
-        new BoxGeometry(seatW * 0.5, sy * 0.12, backD * 1.1),
+        new BoxGeometry(seatW * 0.55, sy * 0.14, backD * 1.05),
         seatMat,
       )
       rest.name = `${name}_headrest`
-      rest.position.set(x, backTopY + sy * 0.04, z + baseD * 0.5)
+      rest.position.set(x, backTopY + sy * 0.05, z + baseD * 0.45)
       interior.add(rest)
     }
   }
 
-  const seatX = sx * 0.23
-  const frontSeatZ = cz - sz * 0.04
-  addSeat('seat_fl', -seatX, frontSeatZ, 0.36)
-  addSeat('seat_fr', seatX, frontSeatZ, 0.36)
+  const seatX = sx * 0.24
+  const frontSeatW = sx * 0.4
+  const frontSeatZ = zAt(0.55)
+  addSeat('seat_fl', -seatX, frontSeatZ, frontSeatW)
+  addSeat('seat_fr', seatX, frontSeatZ, frontSeatW)
   // Rear bench: one wide seat behind the fronts (no headrest).
-  addSeat('seat_rear', center.x, cz + sz * 0.26, 0.84, false)
+  addSeat('seat_rear', center.x, zAt(0.76), sx * 0.88, false)
 
   // Centre console between the front seats.
-  const consoleH = sy * 0.2
+  const consoleH = sy * 0.22
   const centreConsole = new Mesh(
-    new BoxGeometry(sx * 0.12, consoleH, sz * 0.34),
+    new BoxGeometry(sx * 0.14, consoleH, sz * 0.38),
     trimMat,
   )
   centreConsole.name = 'console'
   centreConsole.position.set(center.x, floorY + consoleH / 2, frontSeatZ)
   interior.add(centreConsole)
 
-  // Dashboard spanning the cabin width at the front.
-  const dashH = sy * 0.22
-  const dash = new Mesh(new BoxGeometry(sx * 0.9, dashH, sz * 0.12), trimMat)
+  // Dashboard spanning the cabin width at the front, with a raised instrument
+  // binnacle so it reads as a dashboard rather than a plain slab.
+  const dashH = sy * 0.26
+  const dashZ = zAt(0.12)
+  const dash = new Mesh(new BoxGeometry(sx * 0.92, dashH, sz * 0.14), trimMat)
   dash.name = 'dashboard'
-  dash.position.set(center.x, floorY + sy * 0.5, frontZ + sz * 0.1)
+  dash.position.set(center.x, floorY + sy * 0.46, dashZ)
   interior.add(dash)
+  const binnacle = new Mesh(
+    new BoxGeometry(sx * 0.34, sy * 0.12, sz * 0.1),
+    trimMat,
+  )
+  binnacle.name = 'dash_binnacle'
+  binnacle.position.set(-seatX, floorY + sy * 0.46 + dashH * 0.5, dashZ + sz * 0.06)
+  interior.add(binnacle)
 
-  // Steering wheel (torus, hole-axis along Z so it faces the driver) on a
-  // short column reaching toward the dashboard, in front of the left seat.
-  const wheelR = sx * 0.14
-  const wheel = new Mesh(new TorusGeometry(wheelR, sx * 0.025, 8, 20), wheelMat)
-  wheel.name = 'steering_wheel'
-  wheel.rotation.x = -0.32 // rake the column back
-  wheel.position.set(-seatX, floorY + sy * 0.42, frontZ + sz * 0.22)
-  interior.add(wheel)
+  // Steering wheel: a torus rim (hole-axis along Z so the disc faces the
+  // driver) with a centre hub and three spokes, raked back on a short column
+  // toward the dashboard, in front of the left seat.
+  const wheelGroup = new Group()
+  wheelGroup.name = 'steering_wheel'
+  const wheelR = sx * 0.17
+  const tube = sx * 0.022
+  const rim = new Mesh(new TorusGeometry(wheelR, tube, 10, 24), wheelMat)
+  rim.name = 'steering_rim'
+  wheelGroup.add(rim)
+  const hub = new Mesh(
+    new CylinderGeometry(wheelR * 0.28, wheelR * 0.28, tube * 2.2, 12),
+    wheelMat,
+  )
+  hub.name = 'steering_hub'
+  hub.rotation.x = Math.PI / 2 // align hub axis with the rim's hole (Z)
+  wheelGroup.add(hub)
+  for (let i = 0; i < 3; i++) {
+    const angle = (i / 3) * Math.PI * 2 - Math.PI / 2
+    const spoke = new Mesh(
+      new BoxGeometry(wheelR * 0.12, wheelR * 0.9, tube * 1.4),
+      wheelMat,
+    )
+    spoke.name = `steering_spoke_${i}`
+    spoke.position.set(
+      Math.cos(angle) * wheelR * 0.45,
+      Math.sin(angle) * wheelR * 0.45,
+      0,
+    )
+    spoke.rotation.z = angle - Math.PI / 2
+    wheelGroup.add(spoke)
+  }
+  wheelGroup.rotation.x = -0.3 // rake the column back
+  wheelGroup.position.set(-seatX, floorY + sy * 0.48, zAt(0.3))
+  interior.add(wheelGroup)
 
   const column = new Mesh(
-    new CylinderGeometry(sx * 0.018, sx * 0.018, sz * 0.16, 8),
+    new CylinderGeometry(sx * 0.02, sx * 0.02, sz * 0.2, 8),
     wheelMat,
   )
   column.name = 'steering_column'
-  column.rotation.x = Math.PI / 2 - 0.32 // lie along Z, matching the wheel rake
-  column.position.set(-seatX, floorY + sy * 0.36, frontZ + sz * 0.15)
+  column.rotation.x = Math.PI / 2 - 0.3 // lie along Z, matching the wheel rake
+  column.position.set(-seatX, floorY + sy * 0.4, zAt(0.21))
   interior.add(column)
 
   group.add(interior)
 
-  // Drop the solid cabin filler now that furniture occupies the cavity.
-  if (cabinCore) removeAndDispose(cabinCore)
+  // Drop the solid cabin filler now that furniture occupies the cavity, and
+  // recolour the remaining near-black hood/boot fillers so they stop reading
+  // as a black box.
+  if (cabinCore) removeAndDisposeGeometry(cabinCore)
+  for (const filler of fillers) recolorNode(filler, trimMat)
 }
