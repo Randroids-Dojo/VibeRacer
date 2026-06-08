@@ -38,8 +38,9 @@ function makeCarGroup(): Group {
   return group
 }
 
-// Under jsdom the steering-wheel GLB fetch fails, so addVehicleInterior falls
-// back to its procedural wheel — still a group named `steering_wheel`.
+// Unit tests run in the node environment with no fetch for the static GLB, so
+// addVehicleInterior's wheel load fails and falls back to its procedural wheel
+// — still a group named `steering_wheel`.
 describe('addVehicleInterior', () => {
   it('removes the cabin_core filler and adds an interior group', async () => {
     const group = makeCarGroup()

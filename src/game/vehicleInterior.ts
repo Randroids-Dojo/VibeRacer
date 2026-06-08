@@ -106,12 +106,13 @@ function loadWheelScene(): Promise<Object3D> {
 // Reject if `p` does not settle within `ms` so a hung/slow GLB fetch never
 // stalls vehicle creation; the caller then builds the procedural fallback.
 function withTimeout<T>(p: Promise<T>, ms: number): Promise<T> {
-  return Promise.race([
-    p,
-    new Promise<T>((_, reject) =>
-      setTimeout(() => reject(new Error('wheel load timed out')), ms),
-    ),
-  ])
+  let timer: ReturnType<typeof setTimeout>
+  const timeout = new Promise<T>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('wheel load timed out')), ms)
+  })
+  // Clear the pending timer once the race settles so a resolved load does not
+  // leave a dangling timeout holding the event loop open (slows the suite).
+  return Promise.race([p, timeout]).finally(() => clearTimeout(timer))
 }
 
 // Normalise the loaded wheel scene into a `steering_wheel` group: centred on
@@ -182,6 +183,11 @@ function buildWheelFallback(radius: number, mat: MeshStandardMaterial): Group {
 // (the procedural placeholder) we fall back to a cabin-sized slice of the
 // `body` bounding box. No-op when neither node exists.
 export async function addVehicleInterior(group: Group): Promise<void> {
+  // Box3.setFromObject reads matrixWorld without refreshing ancestors, so a
+  // GLB that nests `body`/`cabin_core` under intermediate nodes can yield stale
+  // bounds and misplace the furniture. Refresh the subtree first.
+  group.updateMatrixWorld(true)
+
   let cabinCore: Object3D | null = null
   let body: Object3D | null = null
   // The engine_block (under the hood) and trunk_floor (in the boot) are

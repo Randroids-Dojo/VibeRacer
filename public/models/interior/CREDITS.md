@@ -1,6 +1,7 @@
 # Third-party interior assets
 
 ## steering-wheel.glb
+
 - Source: Poly Pizza — "Steering wheel" by Poly by Google
 - URL: https://poly.pizza/m/bIYbhKwE4L0
 - License: Creative Commons Attribution (CC-BY 3.0)

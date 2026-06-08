@@ -74,8 +74,8 @@ describe('derbyVehicleLoader contract', () => {
   })
 
   it('loadDerbyVehicleAsset furnishes the cabin interior', async () => {
-    // The GLB fetch fails under jsdom and falls back to the placeholder, which
-    // the async loader then furnishes via addVehicleInterior.
+    // In the node test environment the GLB fetch fails and falls back to the
+    // placeholder, which the async loader then furnishes via addVehicleInterior.
     const asset = await loadDerbyVehicleAsset(DERBY_VEHICLES.car)
     const interior = asset.group.children.find((c) => c.name === 'interior')
     expect(interior).toBeDefined()
