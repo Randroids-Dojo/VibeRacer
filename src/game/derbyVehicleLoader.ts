@@ -8,6 +8,7 @@ import {
 } from 'three'
 import { GLTFLoader, type GLTF } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import type { DerbyVehicleConfig } from '@/lib/derbyVehicles'
+import { addVehicleInterior } from '@/game/vehicleInterior'
 
 // Vehicle asset loader for Derby. Contract: every loaded asset is a
 // Three.js Group whose direct children include a fixed set of named
@@ -247,6 +248,7 @@ export async function loadDerbyVehicleAsset(
       group.name = `derbyVehicle:${config.type}`
       for (const child of [...root.children]) group.add(child)
       tintBody(group, paintColor)
+      await addVehicleInterior(group)
       return assertVehicleContract(group)
     } catch (err) {
       console.error(
@@ -256,6 +258,7 @@ export async function loadDerbyVehicleAsset(
     }
   }
   const group = buildPlaceholderVehicleGroup(config, paintColor)
+  await addVehicleInterior(group)
   return assertVehicleContract(group)
 }
 
@@ -292,7 +295,6 @@ function recolorMaterial(mat: unknown, paintColor: number): MeshStandardMaterial
   clone.color.setHex(paintColor)
   return clone
 }
-
 
 export function buildPlaceholderVehicleGroup(
   config: DerbyVehicleConfig,

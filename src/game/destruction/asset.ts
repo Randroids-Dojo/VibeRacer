@@ -7,6 +7,7 @@ import {
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js'
 import { subdivideN } from './subdivide'
 import { PANELS, type PanelId } from './panels'
+import { addVehicleInterior } from '@/game/vehicleInterior'
 
 // Independent loader for the Destruction Lab. Mirrors the derby loader's
 // shape (named submeshes, wheel pivots) but is intentionally separate so
@@ -63,6 +64,13 @@ export async function loadDestructionCar(
   // Apply paint tint to every named paint panel. Materials are cloned
   // so subsequent wear edits stay scoped to this car instance.
   tintPaintPanels(group, options.paintColor)
+
+  // Furnish the cabin (seats, wheel, dashboard, console) and drop the solid
+  // cabin_core filler block so the interior is visible when a door is torn
+  // off. The interior meshes are unnamed-by-panel, so the panel-resolution
+  // and wheel-pivot passes below ignore them and the deformer never touches
+  // them. Runs before panel resolution since it does not add any panel nodes.
+  await addVehicleInterior(group)
 
   // Resolve panel meshes from the GLB's named submeshes. The GLB ships
   // each panel as either a Mesh or a Group of one Mesh (Blender's

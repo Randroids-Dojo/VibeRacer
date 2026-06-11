@@ -72,4 +72,25 @@ describe('derbyVehicleLoader contract', () => {
     expect(asset.group.name).toBe('derbyVehicle:bigTruck')
     asset.dispose()
   })
+
+  it('loadDerbyVehicleAsset furnishes the cabin interior', async () => {
+    // In the node test environment the GLB fetch fails and falls back to the
+    // placeholder, which the async loader then furnishes via addVehicleInterior.
+    const asset = await loadDerbyVehicleAsset(DERBY_VEHICLES.car)
+    const interior = asset.group.children.find((c) => c.name === 'interior')
+    expect(interior).toBeDefined()
+    const partNames = interior!.children.map((c) => c.name)
+    for (const expected of ['seat_fl_base', 'steering_wheel', 'dashboard']) {
+      expect(partNames).toContain(expected)
+    }
+    asset.dispose()
+  })
+
+  it('interior is not a required submesh and never breaks the contract', () => {
+    // The interior group rides along as an extra child: it must never be
+    // mistaken for a contract submesh (so it is never painted or detached).
+    expect(REQUIRED_SUBMESHES).not.toContain('interior')
+    const group = buildPlaceholderVehicleGroup(DERBY_VEHICLES.car, 0xff0000)
+    expect(() => assertVehicleContract(group)).not.toThrow()
+  })
 })
